@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
@@ -302,7 +303,8 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  const handleBookingClick = () => {
+  const handleBookingClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     if (formData.booking) {
       onViewBookingDetails(formData.booking);
     }
@@ -359,7 +361,19 @@ export const JobModal: React.FC<JobModalProps> = ({
 
                 <div className="space-y-1">
                   <Label>Booking</Label>
-                  <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />
+                  <div className="flex items-center space-x-1">
+                    <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />
+                    {formData.booking && (
+                      <button 
+                        type="button" 
+                        onClick={handleBookingClick} 
+                        className="p-2 bg-gray-100 text-gray-600 rounded border border-gray-200 hover:bg-blue-50 hover:text-blue-900 transition-colors" 
+                        title="Xem chi tiết Booking"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -443,32 +457,6 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <MoneyInput label="Profit (Lợi nhuận)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly />
                 <NumberStepper label="Cont 20'" value={formData.cont20} onChange={(val) => setFormData(prev => ({...prev, cont20: val}))} readOnly={isViewMode} />
                 <NumberStepper label="Cont 40'" value={formData.cont40} onChange={(val) => setFormData(prev => ({...prev, cont40: val}))} readOnly={isViewMode} />
-              </div>
-            </div>
-
-            {/* --- PAYMENT OUT --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-5 border-b pb-2">Chi (Payment Out)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="flex items-end space-x-2">
-                  <div className="flex-1">
-                     <MoneyInput label="Payment" name="chiPayment" value={formData.chiPayment} onChange={handleMoneyChange} readOnly={isViewMode} />
-                  </div>
-                  {formData.booking && (
-                    <button type="button" onClick={handleBookingClick} className="mb-0.5 p-2 bg-gray-100 text-gray-600 rounded border border-gray-200 hover:bg-white hover:text-blue-900 h-[38px]" title="Xem chi tiết hóa đơn Booking">
-                      <ExternalLink className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-                <MoneyInput label="Cược (Deposit)" name="chiCuoc" value={formData.chiCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                <div>
-                  <Label>Ngày Cược</Label>
-                  <DateInput name="ngayChiCuoc" value={formData.ngayChiCuoc} onChange={handleChange} readOnly={isViewMode} />
-                </div>
-                <div>
-                  <Label>Ngày Hoàn</Label>
-                  <DateInput name="ngayChiHoan" value={formData.ngayChiHoan} onChange={handleChange} readOnly={isViewMode} />
-                </div>
               </div>
             </div>
 

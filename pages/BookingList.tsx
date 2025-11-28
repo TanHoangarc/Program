@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -39,13 +40,20 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
     }
   }, [initialBookingId, bookingData, onClearTargetBooking]);
 
-  const handleSaveDetails = (updatedDetails: BookingCostDetails) => {
+  const handleSaveDetails = (updatedDetails: BookingCostDetails, updatedJobs?: JobData[]) => {
     if (!selectedBooking) return;
     
-    // We need to update ALL jobs in this booking with the new bookingCostDetails
-    // to ensure synchronization.
+    // We update ALL jobs in this booking with the new shared bookingCostDetails
+    // If specific job fields (like extensions/local charge) were edited in the modal (if supported later), 
+    // updatedJobs would carry those changes. 
+    // Currently BookingDetailModal doesn't modify individual jobs except via sync, 
+    // but we iterate to ensure costDetails are synced.
+    
     selectedBooking.jobs.forEach(job => {
-        const updatedJob = { ...job, bookingCostDetails: updatedDetails };
+        const updatedJob = { 
+            ...job, 
+            bookingCostDetails: updatedDetails 
+        };
         onEditJob(updatedJob);
     });
 

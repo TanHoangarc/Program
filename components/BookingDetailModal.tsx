@@ -1,13 +1,13 @@
 
 import React, { useState } from 'react';
-import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText } from 'lucide-react';
+import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor } from 'lucide-react';
 import { formatDateVN } from '../utils';
 
 interface BookingDetailModalProps {
   booking: BookingSummary;
   onClose: () => void;
-  onSave: (data: BookingCostDetails) => void;
+  onSave: (data: BookingCostDetails, updatedJobs?: JobData[]) => void;
   zIndex?: string;
 }
 
@@ -25,6 +25,7 @@ const Label = ({ children }: { children: React.ReactNode }) => (
 export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, zIndex = 'z-50' }) => {
   const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge);
   const [extensionCosts, setExtensionCosts] = useState<BookingExtensionCost[]>(booking.costDetails.extensionCosts);
+  const [deposits, setDeposits] = useState<BookingDeposit[]>(booking.costDetails.deposits || []);
 
   // Calculations
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => 
@@ -34,19 +35,23 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalLocalChargeRevenue = booking.jobs.reduce((sum, job) => sum + job.localChargeTotal, 0);
 
   const totalExtensionCost = extensionCosts.reduce((sum, ext) => sum + ext.total, 0);
+  
+  const totalDepositCost = deposits.reduce((sum, d) => sum + d.amount, 0);
 
   // Totals for Summary Table
-  // Tổng Thu = Tổng Amount (Local Charge Revenue) + Tổng Gia Hạn Revenue
-  // KHÔNG cộng tiền Cược (Deposit - thuCuoc)
   const grandTotalRevenue = totalLocalChargeRevenue + totalExtensionRevenue;
   
-  // Tổng Chi = Chi Payment (Hãng tàu) + Chi Gia Hạn
-  const grandTotalExpense = booking.totalCost + totalExtensionCost;
+  // Total Payment from Jobs (Local Charge Target Expense)
+  // This calculates the sum of 'chiPayment' from jobs - if we are still tracking it in jobs but hiding it in UI
+  const totalJobPayment = booking.jobs.reduce((sum, j) => sum + (j.chiPayment || 0), 0);
+  
+  // Grand Total Expense = Job Payments + Extension Costs + Deposit Costs
+  const grandTotalExpense = totalJobPayment + totalExtensionCost + totalDepositCost;
   
   const grandTotalProfit = grandTotalRevenue - grandTotalExpense;
 
   // Sub-profits for display
-  const baseProfit = totalLocalChargeRevenue - booking.totalCost;
+  const baseProfit = totalLocalChargeRevenue - totalJobPayment;
   const extensionProfit = totalExtensionRevenue - totalExtensionCost;
 
   // Sync helpers
@@ -60,6 +65,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     });
   };
 
+  // Extension Handlers
   const handleAddExtensionCost = () => {
     setExtensionCosts(prev => [...prev, {
       id: Date.now().toString(),
@@ -88,21 +94,38 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     setExtensionCosts(prev => prev.filter(i => i.id !== id));
   };
 
+  // Deposit Handlers
+  const handleAddDeposit = () => {
+    setDeposits(prev => [...prev, {
+        id: Date.now().toString(),
+        amount: 0,
+        dateOut: '',
+        dateIn: ''
+    }]);
+  };
+
+  const handleUpdateDeposit = (id: string, field: keyof BookingDeposit, val: any) => {
+      setDeposits(prev => prev.map(item => item.id === id ? { ...item, [field]: val } : item));
+  };
+
+  const handleRemoveDeposit = (id: string) => {
+      setDeposits(prev => prev.filter(d => d.id !== id));
+  };
+
   const handleSave = () => {
     onSave({
       localCharge,
-      extensionCosts
+      extensionCosts,
+      deposits
     });
     onClose();
   };
 
   const getProjectCode = (job: JobData) => {
     let year = new Date().getFullYear();
-    // Prioritize Invoice Date if available, else use current year
     if (job.localChargeDate) year = new Date(job.localChargeDate).getFullYear();
     const yearSuffix = year.toString().slice(-2);
     const monthPad = job.month.padStart(2, '0');
-    // Removed '&' as requested: K2501JOB123
     return `K${yearSuffix}${monthPad}${job.jobCode}`;
   };
 
@@ -113,17 +136,17 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 border border-gray-200">
         
         {/* Header */}
-        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white">
+        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-blue-900 text-white">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-              Chi tiết Booking: <span className="ml-2 text-brand-DEFAULT">{booking.bookingId}</span>
+            <h2 className="text-2xl font-bold flex items-center">
+              Chi tiết Booking: <span className="ml-2 text-blue-200">{booking.bookingId}</span>
             </h2>
-            <p className="text-sm text-gray-500 mt-1 flex space-x-4">
-              <span>Line: <strong className="text-gray-700">{booking.line}</strong></span>
-              <span>Tháng: <strong className="text-gray-700">{booking.month}</strong></span>
+            <p className="text-sm text-blue-100 mt-1 flex space-x-4">
+              <span>Line: <strong className="text-white">{booking.line}</strong></span>
+              <span>Tháng: <strong className="text-white">{booking.month}</strong></span>
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-blue-800 text-blue-300 hover:text-white transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -148,10 +171,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {booking.jobs.map(job => {
-                    // Cost Calculation: Cost - (Cont20 * 250k) - (Cont40 * 500k)
                     const costDeduction = (job.cont20 * 250000) + (job.cont40 * 500000);
                     const adjustedCost = job.cost - costDeduction;
-                    
                     const vatCalc = job.cost * 0.05263;
                     return (
                       <tr key={job.id} className="hover:bg-blue-50/30">
@@ -172,7 +193,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
             </div>
           </div>
 
-          {/* Section 1.5: THU THEO HÓA ĐƠN (New Table) */}
+          {/* Section 1.5: THU THEO HÓA ĐƠN */}
           <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
              <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wide mb-5 border-b pb-2 flex items-center">
                 <FileText className="w-4 h-4 mr-2" /> THU THEO HÓA ĐƠN
@@ -217,7 +238,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
              <div className="flex justify-between items-center mb-5 border-b pb-2">
                  <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide">Local Charge (Hóa đơn Chi)</h3>
                  <div className="text-xs font-medium bg-red-50 text-red-700 px-3 py-1 rounded-full border border-red-100">
-                   Target (Tổng Chi Payment): <strong>{formatMoney(booking.totalCost)}</strong>
+                   Target (Tổng Chi Payment): <strong>{formatMoney(totalJobPayment)}</strong>
                  </div>
              </div>
              
@@ -266,14 +287,85 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   />
                 </div>
              </div>
-
-             {/* Validation Message */}
-             {localCharge.total !== booking.totalCost && (
+             {localCharge.total !== totalJobPayment && (
                <div className="flex items-center space-x-2 text-sm text-red-600 bg-red-50 p-3 rounded-md border border-red-100 mt-4 animate-pulse">
                  <AlertCircle className="w-5 h-5" />
-                 <span>Lưu ý: Tổng hóa đơn ({formatMoney(localCharge.total)}) lệch với Tổng Chi Payment ({formatMoney(booking.totalCost)})</span>
+                 <span>Lưu ý: Tổng hóa đơn ({formatMoney(localCharge.total)}) lệch với Tổng Chi Payment ({formatMoney(totalJobPayment)})</span>
                </div>
              )}
+          </div>
+
+          {/* Section 2.5: CƯỢC CONT (BOOKING LEVEL DEPOSIT) */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+             <div className="flex justify-between items-center mb-5 border-b pb-2">
+                 <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide flex items-center">
+                    <Anchor className="w-4 h-4 mr-2" /> CƯỢC CONT (DEPOSIT)
+                 </h3>
+                 <button onClick={handleAddDeposit} className="flex items-center space-x-1 text-xs bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded hover:bg-red-100 transition-colors">
+                    <Plus className="w-3 h-3" />
+                    <span>Thêm Cược</span>
+                 </button>
+             </div>
+             
+             <div className="overflow-x-auto rounded border border-gray-200">
+               <table className="w-full text-sm text-left">
+                  <thead className="bg-red-50/50 text-red-800 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-2 w-10"></th>
+                      <th className="px-4 py-2 text-right">Tiền Cược</th>
+                      <th className="px-4 py-2">Ngày Cược</th>
+                      <th className="px-4 py-2">Ngày Hoàn</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {deposits.length === 0 ? (
+                       <tr><td colSpan={4} className="text-center py-4 text-gray-400 italic">Chưa có thông tin cược cho booking này</td></tr>
+                    ) : (
+                       deposits.map((item) => (
+                        <tr key={item.id} className="hover:bg-red-50/20 group">
+                           <td className="px-4 py-2 text-center">
+                              <button onClick={() => handleRemoveDeposit(item.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                           </td>
+                           <td className="px-4 py-2">
+                              <Input 
+                                type="text"
+                                value={item.amount ? new Intl.NumberFormat('en-US').format(item.amount) : ''}
+                                onChange={(e) => {
+                                   const val = Number(e.target.value.replace(/,/g, ''));
+                                   if (!isNaN(val)) handleUpdateDeposit(item.id, 'amount', val);
+                                }}
+                                className="text-right h-8"
+                                placeholder="0"
+                              />
+                           </td>
+                           <td className="px-4 py-2">
+                              <Input 
+                                type="date"
+                                value={item.dateOut}
+                                onChange={(e) => handleUpdateDeposit(item.id, 'dateOut', e.target.value)}
+                                className="h-8"
+                              />
+                           </td>
+                           <td className="px-4 py-2">
+                              <Input 
+                                type="date"
+                                value={item.dateIn}
+                                onChange={(e) => handleUpdateDeposit(item.id, 'dateIn', e.target.value)}
+                                className="h-8"
+                              />
+                           </td>
+                        </tr>
+                       ))
+                    )}
+                  </tbody>
+               </table>
+             </div>
+             <div className="mt-4 text-right text-sm">
+               <span className="font-semibold text-gray-500 mr-2">Tổng Cược:</span>
+               <span className="text-red-700 font-bold text-lg">{formatMoney(totalDepositCost)}</span>
+             </div>
           </div>
 
           {/* Section 3: Extensions Cost (Horizontal Table) */}
@@ -380,7 +472,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   <tr>
                     <td className="py-3 text-blue-100">Amount</td>
                     <td className="py-3 text-right text-green-300 font-medium">{formatMoney(totalLocalChargeRevenue)}</td>
-                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(booking.totalCost)}</td>
+                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(totalJobPayment)}</td>
                     <td className={`py-3 text-right font-medium ${baseProfit >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                       {formatMoney(baseProfit)}
                     </td>
@@ -394,6 +486,14 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     <td className={`py-3 text-right font-medium ${extensionProfit >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                       {formatMoney(extensionProfit)}
                     </td>
+                  </tr>
+                  
+                   {/* Row 2.5: Deposit */}
+                   <tr>
+                    <td className="py-3 text-blue-100">Booking Deposit (Cược)</td>
+                    <td className="py-3 text-right text-gray-400">-</td>
+                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(totalDepositCost)}</td>
+                    <td className="py-3 text-right text-gray-400">-</td>
                   </tr>
 
                   {/* Row 3: Grand Total */}

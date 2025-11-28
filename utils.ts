@@ -30,7 +30,8 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
     jobs: [],
     costDetails: firstJob.bookingCostDetails || {
       localCharge: { invoice: '', date: '', net: 0, vat: 0, total: 0 },
-      extensionCosts: []
+      extensionCosts: [],
+      deposits: []
     }
   };
 

@@ -42,10 +42,19 @@ export interface BookingExtensionCost {
   total: number;
 }
 
+export interface BookingDeposit {
+  id: string;
+  // note removed
+  amount: number; // So tien cuoc
+  dateOut: string; // Ngay cuoc
+  dateIn: string; // Ngay hoan
+}
+
 export interface BookingCostDetails {
   // Expense Breakdown (Chi)
   localCharge: BookingInvoice; 
   extensionCosts: BookingExtensionCost[];
+  deposits: BookingDeposit[]; // New: Deposit at booking level
 }
 
 export interface JobData {
@@ -69,7 +78,7 @@ export interface JobData {
   cont20: number;
   cont40: number;
 
-  // Payment Out (Chi)
+  // Payment Out (Chi) - Legacy fields kept for compatibility but hidden in UI
   chiPayment: number;
   chiCuoc: number;
   ngayChiCuoc: string;

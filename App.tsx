@@ -8,12 +8,13 @@ import { LhkList } from './pages/LhkList';
 import { AmisExport } from './pages/AmisExport';
 import { DataManagement } from './pages/DataManagement';
 import { DebtManagement } from './pages/DebtManagement';
+import { SystemPage } from './pages/SystemPage';
 import { JobData, Customer, ShippingLine } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
 import { Search, Bell, User, ChevronDown, Ship } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt'>('entry');
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'system'>('entry');
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   
   // Jobs State
@@ -108,6 +109,13 @@ const App: React.FC = () => {
     }
   };
 
+  // Restore logic for System Page
+  const handleSystemRestore = (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[] }) => {
+    if (data.jobs) setJobs(data.jobs);
+    if (data.customers && data.customers.length > 0) setCustomers(data.customers);
+    if (data.lines && data.lines.length > 0) setShippingLines(data.lines);
+  };
+
   const renderContent = () => {
     switch(currentPage) {
       case 'entry':
@@ -136,6 +144,8 @@ const App: React.FC = () => {
         return <DataManagement mode="customers" data={customers} onAdd={handleAddCustomer} onEdit={handleEditCustomer} onDelete={handleDeleteCustomer} />;
       case 'debt':
         return <DebtManagement jobs={jobs} customers={customers} />;
+      case 'system':
+        return <SystemPage jobs={jobs} customers={customers} lines={shippingLines} onRestore={handleSystemRestore} />;
       default:
         return null;
     }

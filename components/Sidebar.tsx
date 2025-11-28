@@ -1,9 +1,9 @@
 import React from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt';
-  onNavigate: (page: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt') => void;
+  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'system';
+  onNavigate: (page: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'system') => void;
   onResetData: () => void;
 }
 
@@ -43,7 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
   );
 
   return (
-    <div className="w-64 bg-white h-[calc(100vh-64px)] fixed left-0 top-16 flex flex-col border-r border-gray-200 z-40">
+    <div className="w-64 bg-white h-[calc(100vh-64px)] fixed left-0 top-16 flex flex-col border-r border-gray-200 z-40 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
       
       <div className="px-4 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
         Main Menu
@@ -164,6 +164,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
             onClick={() => onNavigate('reports')}
             icon={LayoutDashboard}
             label="Báo Cáo"
+          />
+          <MenuItem 
+            active={currentPage === 'system'}
+            onClick={() => onNavigate('system')}
+            icon={Settings}
+            label="Hệ Thống"
           />
         </div>
       </nav>
