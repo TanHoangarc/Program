@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Calculator } from 'lucide-react';
 import { formatDateVN } from '../utils';
 
 interface BookingDetailModalProps {
@@ -26,6 +26,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge);
   const [extensionCosts, setExtensionCosts] = useState<BookingExtensionCost[]>(booking.costDetails.extensionCosts);
   const [deposits, setDeposits] = useState<BookingDeposit[]>(booking.costDetails.deposits || []);
+  const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
 
   // Calculations
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => 
@@ -34,25 +35,53 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   
   const totalLocalChargeRevenue = booking.jobs.reduce((sum, job) => sum + job.localChargeTotal, 0);
 
+  // Extension Costs
   const totalExtensionCost = extensionCosts.reduce((sum, ext) => sum + ext.total, 0);
+  const totalExtensionNetCost = extensionCosts.reduce((sum, ext) => sum + (ext.net || 0), 0);
   
   const totalDepositCost = deposits.reduce((sum, d) => sum + d.amount, 0);
 
-  // Totals for Summary Table
-  const grandTotalRevenue = totalLocalChargeRevenue + totalExtensionRevenue;
-  
-  // Total Payment from Jobs (Local Charge Target Expense)
-  // This calculates the sum of 'chiPayment' from jobs - if we are still tracking it in jobs but hiding it in UI
-  const totalJobPayment = booking.jobs.reduce((sum, j) => sum + (j.chiPayment || 0), 0);
-  
-  // Grand Total Expense = Job Payments + Extension Costs + Deposit Costs
-  const grandTotalExpense = totalJobPayment + totalExtensionCost + totalDepositCost;
-  
-  const grandTotalProfit = grandTotalRevenue - grandTotalExpense;
+  // --- SYSTEM TABLE TOTALS ---
+  const systemTotalSell = booking.jobs.reduce((sum, j) => sum + j.sell, 0);
+  const systemTotalAdjustedCost = booking.jobs.reduce((sum, j) => {
+    const costDeduction = (j.cont20 * 250000) + (j.cont40 * 500000);
+    return sum + (j.cost - costDeduction);
+  }, 0);
+  const systemTotalVat = booking.jobs.reduce((sum, j) => sum + (j.cost * 0.05263), 0);
 
-  // Sub-profits for display
-  const baseProfit = totalLocalChargeRevenue - totalJobPayment;
-  const extensionProfit = totalExtensionRevenue - totalExtensionCost;
+
+  // --- SUMMARY CALCULATIONS ---
+  
+  // Revenue Logic
+  // Post VAT: Display Value
+  // Pre VAT: Display Value / 1.08
+  const getRevenueValue = (val: number) => vatMode === 'post' ? val : (val / 1.08);
+
+  const summaryLocalChargeRevenue = getRevenueValue(totalLocalChargeRevenue);
+  const summaryExtensionRevenue = getRevenueValue(totalExtensionRevenue);
+  const summaryGrandTotalRevenue = summaryLocalChargeRevenue + summaryExtensionRevenue;
+
+  // Expense Logic
+  // Post VAT: Job Payment (Sum of Costs)
+  // Pre VAT: Local Charge Invoice Net
+  const totalJobPayment = booking.jobs.reduce((sum, j) => sum + (j.cost || 0), 0);
+  
+  const summaryAmountExpense = vatMode === 'post' 
+    ? totalJobPayment 
+    : (localCharge.net || 0);
+
+  const summaryExtensionExpense = vatMode === 'post'
+    ? totalExtensionCost
+    : totalExtensionNetCost;
+
+  // Grand Totals
+  const summaryGrandTotalExpense = summaryAmountExpense + summaryExtensionExpense + totalDepositCost;
+  const summaryGrandTotalProfit = summaryGrandTotalRevenue - summaryGrandTotalExpense;
+
+  // Sub-profits
+  const baseProfit = summaryLocalChargeRevenue - summaryAmountExpense;
+  const extensionProfit = summaryExtensionRevenue - summaryExtensionExpense;
+
 
   // Sync helpers
   const handleLocalChargeChange = (field: keyof typeof localCharge, val: any) => {
@@ -163,7 +192,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 border-b">
                     <th className="px-4 py-3 border-r font-medium">Job Code</th>
-                    <th className="px-4 py-3 border-r font-medium">Khách hàng</th>
+                    <th className="px-4 py-3 border-r text-right font-medium">Sell</th>
                     <th className="px-4 py-3 border-r text-right font-medium">Cost (Adjusted)</th>
                     <th className="px-4 py-3 border-r text-right font-medium">VAT (5.263%)</th>
                     <th className="px-4 py-3 text-center font-medium">Công trình</th>
@@ -177,7 +206,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     return (
                       <tr key={job.id} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 border-r font-semibold text-brand-DEFAULT">{job.jobCode}</td>
-                        <td className="px-4 py-3 border-r text-gray-700">{job.customerName}</td>
+                        <td className="px-4 py-3 border-r text-right text-gray-600 font-medium">
+                          {formatMoney(job.sell)}
+                        </td>
                         <td className="px-4 py-3 border-r text-right text-gray-600">
                           {formatMoney(adjustedCost)}
                         </td>
@@ -189,6 +220,15 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     );
                   })}
                 </tbody>
+                <tfoot className="bg-gray-100 font-bold text-gray-800 border-t border-gray-200">
+                   <tr>
+                     <td className="px-4 py-3 text-right border-r">Tổng:</td>
+                     <td className="px-4 py-3 text-right border-r text-green-700">{formatMoney(systemTotalSell)}</td>
+                     <td className="px-4 py-3 text-right border-r text-red-700">{formatMoney(systemTotalAdjustedCost)}</td>
+                     <td className="px-4 py-3 text-right border-r text-gray-600">{formatMoney(systemTotalVat)}</td>
+                     <td></td>
+                   </tr>
+                </tfoot>
               </table>
             </div>
           </div>
@@ -455,15 +495,42 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
           {/* Section 4: Summary Table */}
           <div className="bg-brand-dark text-white p-6 rounded-lg shadow-md border border-brand-dark">
-             <h3 className="text-sm font-bold text-blue-200 uppercase mb-4 flex items-center">
-               <LayoutGrid className="w-4 h-4 mr-2" /> Tổng Hợp Booking
-             </h3>
+             <div className="flex justify-between items-center mb-4">
+               <h3 className="text-sm font-bold text-blue-200 uppercase flex items-center">
+                 <LayoutGrid className="w-4 h-4 mr-2" /> Tổng Hợp Booking
+               </h3>
+               
+               {/* VAT TOGGLE */}
+               <div className="flex bg-blue-800 rounded-md p-0.5 border border-blue-700">
+                  <button 
+                    onClick={() => setVatMode('pre')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                      vatMode === 'pre' 
+                        ? 'bg-blue-500 text-white shadow-sm' 
+                        : 'text-blue-300 hover:text-white'
+                    }`}
+                  >
+                    Trước VAT
+                  </button>
+                  <button 
+                    onClick={() => setVatMode('post')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                      vatMode === 'post' 
+                        ? 'bg-blue-500 text-white shadow-sm' 
+                        : 'text-blue-300 hover:text-white'
+                    }`}
+                  >
+                    Sau VAT
+                  </button>
+               </div>
+             </div>
+             
              <table className="w-full text-sm text-left">
                 <thead className="text-blue-300 border-b border-blue-800/50">
                   <tr>
                     <th className="pb-3">Khoản Mục</th>
-                    <th className="pb-3 text-right">Tổng Thu</th>
-                    <th className="pb-3 text-right">Tổng Chi</th>
+                    <th className="pb-3 text-right">Tổng Thu {vatMode === 'pre' && '(Chia 1.08)'}</th>
+                    <th className="pb-3 text-right">Tổng Chi {vatMode === 'pre' && '(Net)'}</th>
                     <th className="pb-3 text-right">Lợi Nhuận</th>
                   </tr>
                 </thead>
@@ -471,8 +538,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   {/* Row 1: Amount (Local Charge) */}
                   <tr>
                     <td className="py-3 text-blue-100">Amount</td>
-                    <td className="py-3 text-right text-green-300 font-medium">{formatMoney(totalLocalChargeRevenue)}</td>
-                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(totalJobPayment)}</td>
+                    <td className="py-3 text-right text-green-300 font-medium">{formatMoney(summaryLocalChargeRevenue)}</td>
+                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(summaryAmountExpense)}</td>
                     <td className={`py-3 text-right font-medium ${baseProfit >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                       {formatMoney(baseProfit)}
                     </td>
@@ -481,8 +548,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   {/* Row 2: Gia Hạn */}
                   <tr>
                     <td className="py-3 text-blue-100">Gia Hạn</td>
-                    <td className="py-3 text-right text-green-300 font-medium">{formatMoney(totalExtensionRevenue)}</td>
-                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(totalExtensionCost)}</td>
+                    <td className="py-3 text-right text-green-300 font-medium">{formatMoney(summaryExtensionRevenue)}</td>
+                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(summaryExtensionExpense)}</td>
                     <td className={`py-3 text-right font-medium ${extensionProfit >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                       {formatMoney(extensionProfit)}
                     </td>
@@ -499,10 +566,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   {/* Row 3: Grand Total */}
                   <tr className="bg-blue-900/30 font-bold">
                     <td className="py-3 text-white pl-2 uppercase">TỔNG CỘNG ({booking.jobCount} Jobs)</td>
-                    <td className="py-3 text-right text-green-400">{formatMoney(grandTotalRevenue)}</td>
-                    <td className="py-3 text-right text-red-300">{formatMoney(grandTotalExpense)}</td>
-                    <td className={`py-3 text-right ${grandTotalProfit >= 0 ? 'text-yellow-400' : 'text-red-500'}`}>
-                      {formatMoney(grandTotalProfit)}
+                    <td className="py-3 text-right text-green-400">{formatMoney(summaryGrandTotalRevenue)}</td>
+                    <td className="py-3 text-right text-red-300">{formatMoney(summaryGrandTotalExpense)}</td>
+                    <td className={`py-3 text-right ${summaryGrandTotalProfit >= 0 ? 'text-yellow-400' : 'text-red-500'}`}>
+                      {formatMoney(summaryGrandTotalProfit)}
                     </td>
                   </tr>
                 </tbody>

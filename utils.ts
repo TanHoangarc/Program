@@ -37,7 +37,7 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
 
   bookingJobs.forEach(job => {
     summary.jobCount++;
-    summary.totalCost += job.chiPayment;
+    summary.totalCost += job.cost; // Updated to use Cost instead of chiPayment
     summary.totalSell += job.sell;
     summary.totalProfit += job.profit;
     summary.totalCont20 += job.cont20;
