@@ -1,33 +1,47 @@
-import React, { useMemo } from 'react';
+
+import React, { useMemo, useState } from 'react';
 import { JobData } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
-import { TrendingUp, Package, DollarSign, Wallet } from 'lucide-react';
+import { TrendingUp, Package, DollarSign, Wallet, Filter, Ship } from 'lucide-react';
+import { MONTHS } from '../constants';
 
 interface ReportsProps {
   jobs: JobData[];
 }
 
 export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
+  const [filterMonth, setFilterMonth] = useState('');
 
   const COLORS = ['#1e3a8a', '#3b82f6', '#93c5fd', '#dbeafe']; // Brand Blues
 
-  const stats = useMemo(() => {
-    const totalProfit = jobs.reduce((acc, job) => acc + job.profit, 0);
-    const totalJobs = jobs.length;
-    const totalCont20 = jobs.reduce((acc, job) => acc + job.cont20, 0);
-    const totalCont40 = jobs.reduce((acc, job) => acc + job.cont40, 0);
-    const totalRevenue = jobs.reduce((acc, job) => acc + job.sell, 0);
+  const filteredJobs = useMemo(() => {
+    if (!filterMonth) return jobs;
+    return jobs.filter(job => job.month === filterMonth);
+  }, [jobs, filterMonth]);
 
-    return { totalProfit, totalJobs, totalCont20, totalCont40, totalRevenue };
-  }, [jobs]);
+  const stats = useMemo(() => {
+    const totalProfit = filteredJobs.reduce((acc, job) => acc + job.profit, 0);
+    const totalJobs = filteredJobs.length;
+    const totalCont20 = filteredJobs.reduce((acc, job) => acc + job.cont20, 0);
+    const totalCont40 = filteredJobs.reduce((acc, job) => acc + job.cont40, 0);
+    const totalRevenue = filteredJobs.reduce((acc, job) => acc + job.sell, 0);
+    
+    // Kimberry Cost Calculation
+    const kimberryCost = (totalCont20 * 250000) + (totalCont40 * 500000);
+
+    return { totalProfit, totalJobs, totalCont20, totalCont40, totalRevenue, kimberryCost };
+  }, [filteredJobs]);
 
   const monthlyData = useMemo(() => {
+    // If filtering by a specific month, we might still want to show the trend or just that month
+    // But usually charts show trend. If filtered, maybe just show that month's data point?
+    // Let's stick to showing the filtered data.
     const grouped: Record<string, { month: string, profit: number, revenue: number, cost: number }> = {};
     
-    jobs.forEach(job => {
+    filteredJobs.forEach(job => {
       const m = job.month;
       if (!grouped[m]) {
         grouped[m] = { month: m, profit: 0, revenue: 0, cost: 0 };
@@ -38,7 +52,7 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
     });
 
     return Object.values(grouped).sort((a, b) => Number(a.month) - Number(b.month));
-  }, [jobs]);
+  }, [filteredJobs]);
 
   const contData = [
     { name: 'Cont 20\'', value: stats.totalCont20 },
@@ -62,13 +76,28 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
 
   return (
     <div className="p-8 max-w-full">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Báo Cáo Hoạt Động</h1>
-        <p className="text-sm text-gray-500 mt-1">Tổng quan hiệu suất kinh doanh và vận hành</p>
+      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Báo Cáo Hoạt Động</h1>
+          <p className="text-sm text-gray-500 mt-1">Tổng quan hiệu suất kinh doanh và vận hành</p>
+        </div>
+        
+        {/* Month Filter */}
+        <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+           <Filter className="w-4 h-4 text-gray-500" />
+           <select 
+             value={filterMonth} 
+             onChange={(e) => setFilterMonth(e.target.value)}
+             className="text-sm border-none focus:ring-0 text-gray-700 font-medium bg-transparent outline-none cursor-pointer min-w-[120px]"
+           >
+             <option value="">Tất cả các tháng</option>
+             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+           </select>
+        </div>
       </div>
 
       {/* Top Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         <StatCard 
           icon={DollarSign} 
           title="Tổng Lợi Nhuận" 
@@ -92,6 +121,13 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
           title="Tổng Container" 
           value={(stats.totalCont20 + stats.totalCont40).toString()} 
           colorClass="bg-orange-100 text-orange-700" 
+        />
+        {/* Kimberry Cost Card */}
+        <StatCard 
+          icon={Ship} 
+          title="CP Kimberry" 
+          value={formatCurrency(stats.kimberryCost)} 
+          colorClass="bg-red-100 text-red-700" 
         />
       </div>
 

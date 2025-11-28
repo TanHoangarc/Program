@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText } from 'lucide-react';
+import { formatDateVN } from '../utils';
 
 interface BookingDetailModalProps {
   booking: BookingSummary;
@@ -29,13 +30,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => 
     sum + job.extensions.reduce((s, ext) => s + ext.total, 0), 0
   );
+  
+  const totalLocalChargeRevenue = booking.jobs.reduce((sum, job) => sum + job.localChargeTotal, 0);
 
   const totalExtensionCost = extensionCosts.reduce((sum, ext) => sum + ext.total, 0);
 
   // Totals for Summary Table
-  const grandTotalRevenue = booking.totalSell + totalExtensionRevenue;
+  // Tổng Thu = Tổng Amount (Local Charge Revenue) + Tổng Gia Hạn Revenue
+  // KHÔNG cộng tiền Cược (Deposit - thuCuoc)
+  const grandTotalRevenue = totalLocalChargeRevenue + totalExtensionRevenue;
+  
+  // Tổng Chi = Chi Payment (Hãng tàu) + Chi Gia Hạn
   const grandTotalExpense = booking.totalCost + totalExtensionCost;
+  
   const grandTotalProfit = grandTotalRevenue - grandTotalExpense;
+
+  // Sub-profits for display
+  const baseProfit = totalLocalChargeRevenue - booking.totalCost;
+  const extensionProfit = totalExtensionRevenue - totalExtensionCost;
 
   // Sync helpers
   const handleLocalChargeChange = (field: keyof typeof localCharge, val: any) => {
@@ -90,7 +102,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     if (job.localChargeDate) year = new Date(job.localChargeDate).getFullYear();
     const yearSuffix = year.toString().slice(-2);
     const monthPad = job.month.padStart(2, '0');
-    return `K${yearSuffix}${monthPad}&${job.jobCode}`;
+    // Removed '&' as requested: K2501JOB123
+    return `K${yearSuffix}${monthPad}${job.jobCode}`;
   };
 
   const formatMoney = (val: number) => new Intl.NumberFormat('en-US').format(val);
@@ -117,10 +130,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
         <div className="flex-1 overflow-y-auto p-8 bg-gray-50 space-y-8">
           
-          {/* Section 1: Job List Table */}
+          {/* Section 1: SYSTEM Table */}
           <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2 flex items-center">
-              <Ship className="w-4 h-4 mr-2 text-brand-DEFAULT" /> Danh sách Job trong Booking
+              <Ship className="w-4 h-4 mr-2 text-brand-DEFAULT" /> SYSTEM
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left border-collapse">
@@ -128,23 +141,26 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   <tr className="bg-gray-50 text-gray-500 border-b">
                     <th className="px-4 py-3 border-r font-medium">Job Code</th>
                     <th className="px-4 py-3 border-r font-medium">Khách hàng</th>
-                    <th className="px-4 py-3 border-r text-right font-medium">Cost</th>
+                    <th className="px-4 py-3 border-r text-right font-medium">Cost (Adjusted)</th>
                     <th className="px-4 py-3 border-r text-right font-medium">VAT (5.263%)</th>
-                    <th className="px-4 py-3 border-r text-right font-medium">Thu Gia Hạn</th>
                     <th className="px-4 py-3 text-center font-medium">Công trình</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {booking.jobs.map(job => {
+                    // Cost Calculation: Cost - (Cont20 * 250k) - (Cont40 * 500k)
+                    const costDeduction = (job.cont20 * 250000) + (job.cont40 * 500000);
+                    const adjustedCost = job.cost - costDeduction;
+                    
                     const vatCalc = job.cost * 0.05263;
-                    const extensionRev = job.extensions.reduce((s, e) => s + e.total, 0);
                     return (
                       <tr key={job.id} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 border-r font-semibold text-brand-DEFAULT">{job.jobCode}</td>
                         <td className="px-4 py-3 border-r text-gray-700">{job.customerName}</td>
-                        <td className="px-4 py-3 border-r text-right text-gray-600">{formatMoney(job.cost)}</td>
+                        <td className="px-4 py-3 border-r text-right text-gray-600">
+                          {formatMoney(adjustedCost)}
+                        </td>
                         <td className="px-4 py-3 border-r text-right text-gray-500">{formatMoney(vatCalc)}</td>
-                        <td className="px-4 py-3 border-r text-right text-orange-600 font-medium">{extensionRev > 0 ? formatMoney(extensionRev) : '-'}</td>
                         <td className="px-4 py-3 text-center font-mono text-xs text-gray-600">
                           {getProjectCode(job)}
                         </td>
@@ -154,6 +170,46 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Section 1.5: THU THEO HÓA ĐƠN (New Table) */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+             <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wide mb-5 border-b pb-2 flex items-center">
+                <FileText className="w-4 h-4 mr-2" /> THU THEO HÓA ĐƠN
+             </h3>
+             <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left border-collapse">
+                   <thead>
+                      <tr className="bg-blue-50 text-blue-900 border-b border-blue-100">
+                         <th className="px-4 py-3 border-r border-blue-100 font-medium">Job Code</th>
+                         <th className="px-4 py-3 border-r border-blue-100 font-medium text-right">Amount (Local Charge)</th>
+                         <th className="px-4 py-3 font-medium text-right">Gia Hạn (Thu)</th>
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                      {booking.jobs.map(job => {
+                         const extTotal = job.extensions.reduce((sum, e) => sum + e.total, 0);
+                         return (
+                            <tr key={job.id} className="hover:bg-gray-50">
+                               <td className="px-4 py-3 border-r font-medium text-gray-700">{job.jobCode}</td>
+                               <td className="px-4 py-3 border-r text-right text-blue-600 font-medium">
+                                  {formatMoney(job.localChargeTotal)}
+                               </td>
+                               <td className="px-4 py-3 text-right text-orange-600 font-medium">
+                                  {extTotal > 0 ? formatMoney(extTotal) : '-'}
+                               </td>
+                            </tr>
+                         )
+                      })}
+                      {/* Subtotal Row */}
+                      <tr className="bg-gray-50 font-bold border-t border-gray-200">
+                         <td className="px-4 py-3 text-right border-r">Tổng cộng:</td>
+                         <td className="px-4 py-3 text-right text-blue-700">{formatMoney(totalLocalChargeRevenue)}</td>
+                         <td className="px-4 py-3 text-right text-orange-700">{formatMoney(totalExtensionRevenue)}</td>
+                      </tr>
+                   </tbody>
+                </table>
+             </div>
           </div>
 
           {/* Section 2: Local Charge (Horizontal) */}
@@ -313,18 +369,39 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
              <table className="w-full text-sm text-left">
                 <thead className="text-blue-300 border-b border-blue-800/50">
                   <tr>
-                    <th className="pb-3 text-center">Tổng Job</th>
-                    <th className="pb-3 text-right">Tổng Thu (Sell + GH)</th>
-                    <th className="pb-3 text-right">Tổng Chi (Payment + GH)</th>
-                    <th className="pb-3 text-right">Tổng Profit</th>
+                    <th className="pb-3">Khoản Mục</th>
+                    <th className="pb-3 text-right">Tổng Thu</th>
+                    <th className="pb-3 text-right">Tổng Chi</th>
+                    <th className="pb-3 text-right">Lợi Nhuận</th>
                   </tr>
                 </thead>
-                <tbody className="text-xl font-bold">
+                <tbody className="divide-y divide-blue-900/50">
+                  {/* Row 1: Amount (Local Charge) */}
                   <tr>
-                    <td className="pt-3 text-center text-white">{booking.jobs.length}</td>
-                    <td className="pt-3 text-right text-green-400">{formatMoney(grandTotalRevenue)}</td>
-                    <td className="pt-3 text-right text-red-300">{formatMoney(grandTotalExpense)}</td>
-                    <td className={`pt-3 text-right ${grandTotalProfit >= 0 ? 'text-yellow-400' : 'text-red-500'}`}>
+                    <td className="py-3 text-blue-100">Amount</td>
+                    <td className="py-3 text-right text-green-300 font-medium">{formatMoney(totalLocalChargeRevenue)}</td>
+                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(booking.totalCost)}</td>
+                    <td className={`py-3 text-right font-medium ${baseProfit >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {formatMoney(baseProfit)}
+                    </td>
+                  </tr>
+
+                  {/* Row 2: Gia Hạn */}
+                  <tr>
+                    <td className="py-3 text-blue-100">Gia Hạn</td>
+                    <td className="py-3 text-right text-green-300 font-medium">{formatMoney(totalExtensionRevenue)}</td>
+                    <td className="py-3 text-right text-red-300 font-medium">{formatMoney(totalExtensionCost)}</td>
+                    <td className={`py-3 text-right font-medium ${extensionProfit >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {formatMoney(extensionProfit)}
+                    </td>
+                  </tr>
+
+                  {/* Row 3: Grand Total */}
+                  <tr className="bg-blue-900/30 font-bold">
+                    <td className="py-3 text-white pl-2 uppercase">TỔNG CỘNG ({booking.jobCount} Jobs)</td>
+                    <td className="py-3 text-right text-green-400">{formatMoney(grandTotalRevenue)}</td>
+                    <td className="py-3 text-right text-red-300">{formatMoney(grandTotalExpense)}</td>
+                    <td className={`py-3 text-right ${grandTotalProfit >= 0 ? 'text-yellow-400' : 'text-red-500'}`}>
                       {formatMoney(grandTotalProfit)}
                     </td>
                   </tr>
@@ -337,7 +414,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
         {/* Footer Actions */}
         <div className="p-4 border-t border-gray-200 flex justify-end space-x-3 bg-white">
           <button onClick={onClose} className="px-5 py-2.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">Đóng</button>
-          <button onClick={handleSave} className="px-5 py-2.5 rounded text-sm font-medium text-white bg-brand-DEFAULT hover:bg-brand-dark transition-colors flex items-center space-x-2 shadow-sm">
+          <button onClick={handleSave} className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
             <Save className="w-4 h-4" /> <span>Lưu Thay Đổi</span>
           </button>
         </div>

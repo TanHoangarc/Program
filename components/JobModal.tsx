@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
+import { formatDateVN } from '../utils';
 
 interface JobModalProps {
   isOpen: boolean;
@@ -29,6 +31,29 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
   />
 ));
 Input.displayName = 'Input';
+
+const DateInput = ({ 
+  value, 
+  name, 
+  onChange, 
+  readOnly 
+}: { 
+  value: string; 
+  name: string; 
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
+  readOnly?: boolean; 
+}) => {
+  if (readOnly) {
+    return (
+      <Input 
+        value={formatDateVN(value)} 
+        readOnly 
+        className="bg-gray-50"
+      />
+    );
+  }
+  return <Input type="date" name={name} value={value} onChange={onChange} />;
+};
 
 const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
   <select
@@ -137,7 +162,7 @@ export const JobModal: React.FC<JobModalProps> = ({
         setTimeout(() => jobInputRef.current?.focus(), 100);
       }
     }
-  }, [isOpen, initialData]); // Removed isViewMode from dependency to prevent reset on mode switch
+  }, [isOpen, initialData]);
 
   useEffect(() => {
     if (isOpen && initialData?.bookingCostDetails) {
@@ -436,8 +461,14 @@ export const JobModal: React.FC<JobModalProps> = ({
                   )}
                 </div>
                 <MoneyInput label="Cược (Deposit)" name="chiCuoc" value={formData.chiCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                <div><Label>Ngày Cược</Label><Input type="date" name="ngayChiCuoc" value={formData.ngayChiCuoc} onChange={handleChange} readOnly={isViewMode} /></div>
-                <div><Label>Ngày Hoàn</Label><Input type="date" name="ngayChiHoan" value={formData.ngayChiHoan} onChange={handleChange} readOnly={isViewMode} /></div>
+                <div>
+                  <Label>Ngày Cược</Label>
+                  <DateInput name="ngayChiCuoc" value={formData.ngayChiCuoc} onChange={handleChange} readOnly={isViewMode} />
+                </div>
+                <div>
+                  <Label>Ngày Hoàn</Label>
+                  <DateInput name="ngayChiHoan" value={formData.ngayChiHoan} onChange={handleChange} readOnly={isViewMode} />
+                </div>
               </div>
             </div>
 
@@ -473,8 +504,14 @@ export const JobModal: React.FC<JobModalProps> = ({
                         </Select>
                      </div>
                      <MoneyInput label="Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                     <div><Label>Ngày Cược</Label><Input type="date" name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} /></div>
-                     <div><Label>Ngày Hoàn</Label><Input type="date" name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} /></div>
+                     <div>
+                        <Label>Ngày Cược</Label>
+                        <DateInput name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} />
+                     </div>
+                     <div>
+                        <Label>Ngày Hoàn</Label>
+                        <DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} />
+                     </div>
                    </div>
                 </div>
               </div>

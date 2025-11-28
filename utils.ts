@@ -1,6 +1,16 @@
 
 import { JobData, BookingSummary } from './types';
 
+export const formatDateVN = (dateStr: string) => {
+  if (!dateStr) return '';
+  // Handle yyyy-mm-dd
+  if (dateStr.includes('-')) {
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return dateStr;
+};
+
 export const calculateBookingSummary = (jobs: JobData[], bookingId: string): BookingSummary | null => {
   const bookingJobs = jobs.filter(j => j.booking === bookingId);
   if (bookingJobs.length === 0) return null;
