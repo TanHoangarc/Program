@@ -19,10 +19,10 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
   // Group jobs by Booking
   const bookingData = useMemo(() => {
     // Get unique booking IDs
-    const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter(Boolean)));
+    const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter((b): b is string => !!b)));
     
     // Calculate summaries
-    const summaries = bookingIds.map(id => calculateBookingSummary(jobs, id)).filter(Boolean) as BookingSummary[];
+    const summaries = bookingIds.map((id: string) => calculateBookingSummary(jobs, id)).filter(Boolean) as BookingSummary[];
 
     return summaries.sort((a, b) => b.month.localeCompare(a.month));
   }, [jobs]);

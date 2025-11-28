@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
 import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Calculator } from 'lucide-react';
@@ -18,7 +17,7 @@ const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
   />
 );
 
-const Label = ({ children }: { children: React.ReactNode }) => (
+const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="block text-xs font-semibold text-gray-500 mb-1">{children}</label>
 );
 

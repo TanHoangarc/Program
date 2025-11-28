@@ -1,4 +1,5 @@
 
+
 export interface ExtensionData {
   id: string;
   customerId: string; // Ma KH
@@ -78,6 +79,13 @@ export interface JobData {
   cont20: number;
   cont40: number;
 
+  // Detailed Costs (Chi phi chi tiet)
+  feeCic: number;
+  feeKimberry: number;
+  feePsc: number;
+  feeEmc: number;
+  feeOther: number;
+
   // Payment Out (Chi) - Legacy fields kept for compatibility but hidden in UI
   chiPayment: number;
   chiCuoc: number;
@@ -138,6 +146,12 @@ export const INITIAL_JOB: JobData = {
   profit: 0,
   cont20: 0,
   cont40: 0,
+
+  feeCic: 0,
+  feeKimberry: 0,
+  feePsc: 0,
+  feeEmc: 0,
+  feeOther: 0,
 
   chiPayment: 0,
   chiCuoc: 0,

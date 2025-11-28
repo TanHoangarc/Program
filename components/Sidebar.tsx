@@ -1,9 +1,9 @@
 import React from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'system';
-  onNavigate: (page: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'system') => void;
+  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'system' | 'reconciliation';
+  onNavigate: (page: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'system' | 'reconciliation') => void;
   onResetData: () => void;
 }
 
@@ -131,6 +131,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
             </div>
           </div>
         </div>
+
+        <MenuItem 
+          active={currentPage === 'reconciliation'}
+          onClick={() => onNavigate('reconciliation')}
+          icon={Scale}
+          label="Đối Chiếu"
+        />
 
         {/* Data Menu Group */}
         <div className="relative group">

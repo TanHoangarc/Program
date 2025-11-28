@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
@@ -20,7 +18,7 @@ interface JobModalProps {
 }
 
 // Styled Input Components
-const Label = ({ children }: { children: React.ReactNode }) => (
+const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="block text-xs font-semibold text-gray-500 mb-1">{children}</label>
 );
 
@@ -457,6 +455,18 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <MoneyInput label="Profit (Lợi nhuận)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly />
                 <NumberStepper label="Cont 20'" value={formData.cont20} onChange={(val) => setFormData(prev => ({...prev, cont20: val}))} readOnly={isViewMode} />
                 <NumberStepper label="Cont 40'" value={formData.cont40} onChange={(val) => setFormData(prev => ({...prev, cont40: val}))} readOnly={isViewMode} />
+              </div>
+            </div>
+
+            {/* --- COST BREAKDOWN --- */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-5 border-b pb-2">Chi Tiết Chi Phí</h3>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
+                <MoneyInput label="Phí Kimberry" name="feeKimberry" value={formData.feeKimberry} onChange={handleMoneyChange} readOnly={isViewMode} />
+                <MoneyInput label="Phí PSC" name="feePsc" value={formData.feePsc} onChange={handleMoneyChange} readOnly={isViewMode} />
+                <MoneyInput label="Phí EMC" name="feeEmc" value={formData.feeEmc} onChange={handleMoneyChange} readOnly={isViewMode} />
+                <MoneyInput label="Phí khác" name="feeOther" value={formData.feeOther} onChange={handleMoneyChange} readOnly={isViewMode} />
               </div>
             </div>
 

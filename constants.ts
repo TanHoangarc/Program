@@ -1,4 +1,5 @@
 
+
 import { JobData, Customer, ShippingLine } from './types';
 
 export const MONTHS = Array.from({ length: 12 }, (_, i) => ({
@@ -41,6 +42,12 @@ export const MOCK_DATA: JobData[] = [
     profit: 7000000,
     cont20: 2,
     cont40: 0,
+
+    feeCic: 0,
+    feeKimberry: 0,
+    feePsc: 0,
+    feeEmc: 0,
+    feeOther: 0,
 
     chiPayment: 15000000,
     chiCuoc: 2000000,
@@ -86,6 +93,12 @@ export const MOCK_DATA: JobData[] = [
     profit: 13000000,
     cont20: 0,
     cont40: 3,
+
+    feeCic: 0,
+    feeKimberry: 0,
+    feePsc: 0,
+    feeEmc: 0,
+    feeOther: 0,
 
     chiPayment: 30000000,
     chiCuoc: 5000000,
