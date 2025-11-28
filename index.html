@@ -5,14 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Logistics Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
           extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
             colors: {
-              primary: '#0f172a',
-              secondary: '#334155',
-              accent: '#3b82f6',
+              brand: {
+                DEFAULT: '#1e3a8a', // Deep Blue from image
+                light: '#3b82f6',
+                dark: '#172554',
+                bg: '#f3f4f6', // Light gray background
+              }
             }
           }
         }
@@ -32,7 +39,7 @@
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-gray-50 text-slate-800 antialiased">
+  <body class="bg-brand-bg text-slate-800 antialiased font-sans">
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>

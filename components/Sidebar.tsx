@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, FileInput, Ship, Settings, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers';
@@ -9,217 +9,170 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onResetData }) => {
+  
+  const MenuItem = ({ 
+    active, 
+    onClick, 
+    icon: Icon, 
+    label, 
+    statusColor 
+  }: { 
+    active: boolean; 
+    onClick: () => void; 
+    icon: any; 
+    label: string; 
+    statusColor?: string; 
+  }) => (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center justify-between px-4 py-3 border-l-4 transition-all duration-200 group relative ${
+        active
+          ? 'bg-blue-50 border-brand-DEFAULT text-brand-DEFAULT'
+          : 'bg-transparent border-transparent text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+      }`}
+    >
+      <div className="flex items-center space-x-3">
+        {statusColor ? (
+           <div className={`w-2 h-2 rounded-full ${statusColor}`}></div>
+        ) : (
+           <Icon className={`w-4 h-4 ${active ? 'text-brand-DEFAULT' : 'text-gray-400 group-hover:text-gray-600'}`} />
+        )}
+        <span className={`text-sm font-medium ${active ? 'font-semibold' : ''}`}>{label}</span>
+      </div>
+      {active && <ChevronRight className="w-4 h-4 opacity-50" />}
+    </button>
+  );
+
   return (
-    <div className="w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 flex flex-col shadow-xl z-50">
-      <div className="p-6 flex items-center space-x-3 border-b border-slate-700">
-        <Ship className="w-8 h-8 text-blue-400" />
-        <span className="text-xl font-bold tracking-wide">LogiSoft</span>
+    <div className="w-64 bg-white h-[calc(100vh-64px)] fixed left-0 top-16 flex flex-col border-r border-gray-200 z-40">
+      
+      <div className="px-4 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+        Main Menu
       </div>
 
-      {/* Changed overflow-y-auto to overflow-visible to allow flyout menus */}
-      <nav className="flex-1 py-6 px-3 space-y-2 overflow-visible">
-        <button
+      <nav className="flex-1 overflow-visible space-y-1">
+        
+        <MenuItem 
+          active={currentPage === 'entry'}
           onClick={() => onNavigate('entry')}
-          className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-            currentPage === 'entry'
-              ? 'bg-blue-600 text-white shadow-lg'
-              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-          }`}
-        >
-          <FileInput className="w-5 h-5" />
-          <span className="font-medium">Nhập Job</span>
-        </button>
+          icon={FileInput}
+          label="Nhập Job"
+          statusColor="bg-red-500"
+        />
 
-        <button
+        <MenuItem 
+          active={currentPage === 'booking'}
           onClick={() => onNavigate('booking')}
-          className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-            currentPage === 'booking'
-              ? 'bg-blue-600 text-white shadow-lg'
-              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-          }`}
-        >
-          <Container className="w-5 h-5" />
-          <span className="font-medium">Booking</span>
-        </button>
+          icon={Container}
+          label="Booking"
+          statusColor="bg-orange-400"
+        />
 
-        {/* Deposit Menu with Hover Effect */}
+        {/* Deposit Menu Group */}
         <div className="relative group">
-          <button
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-              currentPage === 'deposit-line' || currentPage === 'deposit-customer'
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <ArrowRightLeft className="w-5 h-5" />
-            <span className="font-medium">Cược (Deposit)</span>
-          </button>
+           <MenuItem 
+            active={['deposit-line', 'deposit-customer'].includes(currentPage)}
+            onClick={() => {}} // Hover only
+            icon={ArrowRightLeft}
+            label="Cược (Deposit)"
+            statusColor="bg-green-500"
+          />
           
-          {/* Submenu Dropdown on Hover */}
-          <div className="hidden group-hover:block absolute left-full top-0 pl-2 w-56 z-50">
-            <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden">
+          {/* Submenu */}
+          <div className="hidden group-hover:block absolute left-full top-0 pl-1 w-56 z-50">
+            <div className="bg-white rounded-md shadow-xl border border-gray-200 overflow-hidden py-1">
               <div 
                 onClick={() => onNavigate('deposit-line')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'deposit-line' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
+                className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'deposit-line' ? 'text-brand-DEFAULT font-bold' : 'text-gray-600'}`}
               >
                 <Building2 className="w-4 h-4" />
-                <span className="text-sm font-medium">Cược Hãng Tàu</span>
+                <span className="text-sm">Cược Hãng Tàu</span>
               </div>
-              <div className="border-t border-slate-700"></div>
               <div 
                 onClick={() => onNavigate('deposit-customer')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'deposit-customer' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
+                className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'deposit-customer' ? 'text-brand-DEFAULT font-bold' : 'text-gray-600'}`}
               >
                 <UserCircle className="w-4 h-4" />
-                <span className="text-sm font-medium">Cược Khách Hàng</span>
+                <span className="text-sm">Cược Khách Hàng</span>
               </div>
             </div>
           </div>
         </div>
 
-        <button
+        <MenuItem 
+          active={currentPage === 'lhk'}
           onClick={() => onNavigate('lhk')}
-          className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-            currentPage === 'lhk'
-              ? 'bg-blue-600 text-white shadow-lg'
-              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-          }`}
-        >
-          <Briefcase className="w-5 h-5" />
-          <span className="font-medium">LHK</span>
-        </button>
+          icon={Briefcase}
+          label="LHK Jobs"
+          statusColor="bg-blue-400"
+        />
 
-        {/* Amis Export Menu */}
+        {/* Amis Menu Group */}
         <div className="relative group">
-          <button
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-              ['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <FileUp className="w-5 h-5" />
-            <span className="font-medium">Xuất Amis</span>
-          </button>
-          
-          {/* Submenu Dropdown on Hover */}
-          <div className="hidden group-hover:block absolute left-full top-0 pl-2 w-56 z-50">
-            <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden">
-              <div 
-                onClick={() => onNavigate('amis-thu')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'amis-thu' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                <span className="text-sm font-medium">Phiếu Thu</span>
+          <MenuItem 
+            active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)}
+            onClick={() => {}} // Hover
+            icon={FileUp}
+            label="Xuất Amis"
+          />
+          <div className="hidden group-hover:block absolute left-full top-0 pl-1 w-56 z-50">
+            <div className="bg-white rounded-md shadow-xl border border-gray-200 overflow-hidden py-1">
+              <div onClick={() => onNavigate('amis-thu')} className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'amis-thu' ? 'text-brand-DEFAULT' : 'text-gray-600'}`}>
+                <FileText className="w-4 h-4" /><span className="text-sm">Phiếu Thu</span>
               </div>
-              <div className="border-t border-slate-700"></div>
-              <div 
-                onClick={() => onNavigate('amis-chi')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'amis-chi' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <CreditCard className="w-4 h-4" />
-                <span className="text-sm font-medium">Phiếu Chi</span>
+              <div onClick={() => onNavigate('amis-chi')} className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'amis-chi' ? 'text-brand-DEFAULT' : 'text-gray-600'}`}>
+                <CreditCard className="w-4 h-4" /><span className="text-sm">Phiếu Chi</span>
               </div>
-              <div className="border-t border-slate-700"></div>
-              <div 
-                onClick={() => onNavigate('amis-ban')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'amis-ban' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <ShoppingCart className="w-4 h-4" />
-                <span className="text-sm font-medium">Phiếu Bán Hàng</span>
+              <div onClick={() => onNavigate('amis-ban')} className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'amis-ban' ? 'text-brand-DEFAULT' : 'text-gray-600'}`}>
+                <ShoppingCart className="w-4 h-4" /><span className="text-sm">Phiếu Bán Hàng</span>
               </div>
-              <div className="border-t border-slate-700"></div>
-              <div 
-                onClick={() => onNavigate('amis-mua')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'amis-mua' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <Briefcase className="w-4 h-4" />
-                <span className="text-sm font-medium">Phiếu Mua Hàng</span>
+              <div onClick={() => onNavigate('amis-mua')} className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'amis-mua' ? 'text-brand-DEFAULT' : 'text-gray-600'}`}>
+                <Briefcase className="w-4 h-4" /><span className="text-sm">Phiếu Mua Hàng</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Data Management Menu */}
+        {/* Data Menu Group */}
         <div className="relative group">
-          <button
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-              ['data-lines', 'data-customers'].includes(currentPage)
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Database className="w-5 h-5" />
-            <span className="font-medium">Data</span>
-          </button>
-          
-          {/* Submenu Dropdown on Hover */}
-          <div className="hidden group-hover:block absolute left-full top-0 pl-2 w-56 z-50">
-            <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden">
-              <div 
-                onClick={() => onNavigate('data-lines')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'data-lines' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <Ship className="w-4 h-4" />
-                <span className="text-sm font-medium">Hãng Tàu</span>
+          <MenuItem 
+            active={['data-lines', 'data-customers'].includes(currentPage)}
+            onClick={() => {}} 
+            icon={Database}
+            label="Data Master"
+          />
+          <div className="hidden group-hover:block absolute left-full top-0 pl-1 w-56 z-50">
+             <div className="bg-white rounded-md shadow-xl border border-gray-200 overflow-hidden py-1">
+               <div onClick={() => onNavigate('data-lines')} className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'data-lines' ? 'text-brand-DEFAULT' : 'text-gray-600'}`}>
+                <Ship className="w-4 h-4" /><span className="text-sm">Hãng Tàu</span>
               </div>
-              <div className="border-t border-slate-700"></div>
-              <div 
-                onClick={() => onNavigate('data-customers')}
-                className={`flex items-center space-x-3 px-4 py-3 cursor-pointer transition-colors ${
-                  currentPage === 'data-customers' ? 'bg-blue-900 text-blue-300' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <UserCircle className="w-4 h-4" />
-                <span className="text-sm font-medium">Khách Hàng</span>
+              <div onClick={() => onNavigate('data-customers')} className={`flex items-center space-x-3 px-4 py-2 cursor-pointer hover:bg-gray-50 ${currentPage === 'data-customers' ? 'text-brand-DEFAULT' : 'text-gray-600'}`}>
+                <UserCircle className="w-4 h-4" /><span className="text-sm">Khách Hàng</span>
               </div>
-            </div>
+             </div>
           </div>
         </div>
 
-        <button
-          onClick={() => onNavigate('reports')}
-          className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-            currentPage === 'reports'
-              ? 'bg-blue-600 text-white shadow-lg'
-              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-          }`}
-        >
-          <LayoutDashboard className="w-5 h-5" />
-          <span className="font-medium">Báo Cáo</span>
-        </button>
+        <div className="border-t border-gray-100 my-2 pt-2">
+          <MenuItem 
+            active={currentPage === 'reports'}
+            onClick={() => onNavigate('reports')}
+            icon={LayoutDashboard}
+            label="Báo Cáo"
+          />
+        </div>
       </nav>
 
-      <div className="p-4 border-t border-slate-700 space-y-2">
+      <div className="p-4 border-t border-gray-200 bg-gray-50 mt-auto">
         <button 
           onClick={onResetData}
-          className="w-full flex items-center justify-center space-x-2 bg-red-900/40 text-red-400 hover:bg-red-900/60 hover:text-red-200 px-3 py-2 rounded-lg text-sm transition-all border border-red-900/50"
-          title="Xóa toàn bộ dữ liệu và khôi phục về mặc định"
+          className="w-full flex items-center justify-center space-x-2 text-red-500 hover:bg-red-50 hover:text-red-600 px-3 py-2 rounded text-xs transition-all border border-transparent hover:border-red-100"
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="w-3 h-3" />
           <span>Reset Data</span>
         </button>
-
-        <div className="flex items-center space-x-3 text-slate-400 hover:text-white cursor-pointer px-4 py-2">
-          <Settings className="w-5 h-5" />
-          <span>Cài đặt</span>
-        </div>
-        <div className="mt-2 text-xs text-slate-500 text-center">
-          v1.5.0
+        <div className="mt-2 text-[10px] text-gray-400 text-center">
+          Logistics System v2.1
         </div>
       </div>
     </div>

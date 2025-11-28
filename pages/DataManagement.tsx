@@ -1,7 +1,7 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Customer, ShippingLine } from '../types';
-import { Plus, Edit2, Trash2, Search, Save, X, Database } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Save, X, Database, Upload, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface DataManagementProps {
   mode: 'customers' | 'lines';
@@ -15,6 +15,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Customer | ShippingLine | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -63,6 +64,79 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     setIsModalOpen(false);
   };
 
+  // --- EXPORT EXCEL ---
+  const handleExportExcel = () => {
+    const headers = ['MST', mode === 'customers' ? 'Mã Khách hàng' : 'Mã Line', 'Tên Công Ty'];
+    
+    const rows = data.map(item => [
+      item.mst,
+      item.code,
+      item.name
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, title);
+    
+    const fileName = `Danh_Sach_${mode === 'customers' ? 'Khach_Hang' : 'Hang_Tau'}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
+  // --- IMPORT EXCEL ---
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const jsonData = XLSX.utils.sheet_to_json(ws);
+
+      let added = 0;
+      let updated = 0;
+
+      jsonData.forEach((row: any) => {
+        // Flexible column mapping
+        const mst = row['MST'] || row['Mã số thuế'] || row['Tax Code'] || '';
+        const code = row['Code'] || row['Mã'] || row['Mã Khách hàng'] || row['Mã Line'] || '';
+        const name = row['Name'] || row['Tên'] || row['Tên Công Ty'] || '';
+
+        if (code && name) {
+          // Check for duplicate code
+          const existing = data.find(d => d.code === code);
+          
+          if (existing) {
+            onEdit({
+              ...existing,
+              mst: mst || existing.mst,
+              name: name || existing.name
+            });
+            updated++;
+          } else {
+            onAdd({
+              id: Date.now().toString() + Math.random().toString().slice(2,5),
+              code,
+              name,
+              mst
+            });
+            added++;
+          }
+        }
+      });
+
+      alert(`Hoàn tất nhập dữ liệu:\n- Thêm mới: ${added}\n- Cập nhật: ${updated}`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const filteredData = data.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -71,34 +145,54 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
 
   return (
     <div className="p-8 max-w-full">
+      {/* Hidden File Input */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        accept=".xlsx, .xls, .csv" 
+        className="hidden" 
+      />
+
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <div className="flex items-center space-x-3 text-slate-800 mb-2">
-            <div className="p-2 bg-cyan-100 text-cyan-700 rounded-lg">
-              <Database className="w-6 h-6" />
-            </div>
-            <h1 className="text-3xl font-bold">Quản lý {title}</h1>
-          </div>
-          <p className="text-slate-500 ml-11">Thêm, sửa, xóa thông tin {title}</p>
+          <h1 className="text-2xl font-bold text-gray-900">Quản lý {title}</h1>
+          <p className="text-sm text-gray-500 mt-1">Quản lý danh sách và thông tin chi tiết</p>
         </div>
         
-        <button 
-          onClick={handleAddNew}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-all shadow-md"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Thêm Mới</span>
-        </button>
+        <div className="flex space-x-2">
+          <button 
+            onClick={handleImportClick}
+            className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-md text-sm font-medium flex items-center shadow-sm"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            <span>Import</span>
+          </button>
+          <button 
+            onClick={handleExportExcel}
+            className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-md text-sm font-medium flex items-center shadow-sm"
+          >
+            <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
+            <span>Xuất Excel</span>
+          </button>
+          <button 
+            onClick={handleAddNew}
+            className="bg-blue-900 hover:bg-blue-800 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center shadow-sm"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            <span>Thêm Mới</span>
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
+      <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm mb-6">
          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input 
               type="text" 
               placeholder={`Tìm kiếm theo ${labelCode}, Tên, MST...`}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -106,29 +200,29 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
         <table className="w-full text-sm text-left">
-          <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
+          <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-6 py-4">MST</th>
-              <th className="px-6 py-4">{labelCode}</th>
-              <th className="px-6 py-4">Tên Công Ty</th>
-              <th className="px-6 py-4 text-center">Thao Tác</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">MST</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">{labelCode}</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tên Công Ty</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center">Thao Tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filteredData.length > 0 ? (
               filteredData.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-6 py-4 font-mono text-slate-600">{item.mst}</td>
-                  <td className="px-6 py-4 font-bold text-blue-600">{item.code}</td>
-                  <td className="px-6 py-4 font-medium text-slate-800">{item.name}</td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleEdit(item)} className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50" title="Chỉnh sửa">
+                <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
+                  <td className="px-6 py-3 font-mono text-gray-600">{item.mst}</td>
+                  <td className="px-6 py-3 font-bold text-blue-700">{item.code}</td>
+                  <td className="px-6 py-3 font-medium text-gray-900">{item.name}</td>
+                  <td className="px-6 py-3 text-center">
+                    <div className="flex items-center justify-center space-x-2">
+                      <button onClick={() => handleEdit(item)} className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50" title="Chỉnh sửa">
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50" title="Xóa">
+                      <button onClick={() => handleDelete(item.id)} className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50" title="Xóa">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -146,59 +240,59 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
-              <h2 className="text-xl font-bold text-slate-800">
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-[1px] z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg animate-in zoom-in-95 duration-150 border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-lg">
+              <h2 className="text-lg font-bold text-gray-900">
                 {editingItem ? 'Chỉnh Sửa' : 'Thêm Mới'} {title}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-red-500 transition-colors">
-                <X className="w-6 h-6" />
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-red-500 transition-colors">
+                <X className="w-5 h-5" />
               </button>
             </div>
             
             <form onSubmit={handleSave} className="p-6 space-y-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Mã số thuế (MST)</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase">Mã số thuế (MST)</label>
                 <input 
                   type="text" 
                   required
                   value={formData.mst} 
                   onChange={e => setFormData(prev => ({...prev, mst: e.target.value}))} 
-                  className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
                   placeholder="VD: 0301234567"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">{labelCode}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase">{labelCode}</label>
                 <input 
                   type="text" 
                   required
                   value={formData.code} 
                   onChange={e => setFormData(prev => ({...prev, code: e.target.value}))} 
-                  className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
                   placeholder={`VD: ${mode === 'customers' ? 'CUST01' : 'MSC'}`}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Tên Công Ty</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase">Tên Công Ty</label>
                 <input 
                   type="text" 
                   required
                   value={formData.name} 
                   onChange={e => setFormData(prev => ({...prev, name: e.target.value}))} 
-                  className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
                   placeholder="Nhập tên công ty đầy đủ"
                 />
               </div>
 
-              <div className="pt-4 flex justify-end space-x-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 font-medium">
+              <div className="pt-4 flex justify-end space-x-3 border-t border-gray-100 mt-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
                   Hủy
                 </button>
-                <button type="submit" className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium flex items-center shadow-md">
+                <button type="submit" className="px-4 py-2 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 flex items-center shadow-sm">
                   <Save className="w-4 h-4 mr-2" /> Lưu
                 </button>
               </div>

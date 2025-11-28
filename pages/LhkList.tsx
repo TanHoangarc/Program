@@ -13,8 +13,11 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const lhkJobs = useMemo(() => {
-    // Filter for Long Hoang Logistics customers
-    let filtered = jobs.filter(j => j.customerName === 'Long Hoàng Logistics');
+    // Filter for Long Hoang Logistics customers OR code "LONGHOANG"
+    let filtered = jobs.filter(j => 
+        (j.customerName && j.customerName.includes('Long Hoàng')) || 
+        (j.customerName && j.customerName.toUpperCase().includes('LONGHOANG'))
+    );
 
     // Apply Filters
     if (filterMonth) {
