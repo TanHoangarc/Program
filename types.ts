@@ -18,6 +18,13 @@ export interface Customer {
   mst: string;
 }
 
+export interface ShippingLine {
+  id: string;
+  code: string; // Ma Line
+  name: string; // Ten cong ty
+  mst: string;
+}
+
 export interface BookingInvoice {
   invoice: string;
   date: string;
@@ -87,6 +94,22 @@ export interface JobData {
 
   // Booking Level Expense Details (Shared across jobs with same booking)
   bookingCostDetails?: BookingCostDetails;
+}
+
+export interface BookingSummary {
+  bookingId: string;
+  month: string;
+  line: string;
+  jobCount: number;
+  totalCost: number; // Chi Payment sum
+  totalSell: number;
+  totalProfit: number;
+  totalCont20: number;
+  totalCont40: number;
+  jobs: JobData[];
+  
+  // Invoice Details
+  costDetails: BookingCostDetails;
 }
 
 export const INITIAL_JOB: JobData = {

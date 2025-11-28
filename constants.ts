@@ -1,5 +1,5 @@
 
-import { JobData, Customer } from './types';
+import { JobData, Customer, ShippingLine } from './types';
 
 export const MONTHS = Array.from({ length: 12 }, (_, i) => ({
   value: (i + 1).toString(),
@@ -14,6 +14,13 @@ export const MOCK_CUSTOMERS: Customer[] = [
   { id: '1', code: 'CUST01', name: 'VinaFoods Co', mst: '0301234567' },
   { id: '2', code: 'CUST02', name: 'TechGlobal', mst: '0309998887' },
   { id: '3', code: 'LH001', name: 'Long Hoàng Logistics', mst: '0305554443' },
+];
+
+export const MOCK_SHIPPING_LINES: ShippingLine[] = [
+  { id: '1', code: 'MSC', name: 'MSC Vietnam Company Ltd', mst: '0301112223' },
+  { id: '2', code: 'ONE', name: 'Ocean Network Express', mst: '0304445556' },
+  { id: '3', code: 'MAERSK', name: 'Maersk Vietnam', mst: '0307778889' },
+  { id: '4', code: 'COSCO', name: 'Cosco Shipping Lines', mst: '0302223334' },
 ];
 
 export const MOCK_DATA: JobData[] = [

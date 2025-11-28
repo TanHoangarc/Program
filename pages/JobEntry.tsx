@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X } from 'lucide-react';
-import { JobData, Customer } from '../types';
+
+import React, { useState, useRef } from 'react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, DollarSign, CreditCard, Clock } from 'lucide-react';
+import { JobData, Customer, BookingSummary, BookingCostDetails } from '../types';
 import { JobModal } from '../components/JobModal';
+import { BookingDetailModal } from '../components/BookingDetailModal';
+import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
+import { calculateBookingSummary } from '../utils';
 import { MONTHS } from '../constants';
+import * as XLSX from 'xlsx';
 
 interface JobEntryProps {
   jobs: JobData[];
@@ -16,16 +21,37 @@ interface JobEntryProps {
 }
 
 export const JobEntry: React.FC<JobEntryProps> = ({ 
-  jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine 
+  jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
+  const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Dropdown Menu State
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // Quick Receive Modal State
+  const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
+  const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
+  const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activeMenuId && !(event.target as Element).closest('.action-menu-container')) {
+        setActiveMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeMenuId]);
 
   const handleAddNew = () => {
     setEditingJob(null);
@@ -35,6 +61,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const handleEdit = (job: JobData) => {
     setEditingJob(job);
     setIsModalOpen(true);
+    setActiveMenuId(null);
   };
 
   const handleDuplicate = (job: JobData) => {
@@ -45,6 +72,23 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       booking: job.booking ? `${job.booking}` : '',
     };
     onAddJob(newJob);
+    setActiveMenuId(null);
+  };
+
+  const handleDelete = (id: string) => {
+    onDeleteJob(id);
+    setActiveMenuId(null);
+  };
+
+  const handleQuickReceive = (job: JobData, mode: ReceiveMode) => {
+    setQuickReceiveJob(job);
+    setQuickReceiveMode(mode);
+    setIsQuickReceiveOpen(true);
+    setActiveMenuId(null);
+  };
+
+  const handleSaveQuickReceive = (updatedJob: JobData) => {
+    onEditJob(updatedJob);
   };
 
   const handleSave = (job: JobData, newCustomer?: Customer) => {
@@ -59,69 +103,144 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     setIsModalOpen(false);
   };
 
+  const handleViewBookingDetails = (bookingId: string) => {
+    const summary = calculateBookingSummary(jobs, bookingId);
+    if (summary) {
+      setViewingBooking(summary);
+    }
+  };
+
+  const handleSaveBookingDetails = (updatedDetails: BookingCostDetails) => {
+     if (!viewingBooking) return;
+     viewingBooking.jobs.forEach(job => {
+         const updatedJob = { ...job, bookingCostDetails: updatedDetails };
+         onEditJob(updatedJob);
+     });
+     if (editingJob && editingJob.booking === viewingBooking.bookingId) {
+         setEditingJob(prev => prev ? ({ ...prev, bookingCostDetails: updatedDetails }) : null);
+     }
+     setViewingBooking(null);
+  };
+
+  // --- IMPORT EXCEL ---
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      // Simple mapping logic: Assuming columns match "Export Excel" headers
+      // Or best effort mapping properties
+      let importedCount = 0;
+      data.forEach((row: any) => {
+        const newJob: JobData = {
+          id: Date.now().toString() + Math.random().toString().slice(2,5),
+          month: row['Tháng']?.toString() || '1',
+          jobCode: row['Job'] || row['Job Code'] || `IMP-${Date.now()}`,
+          booking: row['Booking'] || '',
+          consol: row['Consol'] || '',
+          line: row['Line'] || '',
+          customerId: '', // Needs lookup or simple text
+          customerName: row['Customer'] || '',
+          hbl: row['HBL'] || '',
+          transit: row['Transit'] || 'HCM',
+          
+          cost: Number(row['Cost']) || 0,
+          sell: Number(row['Sell']) || 0,
+          profit: Number(row['Profit']) || 0,
+          cont20: Number(row['Cont 20']) || 0,
+          cont40: Number(row['Cont 40']) || 0,
+
+          chiPayment: Number(row['Chi Payment']) || 0,
+          chiCuoc: Number(row['Chi Cược']) || 0,
+          ngayChiCuoc: row['Ngày Chi Cược'] || '',
+          ngayChiHoan: row['Ngày Chi Hoàn'] || '',
+
+          localChargeTotal: Number(row['Thu Payment']) || 0,
+          localChargeInvoice: row['Invoice'] || '',
+          bank: row['Ngân hàng'] || '',
+          localChargeDate: '', // Default empty if not in excel
+          localChargeNet: 0,
+          localChargeVat: 0,
+
+          maKhCuocId: '',
+          thuCuoc: Number(row['Thu Cược']) || 0,
+          ngayThuCuoc: row['Ngày Thu Cược'] || '',
+          ngayThuHoan: row['Ngày Thu Hoàn'] || '',
+          
+          extensions: []
+        };
+        onAddJob(newJob);
+        importedCount++;
+      });
+      alert(`Đã nhập thành công ${importedCount} dòng dữ liệu.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // --- EXPORT EXCEL (.XLSX) ---
   const handleExportExcel = () => {
-    // Define headers
-    const headers = [
-      "Tháng", "Job", "Booking", "Consol", "Line", "Customer", "HBL", "Transit",
-      "Cost", "Sell", "Profit", "Cont 20", "Cont 40",
-      "Chi Payment", "Chi Cược", "Ngày Chi Cược", "Ngày Chi Hoàn",
-      "Thu Payment", "Invoice", "Ngân hàng",
-      "Mã KH Cược", "Thu Cược", "Ngày Thu Cược", "Ngày Thu Hoàn"
-    ];
+    // Map data to simpler object structure for Excel
+    const dataToExport = filteredJobs.map(job => ({
+      "Tháng": job.month,
+      "Job Code": job.jobCode,
+      "Booking": job.booking,
+      "Consol": job.consol,
+      "Line": job.line,
+      "Customer": job.customerName,
+      "HBL": job.hbl,
+      "Transit": job.transit,
+      "Cost": job.cost,
+      "Sell": job.sell,
+      "Profit": job.profit,
+      "Cont 20": job.cont20,
+      "Cont 40": job.cont40,
+      "Chi Payment": job.chiPayment,
+      "Chi Cược": job.chiCuoc,
+      "Ngày Chi Cược": job.ngayChiCuoc,
+      "Ngày Chi Hoàn": job.ngayChiHoan,
+      "Thu Payment (Local Charge)": job.localChargeTotal,
+      "Invoice Thu": job.localChargeInvoice,
+      "Ngân hàng": job.bank,
+      "Mã KH Cược": customers.find(c => c.id === job.maKhCuocId)?.code || '',
+      "Thu Cược": job.thuCuoc,
+      "Ngày Thu Cược": job.ngayThuCuoc,
+      "Ngày Thu Hoàn": job.ngayThuHoan
+    }));
 
-    // Map data to CSV rows
-    const rows = filteredJobs.map(job => [
-      job.month,
-      `"${job.jobCode}"`, // Quote strings to avoid comma issues
-      `"${job.booking}"`,
-      `"${job.consol}"`,
-      `"${job.line}"`,
-      `"${job.customerName}"`,
-      `"${job.hbl}"`,
-      job.transit,
-      job.cost,
-      job.sell,
-      job.profit,
-      job.cont20,
-      job.cont40,
-      job.chiPayment,
-      job.chiCuoc,
-      job.ngayChiCuoc,
-      job.ngayChiHoan,
-      job.localChargeTotal,
-      `"${job.localChargeInvoice}"`,
-      job.bank,
-      // We might need to look up the customer code for 'maKhCuocId', simplifying for now
-      `"${customers.find(c => c.id === job.maKhCuocId)?.code || ''}"`,
-      job.thuCuoc,
-      job.ngayThuCuoc,
-      job.ngayThuHoan
-    ]);
+    // Create Worksheet
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    
+    // Auto-width for columns (Basic estimation)
+    const wscols = Object.keys(dataToExport[0] || {}).map(k => ({ wch: k.length + 5 }));
+    ws['!cols'] = wscols;
 
-    // Add BOM for Excel UTF-8 support
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    // Create Workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Danh Sach Job");
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `job_data_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Write file
+    XLSX.writeFile(wb, `Logistics_Job_Data_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
   const filteredJobs = jobs.filter(job => {
-    // General Search
     const matchesSearch = 
       job.jobCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
       job.line.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Specific Filters
     const matchesMonth = filterMonth ? job.month === filterMonth : true;
     const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
     const matchesBooking = filterBooking ? job.booking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
-
     return matchesSearch && matchesMonth && matchesCustomer && matchesBooking;
   });
 
@@ -137,7 +256,16 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   return (
-    <div className="p-8 max-w-full">
+    <div className="p-8 max-w-full min-h-screen">
+      {/* Hidden File Input */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        accept=".xlsx, .xls, .csv" 
+        className="hidden" 
+      />
+
       {/* Header Actions */}
       <div className="flex flex-col mb-8 gap-4">
         <div className="flex justify-between items-center">
@@ -146,9 +274,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               <p className="text-slate-500 mt-1">Nhập liệu và theo dõi chi tiết các lô hàng</p>
            </div>
            <div className="flex space-x-2">
+             <button onClick={handleImportClick} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-all shadow-md">
+                <Upload className="w-5 h-5" />
+                <span>Import Excel</span>
+             </button>
              <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-all shadow-md">
                 <FileSpreadsheet className="w-5 h-5" />
-                <span>Xuất Excel</span>
+                <span>Xuất Excel (.xlsx)</span>
              </button>
              <button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-all shadow-md">
                 <Plus className="w-5 h-5" />
@@ -165,42 +297,38 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1 w-full">
-               {/* Month Filter */}
                <select 
                  value={filterMonth} 
                  onChange={(e) => setFilterMonth(e.target.value)}
-                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                >
                  <option value="">Tất cả các tháng</option>
                  {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                </select>
 
-               {/* Customer Filter */}
                <select 
                  value={filterCustomer} 
                  onChange={(e) => setFilterCustomer(e.target.value)}
-                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                >
                  <option value="">Tất cả khách hàng</option>
                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                </select>
 
-               {/* Booking Filter */}
                <input 
                  type="text" 
                  placeholder="Lọc theo Booking..." 
                  value={filterBooking}
                  onChange={(e) => setFilterBooking(e.target.value)}
-                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                />
 
-               {/* General Search */}
                <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input 
                     type="text" 
                     placeholder="Tìm Job Code, Line..." 
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -216,8 +344,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       </div>
 
       {/* Table Container */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-visible">
+        <div className="overflow-visible">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-600 font-medium border-b border-gray-200">
               <tr>
@@ -236,7 +364,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             <tbody className="divide-y divide-gray-100">
               {filteredJobs.length > 0 ? (
                 filteredJobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-blue-50/50 transition-colors group">
+                  <tr key={job.id} className="hover:bg-blue-50/50 transition-colors group relative">
                     <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">Tháng {job.month}</td>
                     <td className="px-6 py-4 text-blue-600 font-medium">{job.jobCode}</td>
                     <td className="px-6 py-4 text-slate-700">
@@ -256,17 +384,42 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                         {job.cont40 > 0 && <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full">{job.cont40}x40'</span>}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleDuplicate(job)} className="text-slate-400 hover:text-green-600 p-1 rounded hover:bg-green-50 tooltip" title="Nhân bản">
-                          <Copy className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleEdit(job)} className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 tooltip" title="Chỉnh sửa">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => onDeleteJob(job.id)} className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 tooltip" title="Xóa">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                    <td className="px-6 py-4 text-center action-menu-container">
+                      <div className="relative inline-block text-left">
+                         <button 
+                           onClick={() => setActiveMenuId(activeMenuId === job.id ? null : job.id)}
+                           className="text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-slate-100 transition-colors"
+                         >
+                           <MoreVertical className="w-5 h-5" />
+                         </button>
+
+                         {/* Dropdown Menu */}
+                         {activeMenuId === job.id && (
+                           <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                             <div className="py-1">
+                               <button onClick={() => handleDuplicate(job)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
+                                 <Copy className="w-4 h-4 mr-2" /> Nhân bản
+                               </button>
+                               <button onClick={() => handleEdit(job)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
+                                 <Edit2 className="w-4 h-4 mr-2" /> Chỉnh sửa
+                               </button>
+                               <div className="border-t border-gray-100 my-1"></div>
+                               <button onClick={() => handleQuickReceive(job, 'local')} className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 flex items-center font-medium">
+                                 <DollarSign className="w-4 h-4 mr-2" /> Thu tiền (Local)
+                               </button>
+                               <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50 flex items-center font-medium">
+                                 <CreditCard className="w-4 h-4 mr-2" /> Thu cược
+                               </button>
+                               <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 flex items-center font-medium">
+                                 <Clock className="w-4 h-4 mr-2" /> Thu gia hạn
+                               </button>
+                               <div className="border-t border-gray-100 my-1"></div>
+                               <button onClick={() => handleDelete(job.id)} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+                                 <Trash2 className="w-4 h-4 mr-2" /> Xóa Job
+                               </button>
+                             </div>
+                           </div>
+                         )}
                       </div>
                     </td>
                   </tr>
@@ -291,6 +444,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         </div>
       </div>
 
+      {/* MODALS */}
       <JobModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
@@ -299,7 +453,28 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         customers={customers}
         lines={lines}
         onAddLine={onAddLine}
+        onViewBookingDetails={handleViewBookingDetails}
       />
+
+      {viewingBooking && (
+        <BookingDetailModal 
+          booking={viewingBooking}
+          onClose={() => setViewingBooking(null)}
+          onSave={handleSaveBookingDetails}
+          zIndex="z-[60]"
+        />
+      )}
+
+      {isQuickReceiveOpen && quickReceiveJob && (
+        <QuickReceiveModal
+          isOpen={isQuickReceiveOpen}
+          onClose={() => setIsQuickReceiveOpen(false)}
+          onSave={handleSaveQuickReceive}
+          job={quickReceiveJob}
+          mode={quickReceiveMode}
+          customers={customers}
+        />
+      )}
     </div>
   );
 };

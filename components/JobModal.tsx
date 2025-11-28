@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Plus, Trash2, Check, Minus } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
 
@@ -11,6 +12,7 @@ interface JobModalProps {
   customers: Customer[];
   lines: string[];
   onAddLine: (line: string) => void;
+  onViewBookingDetails: (bookingId: string) => void;
 }
 
 const NumberStepper: React.FC<{
@@ -81,7 +83,7 @@ const MoneyInput: React.FC<{
 };
 
 export const JobModal: React.FC<JobModalProps> = ({ 
-  isOpen, onClose, onSave, initialData, customers, lines, onAddLine 
+  isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails
 }) => {
   const [formData, setFormData] = useState<JobData>(INITIAL_JOB);
   
@@ -111,6 +113,16 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   }, [isOpen, initialData]);
 
+  // Sync BookingCostDetails if they change in parent (e.g. via BookingDetailModal)
+  useEffect(() => {
+    if (isOpen && initialData?.bookingCostDetails) {
+        setFormData(prev => ({
+            ...prev,
+            bookingCostDetails: initialData.bookingCostDetails
+        }));
+    }
+  }, [initialData?.bookingCostDetails]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -125,11 +137,6 @@ export const JobModal: React.FC<JobModalProps> = ({
         newData.profit = (newData.sell || 0) - (newData.cost || 0);
       }
       
-      // Auto calc Local Charge Total
-      if (name === 'localChargeNet' || name === 'localChargeVat') {
-        newData.localChargeTotal = (newData.localChargeNet || 0) + (newData.localChargeVat || 0);
-      }
-
       return newData;
     });
   };
@@ -197,10 +204,7 @@ export const JobModal: React.FC<JobModalProps> = ({
       const newExts = prev.extensions.map(ext => {
         if (ext.id === id) {
           const updated = { ...ext, [field]: value };
-          // Auto calc total for extension
-          if (field === 'net' || field === 'vat') {
-            updated.total = (updated.net || 0) + (updated.vat || 0);
-          }
+          // Auto calc total for extension removed as net/vat inputs are removed
           return updated;
         }
         return ext;
@@ -238,6 +242,12 @@ export const JobModal: React.FC<JobModalProps> = ({
       createdCustomer = saveNewCustomer();
     }
     onSave(formData, createdCustomer);
+  };
+
+  const handleBookingClick = () => {
+    if (formData.booking) {
+      onViewBookingDetails(formData.booking);
+    }
   };
 
   const selectedCustomerName = customers.find(c => c.id === formData.customerId)?.name || formData.customerName;
@@ -423,7 +433,19 @@ export const JobModal: React.FC<JobModalProps> = ({
             <div className="bg-red-50 p-5 rounded-lg border border-red-100 shadow-sm">
               <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-4 border-b border-red-200 pb-2">Chi (Payment Out)</h3>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <MoneyInput label="Payment" name="chiPayment" value={formData.chiPayment} onChange={handleMoneyChange} />
+                <div className="flex items-end space-x-2">
+                  <MoneyInput label="Payment" name="chiPayment" value={formData.chiPayment} onChange={handleMoneyChange} />
+                  {formData.booking && (
+                    <button 
+                      type="button" 
+                      onClick={handleBookingClick}
+                      className="mb-0.5 p-2 bg-white border border-red-200 text-red-600 rounded hover:bg-red-50 hover:text-red-700 transition-colors"
+                      title="Xem chi tiết hóa đơn Booking"
+                    >
+                      <ExternalLink className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
                 <MoneyInput label="Cược (Deposit)" name="chiCuoc" value={formData.chiCuoc} onChange={handleMoneyChange} />
                 
                 <div className="space-y-1">
@@ -443,20 +465,12 @@ export const JobModal: React.FC<JobModalProps> = ({
               {/* Local Charge Row */}
               <div>
                 <h3 className="text-sm font-bold text-indigo-700 uppercase tracking-wide mb-4 border-b border-indigo-200 pb-2">Thu - Local Charge</h3>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Invoice</label>
                     <input type="text" name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500" />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-500">Ngày HĐ</label>
-                    <input type="date" name="localChargeDate" value={formData.localChargeDate} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500" />
-                  </div>
-                  <MoneyInput label="Giá Net" name="localChargeNet" value={formData.localChargeNet} onChange={handleMoneyChange} />
-                  <MoneyInput label="VAT" name="localChargeVat" value={formData.localChargeVat} onChange={handleMoneyChange} />
-                  <MoneyInput label="Tổng" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly />
-                </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <MoneyInput label="Amount (Tổng)" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} />
                    <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Ngân hàng</label>
                     <select name="bank" value={formData.bank} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500">
@@ -517,8 +531,8 @@ export const JobModal: React.FC<JobModalProps> = ({
                         <Trash2 className="w-5 h-5" />
                       </button>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
-                         <div className="lg:col-span-2 space-y-1">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                         <div className="space-y-1 md:col-span-2">
                            <label className="text-xs font-medium text-gray-500">Khách hàng</label>
                            <select 
                               value={ext.customerId} 
@@ -539,49 +553,15 @@ export const JobModal: React.FC<JobModalProps> = ({
                             />
                          </div>
                          <div className="space-y-1">
-                            <label className="text-xs font-medium text-gray-500">Ngày Invoice</label>
-                            <input 
-                              type="date" 
-                              value={ext.invoiceDate} 
-                              onChange={(e) => handleExtensionChange(ext.id, 'invoiceDate', e.target.value)} 
-                              className="w-full p-2 border border-gray-300 rounded text-sm"
-                            />
-                         </div>
-                         <div className="lg:col-span-2 hidden lg:block"></div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3 mt-3">
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500">Giá Net</label>
-                          <input
-                            type="text"
-                            value={new Intl.NumberFormat('en-US').format(ext.net)}
-                            onChange={(e) => {
-                                const val = Number(e.target.value.replace(/,/g, ''));
-                                if (!isNaN(val)) handleExtensionChange(ext.id, 'net', val);
-                            }}
-                            className="w-full p-2 border border-gray-300 rounded text-sm font-mono text-right"
-                          />
-                        </div>
-                         <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500">VAT</label>
-                          <input
-                            type="text"
-                            value={new Intl.NumberFormat('en-US').format(ext.vat)}
-                            onChange={(e) => {
-                                const val = Number(e.target.value.replace(/,/g, ''));
-                                if (!isNaN(val)) handleExtensionChange(ext.id, 'vat', val);
-                            }}
-                            className="w-full p-2 border border-gray-300 rounded text-sm font-mono text-right"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500">Tổng</label>
+                          <label className="text-xs font-medium text-gray-500">Amount (Tổng)</label>
                            <input
                             type="text"
                             value={new Intl.NumberFormat('en-US').format(ext.total)}
-                            readOnly
-                            className="w-full p-2 border border-gray-300 rounded text-sm font-mono text-right bg-gray-100 font-bold"
+                            onChange={(e) => {
+                                const val = Number(e.target.value.replace(/,/g, ''));
+                                if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val);
+                            }}
+                            className="w-full p-2 border border-gray-300 rounded text-sm font-mono text-right"
                           />
                         </div>
                       </div>
