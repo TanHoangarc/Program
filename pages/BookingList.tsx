@@ -1,9 +1,8 @@
-
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary } from '../utils';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface BookingListProps {
   jobs: JobData[];
@@ -14,6 +13,8 @@ interface BookingListProps {
 
 export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initialBookingId, onClearTargetBooking }) => {
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   // Group jobs by Booking
   const bookingData = useMemo(() => {
@@ -25,6 +26,21 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
 
     return summaries.sort((a, b) => b.month.localeCompare(a.month));
   }, [jobs]);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
+  const paginatedData = bookingData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Totals
+  const totals = useMemo(() => {
+    return bookingData.reduce((acc, b) => ({
+      sell: acc.sell + b.totalSell,
+      cost: acc.cost + b.totalCost,
+      profit: acc.profit + b.totalProfit,
+      cont20: acc.cont20 + b.totalCont20,
+      cont40: acc.cont40 + b.totalCont40,
+    }), { sell: 0, cost: 0, profit: 0, cont20: 0, cont40: 0 });
+  }, [bookingData]);
 
   // Auto-open modal if initialBookingId matches
   useEffect(() => {
@@ -43,12 +59,6 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
   const handleSaveDetails = (updatedDetails: BookingCostDetails, updatedJobs?: JobData[]) => {
     if (!selectedBooking) return;
     
-    // We update ALL jobs in this booking with the new shared bookingCostDetails
-    // If specific job fields (like extensions/local charge) were edited in the modal (if supported later), 
-    // updatedJobs would carry those changes. 
-    // Currently BookingDetailModal doesn't modify individual jobs except via sync, 
-    // but we iterate to ensure costDetails are synced.
-    
     selectedBooking.jobs.forEach(job => {
         const updatedJob = { 
             ...job, 
@@ -57,12 +67,11 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
         onEditJob(updatedJob);
     });
 
-    // Update local state to reflect changes immediately
     setSelectedBooking(prev => prev ? { ...prev, costDetails: updatedDetails } : null);
   };
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
   };
 
   return (
@@ -89,7 +98,7 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {bookingData.map((booking) => (
+            {paginatedData.map((booking) => (
               <tr 
                 key={booking.bookingId} 
                 onClick={() => setSelectedBooking(booking)}
@@ -110,13 +119,51 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                 <td className="px-6 py-4 text-center text-gray-500">{booking.totalCont40}</td>
               </tr>
             ))}
-            {bookingData.length === 0 && (
+            {paginatedData.length === 0 && (
               <tr>
                 <td colSpan={9} className="text-center py-8 text-gray-400">Không có dữ liệu booking</td>
               </tr>
             )}
           </tbody>
+          {/* Footer Totals */}
+          {bookingData.length > 0 && (
+            <tfoot className="bg-gray-50 border-t border-gray-300 font-bold text-gray-800 text-xs uppercase">
+              <tr>
+                <td colSpan={4} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
+                <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
+                <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
+                <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
+                <td className="px-6 py-4 text-center text-gray-600">{totals.cont20}</td>
+                <td className="px-6 py-4 text-center text-gray-600">{totals.cont40}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
+
+         {/* Pagination Controls */}
+         {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+            <div>
+              Trang {currentPage} / {totalPages} (Tổng {bookingData.length} bookings)
+            </div>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Detail Modal */}

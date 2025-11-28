@@ -1,7 +1,6 @@
-
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
-import { Briefcase, Search, FileText } from 'lucide-react';
+import { Briefcase, Search, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS } from '../constants';
 
 interface LhkListProps {
@@ -11,6 +10,12 @@ interface LhkListProps {
 export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterMonth, searchTerm]);
 
   const lhkJobs = useMemo(() => {
     // Filter for Long Hoang Logistics customers OR code "LONGHOANG"
@@ -38,7 +43,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   }, [jobs, filterMonth, searchTerm]);
 
   const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   const getProjectCode = (job: JobData) => {
     // Try to determine year from a date field, fallback to current year
@@ -54,6 +59,12 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
     
     return `K${yearSuffix}${monthPad}&${job.jobCode}`;
   };
+
+  const totalSell = lhkJobs.reduce((sum, job) => sum + job.sell, 0);
+
+  // Pagination
+  const totalPages = Math.ceil(lhkJobs.length / ITEMS_PER_PAGE);
+  const paginatedJobs = lhkJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
     <div className="p-8 max-w-full">
@@ -107,8 +118,8 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {lhkJobs.length > 0 ? (
-              lhkJobs.map((job) => (
+            {paginatedJobs.length > 0 ? (
+              paginatedJobs.map((job) => (
                 <tr key={job.id} className="hover:bg-yellow-50/50 transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-900">Tháng {job.month}</td>
                   <td className="px-6 py-4 text-blue-600 font-medium">{job.jobCode}</td>
@@ -129,7 +140,41 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
               </tr>
             )}
           </tbody>
+          {lhkJobs.length > 0 && (
+             <tfoot className="bg-gray-50 font-bold text-slate-700 uppercase text-xs">
+              <tr>
+                <td colSpan={2} className="px-6 py-4 text-right">Tổng Cộng:</td>
+                <td className="px-6 py-4 text-right text-base text-green-600">{formatCurrency(totalSell)}</td>
+                <td colSpan={3}></td>
+              </tr>
+            </tfoot>
+          )}
         </table>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+            <div>
+              Trang {currentPage} / {totalPages} (Tổng {lhkJobs.length} jobs)
+            </div>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

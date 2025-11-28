@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Customer, ShippingLine } from '../types';
-import { Plus, Edit2, Trash2, Search, Save, X, Database, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Save, X, Database, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface DataManagementProps {
@@ -15,6 +15,9 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Customer | ShippingLine | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Form State
@@ -143,6 +146,10 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     item.mst.includes(searchTerm)
   );
 
+  // Pagination
+  const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+  const paginatedData = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   return (
     <div className="p-8 max-w-full">
       {/* Hidden File Input */}
@@ -211,8 +218,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredData.length > 0 ? (
-              filteredData.map((item) => (
+            {paginatedData.length > 0 ? (
+              paginatedData.map((item) => (
                 <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
                   <td className="px-6 py-3 font-mono text-gray-600">{item.mst}</td>
                   <td className="px-6 py-3 font-bold text-blue-700">{item.code}</td>
@@ -236,6 +243,31 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
             )}
           </tbody>
         </table>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+            <div>
+              Trang {currentPage} / {totalPages} (Tổng {filteredData.length} items)
+            </div>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}

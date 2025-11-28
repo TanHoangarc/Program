@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, DollarSign, CreditCard, Clock, Ship } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -33,13 +33,18 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
   const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
 
+  // Filters
   const [filterJobCode, setFilterJobCode] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
   const [filterLine, setFilterLine] = useState('');
 
-  React.useEffect(() => {
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (activeMenuId && !(event.target as Element).closest('.action-menu-container')) {
         setActiveMenuId(null);
@@ -48,6 +53,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [activeMenuId]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterJobCode, filterMonth, filterCustomer, filterBooking, filterLine]);
 
   const handleAddNew = () => {
     setEditingJob(null);
@@ -209,7 +219,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
-        "Chi Payment": job.chiPayment, "Chi Cược": job.chiCuoc, "Ngày Chi Cược": job.ngayChiCuoc, "Ngày Chi Hoàn": job.ngayChiHoan,
         "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
         "Mã KH Cược": customers.find(c => c.id === job.maKhCuocId)?.code || '', "Thu Cược": job.thuCuoc,
         "Ngày Thu Cược": job.ngayThuCuoc, "Ngày Thu Hoàn": job.ngayThuHoan, "Thu Gia Hạn": extTotal, "Invoice Gia Hạn": extInvoices
@@ -221,23 +230,40 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     XLSX.writeFile(wb, `Logistics_Job_Data.xlsx`);
   };
 
-  const filteredJobs = jobs.filter(job => {
-    const matchesJobCode = filterJobCode ? job.jobCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
-    const matchesLine = filterLine ? job.line === filterLine : true;
-    const matchesMonth = filterMonth ? job.month === filterMonth : true;
-    const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
-    const matchesBooking = filterBooking ? job.booking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
-    return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
-  });
+  const filteredJobs = useMemo(() => {
+    return jobs.filter(job => {
+      const matchesJobCode = filterJobCode ? job.jobCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
+      const matchesLine = filterLine ? job.line === filterLine : true;
+      const matchesMonth = filterMonth ? job.month === filterMonth : true;
+      const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
+      const matchesBooking = filterBooking ? job.booking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
+      return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
+    });
+  }, [jobs, filterJobCode, filterLine, filterMonth, filterCustomer, filterBooking]);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
+  const paginatedJobs = filteredJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Totals Calculation (Based on Filtered Data)
+  const totals = useMemo(() => {
+    return filteredJobs.reduce((acc, job) => ({
+      cost: acc.cost + job.cost,
+      sell: acc.sell + job.sell,
+      profit: acc.profit + job.profit,
+      cont20: acc.cont20 + job.cont20,
+      cont40: acc.cont40 + job.cont40,
+    }), { cost: 0, sell: 0, profit: 0, cont20: 0, cont40: 0 });
+  }, [filteredJobs]);
 
   const clearFilters = () => {
     setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterCustomer(''); setFilterBooking('');
   };
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+  const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full pb-10">
       <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls, .csv" className="hidden" />
 
       {/* Header */}
@@ -320,8 +346,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredJobs.length > 0 ? (
-              filteredJobs.map((job) => (
+            {paginatedJobs.length > 0 ? (
+              paginatedJobs.map((job) => (
                 <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
                   <td className="px-6 py-3 text-gray-600">T{job.month}</td>
                   <td className="px-6 py-3 font-semibold text-blue-700">{job.jobCode}</td>
@@ -363,11 +389,50 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
             )}
           </tbody>
+          {/* Footer Totals */}
+          {filteredJobs.length > 0 && (
+            <tfoot className="bg-gray-50 border-t border-gray-300 font-bold text-gray-800 text-xs uppercase">
+              <tr>
+                <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng (Tất cả kết quả lọc):</td>
+                <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
+                <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
+                <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
+                <td className="px-6 py-4 text-center">
+                  <div className="flex flex-col gap-1 items-center">
+                    <span className="text-[10px]">{totals.cont20} x 20'</span>
+                    <span className="text-[10px]">{totals.cont40} x 40'</span>
+                  </div>
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
         </table>
-        <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-between items-center text-xs font-medium text-gray-500">
-           <span>{filteredJobs.length} kết quả</span>
-           <span>Tổng Profit: <span className="text-green-600 font-bold ml-1">{formatCurrency(filteredJobs.reduce((sum, j) => sum + j.profit, 0))}</span></span>
-        </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+            <div>
+              Trang {currentPage} / {totalPages} (Tổng {filteredJobs.length} jobs)
+            </div>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <JobModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingJob} customers={customers} lines={lines} onAddLine={onAddLine} onViewBookingDetails={handleViewBookingDetails} isViewMode={isViewMode} onSwitchToEdit={() => setIsViewMode(false)} />

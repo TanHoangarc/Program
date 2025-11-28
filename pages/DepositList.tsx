@@ -1,7 +1,6 @@
-
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, Customer } from '../types';
-import { Search, ArrowRightLeft, Building2, UserCircle, Filter, X } from 'lucide-react';
+import { Search, ArrowRightLeft, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS } from '../constants';
 
 interface DepositListProps {
@@ -15,6 +14,14 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
   const [filterEntity, setFilterEntity] = useState(''); // Stores Line Name or Customer ID
   const [filterMonth, setFilterMonth] = useState('');
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, filterEntity, filterMonth, mode]);
 
   // Derived Lists for Dropdowns
   const uniqueLines = useMemo(() => {
@@ -46,44 +53,62 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
   const lineDeposits = useMemo(() => {
     if (mode !== 'line') return [];
     
-    const groups: Record<string, {
-      month: string,
-      booking: string,
-      amount: number,
-      dateOut: string, // Ngay Cuoc
-      dateIn: string,  // Ngay Hoan
-      line: string
-    }> = {};
+    // Updated Logic: Use deposits from BookingCostDetails
+    // Since BookingCostDetails.deposits is the source of truth for "Cược Hãng Tàu" now.
+    
+    // We need to iterate over all jobs, extract unique bookings, and get their deposits
+    const processedBookings = new Set<string>();
+    const depositsList: any[] = [];
 
     jobs.forEach(job => {
-      if (job.chiCuoc > 0 && job.booking) {
-        if (!groups[job.booking]) {
-          groups[job.booking] = {
-            month: job.month,
-            booking: job.booking,
-            line: job.line,
-            amount: 0,
-            dateOut: job.ngayChiCuoc, 
-            dateIn: job.ngayChiHoan
-          };
-        }
-        groups[job.booking].amount += job.chiCuoc;
+      if (job.booking && !processedBookings.has(job.booking)) {
+        processedBookings.add(job.booking);
         
-        if (!groups[job.booking].dateOut && job.ngayChiCuoc) groups[job.booking].dateOut = job.ngayChiCuoc;
-        if (!groups[job.booking].dateIn && job.ngayChiHoan) groups[job.booking].dateIn = job.ngayChiHoan;
+        const details = job.bookingCostDetails;
+        if (details && details.deposits && details.deposits.length > 0) {
+            // Aggregate all deposits for this booking
+            let totalAmt = 0;
+            let lastDateOut = '';
+            let lastDateIn = '';
+
+            details.deposits.forEach(d => {
+                totalAmt += d.amount;
+                if (d.dateOut) lastDateOut = d.dateOut;
+                if (d.dateIn) lastDateIn = d.dateIn;
+            });
+
+            // Status Check
+            let isPending = false;
+            // If any deposit line item is missing dateIn, consider the booking deposit pending? 
+            // Or use the last one? Let's assume if any amount is outstanding.
+            // Simplified: If 'lastDateIn' is present, it's completed (based on previous logic), 
+            // but strictly we should check if all items have dateIn.
+            // For listing, let's stick to the aggregate display.
+            const allCompleted = details.deposits.every(d => !!d.dateIn);
+
+            const item = {
+                month: job.month,
+                booking: job.booking,
+                line: job.line,
+                amount: totalAmt,
+                dateOut: lastDateOut,
+                dateIn: allCompleted ? lastDateIn : '', // If not all completed, show as pending
+                isCompleted: allCompleted
+            };
+
+            depositsList.push(item);
+        }
       }
     });
 
-    let result = Object.values(groups);
-
     // Filter Logic
-    result = result.filter(item => {
+    let result = depositsList.filter(item => {
       const matchMonth = filterMonth ? item.month === filterMonth : true;
       const matchLine = filterEntity ? item.line === filterEntity : true;
       
       let matchStatus = true;
-      if (filterStatus === 'pending') matchStatus = !item.dateIn;
-      if (filterStatus === 'completed') matchStatus = !!item.dateIn;
+      if (filterStatus === 'pending') matchStatus = !item.isCompleted;
+      if (filterStatus === 'completed') matchStatus = item.isCompleted;
 
       return matchMonth && matchLine && matchStatus;
     });
@@ -128,6 +153,10 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
 
   const currentList = mode === 'line' ? lineDeposits : customerDeposits;
   const totalAmount = currentList.reduce((sum, item) => sum + item.amount, 0);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(currentList.length / ITEMS_PER_PAGE);
+  const paginatedList = currentList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
     <div className="p-8 max-w-full">
@@ -179,7 +208,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                  <option value="">{mode === 'line' ? 'Tất cả Hãng Tàu' : 'Tất cả Khách Hàng'}</option>
                  {mode === 'line' 
                     ? uniqueLines.map(l => <option key={l} value={l}>{l}</option>)
-                    : customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                    : customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>
                  }
                </select>
 
@@ -233,8 +262,8 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
             </thead>
             <tbody className="divide-y divide-gray-100">
               {mode === 'line' ? (
-                lineDeposits.length > 0 ? (
-                  lineDeposits.map((item, idx) => (
+                paginatedList.length > 0 ? (
+                  paginatedList.map((item, idx) => (
                     <tr key={idx} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 font-medium text-slate-900">Tháng {item.month}</td>
                       <td className="px-6 py-4 text-blue-600 font-bold">{item.booking}</td>
@@ -243,7 +272,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                       <td className="px-6 py-4 text-center text-slate-600">{formatDate(item.dateOut)}</td>
                       <td className="px-6 py-4 text-center text-slate-600">{formatDate(item.dateIn)}</td>
                       <td className="px-6 py-4 text-center">
-                        {item.dateIn ? (
+                        {item.isCompleted ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             Đã hoàn
                           </span>
@@ -259,8 +288,8 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                   <tr><td colSpan={7} className="text-center py-12 text-gray-400">Không có dữ liệu phù hợp</td></tr>
                 )
               ) : (
-                customerDeposits.length > 0 ? (
-                  customerDeposits.map((item) => (
+                paginatedList.length > 0 ? (
+                  paginatedList.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 font-medium text-slate-900">Tháng {item.month}</td>
                       <td className="px-6 py-4 text-blue-600 font-bold">{item.jobCode}</td>
@@ -287,15 +316,40 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                 )
               )}
             </tbody>
-            <tfoot className="bg-gray-50 font-bold text-slate-700">
+            <tfoot className="bg-gray-50 font-bold text-slate-700 uppercase text-xs">
               <tr>
-                <td colSpan={mode === 'line' ? 3 : 4} className="px-6 py-4 text-right">Tổng Cược:</td>
-                <td className="px-6 py-4 text-right text-lg">{formatCurrency(totalAmount)}</td>
+                <td colSpan={mode === 'line' ? 3 : 4} className="px-6 py-4 text-right">Tổng Cộng (Tất cả kết quả lọc):</td>
+                <td className="px-6 py-4 text-right text-base text-red-600">{formatCurrency(totalAmount)}</td>
                 <td colSpan={3}></td>
               </tr>
             </tfoot>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+            <div>
+              Trang {currentPage} / {totalPages} (Tổng {currentList.length} items)
+            </div>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
