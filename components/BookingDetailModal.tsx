@@ -53,8 +53,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   
   // Revenue Logic
   // Post VAT: Display Value
-  // Pre VAT: Display Value / 1.08
-  const getRevenueValue = (val: number) => vatMode === 'post' ? val : (val / 1.08);
+  // Pre VAT: Display Value / 1.08 -> Rounded to Integer
+  const getRevenueValue = (val: number) => vatMode === 'post' ? val : Math.round(val / 1.08);
 
   const summaryLocalChargeRevenue = getRevenueValue(totalLocalChargeRevenue);
   const summaryExtensionRevenue = getRevenueValue(totalExtensionRevenue);

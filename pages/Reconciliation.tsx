@@ -43,8 +43,9 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
       // 3. Sell = Job Sell
       const sell = job.sell || 0;
 
-      // 4. Thu = Revenue In Amount (Local Charge Total)
-      const actualRevenue = job.localChargeTotal || 0;
+      // 4. Thu = Revenue In Amount (Local Charge Total) divided by 1.08 (Net)
+      // Updated as per request: Divide by 1.08 and take integer (round)
+      const actualRevenue = Math.round((job.localChargeTotal || 0) / 1.08);
 
       // Differences
       const diffCost = realCost - actualExpense;
@@ -134,7 +135,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
                    <th className="px-6 py-4 text-right bg-blue-50/50 font-bold border-r border-blue-100">Chênh lệch</th>
                    
                    <th className="px-6 py-4 text-right bg-green-50/50 border-l border-green-100">Sell</th>
-                   <th className="px-6 py-4 text-right bg-green-50/50">Thu (HĐ)</th>
+                   <th className="px-6 py-4 text-right bg-green-50/50">Thu (HĐ) / 1.08</th>
                    <th className="px-6 py-4 text-right bg-green-50/50 font-bold border-r border-green-100">Chênh lệch</th>
                 </tr>
              </thead>
