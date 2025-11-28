@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, DollarSign, CreditCard, Clock } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, DollarSign, CreditCard, Clock, Ship } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -25,6 +25,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
+  const [isViewMode, setIsViewMode] = useState(false);
   const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -37,10 +38,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
 
   // Filters
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filterJobCode, setFilterJobCode] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
+  const [filterLine, setFilterLine] = useState('');
 
   // Close menu when clicking outside
   React.useEffect(() => {
@@ -55,13 +57,24 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const handleAddNew = () => {
     setEditingJob(null);
+    setIsViewMode(false);
     setIsModalOpen(true);
   };
 
   const handleEdit = (job: JobData) => {
     setEditingJob(job);
+    setIsViewMode(false);
     setIsModalOpen(true);
     setActiveMenuId(null);
+  };
+
+  const handleRowClick = (job: JobData, e: React.MouseEvent) => {
+    // Prevent opening View Mode if clicking on Action column or Checkboxes (if any)
+    if ((e.target as Element).closest('.action-menu-container')) return;
+    
+    setEditingJob(job);
+    setIsViewMode(true);
+    setIsModalOpen(true);
   };
 
   const handleDuplicate = (job: JobData) => {
@@ -139,18 +152,20 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws);
       
-      // Simple mapping logic: Assuming columns match "Export Excel" headers
-      // Or best effort mapping properties
-      let importedCount = 0;
+      let addedCount = 0;
+      let updatedCount = 0;
+
       data.forEach((row: any) => {
-        const newJob: JobData = {
-          id: Date.now().toString() + Math.random().toString().slice(2,5),
+        const rowJobCode = row['Job'] || row['Job Code'];
+        
+        // Basic mapping
+        const mappedData: Partial<JobData> = {
           month: row['Tháng']?.toString() || '1',
-          jobCode: row['Job'] || row['Job Code'] || `IMP-${Date.now()}`,
+          jobCode: rowJobCode || `IMP-${Date.now()}`,
           booking: row['Booking'] || '',
           consol: row['Consol'] || '',
           line: row['Line'] || '',
-          customerId: '', // Needs lookup or simple text
+          customerId: '', // Needs lookup in real world, skipping for simple import
           customerName: row['Customer'] || '',
           hbl: row['HBL'] || '',
           transit: row['Transit'] || 'HCM',
@@ -166,10 +181,12 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           ngayChiCuoc: row['Ngày Chi Cược'] || '',
           ngayChiHoan: row['Ngày Chi Hoàn'] || '',
 
-          localChargeTotal: Number(row['Thu Payment']) || 0,
-          localChargeInvoice: row['Invoice'] || '',
+          // Fixed mapping keys here to match Export headers
+          localChargeTotal: Number(row['Thu Payment (Local Charge)']) || Number(row['Thu Payment']) || 0,
+          localChargeInvoice: row['Invoice Thu'] || row['Invoice'] || '',
+          
           bank: row['Ngân hàng'] || '',
-          localChargeDate: '', // Default empty if not in excel
+          localChargeDate: '', 
           localChargeNet: 0,
           localChargeVat: 0,
 
@@ -180,10 +197,34 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           
           extensions: []
         };
-        onAddJob(newJob);
-        importedCount++;
+
+        // Check if Job already exists
+        const existingJob = jobs.find(j => j.jobCode === mappedData.jobCode);
+
+        if (existingJob) {
+          // Update existing job
+          const updatedJob: JobData = {
+            ...existingJob,
+            ...mappedData,
+            id: existingJob.id, // Keep existing ID
+            // Preserve deeper structures if import doesn't have them
+            extensions: existingJob.extensions,
+            bookingCostDetails: existingJob.bookingCostDetails
+          };
+          onEditJob(updatedJob);
+          updatedCount++;
+        } else {
+          // Add new job
+          const newJob: JobData = {
+            ...mappedData as JobData,
+            id: Date.now().toString() + Math.random().toString().slice(2,5),
+          };
+          onAddJob(newJob);
+          addedCount++;
+        }
       });
-      alert(`Đã nhập thành công ${importedCount} dòng dữ liệu.`);
+
+      alert(`Hoàn tất nhập dữ liệu:\n- Thêm mới: ${addedCount}\n- Cập nhật: ${updatedCount}`);
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsBinaryString(file);
@@ -235,17 +276,17 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const filteredJobs = jobs.filter(job => {
-    const matchesSearch = 
-      job.jobCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.line.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesJobCode = filterJobCode ? job.jobCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
+    const matchesLine = filterLine ? job.line === filterLine : true;
     const matchesMonth = filterMonth ? job.month === filterMonth : true;
     const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
     const matchesBooking = filterBooking ? job.booking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
-    return matchesSearch && matchesMonth && matchesCustomer && matchesBooking;
+    return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
   });
 
   const clearFilters = () => {
-    setSearchTerm('');
+    setFilterJobCode('');
+    setFilterLine('');
     setFilterMonth('');
     setFilterCustomer('');
     setFilterBooking('');
@@ -290,13 +331,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         </div>
 
         {/* Filters Bar */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-4 items-end md:items-center">
-            <div className="flex items-center text-slate-500 font-medium">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col gap-4">
+            <div className="flex items-center text-slate-500 font-medium border-b border-gray-100 pb-2">
               <Filter className="w-4 h-4 mr-2" />
-              Bộ lọc:
+              Bộ lọc nâng cao:
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 w-full">
                <select 
                  value={filterMonth} 
                  onChange={(e) => setFilterMonth(e.target.value)}
@@ -315,6 +356,18 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                </select>
 
+               <div className="relative">
+                  <Ship className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <select 
+                    value={filterLine} 
+                    onChange={(e) => setFilterLine(e.target.value)}
+                    className="w-full pl-10 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
+                  >
+                    <option value="">Tất cả Line</option>
+                    {lines.map((line, idx) => <option key={idx} value={line}>{line}</option>)}
+                  </select>
+               </div>
+
                <input 
                  type="text" 
                  placeholder="Lọc theo Booking..." 
@@ -327,18 +380,20 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input 
                     type="text" 
-                    placeholder="Tìm Job Code, Line..." 
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Tìm chính xác Job Code..." 
+                    className="w-full pl-10 pr-4 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-blue-50/30 font-medium"
+                    value={filterJobCode}
+                    onChange={(e) => setFilterJobCode(e.target.value)}
                   />
                </div>
             </div>
 
-            {(filterMonth || filterCustomer || filterBooking || searchTerm) && (
-              <button onClick={clearFilters} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors" title="Xóa bộ lọc">
-                <X className="w-5 h-5" />
-              </button>
+            {(filterMonth || filterCustomer || filterBooking || filterJobCode || filterLine) && (
+              <div className="flex justify-end">
+                <button onClick={clearFilters} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded transition-colors text-sm flex items-center">
+                  <X className="w-4 h-4 mr-1" /> Xóa bộ lọc
+                </button>
+              </div>
             )}
         </div>
       </div>
@@ -364,7 +419,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             <tbody className="divide-y divide-gray-100">
               {filteredJobs.length > 0 ? (
                 filteredJobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-blue-50/50 transition-colors group relative">
+                  <tr 
+                    key={job.id} 
+                    className="hover:bg-blue-50/50 transition-colors group relative cursor-pointer"
+                    onClick={(e) => handleRowClick(job, e)}
+                  >
                     <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">Tháng {job.month}</td>
                     <td className="px-6 py-4 text-blue-600 font-medium">{job.jobCode}</td>
                     <td className="px-6 py-4 text-slate-700">
@@ -387,7 +446,10 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                     <td className="px-6 py-4 text-center action-menu-container">
                       <div className="relative inline-block text-left">
                          <button 
-                           onClick={() => setActiveMenuId(activeMenuId === job.id ? null : job.id)}
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             setActiveMenuId(activeMenuId === job.id ? null : job.id);
+                           }}
                            className="text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-slate-100 transition-colors"
                          >
                            <MoreVertical className="w-5 h-5" />
@@ -454,6 +516,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         lines={lines}
         onAddLine={onAddLine}
         onViewBookingDetails={handleViewBookingDetails}
+        isViewMode={isViewMode}
+        onSwitchToEdit={() => setIsViewMode(false)}
       />
 
       {viewingBooking && (
