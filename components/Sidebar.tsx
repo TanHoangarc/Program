@@ -1,13 +1,14 @@
 
 import React from 'react';
-import { LayoutDashboard, FileInput, Ship, Settings, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Settings, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers';
   onNavigate: (page: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers') => void;
+  onResetData: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onResetData }) => {
   return (
     <div className="w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 flex flex-col shadow-xl z-50">
       <div className="p-6 flex items-center space-x-3 border-b border-slate-700">
@@ -203,12 +204,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
         </button>
       </nav>
 
-      <div className="p-4 border-t border-slate-700">
+      <div className="p-4 border-t border-slate-700 space-y-2">
+        <button 
+          onClick={onResetData}
+          className="w-full flex items-center justify-center space-x-2 bg-red-900/40 text-red-400 hover:bg-red-900/60 hover:text-red-200 px-3 py-2 rounded-lg text-sm transition-all border border-red-900/50"
+          title="Xóa toàn bộ dữ liệu và khôi phục về mặc định"
+        >
+          <RotateCcw className="w-4 h-4" />
+          <span>Reset Data</span>
+        </button>
+
         <div className="flex items-center space-x-3 text-slate-400 hover:text-white cursor-pointer px-4 py-2">
           <Settings className="w-5 h-5" />
           <span>Cài đặt</span>
         </div>
-        <div className="mt-4 text-xs text-slate-500 text-center">
+        <div className="mt-2 text-xs text-slate-500 text-center">
           v1.5.0
         </div>
       </div>

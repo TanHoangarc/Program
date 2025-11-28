@@ -116,6 +116,13 @@ const App: React.FC = () => {
     setCurrentPage('booking');
   };
 
+  const handleResetData = () => {
+    if (window.confirm('CẢNH BÁO: Hành động này sẽ XÓA TOÀN BỘ danh sách Job hiện tại (Làm trống bảng nhập liệu).\n\nDữ liệu Khách hàng và Hãng tàu sẽ được giữ nguyên.\n\nBạn có chắc chắn muốn tiếp tục không?')) {
+      setJobs([]);
+      localStorage.setItem('logistics_jobs_v2', JSON.stringify([]));
+    }
+  };
+
   // Derive simple string array for backward compatibility with JobModal
   const lineNames = shippingLines.map(l => l.name);
 
@@ -192,6 +199,7 @@ const App: React.FC = () => {
           setCurrentPage(page);
           setTargetBookingId(null); // Reset target when manually navigating
         }} 
+        onResetData={handleResetData}
       />
       
       <main className="ml-64 flex-1 transition-all duration-300">
