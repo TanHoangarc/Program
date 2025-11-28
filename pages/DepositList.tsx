@@ -208,7 +208,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                  <option value="">{mode === 'line' ? 'Tất cả Hãng Tàu' : 'Tất cả Khách Hàng'}</option>
                  {mode === 'line' 
                     ? uniqueLines.map(l => <option key={l} value={l}>{l}</option>)
-                    : customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>
+                    : customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
                  }
                </select>
 
