@@ -47,13 +47,24 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
 
   // Totals
   const totals = useMemo(() => {
-    return bookingData.reduce((acc, b) => ({
-      sell: acc.sell + b.totalSell,
-      cost: acc.cost + b.totalCost,
-      profit: acc.profit + b.totalProfit,
-      cont20: acc.cont20 + b.totalCont20,
-      cont40: acc.cont40 + b.totalCont40,
-    }), { sell: 0, cost: 0, profit: 0, cont20: 0, cont40: 0 });
+    return bookingData.reduce((acc, b) => {
+      // Calculate Target for this booking to derive diff
+      const target = b.jobs.reduce((sum, j) => {
+        const deduction = (j.cont20 * 250000) + (j.cont40 * 500000);
+        return sum + (j.cost - deduction);
+      }, 0);
+      const actualNet = b.costDetails.localCharge.net || 0;
+      const diff = actualNet - target;
+
+      return {
+        sell: acc.sell + b.totalSell,
+        cost: acc.cost + b.totalCost,
+        profit: acc.profit + b.totalProfit,
+        cont20: acc.cont20 + b.totalCont20,
+        cont40: acc.cont40 + b.totalCont40,
+        diff: acc.diff + diff
+      };
+    }, { sell: 0, cost: 0, profit: 0, cont20: 0, cont40: 0, diff: 0 });
   }, [bookingData]);
 
   // Auto-open modal if initialBookingId matches
@@ -121,6 +132,7 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
               <th className="px-6 py-4 text-center">Số Job</th>
               <th className="px-6 py-4 text-right">Tổng Thu</th>
               <th className="px-6 py-4 text-right">Tổng Chi (Payment)</th>
+              <th className="px-6 py-4 text-right">Chênh lệch</th>
               <th className="px-6 py-4 text-right">Profit</th>
               <th className="px-6 py-4 text-center">Cont 20'</th>
               <th className="px-6 py-4 text-center">Cont 40'</th>
@@ -128,13 +140,13 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.map((booking) => {
-              // CALCULATION FOR MISMATCH CHECK
+              // CALCULATION FOR MISMATCH CHECK (Used only for Diff column now)
               const target = booking.jobs.reduce((sum, j) => {
                 const deduction = (j.cont20 * 250000) + (j.cont40 * 500000);
                 return sum + (j.cost - deduction);
               }, 0);
               const actualNet = booking.costDetails.localCharge.net || 0;
-              const isMismatch = target !== actualNet;
+              const diff = actualNet - target;
 
               return (
                 <tr 
@@ -150,24 +162,14 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                   </td>
                   <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(booking.totalSell)}</td>
                   
-                  {/* Total Cost Column with Mismatch Warning */}
-                  <td className="px-6 py-4 text-right font-medium relative group/cell">
-                     <div className={`flex items-center justify-end ${isMismatch ? 'text-orange-600 font-bold' : 'text-red-600'}`}>
-                        {isMismatch && <AlertTriangle className="w-4 h-4 mr-2" />}
-                        {formatCurrency(booking.totalCost)}
-                     </div>
-                     {/* Tooltip for mismatch */}
-                     {isMismatch && (
-                       <div className="absolute bottom-full right-0 mb-2 w-72 bg-gray-900 text-white text-xs rounded p-3 shadow-lg hidden group-hover/cell:block z-10">
-                          <div className="font-bold mb-2 text-orange-300 border-b border-gray-700 pb-1">Cảnh báo lệch chi phí:</div>
-                          <div className="flex justify-between mb-1"><span>Target (Cost - Phí Cont):</span> <span className="font-medium">{formatCurrency(target)}</span></div>
-                          <div className="flex justify-between mb-1"><span>Thực tế (Net Invoice):</span> <span className="font-medium">{formatCurrency(actualNet)}</span></div>
-                          <div className="flex justify-between border-t border-gray-700 mt-2 pt-2 text-orange-300 font-bold">
-                             <span>Chênh lệch:</span> 
-                             <span>{formatCurrency(actualNet - target)}</span>
-                          </div>
-                       </div>
-                     )}
+                  {/* Total Cost Column - Cleaned up */}
+                  <td className="px-6 py-4 text-right font-medium text-red-600">
+                     {formatCurrency(booking.totalCost)}
+                  </td>
+
+                  {/* DIFFERENCE COLUMN */}
+                  <td className={`px-6 py-4 text-right font-bold ${diff !== 0 ? 'text-orange-600' : 'text-gray-300'}`}>
+                    {formatCurrency(diff)}
                   </td>
 
                   <td className={`px-6 py-4 text-right font-bold ${booking.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -180,7 +182,7 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
             })}
             {paginatedData.length === 0 && (
               <tr>
-                <td colSpan={9} className="text-center py-8 text-gray-400">Không có dữ liệu booking</td>
+                <td colSpan={10} className="text-center py-8 text-gray-400">Không có dữ liệu booking</td>
               </tr>
             )}
           </tbody>
@@ -191,6 +193,7 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                 <td colSpan={4} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
                 <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                 <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
+                <td className={`px-6 py-4 text-right ${totals.diff !== 0 ? 'text-orange-600' : 'text-gray-400'}`}>{formatCurrency(totals.diff)}</td>
                 <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
                 <td className="px-6 py-4 text-center text-gray-600">{totals.cont20}</td>
                 <td className="px-6 py-4 text-center text-gray-600">{totals.cont40}</td>
