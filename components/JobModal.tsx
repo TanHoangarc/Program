@@ -136,7 +136,15 @@ export const JobModal: React.FC<JobModalProps> = ({
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
   isViewMode = false, onSwitchToEdit
 }) => {
-  const [formData, setFormData] = useState<JobData>(INITIAL_JOB);
+  // Lazy init to ensure robust state start
+  const [formData, setFormData] = useState<JobData>(() => {
+    if (initialData) {
+      return JSON.parse(JSON.stringify(initialData));
+    } else {
+      return { ...INITIAL_JOB, id: Date.now().toString() };
+    }
+  });
+
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ mst: '', name: '', code: '' });
   const [isAddingLine, setIsAddingLine] = useState(false);
@@ -144,30 +152,19 @@ export const JobModal: React.FC<JobModalProps> = ({
   
   const jobInputRef = useRef<HTMLInputElement>(null);
 
+  // Focus effect for new entries
   useEffect(() => {
-    if (isOpen) {
-      if (initialData) {
-        setFormData(JSON.parse(JSON.stringify(initialData)));
-      } else {
-        setFormData({ ...INITIAL_JOB, id: Date.now().toString() });
-      }
-      setNewCustomer({ mst: '', name: '', code: '' });
-      setIsAddingCustomer(false);
-      setIsAddingLine(false);
-      setNewLine('');
-      
-      // Auto focus only on new entry, not when viewing/editing
-      if (!initialData && !isViewMode) {
-        setTimeout(() => jobInputRef.current?.focus(), 100);
-      }
+    if (isOpen && !initialData && !isViewMode) {
+       setTimeout(() => jobInputRef.current?.focus(), 100);
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData, isViewMode]);
 
+  // Sync booking details if they change externally while modal is open (unlikely with current conditional render but good practice)
   useEffect(() => {
     if (isOpen && initialData?.bookingCostDetails) {
         setFormData(prev => ({ ...prev, bookingCostDetails: initialData.bookingCostDetails }));
     }
-  }, [initialData?.bookingCostDetails]);
+  }, [initialData?.bookingCostDetails, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (isViewMode) return;
@@ -209,10 +206,16 @@ export const JobModal: React.FC<JobModalProps> = ({
   const handleCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (isViewMode) return;
     const custId = e.target.value;
+    
     if (custId === 'new') {
       setIsAddingCustomer(true);
       return;
     }
+    
+    // Explicitly exit "Adding Mode" if selecting an existing customer
+    setIsAddingCustomer(false); 
+    setNewCustomer({ mst: '', name: '', code: '' });
+
     const cust = customers.find(c => c.id === custId);
     setFormData(prev => ({ 
       ...prev, 
@@ -232,7 +235,7 @@ export const JobModal: React.FC<JobModalProps> = ({
       customerId: newCustObj.id,
       customerName: newCustObj.name
     }));
-    setIsAddingCustomer(false);
+    // Note: We don't set addingCustomer to false here, we do it after main save
     return newCustObj;
   };
 
@@ -289,8 +292,21 @@ export const JobModal: React.FC<JobModalProps> = ({
     let createdCustomer: Customer | undefined;
     if (isAddingCustomer) {
       createdCustomer = saveNewCustomer();
+      if (!createdCustomer) {
+         alert("Vui lòng nhập thông tin khách hàng mới");
+         return;
+      }
     }
-    onSave(formData, createdCustomer);
+    
+    // Prepare final data
+    const finalJob = { ...formData };
+    if (createdCustomer) {
+        finalJob.customerId = createdCustomer.id;
+        finalJob.customerName = createdCustomer.name;
+    }
+
+    onSave(finalJob, createdCustomer);
+    setIsAddingCustomer(false);
   };
 
   const handleEditClick = (e: React.MouseEvent) => {

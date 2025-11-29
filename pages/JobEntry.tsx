@@ -460,7 +460,21 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         )}
       </div>
 
-      <JobModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingJob} customers={customers} lines={lines} onAddLine={onAddLine} onViewBookingDetails={handleViewBookingDetails} isViewMode={isViewMode} onSwitchToEdit={() => setIsViewMode(false)} />
+      {isModalOpen && (
+        <JobModal 
+          isOpen={isModalOpen} 
+          onClose={() => setIsModalOpen(false)} 
+          onSave={handleSave} 
+          initialData={editingJob} 
+          customers={customers} 
+          lines={lines} 
+          onAddLine={onAddLine} 
+          onViewBookingDetails={handleViewBookingDetails} 
+          isViewMode={isViewMode} 
+          onSwitchToEdit={() => setIsViewMode(false)} 
+        />
+      )}
+      
       {viewingBooking && <BookingDetailModal booking={viewingBooking} onClose={() => setViewingBooking(null)} onSave={handleSaveBookingDetails} zIndex="z-[60]" />}
       {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={handleSaveQuickReceive} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} />}
     </div>
