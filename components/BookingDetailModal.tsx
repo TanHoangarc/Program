@@ -361,7 +361,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
              <div className="flex justify-between items-center mb-5 border-b pb-2">
                  <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide">Local Charge (Hóa đơn Chi)</h3>
                  <div className="text-xs font-medium bg-red-50 text-red-700 px-3 py-1 rounded-full border border-red-100">
-                   Target (Tổng Chi Payment): <strong>{formatMoney(totalJobPayment)}</strong>
+                   Target (Tổng Chi Payment): <strong>{formatMoney(systemTotalAdjustedCost)}</strong>
                  </div>
              </div>
              
@@ -410,10 +410,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   />
                 </div>
              </div>
-             {localCharge.total !== totalJobPayment && (
+             {localCharge.net !== systemTotalAdjustedCost && (
                <div className="flex items-center space-x-2 text-sm text-red-600 bg-red-50 p-3 rounded-md border border-red-100 mt-4 animate-pulse">
                  <AlertCircle className="w-5 h-5" />
-                 <span>Lưu ý: Tổng hóa đơn ({formatMoney(localCharge.total)}) lệch với Tổng Chi Payment ({formatMoney(totalJobPayment)})</span>
+                 <span>Lưu ý: Giá Net ({formatMoney(localCharge.net || 0)}) lệch với Target ({formatMoney(systemTotalAdjustedCost)})</span>
                </div>
              )}
           </div>
