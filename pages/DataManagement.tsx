@@ -73,7 +73,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     const headers = ['MST', mode === 'customers' ? 'Mã Khách hàng' : 'Mã Line', 'Tên Công Ty'];
     
     // Export sorted data as well
-    const dataToExport = [...data].sort((a, b) => a.name.localeCompare(b.name));
+    const dataToExport = [...data].sort((a, b) => a.code.localeCompare(b.code));
 
     const rows = dataToExport.map(item => [
       item.mst,
@@ -150,7 +150,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
       item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.mst.includes(searchTerm)
     )
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.code.localeCompare(b.code));
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
