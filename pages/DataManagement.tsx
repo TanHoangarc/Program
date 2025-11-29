@@ -72,7 +72,10 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   const handleExportExcel = () => {
     const headers = ['MST', mode === 'customers' ? 'Mã Khách hàng' : 'Mã Line', 'Tên Công Ty'];
     
-    const rows = data.map(item => [
+    // Export sorted data as well
+    const dataToExport = [...data].sort((a, b) => a.name.localeCompare(b.name));
+
+    const rows = dataToExport.map(item => [
       item.mst,
       item.code,
       item.name
@@ -141,11 +144,13 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     reader.readAsBinaryString(file);
   };
 
-  const filteredData = data.filter(item => 
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.mst.includes(searchTerm)
-  );
+  const filteredData = data
+    .filter(item => 
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.mst.includes(searchTerm)
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
