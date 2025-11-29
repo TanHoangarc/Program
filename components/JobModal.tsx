@@ -145,6 +145,16 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   });
 
+  // State for Customer Input
+  const [custCodeInput, setCustCodeInput] = useState(() => {
+    if (initialData?.customerId) {
+        const c = customers.find(c => c.id === initialData.customerId);
+        return c ? c.code : '';
+    }
+    return '';
+  });
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ mst: '', name: '', code: '' });
   const [isAddingLine, setIsAddingLine] = useState(false);
@@ -165,6 +175,11 @@ export const JobModal: React.FC<JobModalProps> = ({
         setFormData(prev => ({ ...prev, bookingCostDetails: initialData.bookingCostDetails }));
     }
   }, [initialData?.bookingCostDetails, isOpen]);
+
+  // Filter customers for custom dropdown
+  const filteredCustomers = customers.filter(c => 
+    c.code.toLowerCase().startsWith(custCodeInput.toLowerCase())
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (isViewMode) return;
@@ -203,25 +218,39 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  const handleCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleCustomerInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isViewMode) return;
-    const custId = e.target.value;
-    
-    if (custId === 'new') {
-      setIsAddingCustomer(true);
-      return;
-    }
-    
-    // Explicitly exit "Adding Mode" if selecting an existing customer
-    setIsAddingCustomer(false); 
-    setNewCustomer({ mst: '', name: '', code: '' });
+    const val = e.target.value;
+    setCustCodeInput(val);
+    setShowSuggestions(true);
 
-    const cust = customers.find(c => c.id === custId);
+    const match = customers.find(c => c.code.toLowerCase() === val.toLowerCase());
+    
+    if (match) {
+        setIsAddingCustomer(false);
+        setNewCustomer({ mst: '', name: '', code: '' });
+        setFormData(prev => ({ 
+            ...prev, 
+            customerId: match.id,
+            customerName: match.name
+        }));
+    } else {
+        setIsAddingCustomer(true);
+        setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
+        setNewCustomer(prev => ({ ...prev, code: val }));
+    }
+  };
+
+  const handleSelectSuggestion = (customer: Customer) => {
+    setCustCodeInput(customer.code);
+    setIsAddingCustomer(false);
+    setNewCustomer({ mst: '', name: '', code: '' });
     setFormData(prev => ({ 
-      ...prev, 
-      customerId: custId,
-      customerName: cust ? cust.name : ''
+        ...prev, 
+        customerId: customer.id,
+        customerName: customer.name
     }));
+    setShowSuggestions(false);
   };
 
   const saveNewCustomer = () => {
@@ -415,14 +444,39 @@ export const JobModal: React.FC<JobModalProps> = ({
                   )}
                 </div>
 
-                <div className="lg:col-span-2 space-y-1">
+                {/* CUSTOMER INPUT REPLACEMENT - CUSTOM DROPDOWN */}
+                <div className="lg:col-span-2 space-y-1 relative group">
                   <Label>Customer (Mã KH)</Label>
-                  <Select name="customerId" value={isAddingCustomer ? 'new' : formData.customerId} onChange={handleCustomerChange} disabled={isViewMode}>
-                    <option value="">-- Chọn khách hàng --</option>
-                    {customers.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
-                    {!isViewMode && <option value="new" className="font-bold text-blue-600">+ Thêm khách hàng mới</option>}
-                  </Select>
-                  {selectedCustomerName && <div className="text-[10px] text-gray-500 mt-1 truncate">{selectedCustomerName}</div>}
+                  <div className="relative">
+                     <Input 
+                        value={custCodeInput} 
+                        onChange={handleCustomerInputChange} 
+                        onFocus={() => setShowSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                        readOnly={isViewMode}
+                        placeholder={isViewMode ? "" : "Nhập mã KH..."}
+                        className={isAddingCustomer ? "border-blue-500 ring-1 ring-blue-500" : ""}
+                        autoComplete="off"
+                     />
+                     
+                     {/* Custom Dropdown List */}
+                     {!isViewMode && showSuggestions && custCodeInput && filteredCustomers.length > 0 && (
+                        <ul className="absolute z-50 w-full bg-white border border-gray-300 rounded-b-md shadow-lg max-h-60 overflow-y-auto mt-1 left-0">
+                          {filteredCustomers.map(c => (
+                            <li 
+                              key={c.id}
+                              onClick={() => handleSelectSuggestion(c)}
+                              className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 flex flex-col border-b border-gray-50 last:border-0"
+                            >
+                              <span className="font-bold text-blue-800">{c.code}</span>
+                              <span className="text-xs text-gray-500 truncate">{c.name}</span>
+                            </li>
+                          ))}
+                        </ul>
+                     )}
+                  </div>
+                  {selectedCustomerName && <div className="text-[10px] text-gray-500 mt-1 truncate font-medium">{selectedCustomerName}</div>}
+                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Đang thêm khách hàng mới</div>}
                 </div>
 
                 {isLongHoang && (
@@ -445,7 +499,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <div className="mt-4 p-4 bg-blue-50/50 rounded border border-blue-100 animate-in slide-in-from-top">
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="text-xs font-bold text-blue-900 uppercase">Thêm khách hàng mới</h4>
-                    <button type="button" onClick={() => setIsAddingCustomer(false)}><X className="w-4 h-4 text-gray-400 hover:text-red-500" /></button>
+                    <button type="button" onClick={() => { setIsAddingCustomer(false); setCustCodeInput(''); setFormData(prev => ({...prev, customerId: '', customerName: ''})); }}><X className="w-4 h-4 text-gray-400 hover:text-red-500" /></button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="flex space-x-2 items-end">
@@ -455,7 +509,17 @@ export const JobModal: React.FC<JobModalProps> = ({
                        </div>
                        <button type="button" onClick={handleMstLookup} className="bg-blue-900 text-white px-3 py-2 rounded text-xs font-medium h-[38px]">Tra cứu</button>
                     </div>
-                    <div><Label>Mã KH</Label><Input value={newCustomer.code} onChange={e => setNewCustomer(prev => ({...prev, code: e.target.value}))} /></div>
+                    <div>
+                        <Label>Mã KH</Label>
+                        <Input 
+                            value={newCustomer.code} 
+                            onChange={e => {
+                                const val = e.target.value;
+                                setNewCustomer(prev => ({...prev, code: val}));
+                                setCustCodeInput(val); // Sync main input
+                            }} 
+                        />
+                    </div>
                     <div><Label>Tên công ty</Label><Input value={newCustomer.name} onChange={e => setNewCustomer(prev => ({...prev, name: e.target.value}))} /></div>
                   </div>
                 </div>
