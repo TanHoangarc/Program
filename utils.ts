@@ -1,4 +1,3 @@
-
 import { JobData, BookingSummary } from './types';
 
 export const formatDateVN = (dateStr: string) => {
@@ -16,6 +15,15 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
   if (bookingJobs.length === 0) return null;
 
   const firstJob = bookingJobs[0];
+  
+  // ROBUST DATA MERGE FOR COST DETAILS
+  // Prevents undefined errors when data is malformed
+  const rawDetails = firstJob.bookingCostDetails || {};
+  const safeDetails = {
+    localCharge: rawDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0 },
+    extensionCosts: Array.isArray(rawDetails.extensionCosts) ? rawDetails.extensionCosts : [],
+    deposits: Array.isArray(rawDetails.deposits) ? rawDetails.deposits : []
+  };
 
   const summary: BookingSummary = {
     bookingId: firstJob.booking,
@@ -28,11 +36,7 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
     totalCont20: 0,
     totalCont40: 0,
     jobs: [],
-    costDetails: firstJob.bookingCostDetails || {
-      localCharge: { invoice: '', date: '', net: 0, vat: 0, total: 0 },
-      extensionCosts: [],
-      deposits: []
-    }
+    costDetails: safeDetails
   };
 
   bookingJobs.forEach(job => {

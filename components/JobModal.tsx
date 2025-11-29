@@ -141,7 +141,15 @@ export const JobModal: React.FC<JobModalProps> = ({
     if (initialData) {
       // CRITICAL FIX: Merge with INITIAL_JOB to ensure all fields (extensions, new fees) exist
       // This prevents "White Screen" crashes when opening old jobs
-      return { ...INITIAL_JOB, ...JSON.parse(JSON.stringify(initialData)) };
+      const parsed = JSON.parse(JSON.stringify(initialData));
+      return { 
+        ...INITIAL_JOB, 
+        ...parsed,
+        // Explicitly force arrays to be arrays (handle null/undefined from JSON)
+        extensions: Array.isArray(parsed.extensions) ? parsed.extensions : [],
+        // Ensure nested objects are not null
+        bookingCostDetails: parsed.bookingCostDetails || undefined
+      };
     } else {
       return { ...INITIAL_JOB, id: Date.now().toString() };
     }

@@ -22,15 +22,16 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, zIndex = 'z-50' }) => {
-  const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge);
-  const [extensionCosts, setExtensionCosts] = useState<BookingExtensionCost[]>(booking.costDetails.extensionCosts);
+  // Safe Fallbacks in useState
+  const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0 });
+  const [extensionCosts, setExtensionCosts] = useState<BookingExtensionCost[]>(booking.costDetails.extensionCosts || []);
   const [deposits, setDeposits] = useState<BookingDeposit[]>(booking.costDetails.deposits || []);
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Calculations
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => 
-    sum + job.extensions.reduce((s, ext) => s + ext.total, 0), 0
+    sum + (job.extensions || []).reduce((s, ext) => s + ext.total, 0), 0
   );
   
   const totalLocalChargeRevenue = booking.jobs.reduce((sum, job) => sum + job.localChargeTotal, 0);
@@ -332,7 +333,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                    </thead>
                    <tbody className="divide-y divide-gray-100">
                       {booking.jobs.map(job => {
-                         const extTotal = job.extensions.reduce((sum, e) => sum + e.total, 0);
+                         const extTotal = (job.extensions || []).reduce((sum, e) => sum + e.total, 0);
                          return (
                             <tr key={job.id} className="hover:bg-gray-50">
                                <td className="px-4 py-3 border-r font-medium text-gray-700">{job.jobCode}</td>
@@ -664,7 +665,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
         {/* Footer Actions */}
         <div className="p-4 border-t border-gray-200 flex justify-end space-x-3 bg-white">
           <button onClick={onClose} className="px-5 py-2.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">Đóng</button>
-          <button onClick={handleSave} className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
+          <button onClick={handleSave} className="bg-blue-900 text-white px-5 py-2.5 rounded text-sm font-medium hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
             <Save className="w-4 h-4" /> <span>Lưu Thay Đổi</span>
           </button>
         </div>
