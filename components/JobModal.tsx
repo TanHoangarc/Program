@@ -139,7 +139,9 @@ export const JobModal: React.FC<JobModalProps> = ({
   // Lazy init to ensure robust state start
   const [formData, setFormData] = useState<JobData>(() => {
     if (initialData) {
-      return JSON.parse(JSON.stringify(initialData));
+      // CRITICAL FIX: Merge with INITIAL_JOB to ensure all fields (extensions, new fees) exist
+      // This prevents "White Screen" crashes when opening old jobs
+      return { ...INITIAL_JOB, ...JSON.parse(JSON.stringify(initialData)) };
     } else {
       return { ...INITIAL_JOB, id: Date.now().toString() };
     }
@@ -176,9 +178,9 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   }, [initialData?.bookingCostDetails, isOpen]);
 
-  // Filter customers for custom dropdown
+  // Filter customers for custom dropdown - STARTS WITH logic
   const filteredCustomers = customers.filter(c => 
-    c.code.toLowerCase().startsWith(custCodeInput.toLowerCase())
+    c.code && c.code.toLowerCase().startsWith(custCodeInput.toLowerCase())
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -224,6 +226,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     setCustCodeInput(val);
     setShowSuggestions(true);
 
+    // Exact match check to auto-select
     const match = customers.find(c => c.code.toLowerCase() === val.toLowerCase());
     
     if (match) {
@@ -264,7 +267,6 @@ export const JobModal: React.FC<JobModalProps> = ({
       customerId: newCustObj.id,
       customerName: newCustObj.name
     }));
-    // Note: We don't set addingCustomer to false here, we do it after main save
     return newCustObj;
   };
 
@@ -278,7 +280,7 @@ export const JobModal: React.FC<JobModalProps> = ({
   const handleExtensionChange = (id: string, field: keyof ExtensionData, value: any) => {
     if (isViewMode) return;
     setFormData(prev => {
-      const newExts = prev.extensions.map(ext => {
+      const newExts = (prev.extensions || []).map(ext => {
         if (ext.id === id) {
           return { ...ext, [field]: value };
         }
@@ -292,7 +294,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     if (isViewMode) return;
     setFormData(prev => ({
       ...prev,
-      extensions: [...prev.extensions, { 
+      extensions: [...(prev.extensions || []), { 
         id: Date.now().toString(), 
         customerId: '', 
         invoice: '', 
@@ -308,7 +310,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     if (isViewMode) return;
     setFormData(prev => ({
       ...prev,
-      extensions: prev.extensions.filter(ext => ext.id !== id)
+      extensions: (prev.extensions || []).filter(ext => ext.id !== id)
     }));
   };
 
@@ -608,7 +610,7 @@ export const JobModal: React.FC<JobModalProps> = ({
               </div>
               
               <div className="space-y-3">
-                {formData.extensions.map((ext) => (
+                {(formData.extensions || []).map((ext) => (
                    <div key={ext.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-3 bg-orange-50/20 rounded border border-orange-100 relative group items-end">
                       {!isViewMode && (
                         <button type="button" onClick={() => removeExtension(ext.id)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>

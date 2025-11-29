@@ -4,7 +4,7 @@ import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } f
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
-import { calculateBookingSummary, getPaginationRange } from '../utils';
+import { calculateBookingSummary, getPaginationRange, formatDateVN } from '../utils';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx';
 
@@ -191,7 +191,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             ...existingJob,
             ...mappedData,
             id: existingJob.id,
-            extensions: existingJob.extensions,
+            extensions: existingJob.extensions || [], // FIX: Ensure extensions is an array
             bookingCostDetails: existingJob.bookingCostDetails
           };
           onEditJob(updatedJob);
@@ -213,15 +213,17 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const handleExportExcel = () => {
     const dataToExport = filteredJobs.map(job => {
-      const extTotal = job.extensions.reduce((sum, ext) => sum + ext.total, 0);
-      const extInvoices = job.extensions.map(ext => ext.invoice).filter(Boolean).join(', ');
+      const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+      const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
       return {
         "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
         "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
         "Mã KH Cược": customers.find(c => c.id === job.maKhCuocId)?.code || '', "Thu Cược": job.thuCuoc,
-        "Ngày Thu Cược": job.ngayThuCuoc, "Ngày Thu Hoàn": job.ngayThuHoan, "Thu Gia Hạn": extTotal, "Invoice Gia Hạn": extInvoices
+        "Ngày Thu Cược": formatDateVN(job.ngayThuCuoc), // FIX: Format Date
+        "Ngày Thu Hoàn": formatDateVN(job.ngayThuHoan), // FIX: Format Date
+        "Thu Gia Hạn": extTotal, "Invoice Gia Hạn": extInvoices
       };
     });
     const ws = XLSX.utils.json_to_sheet(dataToExport);
