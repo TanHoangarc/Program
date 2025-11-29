@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, Customer } from '../types';
 import { Search, ArrowRightLeft, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS } from '../constants';
+import { formatDateVN } from '../utils';
 
 interface DepositListProps {
   mode: 'line' | 'customer';
@@ -34,11 +35,6 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
-
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('vi-VN');
-  };
 
   const clearFilters = () => {
     setFilterStatus('all');
@@ -113,7 +109,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
       return matchMonth && matchLine && matchStatus;
     });
 
-    return result.sort((a, b) => b.month.localeCompare(a.month));
+    return result.sort((a, b) => Number(b.month) - Number(a.month));
   }, [jobs, mode, filterMonth, filterEntity, filterStatus]);
 
   // --- LOGIC FOR CUSTOMER DEPOSIT (KHÁCH HÀNG) ---
@@ -148,7 +144,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
           dateOut: job.ngayThuHoan // Ngay tra hoan
         };
       })
-      .sort((a, b) => b.month.localeCompare(a.month));
+      .sort((a, b) => Number(b.month) - Number(a.month));
   }, [jobs, customers, mode, filterMonth, filterEntity, filterStatus]);
 
   const currentList = mode === 'line' ? lineDeposits : customerDeposits;
@@ -269,8 +265,8 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                       <td className="px-6 py-4 text-blue-600 font-bold">{item.booking}</td>
                       <td className="px-6 py-4 text-slate-600">{item.line}</td>
                       <td className="px-6 py-4 text-right font-medium text-red-600">{formatCurrency(item.amount)}</td>
-                      <td className="px-6 py-4 text-center text-slate-600">{formatDate(item.dateOut)}</td>
-                      <td className="px-6 py-4 text-center text-slate-600">{formatDate(item.dateIn)}</td>
+                      <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateOut)}</td>
+                      <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateIn)}</td>
                       <td className="px-6 py-4 text-center">
                         {item.isCompleted ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -296,8 +292,8 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                       <td className="px-6 py-4 text-slate-600 font-mono">{item.customerCode}</td>
                       <td className="px-6 py-4 text-slate-600 truncate max-w-xs" title={item.customerName}>{item.customerName}</td>
                       <td className="px-6 py-4 text-right font-medium text-indigo-600">{formatCurrency(item.amount)}</td>
-                      <td className="px-6 py-4 text-center text-slate-600">{formatDate(item.dateIn)}</td>
-                      <td className="px-6 py-4 text-center text-slate-600">{formatDate(item.dateOut)}</td>
+                      <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateIn)}</td>
+                      <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateOut)}</td>
                       <td className="px-6 py-4 text-center">
                         {item.dateOut ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -332,7 +328,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
             <div>
               Trang {currentPage} / {totalPages} (Tổng {currentList.length} items)
             </div>
-            <div className="flex space-x-2">
+            <div className="flex space-x-2 items-center">
               <button 
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
@@ -340,6 +336,23 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
+              
+              <div className="flex space-x-1 overflow-x-auto max-w-[200px] md:max-w-none no-scrollbar">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                      currentPage === page
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+
               <button 
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}

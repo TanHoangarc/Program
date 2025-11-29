@@ -4,6 +4,7 @@ import { JobData, Customer } from '../types';
 import { FileUp, FileSpreadsheet, Filter } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx';
+import { formatDateVN } from '../utils';
 
 interface AmisExportProps {
   jobs: JobData[];
@@ -316,7 +317,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                    <tr key={idx} className="hover:bg-gray-50">
                       {mode === 'thu' && (
                         <>
-                          <td className="px-6 py-3">{row.date}</td>
+                          <td className="px-6 py-3">{formatDateVN(row.date)}</td>
                           <td className="px-6 py-3 font-medium text-blue-600">{row.docNo}</td>
                           <td className="px-6 py-3">{row.objCode}</td>
                           <td className="px-6 py-3 truncate max-w-xs">{row.desc}</td>
@@ -325,7 +326,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                       )}
                       {mode === 'chi' && (
                         <>
-                          <td className="px-6 py-3">{row.date}</td>
+                          <td className="px-6 py-3">{formatDateVN(row.date)}</td>
                           <td className="px-6 py-3 font-medium text-blue-600">{row.docNo}</td>
                           <td className="px-6 py-3">{row.content}</td>
                           <td className="px-6 py-3">{row.objCode}</td>
@@ -335,7 +336,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                       )}
                       {mode === 'ban' && (
                         <>
-                          <td className="px-6 py-3">{row.date}</td>
+                          <td className="px-6 py-3">{formatDateVN(row.date)}</td>
                           <td className="px-6 py-3 font-medium text-blue-600">{row.docNo}</td>
                           <td className="px-6 py-3">{row.objCode}</td>
                           <td className="px-6 py-3 truncate max-w-xs">{row.desc}</td>
@@ -347,7 +348,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                       )}
                       {mode === 'mua' && (
                         <>
-                          <td className="px-6 py-3">{row.date}</td>
+                          <td className="px-6 py-3">{formatDateVN(row.date)}</td>
                           <td className="px-6 py-3 font-medium text-blue-600">{row.docNo}</td>
                           <td className="px-6 py-3">{row.invNo}</td>
                           <td className="px-6 py-3">{row.vendorCode}</td>

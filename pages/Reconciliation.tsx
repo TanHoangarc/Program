@@ -31,7 +31,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
       );
     }
 
-    return filtered.map(job => {
+    const mapped = filtered.map(job => {
       // 1. Cost Thực = Job Cost - (All Fees)
       const fees = (job.feeCic || 0) + (job.feeKimberry || 0) + (job.feeEmc || 0) + (job.feePsc || 0) + (job.feeOther || 0);
       const realCost = (job.cost || 0) - fees;
@@ -64,6 +64,8 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
         diffSell
       };
     });
+
+    return mapped.sort((a, b) => Number(b.month) - Number(a.month));
   }, [jobs, filterMonth, searchTerm]);
 
   // Totals
@@ -190,7 +192,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
             <div>
               Trang {currentPage} / {totalPages} (Tổng {reconciliationData.length} dòng)
             </div>
-            <div className="flex space-x-2">
+            <div className="flex space-x-2 items-center">
               <button 
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
@@ -198,6 +200,23 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
+              
+              <div className="flex space-x-1 overflow-x-auto max-w-[200px] md:max-w-none no-scrollbar">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                      currentPage === page
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+
               <button 
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}

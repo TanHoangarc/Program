@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Calculator } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check } from 'lucide-react';
 import { formatDateVN } from '../utils';
 
 interface BookingDetailModalProps {
@@ -26,6 +26,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [extensionCosts, setExtensionCosts] = useState<BookingExtensionCost[]>(booking.costDetails.extensionCosts);
   const [deposits, setDeposits] = useState<BookingDeposit[]>(booking.costDetails.deposits || []);
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Calculations
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => 
@@ -149,12 +150,35 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     onClose();
   };
 
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
   const getProjectCode = (job: JobData) => {
     let year = new Date().getFullYear();
     if (job.localChargeDate) year = new Date(job.localChargeDate).getFullYear();
     const yearSuffix = year.toString().slice(-2);
     const monthPad = job.month.padStart(2, '0');
     return `K${yearSuffix}${monthPad}${job.jobCode}`;
+  };
+
+  const copyColumn = (type: 'sell' | 'cost' | 'vat' | 'project') => {
+    const values = booking.jobs.map(job => {
+      if (type === 'sell') return job.sell;
+      if (type === 'cost') {
+        const costDeduction = (job.cont20 * 250000) + (job.cont40 * 500000);
+        return job.cost - costDeduction;
+      }
+      if (type === 'vat') return job.cost * 0.05263;
+      if (type === 'project') return getProjectCode(job);
+      return '';
+    });
+    
+    navigator.clipboard.writeText(values.join('\n'));
+    setCopiedId(`col-${type}`);
+    setTimeout(() => setCopiedId(null), 1500);
   };
 
   const formatMoney = (val: number) => new Intl.NumberFormat('en-US').format(val);
@@ -191,10 +215,34 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 border-b">
                     <th className="px-4 py-3 border-r font-medium">Job Code</th>
-                    <th className="px-4 py-3 border-r text-right font-medium">Sell</th>
-                    <th className="px-4 py-3 border-r text-right font-medium">Cost (Adjusted)</th>
-                    <th className="px-4 py-3 border-r text-right font-medium">VAT (5.263%)</th>
-                    <th className="px-4 py-3 text-center font-medium">Công trình</th>
+                    
+                    <th className="px-4 py-3 border-r text-right font-medium group w-40">
+                      <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('sell')} title="Copy toàn bộ cột Sell">
+                        Sell
+                        {copiedId === 'col-sell' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </div>
+                    </th>
+                    
+                    <th className="px-4 py-3 border-r text-right font-medium group w-40">
+                       <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('cost')} title="Copy toàn bộ cột Cost">
+                        Cost (Adjusted)
+                        {copiedId === 'col-cost' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </div>
+                    </th>
+                    
+                    <th className="px-4 py-3 border-r text-right font-medium group w-40">
+                       <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('vat')} title="Copy toàn bộ cột VAT">
+                        VAT (5.263%)
+                        {copiedId === 'col-vat' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </div>
+                    </th>
+                    
+                    <th className="px-4 py-3 text-center font-medium group">
+                       <div className="flex items-center justify-center gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('project')} title="Copy toàn bộ cột Công trình">
+                        Công trình
+                        {copiedId === 'col-project' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -202,18 +250,54 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     const costDeduction = (job.cont20 * 250000) + (job.cont40 * 500000);
                     const adjustedCost = job.cost - costDeduction;
                     const vatCalc = job.cost * 0.05263;
+                    const projectCode = getProjectCode(job);
+                    
+                    const sellStr = formatMoney(job.sell);
+                    const costStr = formatMoney(adjustedCost);
+                    const vatStr = formatMoney(vatCalc);
+
                     return (
                       <tr key={job.id} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 border-r font-semibold text-brand-DEFAULT">{job.jobCode}</td>
-                        <td className="px-4 py-3 border-r text-right text-gray-600 font-medium">
-                          {formatMoney(job.sell)}
+                        <td className="px-4 py-3 border-r text-right text-gray-600 font-medium group relative">
+                          {sellStr}
+                          <button 
+                            onClick={() => copyToClipboard(job.sell.toString(), `sell-${job.id}`)}
+                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Copy Sell"
+                          >
+                             {copiedId === `sell-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          </button>
                         </td>
-                        <td className="px-4 py-3 border-r text-right text-gray-600">
-                          {formatMoney(adjustedCost)}
+                        <td className="px-4 py-3 border-r text-right text-gray-600 group relative">
+                          {costStr}
+                          <button 
+                            onClick={() => copyToClipboard(adjustedCost.toString(), `cost-${job.id}`)}
+                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Copy Cost"
+                          >
+                             {copiedId === `cost-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          </button>
                         </td>
-                        <td className="px-4 py-3 border-r text-right text-gray-500">{formatMoney(vatCalc)}</td>
-                        <td className="px-4 py-3 text-center font-mono text-xs text-gray-600">
-                          {getProjectCode(job)}
+                        <td className="px-4 py-3 border-r text-right text-gray-500 group relative">
+                          {vatStr}
+                          <button 
+                            onClick={() => copyToClipboard(vatCalc.toString(), `vat-${job.id}`)}
+                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Copy VAT"
+                          >
+                             {copiedId === `vat-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-center text-xs text-gray-600 group relative">
+                          {projectCode}
+                          <button 
+                            onClick={() => copyToClipboard(projectCode, `proj-${job.id}`)}
+                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Copy Project Code"
+                          >
+                             {copiedId === `proj-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          </button>
                         </td>
                       </tr>
                     );

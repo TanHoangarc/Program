@@ -231,7 +231,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const filteredJobs = useMemo(() => {
-    return jobs.filter(job => {
+    let matches = jobs.filter(job => {
       const matchesJobCode = filterJobCode ? job.jobCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
       const matchesLine = filterLine ? job.line === filterLine : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
@@ -239,6 +239,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const matchesBooking = filterBooking ? job.booking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
       return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
     });
+
+    // Default Sort: Month Descending
+    return matches.sort((a, b) => Number(b.month) - Number(a.month));
   }, [jobs, filterJobCode, filterLine, filterMonth, filterCustomer, filterBooking]);
 
   // Pagination Logic
@@ -415,7 +418,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             <div>
               Trang {currentPage} / {totalPages} (Tổng {filteredJobs.length} jobs)
             </div>
-            <div className="flex space-x-2">
+            <div className="flex space-x-2 items-center">
               <button 
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
@@ -423,6 +426,23 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
+              
+              <div className="flex space-x-1 overflow-x-auto max-w-[200px] md:max-w-none no-scrollbar">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                      currentPage === page
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+
               <button 
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
