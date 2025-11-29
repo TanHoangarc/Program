@@ -2,7 +2,8 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary } from '../utils';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { MONTHS } from '../constants';
 
 interface BookingListProps {
   jobs: JobData[];
@@ -14,7 +15,13 @@ interface BookingListProps {
 export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initialBookingId, onClearTargetBooking }) => {
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [filterMonth, setFilterMonth] = useState('');
   const ITEMS_PER_PAGE = 10;
+
+  // Reset pagination when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterMonth]);
 
   // Group jobs by Booking
   const bookingData = useMemo(() => {
@@ -22,10 +29,15 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
     const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter((b): b is string => !!b)));
     
     // Calculate summaries
-    const summaries = bookingIds.map((id: string) => calculateBookingSummary(jobs, id)).filter(Boolean) as BookingSummary[];
+    let summaries = bookingIds.map((id: string) => calculateBookingSummary(jobs, id)).filter((b): b is BookingSummary => !!b);
+
+    // Apply Filters
+    if (filterMonth) {
+      summaries = summaries.filter(s => s.month === filterMonth);
+    }
 
     return summaries.sort((a, b) => b.month.localeCompare(a.month));
-  }, [jobs]);
+  }, [jobs, filterMonth]);
 
   // Pagination Logic
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
@@ -76,9 +88,24 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
 
   return (
     <div className="p-8 max-w-full">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-800">Quản lý Booking</h1>
-        <p className="text-slate-500 mt-1">Danh sách tổng hợp Booking và chi tiết hóa đơn chi phí</p>
+      <div className="mb-6 flex flex-col md:flex-row justify-between items-end gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">Quản lý Booking</h1>
+          <p className="text-slate-500 mt-1">Danh sách tổng hợp Booking và chi tiết hóa đơn chi phí</p>
+        </div>
+        
+        {/* Filter */}
+        <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+           <Filter className="w-4 h-4 text-gray-500" />
+           <select 
+             value={filterMonth} 
+             onChange={(e) => setFilterMonth(e.target.value)}
+             className="text-sm border-none focus:ring-0 text-gray-700 font-medium bg-transparent outline-none cursor-pointer min-w-[120px]"
+           >
+             <option value="">Tất cả các tháng</option>
+             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+           </select>
+        </div>
       </div>
 
       {/* Main Table List */}
