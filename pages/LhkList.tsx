@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
 import { Briefcase, Search, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS } from '../constants';
+import { getPaginationRange } from '../utils';
 
 interface LhkListProps {
   jobs: JobData[];
@@ -65,6 +66,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   // Pagination
   const totalPages = Math.ceil(lhkJobs.length / ITEMS_PER_PAGE);
   const paginatedJobs = lhkJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const paginationRange = getPaginationRange(currentPage, totalPages);
 
   return (
     <div className="p-8 max-w-full">
@@ -165,6 +167,27 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
+
+              <div className="flex space-x-1">
+                 {paginationRange.map((page, idx) => (
+                    page === '...' ? (
+                      <span key={`dots-${idx}`} className="px-2 py-1.5 text-gray-400">...</span>
+                    ) : (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page as number)}
+                        className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    )
+                 ))}
+              </div>
+
               <button 
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}

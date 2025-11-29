@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
-import { calculateBookingSummary } from '../utils';
+import { calculateBookingSummary, getPaginationRange } from '../utils';
 import { ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { MONTHS } from '../constants';
 
@@ -42,6 +42,7 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
   // Pagination Logic
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
   const paginatedData = bookingData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const paginationRange = getPaginationRange(currentPage, totalPages);
 
   // Totals
   const totals = useMemo(() => {
@@ -182,20 +183,24 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                 <ChevronLeft className="w-4 h-4" />
               </button>
               
-              <div className="flex space-x-1 overflow-x-auto max-w-[200px] md:max-w-none no-scrollbar">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`px-3 py-1.5 rounded border text-xs font-medium ${
-                      currentPage === page
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
+              <div className="flex space-x-1">
+                 {paginationRange.map((page, idx) => (
+                    page === '...' ? (
+                      <span key={`dots-${idx}`} className="px-2 py-1.5 text-gray-400">...</span>
+                    ) : (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page as number)}
+                        className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    )
+                 ))}
               </div>
 
               <button 
