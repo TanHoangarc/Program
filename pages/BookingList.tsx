@@ -1,8 +1,9 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
-import { ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, AlertTriangle } from 'lucide-react';
 import { MONTHS } from '../constants';
 
 interface BookingListProps {
@@ -126,27 +127,57 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {paginatedData.map((booking) => (
-              <tr 
-                key={booking.bookingId} 
-                onClick={() => setSelectedBooking(booking)}
-                className="hover:bg-blue-50 cursor-pointer transition-colors"
-              >
-                <td className="px-6 py-4 font-medium text-slate-900">Tháng {booking.month}</td>
-                <td className="px-6 py-4 text-blue-600 font-bold">{booking.bookingId}</td>
-                <td className="px-6 py-4 text-slate-600">{booking.line}</td>
-                <td className="px-6 py-4 text-center">
-                  <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold">{booking.jobCount}</span>
-                </td>
-                <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(booking.totalSell)}</td>
-                <td className="px-6 py-4 text-right text-red-600 font-medium">{formatCurrency(booking.totalCost)}</td>
-                <td className={`px-6 py-4 text-right font-bold ${booking.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(booking.totalProfit)}
-                </td>
-                <td className="px-6 py-4 text-center text-gray-500">{booking.totalCont20}</td>
-                <td className="px-6 py-4 text-center text-gray-500">{booking.totalCont40}</td>
-              </tr>
-            ))}
+            {paginatedData.map((booking) => {
+              // CALCULATION FOR MISMATCH CHECK
+              const target = booking.jobs.reduce((sum, j) => {
+                const deduction = (j.cont20 * 250000) + (j.cont40 * 500000);
+                return sum + (j.cost - deduction);
+              }, 0);
+              const actualNet = booking.costDetails.localCharge.net || 0;
+              const isMismatch = target !== actualNet;
+
+              return (
+                <tr 
+                  key={booking.bookingId} 
+                  onClick={() => setSelectedBooking(booking)}
+                  className="hover:bg-blue-50 cursor-pointer transition-colors"
+                >
+                  <td className="px-6 py-4 font-medium text-slate-900">Tháng {booking.month}</td>
+                  <td className="px-6 py-4 text-blue-600 font-bold">{booking.bookingId}</td>
+                  <td className="px-6 py-4 text-slate-600">{booking.line}</td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold">{booking.jobCount}</span>
+                  </td>
+                  <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(booking.totalSell)}</td>
+                  
+                  {/* Total Cost Column with Mismatch Warning */}
+                  <td className="px-6 py-4 text-right font-medium relative group/cell">
+                     <div className={`flex items-center justify-end ${isMismatch ? 'text-orange-600 font-bold' : 'text-red-600'}`}>
+                        {isMismatch && <AlertTriangle className="w-4 h-4 mr-2" />}
+                        {formatCurrency(booking.totalCost)}
+                     </div>
+                     {/* Tooltip for mismatch */}
+                     {isMismatch && (
+                       <div className="absolute bottom-full right-0 mb-2 w-72 bg-gray-900 text-white text-xs rounded p-3 shadow-lg hidden group-hover/cell:block z-10">
+                          <div className="font-bold mb-2 text-orange-300 border-b border-gray-700 pb-1">Cảnh báo lệch chi phí:</div>
+                          <div className="flex justify-between mb-1"><span>Target (Cost - Phí Cont):</span> <span className="font-medium">{formatCurrency(target)}</span></div>
+                          <div className="flex justify-between mb-1"><span>Thực tế (Net Invoice):</span> <span className="font-medium">{formatCurrency(actualNet)}</span></div>
+                          <div className="flex justify-between border-t border-gray-700 mt-2 pt-2 text-orange-300 font-bold">
+                             <span>Chênh lệch:</span> 
+                             <span>{formatCurrency(actualNet - target)}</span>
+                          </div>
+                       </div>
+                     )}
+                  </td>
+
+                  <td className={`px-6 py-4 text-right font-bold ${booking.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(booking.totalProfit)}
+                  </td>
+                  <td className="px-6 py-4 text-center text-gray-500">{booking.totalCont20}</td>
+                  <td className="px-6 py-4 text-center text-gray-500">{booking.totalCont40}</td>
+                </tr>
+              );
+            })}
             {paginatedData.length === 0 && (
               <tr>
                 <td colSpan={9} className="text-center py-8 text-gray-400">Không có dữ liệu booking</td>
