@@ -18,7 +18,7 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
   
   // ROBUST DATA MERGE FOR COST DETAILS
   // Prevents undefined errors when data is malformed
-  const rawDetails = firstJob.bookingCostDetails || {};
+  const rawDetails = (firstJob.bookingCostDetails || {}) as any;
   const safeDetails = {
     localCharge: rawDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0 },
     extensionCosts: Array.isArray(rawDetails.extensionCosts) ? rawDetails.extensionCosts : [],

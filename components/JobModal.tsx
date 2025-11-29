@@ -158,7 +158,8 @@ export const JobModal: React.FC<JobModalProps> = ({
   // State for Customer Input
   const [custCodeInput, setCustCodeInput] = useState(() => {
     if (initialData?.customerId) {
-        const c = customers.find(c => c.id === initialData.customerId);
+        // Safe check for customer existence
+        const c = customers.find(c => c?.id === initialData.customerId);
         return c ? c.code : '';
     }
     return '';
@@ -187,8 +188,9 @@ export const JobModal: React.FC<JobModalProps> = ({
   }, [initialData?.bookingCostDetails, isOpen]);
 
   // Filter customers for custom dropdown - STARTS WITH logic
+  // Safe check: c?.code ensures we don't crash on malformed customer data
   const filteredCustomers = customers.filter(c => 
-    c.code && c.code.toLowerCase().startsWith(custCodeInput.toLowerCase())
+    c?.code && c.code.toLowerCase().startsWith(custCodeInput.toLowerCase())
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -235,7 +237,8 @@ export const JobModal: React.FC<JobModalProps> = ({
     setShowSuggestions(true);
 
     // Exact match check to auto-select
-    const match = customers.find(c => c.code.toLowerCase() === val.toLowerCase());
+    // Safe check: c?.code prevents crash if customer list has issues
+    const match = customers.find(c => c?.code && c.code.toLowerCase() === val.toLowerCase());
     
     if (match) {
         setIsAddingCustomer(false);
@@ -363,9 +366,10 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  const selectedCustomerName = customers.find(c => c.id === formData.customerId)?.name || formData.customerName;
+  // Safe checks for lookup
+  const selectedCustomerName = customers.find(c => c?.id === formData.customerId)?.name || formData.customerName;
   const isLongHoang = selectedCustomerName === 'Long Hoàng Logistics';
-  const selectedLineName = lines.find(l => l.code === formData.line)?.name || '';
+  const selectedLineName = lines.find(l => l?.code === formData.line)?.name || '';
 
   if (!isOpen) return null;
 
@@ -440,7 +444,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                     <>
                       <Select name="line" value={formData.line} onChange={handleLineSelectChange} disabled={isViewMode}>
                         <option value="">-- Chọn Line --</option>
-                        {lines.map((l, i) => <option key={i} value={l.code}>{l.code}</option>)}
+                        {lines.map((l, i) => <option key={i} value={l?.code}>{l?.code}</option>)}
                         {!isViewMode && <option value="new" className="font-bold text-blue-600">+ Thêm Line mới</option>}
                       </Select>
                       {selectedLineName && <div className="text-[10px] text-gray-500 mt-1 truncate">{selectedLineName}</div>}
@@ -588,7 +592,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                         <Label>Khách hàng</Label>
                         <Select name="maKhCuocId" value={formData.maKhCuocId} onChange={handleChange} disabled={isViewMode}>
                           <option value="">-- Chọn KH --</option>
-                          {customers.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
+                          {customers.map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
                         </Select>
                      </div>
                      <MoneyInput label="Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
@@ -627,7 +631,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                          <Label>Khách hàng</Label>
                          <Select value={ext.customerId} onChange={(e) => handleExtensionChange(ext.id, 'customerId', e.target.value)} disabled={isViewMode}>
                             <option value="">-- Chọn KH --</option>
-                            {customers.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
+                            {customers.map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
                          </Select>
                       </div>
                       <div>

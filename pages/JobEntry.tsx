@@ -220,9 +220,10 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
         "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
-        "Mã KH Cược": customers.find(c => c.id === job.maKhCuocId)?.code || '', "Thu Cược": job.thuCuoc,
-        "Ngày Thu Cược": formatDateVN(job.ngayThuCuoc), // FIX: Format Date
-        "Ngày Thu Hoàn": formatDateVN(job.ngayThuHoan), // FIX: Format Date
+        "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '', // SAFE CHECK
+        "Thu Cược": job.thuCuoc,
+        "Ngày Thu Cược": formatDateVN(job.ngayThuCuoc),
+        "Ngày Thu Hoàn": formatDateVN(job.ngayThuHoan),
         "Thu Gia Hạn": extTotal, "Invoice Gia Hạn": extInvoices
       };
     });
