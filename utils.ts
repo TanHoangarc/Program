@@ -1,13 +1,18 @@
+
+
 import { JobData, BookingSummary } from './types';
 
-export const formatDateVN = (dateStr: string) => {
+export const formatDateVN = (dateStr: any) => {
   if (!dateStr) return '';
+  // Force convert to string to prevent crashes if value is number/object
+  const str = String(dateStr);
+  
   // Handle yyyy-mm-dd
-  if (dateStr.includes('-')) {
-    const [y, m, d] = dateStr.split('-');
+  if (str.includes('-')) {
+    const [y, m, d] = str.split('-');
     return `${d}/${m}/${y}`;
   }
-  return dateStr;
+  return str;
 };
 
 export const calculateBookingSummary = (jobs: JobData[], bookingId: string): BookingSummary | null => {
@@ -21,6 +26,7 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
   const rawDetails = (firstJob.bookingCostDetails || {}) as any;
   const safeDetails = {
     localCharge: rawDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0 },
+    additionalLocalCharges: Array.isArray(rawDetails.additionalLocalCharges) ? rawDetails.additionalLocalCharges : [],
     extensionCosts: Array.isArray(rawDetails.extensionCosts) ? rawDetails.extensionCosts : [],
     deposits: Array.isArray(rawDetails.deposits) ? rawDetails.deposits : []
   };

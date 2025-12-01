@@ -66,7 +66,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleEdit = (job: JobData) => {
-    setEditingJob(job);
+    // Deep copy to ensure clean state
+    setEditingJob(JSON.parse(JSON.stringify(job)));
     setIsViewMode(false);
     setIsModalOpen(true);
     setActiveMenuId(null);
@@ -74,9 +75,18 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const handleRowClick = (job: JobData, e: React.MouseEvent) => {
     if ((e.target as Element).closest('.action-menu-container')) return;
-    setEditingJob(job);
-    setIsViewMode(true);
-    setIsModalOpen(true);
+    
+    // CRITICAL FIX: Deep copy job data to prevent "readonly" issues or reference bugs
+    // This ensures the Modal gets a completely fresh object
+    try {
+      const safeJob = JSON.parse(JSON.stringify(job));
+      setEditingJob(safeJob);
+      setIsViewMode(true);
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Error parsing job data", err);
+      alert("Có lỗi khi mở Job này. Vui lòng kiểm tra lại dữ liệu.");
+    }
   };
 
   const handleDuplicate = (job: JobData) => {
@@ -235,11 +245,15 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const filteredJobs = useMemo(() => {
     let matches = jobs.filter(job => {
-      const matchesJobCode = filterJobCode ? job.jobCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
+      // Safe access to properties using || ''
+      const jCode = job.jobCode || '';
+      const jBooking = job.booking || '';
+      
+      const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
       const matchesLine = filterLine ? job.line === filterLine : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
       const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
-      const matchesBooking = filterBooking ? job.booking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
+      const matchesBooking = filterBooking ? jBooking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
       return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
     });
 

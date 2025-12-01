@@ -54,6 +54,7 @@ export interface BookingDeposit {
 export interface BookingCostDetails {
   // Expense Breakdown (Chi)
   localCharge: BookingInvoice; 
+  additionalLocalCharges?: BookingExtensionCost[]; // New: Multiple Local Charge Invoices
   extensionCosts: BookingExtensionCost[];
   deposits: BookingDeposit[]; // New: Deposit at booking level
 }

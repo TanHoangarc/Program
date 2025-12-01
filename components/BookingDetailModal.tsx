@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
 import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check } from 'lucide-react';
@@ -24,6 +25,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, zIndex = 'z-50' }) => {
   // Safe Fallbacks in useState
   const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0 });
+  const [additionalLocalCharges, setAdditionalLocalCharges] = useState<BookingExtensionCost[]>(booking.costDetails.additionalLocalCharges || []);
   const [extensionCosts, setExtensionCosts] = useState<BookingExtensionCost[]>(booking.costDetails.extensionCosts || []);
   const [deposits, setDeposits] = useState<BookingDeposit[]>(booking.costDetails.deposits || []);
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
@@ -36,7 +38,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   
   const totalLocalChargeRevenue = booking.jobs.reduce((sum, job) => sum + job.localChargeTotal, 0);
 
-  // Extension Costs
+  // Costs
+  const totalAdditionalLocalChargeNet = additionalLocalCharges.reduce((sum, item) => sum + (item.net || 0), 0);
+  const totalAdditionalLocalChargeTotal = additionalLocalCharges.reduce((sum, item) => sum + item.total, 0);
+
   const totalExtensionCost = extensionCosts.reduce((sum, ext) => sum + ext.total, 0);
   const totalExtensionNetCost = extensionCosts.reduce((sum, ext) => sum + (ext.net || 0), 0);
   
@@ -54,8 +59,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   // --- SUMMARY CALCULATIONS ---
   
   // Revenue Logic
-  // Post VAT: Display Value
-  // Pre VAT: Display Value / 1.08 -> Rounded to Integer
   const getRevenueValue = (val: number) => vatMode === 'post' ? val : Math.round(val / 1.08);
 
   const summaryLocalChargeRevenue = getRevenueValue(totalLocalChargeRevenue);
@@ -63,13 +66,12 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const summaryGrandTotalRevenue = summaryLocalChargeRevenue + summaryExtensionRevenue;
 
   // Expense Logic
-  // Post VAT: Job Payment (Sum of Costs)
-  // Pre VAT: Local Charge Invoice Net
-  const totalJobPayment = booking.jobs.reduce((sum, j) => sum + (j.cost || 0), 0);
+  // Amount Expense: Main Local Charge + Additional Local Charges
+  const totalJobPayment = booking.jobs.reduce((sum, j) => sum + (j.cost || 0), 0); // Post VAT Target
   
   const summaryAmountExpense = vatMode === 'post' 
     ? totalJobPayment 
-    : (localCharge.net || 0);
+    : ((localCharge.net || 0) + totalAdditionalLocalChargeNet);
 
   const summaryExtensionExpense = vatMode === 'post'
     ? totalExtensionCost
@@ -83,6 +85,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const baseProfit = summaryLocalChargeRevenue - summaryAmountExpense;
   const extensionProfit = summaryExtensionRevenue - summaryExtensionExpense;
 
+  // Total Actual Net for Comparison (Main Invoice + Additional Local Charge Invoices)
+  const totalActualNet = (localCharge.net || 0) + totalAdditionalLocalChargeNet;
 
   // Sync helpers
   const handleLocalChargeChange = (field: keyof typeof localCharge, val: any) => {
@@ -93,6 +97,35 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       }
       return updated;
     });
+  };
+
+  // Additional Local Charge Handlers
+  const handleAddAdditionalLC = () => {
+    setAdditionalLocalCharges(prev => [...prev, {
+      id: Date.now().toString(),
+      invoice: '',
+      date: '',
+      net: 0,
+      vat: 0,
+      total: 0
+    }]);
+  };
+
+  const handleUpdateAdditionalLC = (id: string, field: keyof BookingExtensionCost, val: any) => {
+    setAdditionalLocalCharges(prev => prev.map(item => {
+      if (item.id === id) {
+        const updated = { ...item, [field]: val };
+        if (field === 'net' || field === 'vat') {
+          updated.total = (Number(updated.net) || 0) + (Number(updated.vat) || 0);
+        }
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const handleRemoveAdditionalLC = (id: string) => {
+    setAdditionalLocalCharges(prev => prev.filter(i => i.id !== id));
   };
 
   // Extension Handlers
@@ -145,6 +178,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const handleSave = () => {
     onSave({
       localCharge,
+      additionalLocalCharges,
       extensionCosts,
       deposits
     });
@@ -216,28 +250,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 border-b">
                     <th className="px-4 py-3 border-r font-medium">Job Code</th>
-                    
                     <th className="px-4 py-3 border-r text-right font-medium group w-40">
                       <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('sell')} title="Copy toàn bộ cột Sell">
                         Sell
                         {copiedId === 'col-sell' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
                       </div>
                     </th>
-                    
                     <th className="px-4 py-3 border-r text-right font-medium group w-40">
                        <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('cost')} title="Copy toàn bộ cột Cost">
                         Cost (Adjusted)
                         {copiedId === 'col-cost' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
                       </div>
                     </th>
-                    
                     <th className="px-4 py-3 border-r text-right font-medium group w-40">
                        <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('vat')} title="Copy toàn bộ cột VAT">
                         VAT (5.263%)
                         {copiedId === 'col-vat' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
                       </div>
                     </th>
-                    
                     <th className="px-4 py-3 text-center font-medium group">
                        <div className="flex items-center justify-center gap-2 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => copyColumn('project')} title="Copy toàn bộ cột Công trình">
                         Công trình
@@ -253,53 +283,13 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     const vatCalc = job.cost * 0.05263;
                     const projectCode = getProjectCode(job);
                     
-                    const sellStr = formatMoney(job.sell);
-                    const costStr = formatMoney(adjustedCost);
-                    const vatStr = formatMoney(vatCalc);
-
                     return (
                       <tr key={job.id} className="hover:bg-blue-50/30">
                         <td className="px-4 py-3 border-r font-semibold text-brand-DEFAULT">{job.jobCode}</td>
-                        <td className="px-4 py-3 border-r text-right text-gray-600 font-medium group relative">
-                          {sellStr}
-                          <button 
-                            onClick={() => copyToClipboard(job.sell.toString(), `sell-${job.id}`)}
-                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Copy Sell"
-                          >
-                             {copiedId === `sell-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 border-r text-right text-gray-600 group relative">
-                          {costStr}
-                          <button 
-                            onClick={() => copyToClipboard(adjustedCost.toString(), `cost-${job.id}`)}
-                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Copy Cost"
-                          >
-                             {copiedId === `cost-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 border-r text-right text-gray-500 group relative">
-                          {vatStr}
-                          <button 
-                            onClick={() => copyToClipboard(vatCalc.toString(), `vat-${job.id}`)}
-                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Copy VAT"
-                          >
-                             {copiedId === `vat-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-center text-xs text-gray-600 group relative">
-                          {projectCode}
-                          <button 
-                            onClick={() => copyToClipboard(projectCode, `proj-${job.id}`)}
-                            className="ml-2 text-gray-300 hover:text-blue-600 inline-block align-middle opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Copy Project Code"
-                          >
-                             {copiedId === `proj-${job.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </td>
+                        <td className="px-4 py-3 border-r text-right text-gray-600 font-medium">{formatMoney(job.sell)}</td>
+                        <td className="px-4 py-3 border-r text-right text-gray-600">{formatMoney(adjustedCost)}</td>
+                        <td className="px-4 py-3 border-r text-right text-gray-500">{formatMoney(vatCalc)}</td>
+                        <td className="px-4 py-3 text-center text-xs text-gray-600">{projectCode}</td>
                       </tr>
                     );
                   })}
@@ -346,7 +336,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                             </tr>
                          )
                       })}
-                      {/* Subtotal Row */}
                       <tr className="bg-gray-50 font-bold border-t border-gray-200">
                          <td className="px-4 py-3 text-right border-r">Tổng cộng:</td>
                          <td className="px-4 py-3 text-right text-blue-700">{formatMoney(totalLocalChargeRevenue)}</td>
@@ -358,15 +347,23 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           </div>
 
           {/* Section 2: Local Charge (Horizontal) */}
-          <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm relative">
              <div className="flex justify-between items-center mb-5 border-b pb-2">
                  <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide">Local Charge (Hóa đơn Chi)</h3>
-                 <div className="text-xs font-medium bg-red-50 text-red-700 px-3 py-1 rounded-full border border-red-100">
-                   Target (Tổng Chi Payment): <strong>{formatMoney(systemTotalAdjustedCost)}</strong>
+                 <div className="flex items-center space-x-3">
+                    <div className="text-xs font-medium bg-red-50 text-red-700 px-3 py-1 rounded-full border border-red-100">
+                        Target (Tổng Chi Payment): <strong>{formatMoney(systemTotalAdjustedCost)}</strong>
+                    </div>
+                    {/* MOVED ADD BUTTON HERE */}
+                    <button onClick={handleAddAdditionalLC} className="flex items-center space-x-1 text-xs bg-red-600 text-white border border-red-600 px-2 py-1 rounded hover:bg-red-700 transition-colors shadow-sm">
+                        <Plus className="w-3 h-3" />
+                        <span>Thêm HĐ</span>
+                    </button>
                  </div>
              </div>
              
-             <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-end">
+             {/* Main Invoice Input - UPDATED LAYOUT (4 cols, removed Total) */}
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end mb-6">
                 <div className="space-y-1">
                   <Label>Số hóa đơn</Label>
                   <Input 
@@ -401,20 +398,49 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     className="text-right"
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label>Tổng</Label>
-                  <input 
-                    type="text" 
-                    value={formatMoney(localCharge.total)} 
-                    readOnly
-                    className="w-full px-3 py-2 bg-red-50 border border-red-200 rounded text-sm font-bold text-red-700 text-right outline-none" 
-                  />
-                </div>
              </div>
-             {localCharge.net !== systemTotalAdjustedCost && (
+
+             {/* Additional Local Charge Invoices */}
+             {additionalLocalCharges.length > 0 && (
+                 <div className="border-t border-gray-100 pt-4 mb-4">
+                    <div className="space-y-3">
+                        {additionalLocalCharges.map(item => (
+                           <div key={item.id} className="group relative bg-gray-50 p-3 rounded border border-gray-200">
+                              <button onClick={() => handleRemoveAdditionalLC(item.id)} className="absolute -top-2 -right-2 bg-white text-gray-400 hover:text-red-500 rounded-full p-1 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-all">
+                                 <Trash2 className="w-3 h-3" />
+                              </button>
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                                  <div className="space-y-1">
+                                     <Label>Số hóa đơn</Label>
+                                     <Input value={item.invoice} onChange={e => handleUpdateAdditionalLC(item.id, 'invoice', e.target.value)} className="py-1.5 text-xs" />
+                                  </div>
+                                  <div className="space-y-1">
+                                     <Label>Ngày hóa đơn</Label>
+                                     <Input type="date" value={item.date} onChange={e => handleUpdateAdditionalLC(item.id, 'date', e.target.value)} className="py-1.5 text-xs" />
+                                  </div>
+                                  <div className="space-y-1">
+                                     <Label>Giá Net</Label>
+                                     <Input type="number" value={item.net || ''} onChange={e => handleUpdateAdditionalLC(item.id, 'net', Number(e.target.value))} className="py-1.5 text-xs text-right" placeholder="0" />
+                                  </div>
+                                  <div className="space-y-1">
+                                     <Label>VAT</Label>
+                                     <Input type="number" value={item.vat || ''} onChange={e => handleUpdateAdditionalLC(item.id, 'vat', Number(e.target.value))} className="py-1.5 text-xs text-right" placeholder="0" />
+                                  </div>
+                              </div>
+                           </div>
+                        ))}
+                    </div>
+                    <div className="mt-3 text-right text-xs text-gray-500 border-t border-dashed border-gray-200 pt-2">
+                       Tổng: <strong className="text-red-600 text-sm ml-1">{formatMoney(totalAdditionalLocalChargeNet)}</strong>
+                    </div>
+                 </div>
+             )}
+
+             {/* Mismatch Warning: Main Net + Additional Net vs Target */}
+             {totalActualNet !== systemTotalAdjustedCost && (
                <div className="flex items-center space-x-2 text-sm text-red-600 bg-red-50 p-3 rounded-md border border-red-100 mt-4 animate-pulse">
                  <AlertCircle className="w-5 h-5" />
-                 <span>Lưu ý: Giá Net ({formatMoney(localCharge.net || 0)}) lệch với Target ({formatMoney(systemTotalAdjustedCost)})</span>
+                 <span>Lưu ý: Tổng Giá Net ({formatMoney(totalActualNet)}) lệch với Target ({formatMoney(systemTotalAdjustedCost)})</span>
                </div>
              )}
           </div>
@@ -492,10 +518,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
              </div>
           </div>
 
-          {/* Section 3: Extensions Cost (Horizontal Table) */}
+          {/* Section 3: Extensions Invoices */}
           <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
             <div className="flex justify-between items-center mb-5 border-b pb-2">
-               <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">Chi Phí Gia Hạn</h3>
+               <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">Danh Sách Hóa Đơn Gia Hạn</h3>
                <button onClick={handleAddExtensionCost} className="flex items-center space-x-1 text-xs bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded hover:bg-orange-100 transition-colors">
                   <Plus className="w-3 h-3" />
                   <span>Thêm HĐ</span>
@@ -517,7 +543,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                   <tbody className="divide-y divide-gray-100">
                     {extensionCosts.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center text-gray-400 py-6 text-sm italic">Chưa có hóa đơn chi gia hạn</td>
+                        <td colSpan={6} className="text-center text-gray-400 py-6 text-sm italic">Chưa có hóa đơn gia hạn</td>
                       </tr>
                     ) : (
                       extensionCosts.map((ext) => (
@@ -621,7 +647,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 <tbody className="divide-y divide-blue-900/50">
                   {/* Row 1: Amount (Local Charge) */}
                   <tr>
-                    <td className="py-3 text-blue-100">Amount</td>
+                    <td className="py-3 text-blue-100">Amount (Local Charge)</td>
                     <td className="py-3 text-right text-green-300 font-medium">{formatMoney(summaryLocalChargeRevenue)}</td>
                     <td className="py-3 text-right text-red-300 font-medium">{formatMoney(summaryAmountExpense)}</td>
                     <td className={`py-3 text-right font-medium ${baseProfit >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>

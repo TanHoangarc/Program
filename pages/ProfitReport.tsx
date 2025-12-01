@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { JobData } from '../types';
 import { BadgeDollarSign, Search, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -33,8 +34,8 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs }) => {
     }
 
     const mapped = filtered.map(job => {
-      // Kimberry = Job Profit (as per user request)
-      const kimberry = job.profit || 0;
+      // UPDATED: Kimberry = Cont 20 * 250k + Cont 40 * 500k
+      const kimberry = ((job.cont20 || 0) * 250000) + ((job.cont40 || 0) * 500000);
 
       // Cá nhân = Sum of specific fees
       const personal = (job.feeCic || 0) + 

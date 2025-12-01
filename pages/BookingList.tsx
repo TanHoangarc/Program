@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -53,7 +54,9 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
         const deduction = (j.cont20 * 250000) + (j.cont40 * 500000);
         return sum + (j.cost - deduction);
       }, 0);
-      const actualNet = b.costDetails.localCharge.net || 0;
+      
+      const addNet = (b.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
+      const actualNet = (b.costDetails.localCharge.net || 0) + addNet;
       const diff = actualNet - target;
 
       return {
@@ -145,7 +148,9 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                 const deduction = (j.cont20 * 250000) + (j.cont40 * 500000);
                 return sum + (j.cost - deduction);
               }, 0);
-              const actualNet = booking.costDetails.localCharge.net || 0;
+              
+              const addNet = (booking.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
+              const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
               const diff = actualNet - target;
 
               return (

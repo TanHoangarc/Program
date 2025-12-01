@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
@@ -26,6 +27,8 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
   <input 
     {...props} 
     ref={ref}
+    // Fix: Ensure value is never null/undefined to prevent uncontrolled warning
+    value={props.value ?? ''}
     className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-900 focus:border-blue-900 disabled:bg-gray-50 disabled:text-gray-500 placeholder-gray-400 transition-shadow ${props.className || ''}`}
   />
 ));
@@ -51,7 +54,7 @@ const DateInput = ({
       />
     );
   }
-  return <Input type="date" name={name} value={value} onChange={onChange} />;
+  return <Input type="date" name={name} value={value || ''} onChange={onChange} />;
 };
 
 const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
@@ -75,19 +78,19 @@ const NumberStepper: React.FC<{
       {!readOnly && (
         <button 
           type="button"
-          onClick={() => onChange(Math.max(0, value - 1))}
+          onClick={() => onChange(Math.max(0, (value || 0) - 1))}
           className="w-9 h-9 border border-gray-300 rounded-l bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
         >
           <Minus className="w-3 h-3" />
         </button>
       )}
       <div className={`flex-1 h-9 flex items-center justify-center border-y border-gray-300 bg-white text-sm font-semibold ${readOnly ? 'border rounded w-full px-3 justify-start' : ''}`}>
-        {value}
+        {value || 0}
       </div>
       {!readOnly && (
         <button 
           type="button"
-          onClick={() => onChange(value + 1)}
+          onClick={() => onChange((value || 0) + 1)}
           className="w-9 h-9 border border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
         >
           <Plus className="w-3 h-3" />
@@ -107,7 +110,9 @@ const MoneyInput: React.FC<{
   const [displayVal, setDisplayVal] = useState('');
 
   useEffect(() => {
-    setDisplayVal(value === 0 && !readOnly ? '' : new Intl.NumberFormat('en-US').format(value));
+    // Check for null/undefined
+    const safeValue = value || 0;
+    setDisplayVal(safeValue === 0 && !readOnly ? '' : new Intl.NumberFormat('en-US').format(safeValue));
   }, [value, readOnly]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,15 +146,30 @@ export const JobModal: React.FC<JobModalProps> = ({
     if (initialData) {
       // CRITICAL FIX: Merge with INITIAL_JOB to ensure all fields (extensions, new fees) exist
       // This prevents "White Screen" crashes when opening old jobs
-      const parsed = JSON.parse(JSON.stringify(initialData));
-      return { 
-        ...INITIAL_JOB, 
-        ...parsed,
-        // Explicitly force arrays to be arrays (handle null/undefined from JSON)
-        extensions: Array.isArray(parsed.extensions) ? parsed.extensions : [],
-        // Ensure nested objects are not null
-        bookingCostDetails: parsed.bookingCostDetails || undefined
-      };
+      try {
+        const parsed = JSON.parse(JSON.stringify(initialData));
+        
+        // Force date fields to be strings to prevent formatting crashes
+        const safeParsed = {
+            ...parsed,
+            ngayChiCuoc: String(parsed.ngayChiCuoc || ''),
+            ngayChiHoan: String(parsed.ngayChiHoan || ''),
+            localChargeDate: String(parsed.localChargeDate || ''),
+            ngayThuCuoc: String(parsed.ngayThuCuoc || ''),
+            ngayThuHoan: String(parsed.ngayThuHoan || '')
+        };
+
+        return { 
+          ...INITIAL_JOB, 
+          ...safeParsed,
+          // Explicitly force arrays to be arrays (handle null/undefined from JSON)
+          extensions: Array.isArray(safeParsed.extensions) ? safeParsed.extensions : [],
+          // Ensure nested objects are not null
+          bookingCostDetails: safeParsed.bookingCostDetails || undefined
+        };
+      } catch (e) {
+        return { ...INITIAL_JOB, id: Date.now().toString() };
+      }
     } else {
       return { ...INITIAL_JOB, id: Date.now().toString() };
     }
@@ -158,9 +178,9 @@ export const JobModal: React.FC<JobModalProps> = ({
   // State for Customer Input
   const [custCodeInput, setCustCodeInput] = useState(() => {
     if (initialData?.customerId) {
-        // Safe check for customer existence
-        const c = customers.find(c => c?.id === initialData.customerId);
-        return c ? c.code : '';
+        // Safe check for customer existence and code property
+        const c = (customers || []).find(c => c?.id === initialData.customerId);
+        return c?.code || ''; // Ensure it returns a string, never undefined
     }
     return '';
   });
@@ -187,10 +207,30 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   }, [initialData?.bookingCostDetails, isOpen]);
 
+  // NEW: Auto-calculate Kimberry Fee based on containers
+  useEffect(() => {
+    if (isViewMode) return;
+    const fee20 = (formData.cont20 || 0) * 250000;
+    const fee40 = (formData.cont40 || 0) * 500000;
+    const totalFee = fee20 + fee40;
+    
+    // Only update if different to avoid infinite loops, but enforce formula
+    // Removed formData.feeKimberry from dependency array to prevent cyclic updates
+    setFormData(prev => {
+        if (prev.feeKimberry !== totalFee) {
+            return { ...prev, feeKimberry: totalFee };
+        }
+        return prev;
+    });
+  }, [formData.cont20, formData.cont40, isViewMode]);
+
   // Filter customers for custom dropdown - STARTS WITH logic
   // Safe check: c?.code ensures we don't crash on malformed customer data
-  const filteredCustomers = customers.filter(c => 
-    c?.code && c.code.toLowerCase().startsWith(custCodeInput.toLowerCase())
+  // Ensure custCodeInput is treated as string
+  const safeInput = (custCodeInput || '').toLowerCase();
+  
+  const filteredCustomers = (customers || []).filter(c => 
+    c?.code && c.code.toLowerCase().startsWith(safeInput)
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -238,7 +278,7 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     // Exact match check to auto-select
     // Safe check: c?.code prevents crash if customer list has issues
-    const match = customers.find(c => c?.code && c.code.toLowerCase() === val.toLowerCase());
+    const match = (customers || []).find(c => c?.code && c.code.toLowerCase() === val.toLowerCase());
     
     if (match) {
         setIsAddingCustomer(false);
@@ -367,9 +407,9 @@ export const JobModal: React.FC<JobModalProps> = ({
   };
 
   // Safe checks for lookup
-  const selectedCustomerName = customers.find(c => c?.id === formData.customerId)?.name || formData.customerName;
+  const selectedCustomerName = (customers || []).find(c => c?.id === formData.customerId)?.name || formData.customerName;
   const isLongHoang = selectedCustomerName === 'Long Hoàng Logistics';
-  const selectedLineName = lines.find(l => l?.code === formData.line)?.name || '';
+  const selectedLineName = (lines || []).find(l => l?.code === formData.line)?.name || '';
 
   if (!isOpen) return null;
 
@@ -444,7 +484,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                     <>
                       <Select name="line" value={formData.line} onChange={handleLineSelectChange} disabled={isViewMode}>
                         <option value="">-- Chọn Line --</option>
-                        {lines.map((l, i) => <option key={i} value={l?.code}>{l?.code}</option>)}
+                        {(lines || []).map((l, i) => <option key={i} value={l?.code}>{l?.code}</option>)}
                         {!isViewMode && <option value="new" className="font-bold text-blue-600">+ Thêm Line mới</option>}
                       </Select>
                       {selectedLineName && <div className="text-[10px] text-gray-500 mt-1 truncate">{selectedLineName}</div>}
@@ -557,7 +597,17 @@ export const JobModal: React.FC<JobModalProps> = ({
               <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-5 border-b pb-2">Chi Tiết Chi Phí</h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                 <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
-                <MoneyInput label="Phí Kimberry" name="feeKimberry" value={formData.feeKimberry} onChange={handleMoneyChange} readOnly={isViewMode} />
+                {/* Updated Kimberry Input to be ReadOnly */}
+                <div className="relative">
+                    <MoneyInput 
+                        label="Phí Kimberry (Auto)" 
+                        name="feeKimberry" 
+                        value={formData.feeKimberry} 
+                        onChange={handleMoneyChange} 
+                        readOnly={true} 
+                    />
+                    {!isViewMode && <div className="absolute top-0 right-0 text-[10px] text-gray-400 italic">250k/20', 500k/40'</div>}
+                </div>
                 <MoneyInput label="Phí PSC" name="feePsc" value={formData.feePsc} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Phí EMC" name="feeEmc" value={formData.feeEmc} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Phí khác" name="feeOther" value={formData.feeOther} onChange={handleMoneyChange} readOnly={isViewMode} />
@@ -592,7 +642,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                         <Label>Khách hàng</Label>
                         <Select name="maKhCuocId" value={formData.maKhCuocId} onChange={handleChange} disabled={isViewMode}>
                           <option value="">-- Chọn KH --</option>
-                          {customers.map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
+                          {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
                         </Select>
                      </div>
                      <MoneyInput label="Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
@@ -631,7 +681,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                          <Label>Khách hàng</Label>
                          <Select value={ext.customerId} onChange={(e) => handleExtensionChange(ext.id, 'customerId', e.target.value)} disabled={isViewMode}>
                             <option value="">-- Chọn KH --</option>
-                            {customers.map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
+                            {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
                          </Select>
                       </div>
                       <div>

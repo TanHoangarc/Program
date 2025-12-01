@@ -70,6 +70,7 @@ export const MOCK_DATA: JobData[] = [
     
     bookingCostDetails: {
       localCharge: { invoice: 'COST-INV-01', date: '2023-10-01', net: 14000000, vat: 1000000, total: 15000000 },
+      additionalLocalCharges: [],
       extensionCosts: [],
       deposits: [
         { id: 'd1', amount: 2000000, dateOut: '2023-10-05', dateIn: '2023-10-25' }
@@ -131,6 +132,7 @@ export const MOCK_DATA: JobData[] = [
 
     bookingCostDetails: {
       localCharge: { invoice: 'COST-INV-02', date: '2023-10-09', net: 28000000, vat: 2000000, total: 30000000 },
+      additionalLocalCharges: [],
       extensionCosts: [
         { id: 'ec1', invoice: 'EXT-COST-01', date: '2023-10-14', net: 200000, vat: 20000, total: 220000 }
       ],
