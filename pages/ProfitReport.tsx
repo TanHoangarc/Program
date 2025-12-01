@@ -28,8 +28,8 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs }) => {
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       filtered = filtered.filter(j => 
-        j.jobCode.toLowerCase().includes(lower) || 
-        j.booking.toLowerCase().includes(lower)
+        (j.jobCode || '').toLowerCase().includes(lower) || 
+        (j.booking || '').toLowerCase().includes(lower)
       );
     }
 
