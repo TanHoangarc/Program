@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
 import { Briefcase, Search, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -33,9 +34,9 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
     if (searchTerm) {
       const lowerTerm = searchTerm.toLowerCase();
       filtered = filtered.filter(j => 
-        j.jobCode.toLowerCase().includes(lowerTerm) ||
-        j.booking.toLowerCase().includes(lowerTerm) ||
-        j.hbl.toLowerCase().includes(lowerTerm)
+        String(j.jobCode || '').toLowerCase().includes(lowerTerm) ||
+        String(j.booking || '').toLowerCase().includes(lowerTerm) ||
+        String(j.hbl || '').toLowerCase().includes(lowerTerm)
       );
     }
 

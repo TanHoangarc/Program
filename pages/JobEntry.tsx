@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
@@ -245,9 +246,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const filteredJobs = useMemo(() => {
     let matches = jobs.filter(job => {
-      // Safe access to properties using || ''
-      const jCode = job.jobCode || '';
-      const jBooking = job.booking || '';
+      // Safe access to properties using String()
+      const jCode = String(job.jobCode || '');
+      const jBooking = String(job.booking || '');
       
       const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
       const matchesLine = filterLine ? job.line === filterLine : true;

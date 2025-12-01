@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { JobData, Customer } from '../types';
 import { WalletCards, FileSpreadsheet, AlertTriangle, CheckCircle, Search } from 'lucide-react';
@@ -129,10 +130,10 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       data = data.filter(item => {
-        if (item.jobCode) return item.jobCode.toLowerCase().includes(lower);
-        if (item.name) return item.name.toLowerCase().includes(lower);
-        if (item.line) return item.line.toLowerCase().includes(lower);
-        if (item.booking) return item.booking.toLowerCase().includes(lower);
+        if (item.jobCode) return String(item.jobCode).toLowerCase().includes(lower);
+        if (item.name) return String(item.name).toLowerCase().includes(lower);
+        if (item.line) return String(item.line).toLowerCase().includes(lower);
+        if (item.booking) return String(item.booking).toLowerCase().includes(lower);
         return false;
       });
     }

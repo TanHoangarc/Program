@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { JobData } from '../types';
 import { Scale, Search, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
@@ -27,8 +28,8 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       filtered = filtered.filter(j => 
-        j.jobCode.toLowerCase().includes(lower) || 
-        j.booking.toLowerCase().includes(lower)
+        String(j.jobCode || '').toLowerCase().includes(lower) || 
+        String(j.booking || '').toLowerCase().includes(lower)
       );
     }
 
