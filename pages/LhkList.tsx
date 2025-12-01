@@ -38,12 +38,15 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
       return isLhk && matchesMonth && matchesSearch;
     });
 
+    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
     return filtered.sort((a, b) => {
+        // 1. Month Descending
         const monthDiff = Number(b.month) - Number(a.month);
         if (monthDiff !== 0) return monthDiff;
 
-        const bookingA = String(a.booking || '').toLowerCase();
-        const bookingB = String(b.booking || '').toLowerCase();
+        // 2. Booking Ascending
+        const bookingA = String(a.booking || '').trim().toLowerCase();
+        const bookingB = String(b.booking || '').trim().toLowerCase();
         return bookingA.localeCompare(bookingB);
     });
   }, [jobs, filterMonth, searchTerm]);
@@ -52,6 +55,15 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   const totalPages = Math.ceil(lhkJobs.length / ITEMS_PER_PAGE);
   const paginatedJobs = lhkJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const paginationRange = getPaginationRange(currentPage, totalPages);
+
+  // Totals
+  const totals = useMemo(() => {
+    return lhkJobs.reduce((acc, job) => ({
+      profit: acc.profit + job.profit,
+      cont20: acc.cont20 + job.cont20,
+      cont40: acc.cont40 + job.cont40
+    }), { profit: 0, cont20: 0, cont40: 0 });
+  }, [lhkJobs]);
 
   return (
     <div className="p-8 max-w-full">
@@ -115,6 +127,17 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
                 <tr><td colSpan={8} className="text-center py-12 text-gray-400">Không tìm thấy Job LHK nào</td></tr>
               )}
             </tbody>
+            {/* Added Footer */}
+            {lhkJobs.length > 0 && (
+                <tfoot className="bg-gray-50 font-bold text-slate-800 text-xs uppercase border-t border-gray-200">
+                  <tr>
+                    <td colSpan={5} className="px-6 py-4 text-right">Tổng Cộng:</td>
+                    <td className="px-6 py-4 text-center">{totals.cont20}</td>
+                    <td className="px-6 py-4 text-center">{totals.cont40}</td>
+                    <td className="px-6 py-4 text-right text-green-700 font-bold text-sm">{formatCurrency(totals.profit)}</td>
+                  </tr>
+                </tfoot>
+            )}
           </table>
         </div>
 

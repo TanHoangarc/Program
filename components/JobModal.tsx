@@ -1,401 +1,109 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
-import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
+import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
-import { formatDateVN } from '../utils';
+import { X, Save, Plus, ExternalLink, Edit3, Calculator, FileText } from 'lucide-react';
 
 interface JobModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (job: JobData, newCustomer?: Customer) => void;
-  initialData?: JobData | null;
+  initialData: JobData | null;
   customers: Customer[];
   lines: ShippingLine[];
   onAddLine: (line: string) => void;
   onViewBookingDetails: (bookingId: string) => void;
-  isViewMode?: boolean;
-  onSwitchToEdit?: () => void;
+  isViewMode: boolean;
+  onSwitchToEdit: () => void;
+  jobs?: JobData[]; // Added for duplicate check
 }
 
-// Styled Input Components
-const Label = ({ children }: { children?: React.ReactNode }) => (
-  <label className="block text-xs font-semibold text-gray-500 mb-1">{children}</label>
-);
-
-const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => (
-  <input 
-    {...props} 
-    ref={ref}
-    // Fix: Ensure value is never null/undefined to prevent uncontrolled warning
-    value={props.value ?? ''}
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-900 focus:border-blue-900 disabled:bg-gray-50 disabled:text-gray-500 placeholder-gray-400 transition-shadow ${props.className || ''}`}
-  />
-));
-Input.displayName = 'Input';
-
-const DateInput = ({ 
-  value, 
-  name, 
-  onChange, 
-  readOnly 
-}: { 
-  value: string; 
-  name: string; 
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
-  readOnly?: boolean; 
+export const JobModal: React.FC<JobModalProps> = ({
+  isOpen,
+  onClose,
+  onSave,
+  initialData,
+  customers,
+  lines,
+  onAddLine,
+  onViewBookingDetails,
+  isViewMode,
+  onSwitchToEdit,
+  jobs = []
 }) => {
-  if (readOnly) {
-    return (
-      <Input 
-        value={formatDateVN(value)} 
-        readOnly 
-        className="bg-gray-50"
-      />
-    );
-  }
-  return <Input type="date" name={name} value={value || ''} onChange={onChange} />;
-};
-
-const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
-  <select
-    {...props}
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-900 focus:border-blue-900 disabled:bg-gray-50 disabled:text-gray-500 transition-shadow ${props.className || ''}`}
-  >
-    {props.children}
-  </select>
-);
-
-const NumberStepper: React.FC<{
-  value: number;
-  onChange: (val: number) => void;
-  label: string;
-  readOnly?: boolean;
-}> = ({ value, onChange, label, readOnly }) => (
-  <div className="flex flex-col w-full">
-    <Label>{label}</Label>
-    <div className="flex items-center">
-      {!readOnly && (
-        <button 
-          type="button"
-          onClick={() => onChange(Math.max(0, (value || 0) - 1))}
-          className="w-9 h-9 border border-gray-300 rounded-l bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
-        >
-          <Minus className="w-3 h-3" />
-        </button>
-      )}
-      <div className={`flex-1 h-9 flex items-center justify-center border-y border-gray-300 bg-white text-sm font-semibold ${readOnly ? 'border rounded w-full px-3 justify-start' : ''}`}>
-        {value || 0}
-      </div>
-      {!readOnly && (
-        <button 
-          type="button"
-          onClick={() => onChange((value || 0) + 1)}
-          className="w-9 h-9 border border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
-        >
-          <Plus className="w-3 h-3" />
-        </button>
-      )}
-    </div>
-  </div>
-);
-
-const MoneyInput: React.FC<{
-  value: number;
-  name?: string;
-  onChange: (name: string, val: number) => void;
-  label: string;
-  readOnly?: boolean;
-}> = ({ value, name, onChange, label, readOnly }) => {
-  const [displayVal, setDisplayVal] = useState('');
-
-  useEffect(() => {
-    // Check for null/undefined
-    const safeValue = value || 0;
-    setDisplayVal(safeValue === 0 && !readOnly ? '' : new Intl.NumberFormat('en-US').format(safeValue));
-  }, [value, readOnly]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/,/g, '');
-    if (!isNaN(Number(raw))) {
-      onChange(name || '', Number(raw));
-    }
-  };
-
-  return (
-    <div className="w-full">
-      <Label>{label}</Label>
-      <input
-        type="text"
-        value={displayVal}
-        onChange={handleChange}
-        readOnly={readOnly}
-        placeholder="0"
-        className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900 text-right font-medium ${readOnly ? 'bg-gray-50 text-gray-700 font-bold' : ''}`}
-      />
-    </div>
-  );
-};
-
-export const JobModal: React.FC<JobModalProps> = ({ 
-  isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
-  isViewMode = false, onSwitchToEdit
-}) => {
-  // Lazy init to ensure robust state start
-  const [formData, setFormData] = useState<JobData>(() => {
-    if (initialData) {
-      // CRITICAL FIX: Merge with INITIAL_JOB to ensure all fields (extensions, new fees) exist
-      // This prevents "White Screen" crashes when opening old jobs
-      try {
-        const parsed = JSON.parse(JSON.stringify(initialData));
-        
-        // Force date fields to be strings to prevent formatting crashes
-        const safeParsed = {
-            ...parsed,
-            ngayChiCuoc: String(parsed.ngayChiCuoc || ''),
-            ngayChiHoan: String(parsed.ngayChiHoan || ''),
-            localChargeDate: String(parsed.localChargeDate || ''),
-            ngayThuCuoc: String(parsed.ngayThuCuoc || ''),
-            ngayThuHoan: String(parsed.ngayThuHoan || '')
-        };
-
-        return { 
-          ...INITIAL_JOB, 
-          ...safeParsed,
-          // Explicitly force arrays to be arrays (handle null/undefined from JSON)
-          extensions: Array.isArray(safeParsed.extensions) ? safeParsed.extensions : [],
-          // Ensure nested objects are not null
-          bookingCostDetails: safeParsed.bookingCostDetails || undefined
-        };
-      } catch (e) {
-        return { ...INITIAL_JOB, id: Date.now().toString() };
-      }
-    } else {
-      return { ...INITIAL_JOB, id: Date.now().toString() };
-    }
-  });
-
-  // State for Customer Input
-  const [custCodeInput, setCustCodeInput] = useState(() => {
-    if (initialData?.customerId) {
-        // Safe check for customer existence and code property
-        const c = (customers || []).find(c => c?.id === initialData.customerId);
-        return c?.code || ''; // Ensure it returns a string, never undefined
-    }
-    return '';
-  });
-  const [showSuggestions, setShowSuggestions] = useState(false);
-
+  const [formData, setFormData] = useState<JobData>(INITIAL_JOB);
+  
+  // New Customer State
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ mst: '', name: '', code: '' });
-  const [isAddingLine, setIsAddingLine] = useState(false);
-  const [newLine, setNewLine] = useState('');
-  
-  const jobInputRef = useRef<HTMLInputElement>(null);
+  const [newCustomer, setNewCustomer] = useState<Customer>({ id: '', code: '', name: '', mst: '' });
+  const [jobCodeError, setJobCodeError] = useState('');
 
-  // Focus effect for new entries
   useEffect(() => {
-    if (isOpen && !initialData && !isViewMode) {
-       setTimeout(() => jobInputRef.current?.focus(), 100);
-    }
-  }, [isOpen, initialData, isViewMode]);
-
-  // Sync booking details if they change externally while modal is open (unlikely with current conditional render but good practice)
-  useEffect(() => {
-    if (isOpen && initialData?.bookingCostDetails) {
-        setFormData(prev => ({ ...prev, bookingCostDetails: initialData.bookingCostDetails }));
-    }
-  }, [initialData?.bookingCostDetails, isOpen]);
-
-  // NEW: Auto-calculate Kimberry Fee based on containers
-  useEffect(() => {
-    if (isViewMode) return;
-    const fee20 = (formData.cont20 || 0) * 250000;
-    const fee40 = (formData.cont40 || 0) * 500000;
-    const totalFee = fee20 + fee40;
-    
-    // Only update if different to avoid infinite loops, but enforce formula
-    // Removed formData.feeKimberry from dependency array to prevent cyclic updates
-    setFormData(prev => {
-        if (prev.feeKimberry !== totalFee) {
-            return { ...prev, feeKimberry: totalFee };
+    if (isOpen) {
+        setJobCodeError(''); // Reset error on open
+        if (initialData) {
+            setFormData(JSON.parse(JSON.stringify(initialData)));
+        } else {
+            setFormData({ ...INITIAL_JOB, id: Date.now().toString() });
         }
-        return prev;
-    });
-  }, [formData.cont20, formData.cont40, isViewMode]);
+    }
+  }, [isOpen, initialData]);
 
-  // Filter customers for custom dropdown - STARTS WITH logic
-  // Safe check: c?.code ensures we don't crash on malformed customer data
-  // Ensure custCodeInput is treated as string
-  const safeInput = (custCodeInput || '').toLowerCase();
-  
-  const filteredCustomers = (customers || []).filter(c => 
-    c?.code && c.code.toLowerCase().startsWith(safeInput)
-  );
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (isViewMode) return;
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleMoneyChange = (name: string, val: number) => {
-    if (isViewMode) return;
+  const handleChange = (field: keyof JobData, value: any) => {
     setFormData(prev => {
-      const newData: any = { ...prev, [name]: val };
-      if (name === 'cost' || name === 'sell') {
-        newData.profit = (newData.sell || 0) - (newData.cost || 0);
+      const updated = { ...prev, [field]: value };
+      
+      // Auto calculate Profit
+      if (['cost', 'sell'].includes(field)) {
+        updated.profit = (updated.sell || 0) - (updated.cost || 0);
       }
-      return newData;
+      
+      // Auto calculate Customer Name if ID changes
+      if (field === 'customerId') {
+          const cust = customers.find(c => c.id === value);
+          if (cust) updated.customerName = cust.name;
+      }
+
+      return updated;
     });
   };
 
-  const handleLineSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (isViewMode) return;
-    const val = e.target.value;
-    if (val === 'new') {
-      setIsAddingLine(true);
-      setFormData(prev => ({ ...prev, line: '' }));
+  // Dedicated Job Code Handler for Trim & Duplicate Check
+  const handleJobCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawVal = e.target.value;
+    // Auto-trim spaces
+    const val = rawVal.trim();
+
+    // Check duplicate
+    // Only check if it's a new job OR editing but code changed from initial
+    const isDuplicate = jobs.some(j => 
+        j.jobCode.toLowerCase() === val.toLowerCase() && 
+        j.id !== formData.id
+    );
+
+    if (isDuplicate) {
+        setJobCodeError('Mã Job này đã tồn tại!');
     } else {
-      setFormData(prev => ({ ...prev, line: val }));
-    }
-  };
-
-  const saveNewLine = () => {
-    if (newLine.trim()) {
-      onAddLine(newLine);
-      setFormData(prev => ({ ...prev, line: newLine }));
-      setIsAddingLine(false);
-      setNewLine('');
-    }
-  };
-
-  const handleCustomerInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isViewMode) return;
-    const val = e.target.value;
-    setCustCodeInput(val);
-    setShowSuggestions(true);
-
-    // Exact match check to auto-select
-    // Safe check: c?.code prevents crash if customer list has issues
-    const match = (customers || []).find(c => c?.code && c.code.toLowerCase() === val.toLowerCase());
-    
-    if (match) {
-        setIsAddingCustomer(false);
-        setNewCustomer({ mst: '', name: '', code: '' });
-        setFormData(prev => ({ 
-            ...prev, 
-            customerId: match.id,
-            customerName: match.name
-        }));
-    } else {
-        setIsAddingCustomer(true);
-        setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-        setNewCustomer(prev => ({ ...prev, code: val }));
-    }
-  };
-
-  const handleSelectSuggestion = (customer: Customer) => {
-    setCustCodeInput(customer.code);
-    setIsAddingCustomer(false);
-    setNewCustomer({ mst: '', name: '', code: '' });
-    setFormData(prev => ({ 
-        ...prev, 
-        customerId: customer.id,
-        customerName: customer.name
-    }));
-    setShowSuggestions(false);
-  };
-
-  const saveNewCustomer = () => {
-    if (!newCustomer.name || !newCustomer.code) return;
-    const newCustObj: Customer = {
-      id: Date.now().toString(),
-      ...newCustomer
-    };
-    setFormData(prev => ({
-      ...prev,
-      customerId: newCustObj.id,
-      customerName: newCustObj.name
-    }));
-    return newCustObj;
-  };
-
-  const handleMstLookup = async () => {
-    if (!newCustomer.mst) return;
-    const mockNames = ['Công Ty TNHH Thương Mại Dịch Vụ ABC', 'Tập Đoàn XYZ', 'Logistics Global Solutions'];
-    const randomName = mockNames[Math.floor(Math.random() * mockNames.length)];
-    setNewCustomer(prev => ({ ...prev, name: randomName }));
-  };
-
-  const handleExtensionChange = (id: string, field: keyof ExtensionData, value: any) => {
-    if (isViewMode) return;
-    setFormData(prev => {
-      const newExts = (prev.extensions || []).map(ext => {
-        if (ext.id === id) {
-          return { ...ext, [field]: value };
-        }
-        return ext;
-      });
-      return { ...prev, extensions: newExts };
-    });
-  };
-
-  const addExtension = () => {
-    if (isViewMode) return;
-    setFormData(prev => ({
-      ...prev,
-      extensions: [...(prev.extensions || []), { 
-        id: Date.now().toString(), 
-        customerId: '', 
-        invoice: '', 
-        invoiceDate: '',
-        net: 0,
-        vat: 0,
-        total: 0 
-      }]
-    }));
-  };
-
-  const removeExtension = (id: string) => {
-    if (isViewMode) return;
-    setFormData(prev => ({
-      ...prev,
-      extensions: (prev.extensions || []).filter(ext => ext.id !== id)
-    }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isViewMode && onSwitchToEdit) {
-      onSwitchToEdit();
-      return;
-    }
-    let createdCustomer: Customer | undefined;
-    if (isAddingCustomer) {
-      createdCustomer = saveNewCustomer();
-      if (!createdCustomer) {
-         alert("Vui lòng nhập thông tin khách hàng mới");
-         return;
-      }
+        setJobCodeError('');
     }
     
-    // Prepare final data
-    const finalJob = { ...formData };
-    if (createdCustomer) {
-        finalJob.customerId = createdCustomer.id;
-        finalJob.customerName = createdCustomer.name;
-    }
-
-    onSave(finalJob, createdCustomer);
-    setIsAddingCustomer(false);
+    // Update state using the trimmed value
+    handleChange('jobCode', val);
   };
 
-  const handleEditClick = (e: React.MouseEvent) => {
+  const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (onSwitchToEdit) {
-      onSwitchToEdit();
+    
+    if (jobCodeError) {
+        alert("Vui lòng sửa mã Job bị trùng trước khi lưu.");
+        return;
+    }
+
+    if (isAddingCustomer && newCustomer.name) {
+       const custToAdd = { ...newCustomer, id: Date.now().toString() };
+       onSave({ ...formData, customerId: custToAdd.id, customerName: custToAdd.name }, custToAdd);
+    } else {
+       onSave(formData);
     }
   };
 
@@ -407,323 +115,346 @@ export const JobModal: React.FC<JobModalProps> = ({
   };
 
   // Safe checks for lookup
-  const selectedCustomerName = (customers || []).find(c => c?.id === formData.customerId)?.name || formData.customerName;
-  const isLongHoang = selectedCustomerName === 'Long Hoàng Logistics';
-  const selectedLineName = (lines || []).find(l => l?.code === formData.line)?.name || '';
+  const selectedCustomerName = customers.find(c => c.id === formData.customerId)?.name || formData.customerName;
+  
+  // UPDATED CHECK: Case-insensitive and accent-insensitive check for Long Hoang
+  const isLongHoang = (selectedCustomerName || '').toUpperCase().includes('LONG HOANG') || (selectedCustomerName || '').toUpperCase().includes('LONGHOANG');
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 border border-gray-200">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white">
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {isViewMode ? 'Chi Tiết Job' : (initialData ? 'Chỉnh sửa Job' : 'Thêm Job Mới')}
+            <h2 className="text-xl font-bold text-gray-800">
+              {isViewMode ? 'Chi Tiết Job' : (initialData ? 'Chỉnh Sửa Job' : 'Thêm Job Mới')}
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
-              {isViewMode ? 'Xem thông tin chi tiết lô hàng' : 'Nhập thông tin lô hàng và tài chính'}
-            </p>
+            <p className="text-xs text-gray-500 mt-1">{formData.jobCode || 'New Job'}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {isViewMode && (
+                <button 
+                    onClick={onSwitchToEdit}
+                    className="flex items-center space-x-2 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200"
+                >
+                    <Edit3 className="w-4 h-4" />
+                    <span>Chỉnh sửa</span>
+                </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-gray-100">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
-          <form onSubmit={handleSubmit} className="space-y-8">
-            
-            {/* --- GENERAL INFO --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2">Thông Tin Chung</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                
-                <div className="space-y-1">
-                  <Label>Tháng</Label>
-                  <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
-                    {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Job Code</Label>
-                  <Input 
-                    name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} 
-                    className={isViewMode ? "font-bold text-blue-900" : ""}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Booking</Label>
-                  <div className="flex items-center space-x-1">
-                    <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />
-                    {formData.booking && (
-                      <button 
-                        type="button" 
-                        onClick={handleBookingClick} 
-                        className="p-2 bg-gray-100 text-gray-600 rounded border border-gray-200 hover:bg-blue-50 hover:text-blue-900 transition-colors" 
-                        title="Xem chi tiết Booking"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Consol</Label>
-                  <Input name="consol" value={formData.consol} onChange={handleChange} readOnly={isViewMode} />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Line (Mã Line)</Label>
-                  {!isAddingLine ? (
-                    <>
-                      <Select name="line" value={formData.line} onChange={handleLineSelectChange} disabled={isViewMode}>
-                        <option value="">-- Chọn Line --</option>
-                        {(lines || []).map((l, i) => <option key={i} value={l?.code}>{l?.code}</option>)}
-                        {!isViewMode && <option value="new" className="font-bold text-blue-600">+ Thêm Line mới</option>}
-                      </Select>
-                      {selectedLineName && <div className="text-[10px] text-gray-500 mt-1 truncate">{selectedLineName}</div>}
-                    </>
-                  ) : (
-                    <div className="flex space-x-1">
-                      <Input value={newLine} onChange={(e) => setNewLine(e.target.value)} placeholder="Nhập Mã Line..." autoFocus />
-                      <button type="button" onClick={saveNewLine} className="bg-green-600 text-white p-2 rounded"><Check className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => setIsAddingLine(false)} className="bg-gray-200 text-gray-600 p-2 rounded"><X className="w-4 h-4" /></button>
-                    </div>
-                  )}
-                </div>
-
-                {/* CUSTOMER INPUT REPLACEMENT - CUSTOM DROPDOWN */}
-                <div className="lg:col-span-2 space-y-1 relative group">
-                  <Label>Customer (Mã KH)</Label>
-                  <div className="relative">
-                     <Input 
-                        value={custCodeInput} 
-                        onChange={handleCustomerInputChange} 
-                        onFocus={() => setShowSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                        readOnly={isViewMode}
-                        placeholder={isViewMode ? "" : "Nhập mã KH..."}
-                        className={isAddingCustomer ? "border-blue-500 ring-1 ring-blue-500" : ""}
-                        autoComplete="off"
-                     />
-                     
-                     {/* Custom Dropdown List */}
-                     {!isViewMode && showSuggestions && custCodeInput && filteredCustomers.length > 0 && (
-                        <ul className="absolute z-50 w-full bg-white border border-gray-300 rounded-b-md shadow-lg max-h-60 overflow-y-auto mt-1 left-0">
-                          {filteredCustomers.map(c => (
-                            <li 
-                              key={c.id}
-                              onClick={() => handleSelectSuggestion(c)}
-                              className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 flex flex-col border-b border-gray-50 last:border-0"
+        <div className="flex-1 overflow-y-auto p-6">
+           <form id="jobForm" onSubmit={handleSave} className="space-y-6">
+              
+              {/* General Section */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 {/* Column 1 */}
+                 <div className="space-y-4">
+                    <h3 className="text-sm font-bold text-gray-900 border-b pb-2 mb-4">Thông tin chung</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500">Tháng</label>
+                            <select 
+                                disabled={isViewMode}
+                                value={formData.month} 
+                                onChange={(e) => handleChange('month', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
                             >
-                              <span className="font-bold text-blue-800">{c.code}</span>
-                              <span className="text-xs text-gray-500 truncate">{c.name}</span>
-                            </li>
-                          ))}
-                        </ul>
-                     )}
-                  </div>
-                  {selectedCustomerName && <div className="text-[10px] text-gray-500 mt-1 truncate font-medium">{selectedCustomerName}</div>}
-                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Đang thêm khách hàng mới</div>}
-                </div>
-
-                {isLongHoang && (
-                  <div className="space-y-1 animate-in slide-in-from-left">
-                    <Label>HBL</Label>
-                    <Input name="hbl" value={formData.hbl} onChange={handleChange} readOnly={isViewMode} className="bg-yellow-50 border-yellow-200" />
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <Label>Transit</Label>
-                  <Select name="transit" value={formData.transit} onChange={handleChange} disabled={isViewMode}>
-                    {TRANSIT_PORTS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </Select>
-                </div>
-              </div>
-              
-              {/* Inline Add Customer */}
-              {isAddingCustomer && !isViewMode && (
-                <div className="mt-4 p-4 bg-blue-50/50 rounded border border-blue-100 animate-in slide-in-from-top">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-xs font-bold text-blue-900 uppercase">Thêm khách hàng mới</h4>
-                    <button type="button" onClick={() => { setIsAddingCustomer(false); setCustCodeInput(''); setFormData(prev => ({...prev, customerId: '', customerName: ''})); }}><X className="w-4 h-4 text-gray-400 hover:text-red-500" /></button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="flex space-x-2 items-end">
-                       <div className="flex-1">
-                          <Label>MST</Label>
-                          <Input value={newCustomer.mst} onChange={e => setNewCustomer(prev => ({...prev, mst: e.target.value}))} placeholder="Nhập MST" />
-                       </div>
-                       <button type="button" onClick={handleMstLookup} className="bg-blue-900 text-white px-3 py-2 rounded text-xs font-medium h-[38px]">Tra cứu</button>
+                                {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500">Job Code</label>
+                            <input 
+                                disabled={isViewMode}
+                                type="text"
+                                value={formData.jobCode}
+                                onChange={handleJobCodeChange}
+                                className={`w-full p-2 border rounded text-sm focus:ring-1 focus:ring-blue-500 font-bold text-blue-700 ${jobCodeError ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'}`}
+                                required
+                            />
+                            {jobCodeError && !isViewMode && (
+                                <p className="text-[10px] text-red-600 font-bold mt-1">{jobCodeError}</p>
+                            )}
+                        </div>
                     </div>
-                    <div>
-                        <Label>Mã KH</Label>
-                        <Input 
-                            value={newCustomer.code} 
-                            onChange={e => {
-                                const val = e.target.value;
-                                setNewCustomer(prev => ({...prev, code: val}));
-                                setCustCodeInput(val); // Sync main input
-                            }} 
-                        />
+
+                    <div className="space-y-1">
+                         <label className="text-xs font-semibold text-gray-500">Khách hàng</label>
+                         {!isAddingCustomer ? (
+                             <div className="flex space-x-2">
+                                <select 
+                                    disabled={isViewMode}
+                                    value={formData.customerId}
+                                    onChange={(e) => handleChange('customerId', e.target.value)}
+                                    className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
+                                >
+                                    <option value="">-- Chọn khách hàng --</option>
+                                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                                {!isViewMode && (
+                                    <button type="button" onClick={() => setIsAddingCustomer(true)} className="p-2 bg-gray-100 rounded border border-gray-300 hover:bg-gray-200">
+                                        <Plus className="w-4 h-4 text-gray-600" />
+                                    </button>
+                                )}
+                             </div>
+                         ) : (
+                             <div className="p-3 bg-blue-50 rounded border border-blue-200 space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs font-bold text-blue-700">Thêm khách hàng mới</span>
+                                    <button type="button" onClick={() => setIsAddingCustomer(false)} className="text-xs text-red-500 hover:underline">Hủy</button>
+                                </div>
+                                <input placeholder="Mã KH" className="w-full p-1.5 text-xs border rounded" value={newCustomer.code} onChange={e => setNewCustomer(prev => ({...prev, code: e.target.value}))} />
+                                <input placeholder="Tên Công Ty" className="w-full p-1.5 text-xs border rounded" value={newCustomer.name} onChange={e => setNewCustomer(prev => ({...prev, name: e.target.value}))} />
+                                <input placeholder="MST" className="w-full p-1.5 text-xs border rounded" value={newCustomer.mst} onChange={e => setNewCustomer(prev => ({...prev, mst: e.target.value}))} />
+                             </div>
+                         )}
                     </div>
-                    <div><Label>Tên công ty</Label><Input value={newCustomer.name} onChange={e => setNewCustomer(prev => ({...prev, name: e.target.value}))} /></div>
-                  </div>
-                </div>
-              )}
-            </div>
 
-            {/* --- FINANCE --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2">Tài Chính & Container</h3>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                <MoneyInput label="Cost (Chi phí)" name="cost" value={formData.cost} onChange={handleMoneyChange} readOnly={isViewMode} />
-                <MoneyInput label="Sell (Doanh thu)" name="sell" value={formData.sell} onChange={handleMoneyChange} readOnly={isViewMode} />
-                <MoneyInput label="Profit (Lợi nhuận)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly />
-                <NumberStepper label="Cont 20'" value={formData.cont20} onChange={(val) => setFormData(prev => ({...prev, cont20: val}))} readOnly={isViewMode} />
-                <NumberStepper label="Cont 40'" value={formData.cont40} onChange={(val) => setFormData(prev => ({...prev, cont40: val}))} readOnly={isViewMode} />
-              </div>
-            </div>
+                    {isLongHoang && (
+                        <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+                             <label className="text-xs font-semibold text-orange-600">HBL (Long Hoàng)</label>
+                             <input 
+                                disabled={isViewMode}
+                                type="text"
+                                value={formData.hbl}
+                                onChange={(e) => handleChange('hbl', e.target.value)}
+                                className="w-full p-2 border border-orange-300 bg-orange-50 rounded text-sm focus:ring-1 focus:ring-orange-500 text-orange-800 font-medium"
+                                placeholder="Nhập số HBL..."
+                             />
+                        </div>
+                    )}
+                 </div>
 
-            {/* --- COST BREAKDOWN --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-5 border-b pb-2">Chi Tiết Chi Phí</h3>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
-                {/* Updated Kimberry Input to be ReadOnly */}
-                <div className="relative">
-                    <MoneyInput 
-                        label="Phí Kimberry (Auto)" 
-                        name="feeKimberry" 
-                        value={formData.feeKimberry} 
-                        onChange={handleMoneyChange} 
-                        readOnly={true} 
-                    />
-                    {!isViewMode && <div className="absolute top-0 right-0 text-[10px] text-gray-400 italic">250k/20', 500k/40'</div>}
-                </div>
-                <MoneyInput label="Phí PSC" name="feePsc" value={formData.feePsc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                <MoneyInput label="Phí EMC" name="feeEmc" value={formData.feeEmc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                <MoneyInput label="Phí khác" name="feeOther" value={formData.feeOther} onChange={handleMoneyChange} readOnly={isViewMode} />
-              </div>
-            </div>
-
-            {/* --- REVENUE IN --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wide mb-5 border-b pb-2">Thu (Revenue In)</h3>
-              
-              <div className="space-y-6">
-                {/* Local Charge */}
-                <div className="bg-blue-50/30 p-4 rounded border border-blue-100">
-                  <h4 className="text-xs font-bold text-blue-800 mb-3">LOCAL CHARGE</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} /></div>
-                    <MoneyInput label="Amount" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode} />
-                    <div><Label>Ngân hàng</Label>
-                      <Select name="bank" value={formData.bank} onChange={handleChange} disabled={isViewMode}>
-                        <option value="">-- Chọn --</option>
-                        {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
-                      </Select>
+                 {/* Column 2 */}
+                 <div className="space-y-4">
+                    <h3 className="text-sm font-bold text-gray-900 border-b pb-2 mb-4">Vận đơn & Line</h3>
+                    
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-500">Booking Number</label>
+                        <div className="flex items-center space-x-2">
+                            <input 
+                                disabled={isViewMode}
+                                type="text"
+                                value={formData.booking}
+                                onChange={(e) => handleChange('booking', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 font-medium"
+                            />
+                            {formData.booking && (
+                                <button 
+                                    type="button"
+                                    onClick={handleBookingClick}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded border border-transparent hover:border-blue-100"
+                                    title="Xem chi tiết Booking này"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Deposit */}
-                <div className="bg-indigo-50/30 p-4 rounded border border-indigo-100">
-                   <h4 className="text-xs font-bold text-indigo-800 mb-3">DEPOSIT (CƯỢC)</h4>
-                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                     <div>
-                        <Label>Khách hàng</Label>
-                        <Select name="maKhCuocId" value={formData.maKhCuocId} onChange={handleChange} disabled={isViewMode}>
-                          <option value="">-- Chọn KH --</option>
-                          {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
-                        </Select>
-                     </div>
-                     <MoneyInput label="Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                     <div>
-                        <Label>Ngày Cược</Label>
-                        <DateInput name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} />
-                     </div>
-                     <div>
-                        <Label>Ngày Hoàn</Label>
-                        <DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} />
-                     </div>
-                   </div>
-                </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-500">Shipping Line</label>
+                         <div className="flex space-x-2">
+                            <select 
+                                disabled={isViewMode}
+                                value={formData.line}
+                                onChange={(e) => handleChange('line', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
+                            >
+                                <option value="">-- Chọn Line --</option>
+                                {lines.map(l => <option key={l.id} value={l.code}>{l.code} - {l.name}</option>)}
+                            </select>
+                            {!isViewMode && (
+                                <button type="button" onClick={() => {
+                                    const newLine = prompt("Nhập tên hãng tàu mới:");
+                                    if (newLine) onAddLine(newLine);
+                                }} className="p-2 bg-gray-100 rounded border border-gray-300 hover:bg-gray-200">
+                                    <Plus className="w-4 h-4 text-gray-600" />
+                                </button>
+                            )}
+                         </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                             <label className="text-xs font-semibold text-gray-500">Transit Port</label>
+                             <select 
+                                disabled={isViewMode}
+                                value={formData.transit}
+                                onChange={(e) => handleChange('transit', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
+                            >
+                                {TRANSIT_PORTS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                             <label className="text-xs font-semibold text-gray-500">Consol</label>
+                             <input 
+                                disabled={isViewMode}
+                                type="text"
+                                value={formData.consol}
+                                onChange={(e) => handleChange('consol', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
+                                placeholder="Yes/No..."
+                            />
+                        </div>
+                    </div>
+                 </div>
+
+                 {/* Column 3: Volume & Financials */}
+                 <div className="space-y-4">
+                    <h3 className="text-sm font-bold text-gray-900 border-b pb-2 mb-4">Sản lượng & Lợi nhuận</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                         <div className="space-y-1">
+                             <label className="text-xs font-semibold text-gray-500">Container 20'</label>
+                             <input 
+                                disabled={isViewMode}
+                                type="number"
+                                value={formData.cont20}
+                                onChange={(e) => handleChange('cont20', Number(e.target.value))}
+                                className="w-full p-2 border border-gray-300 rounded text-sm text-center font-bold text-blue-600"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                             <label className="text-xs font-semibold text-gray-500">Container 40'</label>
+                             <input 
+                                disabled={isViewMode}
+                                type="number"
+                                value={formData.cont40}
+                                onChange={(e) => handleChange('cont40', Number(e.target.value))}
+                                className="w-full p-2 border border-gray-300 rounded text-sm text-center font-bold text-blue-600"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                         <div className="flex justify-between items-center">
+                             <label className="text-xs font-semibold text-gray-500">COST (Chi)</label>
+                             <input 
+                                disabled={isViewMode}
+                                type="number"
+                                value={formData.cost}
+                                onChange={(e) => handleChange('cost', Number(e.target.value))}
+                                className="w-32 p-1.5 border border-gray-300 rounded text-sm text-right font-medium text-red-600"
+                            />
+                         </div>
+                         <div className="flex justify-between items-center">
+                             <label className="text-xs font-semibold text-gray-500">SELL (Thu)</label>
+                             <input 
+                                disabled={isViewMode}
+                                type="number"
+                                value={formData.sell}
+                                onChange={(e) => handleChange('sell', Number(e.target.value))}
+                                className="w-32 p-1.5 border border-gray-300 rounded text-sm text-right font-medium text-blue-600"
+                            />
+                         </div>
+                         <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                             <label className="text-xs font-bold text-gray-700">PROFIT</label>
+                             <span className={`text-lg font-bold ${formData.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                 {new Intl.NumberFormat('vi-VN').format(formData.profit)}
+                             </span>
+                         </div>
+                    </div>
+                 </div>
               </div>
-            </div>
 
-            {/* --- EXTENSIONS --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <div className="flex justify-between items-center mb-4 border-b pb-2">
-                <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">Gia Hạn</h3>
-                {!isViewMode && (
-                  <button type="button" onClick={addExtension} className="flex items-center space-x-1 text-xs bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded hover:bg-orange-100 transition-colors">
-                    <Plus className="w-3 h-3" />
-                    <span>Thêm</span>
-                  </button>
-                )}
+              {/* Extra Sections (Collapsible or Tabbed) */}
+              <div className="border-t border-gray-200 pt-6">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                     {/* Invoice Info */}
+                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
+                        <h4 className="text-sm font-bold text-blue-800 flex items-center"><FileText className="w-4 h-4 mr-2" /> Thông tin xuất hóa đơn (Local Charge)</h4>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-blue-700">Số hóa đơn</label>
+                                <input disabled={isViewMode} type="text" className="w-full p-2 border border-blue-200 rounded text-sm" value={formData.localChargeInvoice} onChange={e => handleChange('localChargeInvoice', e.target.value)} />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-blue-700">Ngày hóa đơn</label>
+                                <input disabled={isViewMode} type="date" className="w-full p-2 border border-blue-200 rounded text-sm" value={formData.localChargeDate} onChange={e => handleChange('localChargeDate', e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-blue-700">Net</label>
+                                <input disabled={isViewMode} type="number" className="w-full p-2 border border-blue-200 rounded text-sm text-right" value={formData.localChargeNet} onChange={e => handleChange('localChargeNet', Number(e.target.value))} placeholder="0" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-blue-700">VAT</label>
+                                <input disabled={isViewMode} type="number" className="w-full p-2 border border-blue-200 rounded text-sm text-right" value={formData.localChargeVat} onChange={e => handleChange('localChargeVat', Number(e.target.value))} placeholder="0" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-blue-700">Total</label>
+                                <input disabled={isViewMode} type="number" className="w-full p-2 border border-blue-200 rounded text-sm text-right font-bold" value={formData.localChargeTotal} onChange={e => handleChange('localChargeTotal', Number(e.target.value))} placeholder="0" />
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                             <label className="text-xs font-semibold text-blue-700">Ngân hàng thanh toán</label>
+                             <select disabled={isViewMode} className="w-full p-2 border border-blue-200 rounded text-sm" value={formData.bank} onChange={e => handleChange('bank', e.target.value)}>
+                                 <option value="">-- Chọn ngân hàng --</option>
+                                 {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+                             </select>
+                        </div>
+                     </div>
+
+                     {/* Fees Detail */}
+                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
+                         <h4 className="text-sm font-bold text-gray-800 flex items-center"><Calculator className="w-4 h-4 mr-2" /> Các khoản phí (Chi tiết)</h4>
+                         <div className="grid grid-cols-2 gap-4">
+                             <div className="space-y-1">
+                                 <label className="text-xs font-semibold text-gray-500">Phí CIC</label>
+                                 <input disabled={isViewMode} type="number" className="w-full p-2 border border-gray-300 rounded text-sm text-right" value={formData.feeCic} onChange={e => handleChange('feeCic', Number(e.target.value))} />
+                             </div>
+                             <div className="space-y-1">
+                                 <label className="text-xs font-semibold text-gray-500">Phí Kimberry</label>
+                                 <input disabled={isViewMode} type="number" className="w-full p-2 border border-gray-300 rounded text-sm text-right" value={formData.feeKimberry} onChange={e => handleChange('feeKimberry', Number(e.target.value))} />
+                             </div>
+                             <div className="space-y-1">
+                                 <label className="text-xs font-semibold text-gray-500">Phí PSC</label>
+                                 <input disabled={isViewMode} type="number" className="w-full p-2 border border-gray-300 rounded text-sm text-right" value={formData.feePsc} onChange={e => handleChange('feePsc', Number(e.target.value))} />
+                             </div>
+                             <div className="space-y-1">
+                                 <label className="text-xs font-semibold text-gray-500">Phí EMC</label>
+                                 <input disabled={isViewMode} type="number" className="w-full p-2 border border-gray-300 rounded text-sm text-right" value={formData.feeEmc} onChange={e => handleChange('feeEmc', Number(e.target.value))} />
+                             </div>
+                             <div className="space-y-1 col-span-2">
+                                 <label className="text-xs font-semibold text-gray-500">Phí Khác</label>
+                                 <input disabled={isViewMode} type="number" className="w-full p-2 border border-gray-300 rounded text-sm text-right" value={formData.feeOther} onChange={e => handleChange('feeOther', Number(e.target.value))} />
+                             </div>
+                         </div>
+                     </div>
+                 </div>
               </div>
-              
-              <div className="space-y-3">
-                {(formData.extensions || []).map((ext) => (
-                   <div key={ext.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-3 bg-orange-50/20 rounded border border-orange-100 relative group items-end">
-                      {!isViewMode && (
-                        <button type="button" onClick={() => removeExtension(ext.id)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
-                      )}
-                      <div className="md:col-span-2">
-                         <Label>Khách hàng</Label>
-                         <Select value={ext.customerId} onChange={(e) => handleExtensionChange(ext.id, 'customerId', e.target.value)} disabled={isViewMode}>
-                            <option value="">-- Chọn KH --</option>
-                            {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
-                         </Select>
-                      </div>
-                      <div>
-                        <Label>Invoice</Label>
-                        <Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode} />
-                      </div>
-                      <div>
-                         <Label>Amount</Label>
-                         <input
-                            type="text"
-                            value={new Intl.NumberFormat('en-US').format(ext.total)}
-                            onChange={(e) => {
-                                const val = Number(e.target.value.replace(/,/g, ''));
-                                if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val);
-                            }}
-                            readOnly={isViewMode}
-                            className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900 text-right font-medium ${isViewMode ? 'bg-gray-50' : ''}`}
-                          />
-                      </div>
-                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Footer */}
-            <div className="flex justify-end space-x-3 pt-4 sticky bottom-0 bg-white py-4 border-t border-gray-100">
-              <button type="button" onClick={onClose} className="px-5 py-2.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
-                {isViewMode ? 'Đóng' : 'Hủy bỏ'}
-              </button>
-              
-              {isViewMode ? (
-                <button type="button" onClick={handleEditClick} className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
-                  <Edit2 className="w-4 h-4" /> <span>Chỉnh sửa</span>
-                </button>
-              ) : (
-                <button type="submit" className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
-                  <Save className="w-4 h-4" /> <span>Lưu thay đổi</span>
-                </button>
-              )}
-            </div>
+           </form>
+        </div>
 
-          </form>
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
+          <button onClick={onClose} className="px-5 py-2.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
+            Đóng
+          </button>
+          {!isViewMode && (
+              <button 
+                type="submit" 
+                form="jobForm"
+                className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 flex items-center shadow-sm"
+            >
+                <Save className="w-4 h-4 mr-2" /> Lưu Job
+            </button>
+          )}
         </div>
       </div>
     </div>
