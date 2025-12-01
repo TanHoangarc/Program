@@ -20,19 +20,21 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   }, [filterMonth, searchTerm]);
 
   const lhkJobs = useMemo(() => {
-    // Filter for Long Hoang Logistics customers OR code "LONGHOANG"
-    let filtered = jobs.filter(j => 
-        (j.customerName && j.customerName.includes('Long Hoàng')) || 
-        (j.customerName && j.customerName.toUpperCase().includes('LONGHOANG'))
-    );
+    // Filter for Long Hoang Logistics customers
+    // Updated to match various formats: "LONG HOANG", "Long Hoàng", "LONGHOANG"
+    let filtered = jobs.filter(j => {
+        const name = (j.customerName || '').toUpperCase();
+        return name.includes('LONG HOANG') || name.includes('LONGHOANG') || name.includes('LONG HOÀNG');
+    });
 
     // Apply Filters
     if (filterMonth) {
+      // Ensure precise month matching
       filtered = filtered.filter(j => j.month === filterMonth);
     }
 
     if (searchTerm) {
-      const lowerTerm = searchTerm.toLowerCase();
+      const lowerTerm = String(searchTerm).toLowerCase();
       filtered = filtered.filter(j => 
         String(j.jobCode || '').toLowerCase().includes(lowerTerm) ||
         String(j.booking || '').toLowerCase().includes(lowerTerm) ||
@@ -40,8 +42,12 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
       );
     }
 
-    // Sort by Month descending
-    return filtered.sort((a, b) => Number(b.month) - Number(a.month));
+    // Sort by Month descending, handle potential non-numeric months gracefully
+    return filtered.sort((a, b) => {
+        const mA = parseInt(a.month) || 0;
+        const mB = parseInt(b.month) || 0;
+        return mB - mA;
+    });
   }, [jobs, filterMonth, searchTerm]);
 
   const formatCurrency = (val: number) => 
@@ -57,9 +63,9 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
     }
 
     const yearSuffix = year.toString().slice(-2);
-    const monthPad = job.month.padStart(2, '0');
+    const monthPad = (job.month || '1').padStart(2, '0');
     
-    return `K${yearSuffix}${monthPad}&${job.jobCode}`;
+    return `K${yearSuffix}${monthPad}${job.jobCode}`;
   };
 
   const totalSell = lhkJobs.reduce((sum, job) => sum + job.sell, 0);

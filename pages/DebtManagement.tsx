@@ -36,7 +36,10 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
         const grouped: Record<string, { id: string, name: string, totalDebt: number, jobCount: number }> = {};
         jobs.forEach(job => {
           // Condition: Job has revenue but Bank is empty (Unpaid)
-          if (!job.bank && (job.sell > 0 || job.localChargeTotal > 0)) {
+          // We consider it a debt if there is ANY revenue (Sell, LocalCharge, Extensions) and no Bank record
+          const hasRevenue = job.sell > 0 || job.localChargeTotal > 0 || (job.extensions && job.extensions.length > 0);
+          
+          if (!job.bank && hasRevenue) {
             const custId = job.customerId;
             if (!grouped[custId]) {
               grouped[custId] = { 
@@ -46,8 +49,11 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
                 jobCount: 0 
               };
             }
-            // Debt amount: Prefer Local Charge Total (Invoice Amt), else Sell
-            const debtAmt = job.localChargeTotal > 0 ? job.localChargeTotal : job.sell;
+            
+            // Debt Calculation: Sum of ALL revenue components
+            const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
+            const debtAmt = (job.sell || 0) + (job.localChargeTotal || 0) + extTotal;
+            
             grouped[custId].totalDebt += debtAmt;
             grouped[custId].jobCount++;
           }
@@ -82,7 +88,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
       case 'LONGHOANG_NO_HBL': {
         // Customer name contains "Long Hoàng" AND HBL is empty
         data = jobs.filter(j => 
-          j.customerName.toLowerCase().includes('long hoàng') && !j.hbl
+          String(j.customerName).toLowerCase().includes('long hoàng') && !j.hbl
         );
         break;
       }
@@ -128,7 +134,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
     }
 
     if (searchTerm) {
-      const lower = searchTerm.toLowerCase();
+      const lower = String(searchTerm).toLowerCase();
       data = data.filter(item => {
         if (item.jobCode) return String(item.jobCode).toLowerCase().includes(lower);
         if (item.name) return String(item.name).toLowerCase().includes(lower);
