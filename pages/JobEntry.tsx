@@ -18,10 +18,13 @@ interface JobEntryProps {
   onAddCustomer: (customer: Customer) => void;
   lines: ShippingLine[];
   onAddLine: (line: string) => void;
+  initialJobId?: string | null;
+  onClearTargetJob?: () => void;
 }
 
 export const JobEntry: React.FC<JobEntryProps> = ({ 
-  jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine
+  jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine,
+  initialJobId, onClearTargetJob
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
@@ -59,6 +62,26 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   useEffect(() => {
     setCurrentPage(1);
   }, [filterJobCode, filterMonth, filterCustomer, filterBooking, filterLine]);
+
+  // Auto-open Job if ID provided
+  useEffect(() => {
+    if (initialJobId && jobs.length > 0) {
+      const jobToView = jobs.find(j => j.id === initialJobId);
+      if (jobToView) {
+        try {
+          const safeJob = JSON.parse(JSON.stringify(jobToView));
+          setEditingJob(safeJob);
+          setIsViewMode(true);
+          setIsModalOpen(true);
+        } catch (err) {
+          console.error("Error parsing job for view", err);
+        }
+      }
+      if (onClearTargetJob) {
+        onClearTargetJob();
+      }
+    }
+  }, [initialJobId, jobs, onClearTargetJob]);
 
   const handleAddNew = () => {
     setEditingJob(null);

@@ -7,9 +7,10 @@ import { getPaginationRange } from '../utils';
 
 interface ProfitReportProps {
   jobs: JobData[];
+  onViewJob?: (jobId: string) => void;
 }
 
-export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs }) => {
+export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, onViewJob }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -131,7 +132,13 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs }) => {
                    paginatedData.map((item) => (
                       <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                          <td className="px-6 py-4 text-gray-500">T{item.month}</td>
-                         <td className="px-6 py-4 font-medium text-blue-700">{item.jobCode}</td>
+                         <td 
+                           className="px-6 py-4 font-medium text-blue-700 cursor-pointer hover:underline hover:text-blue-900"
+                           onClick={() => onViewJob && onViewJob(item.id)}
+                           title="Click để xem chi tiết Job"
+                         >
+                           {item.jobCode}
+                         </td>
                          <td className="px-6 py-4 text-gray-600">{item.booking}</td>
                          
                          <td className="px-6 py-4 text-right font-medium text-green-700">{formatCurrency(item.kimberry)}</td>

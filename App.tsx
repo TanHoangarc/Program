@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -18,6 +19,7 @@ import { Search, Bell, User, ChevronDown, Ship } from 'lucide-react';
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation'>('entry');
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
+  const [targetJobId, setTargetJobId] = useState<string | null>(null);
   
   // Jobs State
   const [jobs, setJobs] = useState<JobData[]>(() => {
@@ -104,6 +106,11 @@ const App: React.FC = () => {
     setCurrentPage('booking');
   };
 
+  const handleNavigateToJob = (jobId: string) => {
+    setTargetJobId(jobId);
+    setCurrentPage('entry');
+  };
+
   const handleResetData = () => {
     if (window.confirm('CẢNH BÁO: Hành động này sẽ XÓA TOÀN BỘ danh sách Job hiện tại.\nBạn có chắc chắn muốn tiếp tục không?')) {
       setJobs([]);
@@ -121,7 +128,20 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch(currentPage) {
       case 'entry':
-        return <JobEntry jobs={jobs} onAddJob={handleAddJob} onEditJob={handleEditJob} onDeleteJob={handleDeleteJob} customers={customers} onAddCustomer={handleAddCustomer} lines={shippingLines} onAddLine={handleAddLine} />;
+        return (
+          <JobEntry 
+            jobs={jobs} 
+            onAddJob={handleAddJob} 
+            onEditJob={handleEditJob} 
+            onDeleteJob={handleDeleteJob} 
+            customers={customers} 
+            onAddCustomer={handleAddCustomer} 
+            lines={shippingLines} 
+            onAddLine={handleAddLine}
+            initialJobId={targetJobId}
+            onClearTargetJob={() => setTargetJobId(null)}
+          />
+        );
       case 'booking':
         return <BookingList jobs={jobs} onEditJob={handleEditJob} initialBookingId={targetBookingId} onClearTargetBooking={() => setTargetBookingId(null)} />;
       case 'reports':
@@ -149,7 +169,7 @@ const App: React.FC = () => {
       case 'debt':
         return <DebtManagement jobs={jobs} customers={customers} />;
       case 'profit':
-        return <ProfitReport jobs={jobs} />;
+        return <ProfitReport jobs={jobs} onViewJob={handleNavigateToJob} />;
       case 'system':
         return <SystemPage jobs={jobs} customers={customers} lines={shippingLines} onRestore={handleSystemRestore} />;
       default:
@@ -208,6 +228,7 @@ const App: React.FC = () => {
           onNavigate={(page) => {
             setCurrentPage(page);
             setTargetBookingId(null);
+            setTargetJobId(null);
           }} 
           onResetData={handleResetData}
         />
