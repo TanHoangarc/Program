@@ -34,15 +34,18 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs }) => {
     }
 
     const mapped = filtered.map(job => {
-      // UPDATED: Kimberry = Cont 20 * 250k + Cont 40 * 500k
-      const kimberry = ((job.cont20 || 0) * 250000) + ((job.cont40 || 0) * 500000);
-
-      // Cá nhân = Sum of specific fees
-      const personal = (job.feeCic || 0) + 
+      // Calculate Total Fees
+      const totalFees = (job.feeCic || 0) + 
                        (job.feeKimberry || 0) + 
                        (job.feeEmc || 0) + 
                        (job.feePsc || 0) + 
                        (job.feeOther || 0);
+
+      // UPDATED: Kimberry Column is now the Total Fees (Sum of all fee fields)
+      const kimberry = totalFees;
+
+      // Cá nhân = Sum of specific fees (Currently same as Kimberry)
+      const personal = totalFees;
 
       return {
         id: job.id,
@@ -119,7 +122,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs }) => {
                    <th className="px-6 py-4">Tháng</th>
                    <th className="px-6 py-4">Job</th>
                    <th className="px-6 py-4">Booking</th>
-                   <th className="px-6 py-4 text-right">Kimberry</th>
+                   <th className="px-6 py-4 text-right">Kimberry (Tổng Phí)</th>
                    <th className="px-6 py-4 text-right">Cá nhân</th>
                 </tr>
              </thead>

@@ -431,7 +431,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         ))}
                     </div>
                     <div className="mt-3 text-right text-xs text-gray-500 border-t border-dashed border-gray-200 pt-2">
-                       Tổng: <strong className="text-red-600 text-sm ml-1">{formatMoney(totalAdditionalLocalChargeNet)}</strong>
+                       {/* UPDATED LABEL: Shows Total Actual Net (Main + Additional) */}
+                       Tổng: <strong className="text-red-600 text-sm ml-1">{formatMoney(totalActualNet)}</strong>
                     </div>
                  </div>
              )}
