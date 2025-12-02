@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
 import { JobModal } from '../components/JobModal';
@@ -253,7 +252,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     <div className="w-full h-full pb-10">
       <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls, .csv" className="hidden" />
 
-      {/* Header */}
       <div className="mb-6 flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
@@ -276,7 +274,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         </div>
       </div>
 
-      {/* Filter Bar */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 items-center">
          <div className="flex items-center space-x-2 w-full md:w-auto">
             <Filter className="w-4 h-4 text-gray-500" />
@@ -301,7 +298,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
          </div>
       </div>
 
-      {/* Job Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-visible min-h-[400px]">
          <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -359,7 +355,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                                     <MoreHorizontal className="w-5 h-5" />
                                  </button>
                                  
-                                 {/* Dropdown Menu */}
                                  {openActionMenuId === job.id && (
                                     <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 z-10 py-1 text-left animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                                        <button onClick={() => { handleView(job); setOpenActionMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
@@ -399,7 +394,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             </table>
          </div>
 
-         {/* Pagination Controls */}
          {totalPages > 1 && (
             <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
                <div>
