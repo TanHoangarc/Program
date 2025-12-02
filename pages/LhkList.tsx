@@ -1,9 +1,9 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
-import { Search, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Briefcase, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { getPaginationRange } from '../utils';
+import * as XLSX from 'xlsx';
 
 interface LhkListProps {
   jobs: JobData[];
@@ -19,7 +19,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
     setCurrentPage(1);
   }, [filterMonth, searchTerm]);
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+  const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   const lhkJobs = useMemo(() => {
     let filtered = jobs.filter(job => {
@@ -38,12 +38,15 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
       return isLhk && matchesMonth && matchesSearch;
     });
 
+    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
     return filtered.sort((a, b) => {
+        // 1. Month Descending
         const monthDiff = Number(b.month) - Number(a.month);
         if (monthDiff !== 0) return monthDiff;
 
-        const bookingA = String(a.booking || '').toLowerCase();
-        const bookingB = String(b.booking || '').toLowerCase();
+        // 2. Booking Ascending
+        const bookingA = String(a.booking || '').trim().toLowerCase();
+        const bookingB = String(b.booking || '').trim().toLowerCase();
         return bookingA.localeCompare(bookingB);
     });
   }, [jobs, filterMonth, searchTerm]);
@@ -53,9 +56,38 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   const paginatedJobs = lhkJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const paginationRange = getPaginationRange(currentPage, totalPages);
 
+  // Totals - UPDATED to sum SELL instead of PROFIT
+  const totals = useMemo(() => {
+    return lhkJobs.reduce((acc, job) => ({
+      sell: acc.sell + job.sell, // Changed from profit
+      cont20: acc.cont20 + job.cont20,
+      cont40: acc.cont40 + job.cont40
+    }), { sell: 0, cont20: 0, cont40: 0 });
+  }, [lhkJobs]);
+
+  // Export Excel Function
+  const handleExportExcel = () => {
+    const headers = ['Tháng', 'Job Code', 'Booking', 'HBL', 'Line', 'Cont 20', 'Cont 40', 'Sell'];
+    const rows = lhkJobs.map(job => [
+        job.month,
+        job.jobCode,
+        job.booking,
+        job.hbl,
+        job.line,
+        job.cont20,
+        job.cont40,
+        job.sell // Export Sell
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "LHK_Jobs");
+    XLSX.writeFile(wb, `LHK_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
   return (
     <div className="p-8 max-w-full">
-      <div className="mb-6 flex justify-between items-end">
+      <div className="mb-6 flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
           <div className="flex items-center space-x-3 text-slate-800 mb-2">
             <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
@@ -66,7 +98,13 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
           <p className="text-slate-500 ml-11">Danh sách riêng cho khách hàng Long Hoàng Logistics</p>
         </div>
         
-        <div className="flex space-x-4">
+        <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4">
+           {/* Export Button */}
+           <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center shadow-sm transition-colors">
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Xuất Excel
+           </button>
+
            <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded text-sm min-w-[150px]">
              <option value="">Tất cả tháng</option>
              {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -94,7 +132,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
                 <th className="px-6 py-4">Line</th>
                 <th className="px-6 py-4 text-center">Cont 20'</th>
                 <th className="px-6 py-4 text-center">Cont 40'</th>
-                <th className="px-6 py-4 text-right">Lợi Nhuận</th>
+                <th className="px-6 py-4 text-right">Sell</th> {/* Renamed Header */}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -108,13 +146,26 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
                     <td className="px-6 py-4">{job.line}</td>
                     <td className="px-6 py-4 text-center">{job.cont20}</td>
                     <td className="px-6 py-4 text-center">{job.cont40}</td>
-                    <td className="px-6 py-4 text-right font-medium text-green-700">{formatCurrency(job.profit)}</td>
+                    {/* Display Sell instead of Profit */}
+                    <td className="px-6 py-4 text-right font-medium text-blue-700">{formatCurrency(job.sell)}</td>
                   </tr>
                 ))
               ) : (
                 <tr><td colSpan={8} className="text-center py-12 text-gray-400">Không tìm thấy Job LHK nào</td></tr>
               )}
             </tbody>
+            {/* Added Footer */}
+            {lhkJobs.length > 0 && (
+                <tfoot className="bg-gray-50 font-bold text-slate-800 text-xs uppercase border-t border-gray-200">
+                  <tr>
+                    <td colSpan={5} className="px-6 py-4 text-right">Tổng Cộng:</td>
+                    <td className="px-6 py-4 text-center">{totals.cont20}</td>
+                    <td className="px-6 py-4 text-center">{totals.cont40}</td>
+                    {/* Total Sell */}
+                    <td className="px-6 py-4 text-right text-blue-700 font-bold text-sm">{formatCurrency(totals.sell)}</td>
+                  </tr>
+                </tfoot>
+            )}
           </table>
         </div>
 
