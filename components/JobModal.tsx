@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit3, Calculator, FileText } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
@@ -217,7 +216,7 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     const safeVal = normalizeStr(val);
     
-    // UPDATED: Search by CODE ONLY, using STARTSWITH
+    // Search by CODE ONLY, using STARTSWITH
     const matches = (customers || []).filter(c => {
         const code = normalizeStr(c.code || '');
         return code.startsWith(safeVal);
@@ -244,7 +243,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     setShowSuggestions(false);
   };
 
-  // UPDATED: Filter by CODE ONLY, using STARTSWITH
+  // Filter by CODE ONLY, using STARTSWITH
   const filteredCustomers = (customers || []).filter(c => {
       const input = normalizeStr(custCodeInput);
       const code = normalizeStr(c?.code);
@@ -477,7 +476,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                      )}
                   </div>
                   {selectedCustomerName && <div className="text-[10px] text-gray-500 mt-1 truncate font-medium">{selectedCustomerName}</div>}
-                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Mã KH mới - Đang tạo KH</div>}
+                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Không tìm thấy - Chuyển sang thêm mới</div>}
                 </div>
 
                 {isLongHoang && (
