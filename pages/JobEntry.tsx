@@ -200,8 +200,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           customerName: row['Customer'] || '',
           hbl: row['HBL'] || '',
           transit: row['Transit'] || 'HCM',
-          cost: Number(row['Cost']) || 0,
           sell: Number(row['Sell']) || 0,
+          cost: Number(row['Cost']) || 0,
           profit: Number(row['Profit']) || 0,
           cont20: Number(row['Cont 20']) || 0,
           cont40: Number(row['Cont 40']) || 0,
@@ -252,7 +252,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       return {
         "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
-        "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
+        "Sell": job.sell, "Cost": job.cost, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
         "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
         "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '', // SAFE CHECK
         "Thu Cược": job.thuCuoc,
@@ -302,12 +302,12 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Totals Calculation (Based on Filtered Data)
   const totals = useMemo(() => {
     return filteredJobs.reduce((acc, job) => ({
-      cost: acc.cost + job.cost,
       sell: acc.sell + job.sell,
+      cost: acc.cost + job.cost,
       profit: acc.profit + job.profit,
       cont20: acc.cont20 + job.cont20,
       cont40: acc.cont40 + job.cont40,
-    }), { cost: 0, sell: 0, profit: 0, cont20: 0, cont40: 0 });
+    }), { sell: 0, cost: 0, profit: 0, cont20: 0, cont40: 0 });
   }, [filteredJobs]);
 
   const clearFilters = () => {
@@ -392,8 +392,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Customer</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Booking</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Line</th>
-              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Cost</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Sell</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Cost</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Profit</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center">Cont</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center w-16"></th>
@@ -411,8 +411,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   </td>
                   <td className="px-6 py-3 text-gray-500">{job.booking}</td>
                   <td className="px-6 py-3 text-gray-500">{job.line}</td>
-                  <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.sell)}</td>
+                  <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
                   <td className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(job.profit)}</td>
                   <td className="px-6 py-3 text-center">
                     <div className="flex flex-col gap-1 items-center">
@@ -467,8 +467,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             <tfoot className="bg-gray-50 border-t border-gray-300 font-bold text-gray-800 text-xs uppercase">
               <tr>
                 <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng (Tất cả kết quả lọc):</td>
-                <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                 <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
+                <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                 <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
                 <td className="px-6 py-4 text-center">
                   <div className="flex flex-col gap-1 items-center">
