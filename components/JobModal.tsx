@@ -205,36 +205,30 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  // CUSTOMER HANDLERS - SEARCHABLE INPUT (CODE OR NAME)
+  // Helper for Vietnamese search (accent-insensitive)
+  const normalizeStr = (str: string) => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  // CUSTOMER HANDLERS
   const handleCustomerInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isViewMode) return;
     const val = e.target.value;
     setCustCodeInput(val);
     setShowSuggestions(true);
 
-    const safeVal = val.toLowerCase();
+    const safeVal = normalizeStr(val);
     
-    // Check if matches existing customers (Code or Name)
+    // UPDATED: Search by CODE ONLY, using STARTSWITH
     const matches = (customers || []).filter(c => {
-        const code = (c.code || '').toLowerCase();
-        const name = (c.name || '').toLowerCase();
-        return code.includes(safeVal) || name.includes(safeVal);
+        const code = normalizeStr(c.code || '');
+        return code.startsWith(safeVal);
     });
     
-    // If input is not empty AND no matches found, trigger ADD NEW mode
     if (matches.length === 0 && val.trim() !== '') {
         setIsAddingCustomer(true);
-        // Reset form data for selected customer
         setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-        // Pre-fill new customer code
         setNewCustomer(prev => ({ ...prev, code: val, name: '', mst: '' }));
     } else {
         setIsAddingCustomer(false);
-        // If exact code match, we could auto-select, but let user click to be safe
-        const exactCode = matches.find(c => c.code.toLowerCase() === safeVal);
-        if (exactCode) {
-             // Optional: auto-select logic could go here
-        }
     }
   };
 
@@ -250,12 +244,11 @@ export const JobModal: React.FC<JobModalProps> = ({
     setShowSuggestions(false);
   };
 
-  // Filter for rendering list
-  const safeInput = (custCodeInput || '').toLowerCase();
+  // UPDATED: Filter by CODE ONLY, using STARTSWITH
   const filteredCustomers = (customers || []).filter(c => {
-      const code = (c?.code || '').toLowerCase();
-      const name = (c?.name || '').toLowerCase();
-      return code.includes(safeInput) || name.includes(safeInput);
+      const input = normalizeStr(custCodeInput);
+      const code = normalizeStr(c?.code);
+      return code.startsWith(input);
   });
 
   const saveNewCustomer = () => {
@@ -455,7 +448,7 @@ export const JobModal: React.FC<JobModalProps> = ({
 
                 {/* CUSTOMER SEARCHABLE INPUT */}
                 <div className="lg:col-span-2 space-y-1 relative group">
-                  <Label>Customer (Mã KH hoặc Tên)</Label>
+                  <Label>Customer (Mã KH)</Label>
                   <div className="relative">
                      <Input 
                         value={custCodeInput} 
@@ -463,12 +456,12 @@ export const JobModal: React.FC<JobModalProps> = ({
                         onFocus={() => setShowSuggestions(true)}
                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                         readOnly={isViewMode}
-                        placeholder={isViewMode ? "" : "Nhập Mã hoặc Tên KH..."}
+                        placeholder={isViewMode ? "" : "Nhập Mã KH..."}
                         className={isAddingCustomer ? "border-blue-500 ring-1 ring-blue-500" : ""}
                         autoComplete="off"
                      />
                      {/* Suggestion Dropdown */}
-                     {!isViewMode && showSuggestions && filteredCustomers.length > 0 && (
+                     {!isViewMode && showSuggestions && custCodeInput && filteredCustomers.length > 0 && (
                         <ul className="absolute z-50 w-full bg-white border border-gray-300 rounded-b-md shadow-lg max-h-60 overflow-y-auto mt-1 left-0">
                           {filteredCustomers.map(c => (
                             <li 
