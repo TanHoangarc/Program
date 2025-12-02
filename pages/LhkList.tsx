@@ -1,7 +1,3 @@
-<change>
-    <file>pages/LhkList.tsx</file>
-    <description>Rename Profit column to Sell, update totals to sum Sell, and add Export Excel feature</description>
-    <content><![CDATA[
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
 import { Search, Briefcase, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
@@ -222,5 +218,3 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
     </div>
   );
 };
-]]></content>
-</change>
