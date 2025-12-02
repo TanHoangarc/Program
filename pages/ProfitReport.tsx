@@ -27,8 +27,8 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, onViewJob }) =
     if (filterMonth) filtered = filtered.filter(j => j.month === filterMonth);
     if (searchTerm) {
         filtered = filtered.filter(j => 
-            String(j.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-            String(j.booking || '').toLowerCase().includes(searchTerm.toLowerCase())
+            j.jobCode.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            j.booking.toLowerCase().includes(searchTerm.toLowerCase())
         );
     }
 
@@ -52,12 +52,11 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, onViewJob }) =
       };
     });
 
-    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
     return mapped.sort((a, b) => {
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
-      const bookingA = String(a.booking || '').trim().toLowerCase();
-      const bookingB = String(b.booking || '').trim().toLowerCase();
+      const bookingA = String(a.booking || '').toLowerCase();
+      const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
   }, [jobs, filterMonth, searchTerm]);
@@ -128,13 +127,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, onViewJob }) =
                 paginatedData.map(item => (
                   <tr key={item.id} className="hover:bg-gray-50">
                      <td className="px-6 py-4 text-gray-500">T{item.month}</td>
-                     <td 
-                        className="px-6 py-4 font-bold text-blue-700 cursor-pointer hover:underline"
-                        onClick={() => onViewJob && onViewJob(item.id)}
-                        title="Click để xem chi tiết Job"
-                     >
-                        {item.jobCode}
-                     </td>
+                     <td className="px-6 py-4 font-bold text-blue-700">{item.jobCode}</td>
                      <td className="px-6 py-4 text-gray-600">{item.booking}</td>
                      <td className="px-6 py-4 text-right text-purple-600">{formatCurrency(item.fees)}</td>
                      <td className="px-6 py-4 text-right font-bold text-green-600">{formatCurrency(item.totalProfit)}</td>

@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit3, Calculator, FileText } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
 import { formatDateVN } from '../utils';
@@ -8,86 +9,129 @@ interface JobModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (job: JobData, newCustomer?: Customer) => void;
-  initialData: JobData | null;
+  initialData?: JobData | null;
   customers: Customer[];
   lines: ShippingLine[];
   onAddLine: (line: string) => void;
   onViewBookingDetails: (bookingId: string) => void;
   isViewMode?: boolean;
   onSwitchToEdit?: () => void;
-  jobs?: JobData[]; 
 }
 
+// Styled Input Components
 const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="block text-xs font-semibold text-gray-500 mb-1">{children}</label>
 );
 
 const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => (
   <input 
-    ref={ref}
     {...props} 
-    value={props.value ?? ''} 
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT disabled:bg-gray-50 disabled:text-gray-500 transition-shadow ${props.className || ''}`}
+    ref={ref}
+    // Fix: Ensure value is never null/undefined to prevent uncontrolled warning
+    value={props.value ?? ''}
+    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-900 focus:border-blue-900 disabled:bg-gray-50 disabled:text-gray-500 placeholder-gray-400 transition-shadow ${props.className || ''}`}
   />
 ));
+Input.displayName = 'Input';
 
-const DateInput = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
-  <input 
-    type="date"
-    {...props}
-    value={props.value || ''}
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT disabled:bg-gray-50 disabled:text-gray-500 ${props.className || ''}`}
-  />
-);
+const DateInput = ({ 
+  value, 
+  name, 
+  onChange, 
+  readOnly 
+}: { 
+  value: string; 
+  name: string; 
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
+  readOnly?: boolean; 
+}) => {
+  if (readOnly) {
+    return (
+      <Input 
+        value={formatDateVN(value)} 
+        readOnly 
+        className="bg-gray-50"
+      />
+    );
+  }
+  return <Input type="date" name={name} value={value || ''} onChange={onChange} />;
+};
 
 const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
-  <select 
-    {...props} 
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT disabled:bg-gray-50 disabled:text-gray-500 ${props.className || ''}`}
+  <select
+    {...props}
+    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-900 focus:border-blue-900 disabled:bg-gray-50 disabled:text-gray-500 transition-shadow ${props.className || ''}`}
   >
     {props.children}
   </select>
 );
 
-const NumberStepper = ({ label, value, onChange, readOnly }: { label: string, value: number, onChange: (val: number) => void, readOnly?: boolean }) => {
-  return (
-    <div className="space-y-1">
-      <Label>{label}</Label>
-      <div className="flex items-center">
-        {!readOnly && (
-          <button type="button" onClick={() => onChange(Math.max(0, value - 1))} className="p-2 bg-gray-100 border border-gray-300 rounded-l hover:bg-gray-200">
-            <Minus className="w-4 h-4 text-gray-600" />
-          </button>
-        )}
-        <div className={`flex-1 px-3 py-2 border-y border-gray-300 text-center text-sm font-semibold bg-white ${readOnly ? 'border-x rounded' : ''}`}>
-          {value}
-        </div>
-        {!readOnly && (
-          <button type="button" onClick={() => onChange(value + 1)} className="p-2 bg-gray-100 border border-gray-300 rounded-r hover:bg-gray-200">
-            <Plus className="w-4 h-4 text-gray-600" />
-          </button>
-        )}
+const NumberStepper: React.FC<{
+  value: number;
+  onChange: (val: number) => void;
+  label: string;
+  readOnly?: boolean;
+}> = ({ value, onChange, label, readOnly }) => (
+  <div className="flex flex-col w-full">
+    <Label>{label}</Label>
+    <div className="flex items-center">
+      {!readOnly && (
+        <button 
+          type="button"
+          onClick={() => onChange(Math.max(0, (value || 0) - 1))}
+          className="w-9 h-9 border border-gray-300 rounded-l bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
+        >
+          <Minus className="w-3 h-3" />
+        </button>
+      )}
+      <div className={`flex-1 h-9 flex items-center justify-center border-y border-gray-300 bg-white text-sm font-semibold ${readOnly ? 'border rounded w-full px-3 justify-start' : ''}`}>
+        {value || 0}
       </div>
+      {!readOnly && (
+        <button 
+          type="button"
+          onClick={() => onChange((value || 0) + 1)}
+          className="w-9 h-9 border border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      )}
     </div>
-  );
-};
+  </div>
+);
 
-const MoneyInput = ({ label, value, onChange, name, readOnly }: { label: string, value: number, onChange: (name: string, val: number) => void, name: string, readOnly?: boolean }) => {
+const MoneyInput: React.FC<{
+  value: number;
+  name?: string;
+  onChange: (name: string, val: number) => void;
+  label: string;
+  readOnly?: boolean;
+}> = ({ value, name, onChange, label, readOnly }) => {
+  const [displayVal, setDisplayVal] = useState('');
+
+  useEffect(() => {
+    // Check for null/undefined
+    const safeValue = value || 0;
+    setDisplayVal(safeValue === 0 && !readOnly ? '' : new Intl.NumberFormat('en-US').format(safeValue));
+  }, [value, readOnly]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value.replace(/,/g, ''));
-    if (!isNaN(val)) onChange(name, val);
+    const raw = e.target.value.replace(/,/g, '');
+    if (!isNaN(Number(raw))) {
+      onChange(name || '', Number(raw));
+    }
   };
 
   return (
-    <div className="space-y-1">
+    <div className="w-full">
       <Label>{label}</Label>
-      <input 
-        type="text" 
-        value={value ? new Intl.NumberFormat('en-US').format(value) : ''} 
+      <input
+        type="text"
+        value={displayVal}
         onChange={handleChange}
         readOnly={readOnly}
-        className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT text-right font-bold text-gray-800 ${readOnly ? 'bg-gray-50 text-gray-600' : ''}`}
         placeholder="0"
+        className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900 text-right font-medium ${readOnly ? 'bg-gray-50 text-gray-700 font-bold' : ''}`}
       />
     </div>
   );
@@ -95,82 +139,104 @@ const MoneyInput = ({ label, value, onChange, name, readOnly }: { label: string,
 
 export const JobModal: React.FC<JobModalProps> = ({ 
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
-  isViewMode = false, onSwitchToEdit, jobs = []
+  isViewMode = false, onSwitchToEdit
 }) => {
+  // Lazy init to ensure robust state start
   const [formData, setFormData] = useState<JobData>(() => {
-    const base = initialData ? JSON.parse(JSON.stringify(initialData)) : { ...INITIAL_JOB, id: Date.now().toString() };
-    if (!Array.isArray(base.extensions)) base.extensions = [];
-    if (!base.bookingCostDetails) {
-        base.bookingCostDetails = {
-            localCharge: { invoice: '', date: '', net: 0, vat: 0, total: 0 },
-            additionalLocalCharges: [],
-            extensionCosts: [],
-            deposits: []
+    if (initialData) {
+      // CRITICAL FIX: Merge with INITIAL_JOB to ensure all fields (extensions, new fees) exist
+      // This prevents "White Screen" crashes when opening old jobs
+      try {
+        const parsed = JSON.parse(JSON.stringify(initialData));
+        
+        // Force date fields to be strings to prevent formatting crashes
+        const safeParsed = {
+            ...parsed,
+            ngayChiCuoc: String(parsed.ngayChiCuoc || ''),
+            ngayChiHoan: String(parsed.ngayChiHoan || ''),
+            localChargeDate: String(parsed.localChargeDate || ''),
+            ngayThuCuoc: String(parsed.ngayThuCuoc || ''),
+            ngayThuHoan: String(parsed.ngayThuHoan || '')
         };
+
+        return { 
+          ...INITIAL_JOB, 
+          ...safeParsed,
+          // Explicitly force arrays to be arrays (handle null/undefined from JSON)
+          extensions: Array.isArray(safeParsed.extensions) ? safeParsed.extensions : [],
+          // Ensure nested objects are not null
+          bookingCostDetails: safeParsed.bookingCostDetails || undefined
+        };
+      } catch (e) {
+        return { ...INITIAL_JOB, id: Date.now().toString() };
+      }
+    } else {
+      return { ...INITIAL_JOB, id: Date.now().toString() };
     }
-    const dateFields = ['ngayChiCuoc', 'ngayChiHoan', 'localChargeDate', 'ngayThuCuoc', 'ngayThuHoan'];
-    dateFields.forEach(f => {
-        if (base[f]) base[f] = String(base[f]);
-    });
-    return base;
   });
 
+  // State for Customer Input
   const [custCodeInput, setCustCodeInput] = useState(() => {
     if (initialData?.customerId) {
+        // Safe check for customer existence and code property
         const c = (customers || []).find(c => c?.id === initialData.customerId);
-        return c?.code || ''; 
+        return c?.code || ''; // Ensure it returns a string, never undefined
     }
     return '';
   });
-
   const [showSuggestions, setShowSuggestions] = useState(false);
+
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ mst: '', name: '', code: '' });
   const [isAddingLine, setIsAddingLine] = useState(false);
   const [newLine, setNewLine] = useState('');
-  const [jobCodeError, setJobCodeError] = useState('');
   
   const jobInputRef = useRef<HTMLInputElement>(null);
 
+  // Focus effect for new entries
   useEffect(() => {
     if (isOpen && !initialData && !isViewMode) {
        setTimeout(() => jobInputRef.current?.focus(), 100);
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData, isViewMode]);
 
+  // Sync booking details if they change externally while modal is open (unlikely with current conditional render but good practice)
+  useEffect(() => {
+    if (isOpen && initialData?.bookingCostDetails) {
+        setFormData(prev => ({ ...prev, bookingCostDetails: initialData.bookingCostDetails }));
+    }
+  }, [initialData?.bookingCostDetails, isOpen]);
+
+  // NEW: Auto-calculate Kimberry Fee based on containers
   useEffect(() => {
     if (isViewMode) return;
     const fee20 = (formData.cont20 || 0) * 250000;
     const fee40 = (formData.cont40 || 0) * 500000;
     const totalFee = fee20 + fee40;
-    if (formData.feeKimberry !== totalFee) {
-        setFormData(prev => ({ ...prev, feeKimberry: totalFee }));
-    }
-  }, [formData.cont20, formData.cont40, isViewMode]); 
+    
+    // Only update if different to avoid infinite loops, but enforce formula
+    // Removed formData.feeKimberry from dependency array to prevent cyclic updates
+    setFormData(prev => {
+        if (prev.feeKimberry !== totalFee) {
+            return { ...prev, feeKimberry: totalFee };
+        }
+        return prev;
+    });
+  }, [formData.cont20, formData.cont40, isViewMode]);
+
+  // Filter customers for custom dropdown - STARTS WITH logic
+  // Safe check: c?.code ensures we don't crash on malformed customer data
+  // Ensure custCodeInput is treated as string
+  const safeInput = (custCodeInput || '').toLowerCase();
+  
+  const filteredCustomers = (customers || []).filter(c => 
+    c?.code && c.code.toLowerCase().startsWith(safeInput)
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (isViewMode) return;
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleJobCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isViewMode) return;
-    const rawVal = e.target.value;
-    const val = rawVal.trim();
-
-    const isDuplicate = jobs.some(j => 
-        j.jobCode.toLowerCase() === val.toLowerCase() && 
-        j.id !== formData.id
-    );
-
-    if (isDuplicate) {
-        setJobCodeError('Mã Job này đã tồn tại!');
-    } else {
-        setJobCodeError('');
-    }
-    
-    setFormData(prev => ({ ...prev, jobCode: val }));
   };
 
   const handleMoneyChange = (name: string, val: number) => {
@@ -204,30 +270,28 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  // Helper for Vietnamese search (accent-insensitive)
-  const normalizeStr = (str: string) => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-
-  // CUSTOMER HANDLERS
   const handleCustomerInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isViewMode) return;
     const val = e.target.value;
     setCustCodeInput(val);
     setShowSuggestions(true);
 
-    const safeVal = normalizeStr(val);
+    // Exact match check to auto-select
+    // Safe check: c?.code prevents crash if customer list has issues
+    const match = (customers || []).find(c => c?.code && c.code.toLowerCase() === val.toLowerCase());
     
-    // Search by CODE ONLY, using STARTSWITH
-    const matches = (customers || []).filter(c => {
-        const code = normalizeStr(c.code || '');
-        return code.startsWith(safeVal);
-    });
-    
-    if (matches.length === 0 && val.trim() !== '') {
+    if (match) {
+        setIsAddingCustomer(false);
+        setNewCustomer({ mst: '', name: '', code: '' });
+        setFormData(prev => ({ 
+            ...prev, 
+            customerId: match.id,
+            customerName: match.name
+        }));
+    } else {
         setIsAddingCustomer(true);
         setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-        setNewCustomer(prev => ({ ...prev, code: val, name: '', mst: '' }));
-    } else {
-        setIsAddingCustomer(false);
+        setNewCustomer(prev => ({ ...prev, code: val }));
     }
   };
 
@@ -242,13 +306,6 @@ export const JobModal: React.FC<JobModalProps> = ({
     }));
     setShowSuggestions(false);
   };
-
-  // Filter by CODE ONLY, using STARTSWITH
-  const filteredCustomers = (customers || []).filter(c => {
-      const input = normalizeStr(custCodeInput);
-      const code = normalizeStr(c?.code);
-      return code.startsWith(input);
-  });
 
   const saveNewCustomer = () => {
     if (!newCustomer.name || !newCustomer.code) return;
@@ -274,7 +331,7 @@ export const JobModal: React.FC<JobModalProps> = ({
   const handleExtensionChange = (id: string, field: keyof ExtensionData, value: any) => {
     if (isViewMode) return;
     setFormData(prev => {
-      const newExts = prev.extensions.map(ext => {
+      const newExts = (prev.extensions || []).map(ext => {
         if (ext.id === id) {
           return { ...ext, [field]: value };
         }
@@ -288,7 +345,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     if (isViewMode) return;
     setFormData(prev => ({
       ...prev,
-      extensions: [...prev.extensions, { 
+      extensions: [...(prev.extensions || []), { 
         id: Date.now().toString(), 
         customerId: '', 
         invoice: '', 
@@ -304,7 +361,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     if (isViewMode) return;
     setFormData(prev => ({
       ...prev,
-      extensions: prev.extensions.filter(ext => ext.id !== id)
+      extensions: (prev.extensions || []).filter(ext => ext.id !== id)
     }));
   };
 
@@ -314,12 +371,6 @@ export const JobModal: React.FC<JobModalProps> = ({
       onSwitchToEdit();
       return;
     }
-    
-    if (jobCodeError) {
-        alert("Vui lòng sửa mã Job bị trùng trước khi lưu.");
-        return;
-    }
-
     let createdCustomer: Customer | undefined;
     if (isAddingCustomer) {
       createdCustomer = saveNewCustomer();
@@ -329,6 +380,7 @@ export const JobModal: React.FC<JobModalProps> = ({
       }
     }
     
+    // Prepare final data
     const finalJob = { ...formData };
     if (createdCustomer) {
         finalJob.customerId = createdCustomer.id;
@@ -354,8 +406,9 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
+  // Safe checks for lookup
   const selectedCustomerName = (customers || []).find(c => c?.id === formData.customerId)?.name || formData.customerName;
-  const isLongHoang = (selectedCustomerName || '').toUpperCase().includes('LONG HOANG') || (selectedCustomerName || '').toUpperCase().includes('LONGHOANG');
+  const isLongHoang = selectedCustomerName === 'Long Hoàng Logistics';
   const selectedLineName = (lines || []).find(l => l?.code === formData.line)?.name || '';
 
   if (!isOpen) return null;
@@ -363,6 +416,8 @@ export const JobModal: React.FC<JobModalProps> = ({
   return (
     <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 border border-gray-200">
+        
+        {/* Header */}
         <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">
@@ -377,12 +432,15 @@ export const JobModal: React.FC<JobModalProps> = ({
           </button>
         </div>
 
+        {/* Content */}
         <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* GENERAL */}
+            
+            {/* --- GENERAL INFO --- */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2">Thông Tin Chung</h3>
               <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                
                 <div className="space-y-1">
                   <Label>Tháng</Label>
                   <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
@@ -393,14 +451,9 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <div className="space-y-1">
                   <Label>Job Code</Label>
                   <Input 
-                    name="jobCode" 
-                    ref={jobInputRef} 
-                    value={formData.jobCode} 
-                    onChange={handleJobCodeChange} 
-                    readOnly={isViewMode} 
-                    className={`${isViewMode ? "font-bold text-blue-900" : ""} ${jobCodeError ? "border-red-500 ring-1 ring-red-500" : ""}`}
+                    name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} 
+                    className={isViewMode ? "font-bold text-blue-900" : ""}
                   />
-                  {jobCodeError && !isViewMode && <p className="text-[10px] text-red-600 font-bold mt-1">{jobCodeError}</p>}
                 </div>
 
                 <div className="space-y-1">
@@ -431,7 +484,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                     <>
                       <Select name="line" value={formData.line} onChange={handleLineSelectChange} disabled={isViewMode}>
                         <option value="">-- Chọn Line --</option>
-                        {lines.map((l, i) => <option key={i} value={l.code}>{l?.code}</option>)}
+                        {(lines || []).map((l, i) => <option key={i} value={l?.code}>{l?.code}</option>)}
                         {!isViewMode && <option value="new" className="font-bold text-blue-600">+ Thêm Line mới</option>}
                       </Select>
                       {selectedLineName && <div className="text-[10px] text-gray-500 mt-1 truncate">{selectedLineName}</div>}
@@ -445,7 +498,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                   )}
                 </div>
 
-                {/* CUSTOMER SEARCHABLE INPUT */}
+                {/* CUSTOMER INPUT REPLACEMENT - CUSTOM DROPDOWN */}
                 <div className="lg:col-span-2 space-y-1 relative group">
                   <Label>Customer (Mã KH)</Label>
                   <div className="relative">
@@ -455,11 +508,12 @@ export const JobModal: React.FC<JobModalProps> = ({
                         onFocus={() => setShowSuggestions(true)}
                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                         readOnly={isViewMode}
-                        placeholder={isViewMode ? "" : "Nhập Mã KH..."}
+                        placeholder={isViewMode ? "" : "Nhập mã KH..."}
                         className={isAddingCustomer ? "border-blue-500 ring-1 ring-blue-500" : ""}
                         autoComplete="off"
                      />
-                     {/* Suggestion Dropdown */}
+                     
+                     {/* Custom Dropdown List */}
                      {!isViewMode && showSuggestions && custCodeInput && filteredCustomers.length > 0 && (
                         <ul className="absolute z-50 w-full bg-white border border-gray-300 rounded-b-md shadow-lg max-h-60 overflow-y-auto mt-1 left-0">
                           {filteredCustomers.map(c => (
@@ -469,14 +523,14 @@ export const JobModal: React.FC<JobModalProps> = ({
                               className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 flex flex-col border-b border-gray-50 last:border-0"
                             >
                               <span className="font-bold text-blue-800">{c.code}</span>
-                              <span className="text-xs text-gray-600 truncate">{c.name}</span>
+                              <span className="text-xs text-gray-500 truncate">{c.name}</span>
                             </li>
                           ))}
                         </ul>
                      )}
                   </div>
                   {selectedCustomerName && <div className="text-[10px] text-gray-500 mt-1 truncate font-medium">{selectedCustomerName}</div>}
-                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Không tìm thấy - Chuyển sang thêm mới</div>}
+                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Đang thêm khách hàng mới</div>}
                 </div>
 
                 {isLongHoang && (
@@ -494,6 +548,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                 </div>
               </div>
               
+              {/* Inline Add Customer */}
               {isAddingCustomer && !isViewMode && (
                 <div className="mt-4 p-4 bg-blue-50/50 rounded border border-blue-100 animate-in slide-in-from-top">
                   <div className="flex justify-between items-center mb-3">
@@ -515,7 +570,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             onChange={e => {
                                 const val = e.target.value;
                                 setNewCustomer(prev => ({...prev, code: val}));
-                                setCustCodeInput(val);
+                                setCustCodeInput(val); // Sync main input
                             }} 
                         />
                     </div>
@@ -525,23 +580,24 @@ export const JobModal: React.FC<JobModalProps> = ({
               )}
             </div>
 
-            {/* FINANCE */}
+            {/* --- FINANCE --- */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2">Tài Chính & Container</h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                <MoneyInput label="Sell (Doanh thu)" name="sell" value={formData.sell} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Cost (Chi phí)" name="cost" value={formData.cost} onChange={handleMoneyChange} readOnly={isViewMode} />
+                <MoneyInput label="Sell (Doanh thu)" name="sell" value={formData.sell} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Profit (Lợi nhuận)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly />
                 <NumberStepper label="Cont 20'" value={formData.cont20} onChange={(val) => setFormData(prev => ({...prev, cont20: val}))} readOnly={isViewMode} />
                 <NumberStepper label="Cont 40'" value={formData.cont40} onChange={(val) => setFormData(prev => ({...prev, cont40: val}))} readOnly={isViewMode} />
               </div>
             </div>
 
-            {/* COST DETAILS */}
+            {/* --- COST BREAKDOWN --- */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
               <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-5 border-b pb-2">Chi Tiết Chi Phí</h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                 <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
+                {/* Updated Kimberry Input to be ReadOnly */}
                 <div className="relative">
                     <MoneyInput 
                         label="Phí Kimberry (Auto)" 
@@ -558,17 +614,17 @@ export const JobModal: React.FC<JobModalProps> = ({
               </div>
             </div>
 
-            {/* REVENUE IN */}
+            {/* --- REVENUE IN --- */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
               <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wide mb-5 border-b pb-2">Thu (Revenue In)</h3>
+              
               <div className="space-y-6">
+                {/* Local Charge */}
                 <div className="bg-blue-50/30 p-4 rounded border border-blue-100">
                   <h4 className="text-xs font-bold text-blue-800 mb-3">LOCAL CHARGE</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                    <div className="grid grid-cols-2 gap-4 md:col-span-2">
-                        <div><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} /></div>
-                        <MoneyInput label="Amount" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode} />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} /></div>
+                    <MoneyInput label="Amount" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode} />
                     <div><Label>Ngân hàng</Label>
                       <Select name="bank" value={formData.bank} onChange={handleChange} disabled={isViewMode}>
                         <option value="">-- Chọn --</option>
@@ -578,6 +634,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                   </div>
                 </div>
 
+                {/* Deposit */}
                 <div className="bg-indigo-50/30 p-4 rounded border border-indigo-100">
                    <h4 className="text-xs font-bold text-indigo-800 mb-3">DEPOSIT (CƯỢC)</h4>
                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -585,7 +642,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                         <Label>Khách hàng</Label>
                         <Select name="maKhCuocId" value={formData.maKhCuocId} onChange={handleChange} disabled={isViewMode}>
                           <option value="">-- Chọn KH --</option>
-                          {customers.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
+                          {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
                         </Select>
                      </div>
                      <MoneyInput label="Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
@@ -602,7 +659,7 @@ export const JobModal: React.FC<JobModalProps> = ({
               </div>
             </div>
 
-            {/* EXTENSIONS */}
+            {/* --- EXTENSIONS --- */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
               <div className="flex justify-between items-center mb-4 border-b pb-2">
                 <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">Gia Hạn</h3>
@@ -613,8 +670,9 @@ export const JobModal: React.FC<JobModalProps> = ({
                   </button>
                 )}
               </div>
+              
               <div className="space-y-3">
-                {formData.extensions.map((ext) => (
+                {(formData.extensions || []).map((ext) => (
                    <div key={ext.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-3 bg-orange-50/20 rounded border border-orange-100 relative group items-end">
                       {!isViewMode && (
                         <button type="button" onClick={() => removeExtension(ext.id)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
@@ -623,7 +681,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                          <Label>Khách hàng</Label>
                          <Select value={ext.customerId} onChange={(e) => handleExtensionChange(ext.id, 'customerId', e.target.value)} disabled={isViewMode}>
                             <option value="">-- Chọn KH --</option>
-                            {customers.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
+                            {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
                          </Select>
                       </div>
                       <div>
@@ -653,9 +711,10 @@ export const JobModal: React.FC<JobModalProps> = ({
               <button type="button" onClick={onClose} className="px-5 py-2.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
                 {isViewMode ? 'Đóng' : 'Hủy bỏ'}
               </button>
+              
               {isViewMode ? (
                 <button type="button" onClick={handleEditClick} className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
-                  <Edit3 className="w-4 h-4" /> <span>Chỉnh sửa</span>
+                  <Edit2 className="w-4 h-4" /> <span>Chỉnh sửa</span>
                 </button>
               ) : (
                 <button type="submit" className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
@@ -663,6 +722,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                 </button>
               )}
             </div>
+
           </form>
         </div>
       </div>

@@ -26,8 +26,8 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
     if (filterMonth) filtered = filtered.filter(j => j.month === filterMonth);
     if (searchTerm) {
         filtered = filtered.filter(j => 
-            String(j.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-            String(j.booking || '').toLowerCase().includes(searchTerm.toLowerCase())
+            j.jobCode.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            j.booking.toLowerCase().includes(searchTerm.toLowerCase())
         );
     }
 
@@ -68,13 +68,12 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
       };
     });
 
-    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
     return mapped.sort((a, b) => {
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
 
-      const bookingA = String(a.booking || '').trim().toLowerCase();
-      const bookingB = String(b.booking || '').trim().toLowerCase();
+      const bookingA = String(a.booking || '').toLowerCase();
+      const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
   }, [jobs, filterMonth, searchTerm]);

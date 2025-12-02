@@ -1,15 +1,13 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
+
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor } from 'lucide-react';
+import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
+import { calculateBookingSummary, getPaginationRange, formatDateVN } from '../utils';
 import { MONTHS } from '../constants';
-import { formatDateVN, getPaginationRange, calculateBookingSummary } from '../utils';
 import * as XLSX from 'xlsx';
-import { 
-  Plus, Search, Filter, Upload, Download, Edit2, Trash2, Eye, 
-  MoreHorizontal, ChevronLeft, ChevronRight, DollarSign, FileSpreadsheet, Briefcase
-} from 'lucide-react';
 
 interface JobEntryProps {
   jobs: JobData[];
@@ -20,86 +18,70 @@ interface JobEntryProps {
   onAddCustomer: (customer: Customer) => void;
   lines: ShippingLine[];
   onAddLine: (line: string) => void;
-  initialJobId: string | null;
-  onClearTargetJob: () => void;
+  initialJobId?: string | null;
+  onClearTargetJob?: () => void;
 }
 
 export const JobEntry: React.FC<JobEntryProps> = ({ 
   jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine,
   initialJobId, onClearTargetJob
 }) => {
-  const [filterMonth, setFilterMonth] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
-
-  // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
   const [isViewMode, setIsViewMode] = useState(false);
-
   const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
+  const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
 
-  // Dropdown menu state for specific job row
-  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  // Filters
+  const [filterJobCode, setFilterJobCode] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterCustomer, setFilterCustomer] = useState('');
+  const [filterBooking, setFilterBooking] = useState('');
+  const [filterLine, setFilterLine] = useState('');
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
-  // Auto-open job if ID provided (e.g. from Dashboard)
   useEffect(() => {
-    if (initialJobId) {
-      const found = jobs.find(j => j.id === initialJobId);
-      if (found) {
-        setEditingJob(found);
-        setIsViewMode(true);
-        setIsModalOpen(true);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activeMenuId && !(event.target as Element).closest('.action-menu-container')) {
+        setActiveMenuId(null);
       }
-      onClearTargetJob();
-    }
-  }, [initialJobId, jobs, onClearTargetJob]);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeMenuId]);
 
-  // Reset pagination on filter change
+  // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, searchTerm]);
+  }, [filterJobCode, filterMonth, filterCustomer, filterBooking, filterLine]);
 
-  // Handle click outside to close dropdowns
+  // Auto-open Job if ID provided
   useEffect(() => {
-    const handleClickOutside = () => setOpenActionMenuId(null);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
-  const filteredJobs = useMemo(() => {
-    return jobs.filter(job => {
-      const matchMonth = filterMonth ? job.month === filterMonth : true;
-      const term = searchTerm.toLowerCase();
-      const matchSearch = !term || 
-        (job.jobCode || '').toLowerCase().includes(term) ||
-        (job.booking || '').toLowerCase().includes(term) ||
-        (job.customerName || '').toLowerCase().includes(term) ||
-        (job.line || '').toLowerCase().includes(term);
-      
-      return matchMonth && matchSearch;
-    }).sort((a, b) => {
-       // Sort by Month Desc, then Job Code Desc
-       // Changed to: Month Desc -> Booking Asc (Trimmed) as per requirement
-       const mDiff = Number(b.month) - Number(a.month);
-       if (mDiff !== 0) return mDiff;
-       
-       const bookingA = String(a.booking || '').trim().toLowerCase();
-       const bookingB = String(b.booking || '').trim().toLowerCase();
-       return bookingA.localeCompare(bookingB);
-    });
-  }, [jobs, filterMonth, searchTerm]);
-
-  const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
-  const paginatedJobs = filteredJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-  const paginationRange = getPaginationRange(currentPage, totalPages);
+    if (initialJobId && jobs.length > 0) {
+      const jobToView = jobs.find(j => j.id === initialJobId);
+      if (jobToView) {
+        try {
+          const safeJob = JSON.parse(JSON.stringify(jobToView));
+          setEditingJob(safeJob);
+          setIsViewMode(true);
+          setIsModalOpen(true);
+        } catch (err) {
+          console.error("Error parsing job for view", err);
+        }
+      }
+      if (onClearTargetJob) {
+        onClearTargetJob();
+      }
+    }
+  }, [initialJobId, jobs, onClearTargetJob]);
 
   const handleAddNew = () => {
     setEditingJob(null);
@@ -108,27 +90,61 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleEdit = (job: JobData) => {
-    setEditingJob(job);
+    // Deep copy to ensure clean state
+    setEditingJob(JSON.parse(JSON.stringify(job)));
     setIsViewMode(false);
     setIsModalOpen(true);
+    setActiveMenuId(null);
   };
 
-  const handleView = (job: JobData) => {
-    setEditingJob(job);
-    setIsViewMode(true);
-    setIsModalOpen(true);
+  const handleRowClick = (job: JobData, e: React.MouseEvent) => {
+    if ((e.target as Element).closest('.action-menu-container')) return;
+    
+    // CRITICAL FIX: Deep copy job data to prevent "readonly" issues or reference bugs
+    // This ensures the Modal gets a completely fresh object
+    try {
+      const safeJob = JSON.parse(JSON.stringify(job));
+      setEditingJob(safeJob);
+      setIsViewMode(true);
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Error parsing job data", err);
+      alert("Có lỗi khi mở Job này. Vui lòng kiểm tra lại dữ liệu.");
+    }
+  };
+
+  const handleDuplicate = (job: JobData) => {
+    const newJob: JobData = {
+      ...job,
+      id: Date.now().toString(),
+      jobCode: `${job.jobCode} (Copy)`,
+      booking: job.booking ? `${job.booking}` : '',
+    };
+    onAddJob(newJob);
+    setActiveMenuId(null);
   };
 
   const handleDelete = (id: string) => {
     onDeleteJob(id);
+    setActiveMenuId(null);
   };
 
-  const handleSave = (job: JobData, newCust?: Customer) => {
-    if (newCust) {
-      onAddCustomer(newCust);
+  const handleQuickReceive = (job: JobData, mode: ReceiveMode) => {
+    setQuickReceiveJob(job);
+    setQuickReceiveMode(mode);
+    setIsQuickReceiveOpen(true);
+    setActiveMenuId(null);
+  };
+
+  const handleSaveQuickReceive = (updatedJob: JobData) => {
+    onEditJob(updatedJob);
+  };
+
+  const handleSave = (job: JobData, newCustomer?: Customer) => {
+    if (newCustomer) {
+      onAddCustomer(newCustomer);
     }
-    
-    if (editingJob && editingJob.id) {
+    if (editingJob) {
       onEditJob(job);
     } else {
       onAddJob(job);
@@ -137,307 +153,380 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleViewBookingDetails = (bookingId: string) => {
-     const summary = calculateBookingSummary(jobs, bookingId);
-     if (summary) {
-        setViewingBooking(summary);
-     }
+    const summary = calculateBookingSummary(jobs, bookingId);
+    if (summary) {
+      setViewingBooking(summary);
+    }
   };
 
   const handleSaveBookingDetails = (updatedDetails: BookingCostDetails) => {
-      if (viewingBooking) {
-          // Update all jobs with this booking
-          const jobsToUpdate = jobs.filter(j => j.booking === viewingBooking.bookingId);
-          jobsToUpdate.forEach(job => {
-              onEditJob({ ...job, bookingCostDetails: updatedDetails });
-          });
-          setViewingBooking(prev => prev ? ({ ...prev, costDetails: updatedDetails }) : null);
-      }
+     if (!viewingBooking) return;
+     viewingBooking.jobs.forEach(job => {
+         const updatedJob = { ...job, bookingCostDetails: updatedDetails };
+         onEditJob(updatedJob);
+     });
+     if (editingJob && editingJob.booking === viewingBooking.bookingId) {
+         setEditingJob(prev => prev ? ({ ...prev, bookingCostDetails: updatedDetails }) : null);
+     }
+     setViewingBooking(null);
   };
 
-  const handleQuickReceive = (job: JobData, mode: ReceiveMode) => {
-      setQuickReceiveJob(job);
-      setQuickReceiveMode(mode);
-      setIsQuickReceiveOpen(true);
-  };
-
-  const handleSaveQuickReceive = (updatedJob: JobData) => {
-      onEditJob(updatedJob);
-      setIsQuickReceiveOpen(false);
-      setQuickReceiveJob(null);
-  };
-
-  // --- EXCEL ---
-  const handleExportExcel = () => {
-      const headers = [
-          'Tháng', 'Job Code', 'Booking', 'Khách Hàng', 'Line', 'Cont 20', 'Cont 40', 
-          'Cost', 'Sell', 'Profit', 
-          'Số HĐ (Thu)', 'Ngày HĐ', 'Số Tiền (Thu Local)',
-          'Mã KH Cược', 'Thu Cược', 'Ngày Thu Cược', 'Ngày Thu Hoàn',
-          'Thu Gia Hạn', 'Invoice Gia Hạn'
-      ];
-      
-      const rows = filteredJobs.map(j => {
-          const extTotal = (j.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
-          const extInvoices = (j.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
-          // Safe customer code lookup
-          const customerCode = customers.find(c => c?.id === j.maKhCuocId)?.code || '';
-
-          return [
-            j.month, j.jobCode, j.booking, j.customerName, j.line, j.cont20, j.cont40,
-            j.cost, j.sell, j.profit,
-            j.localChargeInvoice, j.localChargeDate, j.localChargeTotal,
-            customerCode, j.thuCuoc, formatDateVN(j.ngayThuCuoc), formatDateVN(j.ngayThuHoan),
-            extTotal, extInvoices
-          ];
-      });
-
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Job_Data");
-      XLSX.writeFile(wb, `Job_List_${new Date().toISOString().slice(0,10)}.xlsx`);
-  };
+  const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-          const bstr = evt.target?.result;
-          const wb = XLSX.read(bstr, { type: 'binary' });
-          const wsname = wb.SheetNames[0];
-          const ws = wb.Sheets[wsname];
-          const data = XLSX.utils.sheet_to_json(ws);
-          
-          let count = 0;
-          data.forEach((row: any) => {
-             // Basic mapping logic - customize based on actual excel format
-             const newJob: any = {
-                 id: Date.now().toString() + Math.random().toString().slice(2,5),
-                 month: row['Tháng']?.toString() || '1',
-                 jobCode: row['Job Code'] || '',
-                 booking: row['Booking'] || '',
-                 customerName: row['Khách Hàng'] || '',
-                 line: row['Line'] || '',
-                 cont20: Number(row['Cont 20']) || 0,
-                 cont40: Number(row['Cont 40']) || 0,
-                 cost: Number(row['Cost']) || 0,
-                 sell: Number(row['Sell']) || 0,
-                 // ... other fields default
-                 profit: (Number(row['Sell']) || 0) - (Number(row['Cost']) || 0),
-                 extensions: []
-             };
-             
-             // Try to match customer
-             const cust = customers.find(c => c.name.toLowerCase() === newJob.customerName.toLowerCase());
-             if (cust) {
-                 newJob.customerId = cust.id;
-             }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      let addedCount = 0;
+      let updatedCount = 0;
 
-             if (newJob.jobCode) {
-                 onAddJob(newJob);
-                 count++;
-             }
-          });
-          alert(`Đã nhập ${count} jobs thành công!`);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-      };
-      reader.readAsBinaryString(file);
+      data.forEach((row: any) => {
+        const rowJobCode = row['Job'] || row['Job Code'];
+        
+        const mappedData: Partial<JobData> = {
+          month: row['Tháng']?.toString() || '1',
+          jobCode: rowJobCode || `IMP-${Date.now()}`,
+          booking: row['Booking'] || '',
+          consol: row['Consol'] || '',
+          line: row['Line'] || '',
+          customerName: row['Customer'] || '',
+          hbl: row['HBL'] || '',
+          transit: row['Transit'] || 'HCM',
+          cost: Number(row['Cost']) || 0,
+          sell: Number(row['Sell']) || 0,
+          profit: Number(row['Profit']) || 0,
+          cont20: Number(row['Cont 20']) || 0,
+          cont40: Number(row['Cont 40']) || 0,
+          chiPayment: Number(row['Chi Payment']) || 0,
+          chiCuoc: Number(row['Chi Cược']) || 0,
+          ngayChiCuoc: row['Ngày Chi Cược'] || '',
+          ngayChiHoan: row['Ngày Chi Hoàn'] || '',
+          localChargeTotal: Number(row['Thu Payment (Local Charge)']) || Number(row['Thu Payment']) || 0,
+          localChargeInvoice: row['Invoice Thu'] || row['Invoice'] || '',
+          bank: row['Ngân hàng'] || '',
+          thuCuoc: Number(row['Thu Cược']) || 0,
+          ngayThuCuoc: row['Ngày Thu Cược'] || '',
+          ngayThuHoan: row['Ngày Thu Hoàn'] || '',
+          extensions: []
+        };
+
+        const existingJob = jobs.find(j => j.jobCode === mappedData.jobCode);
+
+        if (existingJob) {
+          const updatedJob: JobData = {
+            ...existingJob,
+            ...mappedData,
+            id: existingJob.id,
+            extensions: existingJob.extensions || [], // FIX: Ensure extensions is an array
+            bookingCostDetails: existingJob.bookingCostDetails
+          };
+          onEditJob(updatedJob);
+          updatedCount++;
+        } else {
+          const newJob: JobData = {
+            ...mappedData as JobData,
+            id: Date.now().toString() + Math.random().toString().slice(2,5),
+          };
+          onAddJob(newJob);
+          addedCount++;
+        }
+      });
+      alert(`Hoàn tất nhập dữ liệu:\n- Thêm mới: ${addedCount}\n- Cập nhật: ${updatedCount}`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsBinaryString(file);
   };
 
-  const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
+  const handleExportExcel = () => {
+    const dataToExport = filteredJobs.map(job => {
+      const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+      const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
+      return {
+        "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
+        "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
+        "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
+        "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
+        "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '', // SAFE CHECK
+        "Thu Cược": job.thuCuoc,
+        "Ngày Thu Cược": formatDateVN(job.ngayThuCuoc),
+        "Ngày Thu Hoàn": formatDateVN(job.ngayThuHoan),
+        "Thu Gia Hạn": extTotal, "Invoice Gia Hạn": extInvoices
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Danh Sach Job");
+    XLSX.writeFile(wb, `Logistics_Job_Data.xlsx`);
+  };
+
+  const filteredJobs = useMemo(() => {
+    let matches = jobs.filter(job => {
+      // Safe access to properties using String()
+      const jCode = String(job.jobCode || '');
+      const jBooking = String(job.booking || '');
+      
+      const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
+      const matchesLine = filterLine ? job.line === filterLine : true;
+      const matchesMonth = filterMonth ? job.month === filterMonth : true;
+      const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
+      const matchesBooking = filterBooking ? jBooking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
+      return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
+    });
+
+    // Sort: Month Descending -> Booking Ascending
+    return matches.sort((a, b) => {
+      // 1. Month Descending
+      const monthDiff = Number(b.month) - Number(a.month);
+      if (monthDiff !== 0) return monthDiff;
+      
+      // 2. Booking Ascending (Group jobs by booking)
+      const bookingA = String(a.booking || '').toLowerCase();
+      const bookingB = String(b.booking || '').toLowerCase();
+      return bookingA.localeCompare(bookingB);
+    });
+  }, [jobs, filterJobCode, filterLine, filterMonth, filterCustomer, filterBooking]);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
+  const paginatedJobs = filteredJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const paginationRange = getPaginationRange(currentPage, totalPages);
+
+  // Totals Calculation (Based on Filtered Data)
+  const totals = useMemo(() => {
+    return filteredJobs.reduce((acc, job) => ({
+      cost: acc.cost + job.cost,
+      sell: acc.sell + job.sell,
+      profit: acc.profit + job.profit,
+      cont20: acc.cont20 + job.cont20,
+      cont40: acc.cont40 + job.cont40,
+    }), { cost: 0, sell: 0, profit: 0, cont20: 0, cont40: 0 });
+  }, [filteredJobs]);
+
+  const clearFilters = () => {
+    setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterCustomer(''); setFilterBooking('');
+  };
+
+  const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   return (
     <div className="w-full h-full pb-10">
       <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls, .csv" className="hidden" />
 
-      <div className="mb-6 flex flex-col md:flex-row justify-between items-end gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
-            <Briefcase className="w-8 h-8 text-blue-600" />
-            Quản Lý Job
-          </h1>
-          <p className="text-slate-500 mt-1">Quản lý danh sách Job, doanh thu và chi phí</p>
-        </div>
-        
-        <div className="flex space-x-2">
-           <button onClick={() => fileInputRef.current?.click()} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm">
-             <Upload className="w-4 h-4 mr-2" /> Import
-           </button>
-           <button onClick={handleExportExcel} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm">
-             <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" /> Export
-           </button>
-           <button onClick={handleAddNew} className="bg-blue-900 text-white hover:bg-blue-800 px-4 py-2 rounded-lg text-sm font-medium flex items-center shadow-md transition-colors">
-             <Plus className="w-4 h-4 mr-2" /> Thêm Job Mới
-           </button>
-        </div>
-      </div>
-
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 items-center">
-         <div className="flex items-center space-x-2 w-full md:w-auto">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <select 
-               value={filterMonth} 
-               onChange={(e) => setFilterMonth(e.target.value)}
-               className="p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48"
-            >
-               <option value="">Tất cả các tháng</option>
-               {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+         <div>
+            <h1 className="text-2xl font-bold text-gray-900">Quản lý Job</h1>
+            <p className="text-sm text-gray-500 mt-1">Danh sách tất cả các lô hàng và trạng thái</p>
          </div>
-         <div className="relative w-full flex-1">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-            <input 
-               type="text" 
-               placeholder="Tìm kiếm Job Code, Booking, Khách hàng..." 
-               value={searchTerm}
-               onChange={(e) => setSearchTerm(e.target.value)}
-               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+         <div className="flex space-x-2 mt-4 md:mt-0">
+           <button onClick={handleImportClick} className="px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm">
+              <Upload className="w-4 h-4 mr-2" /> Import Excel
+           </button>
+           <button onClick={handleExportExcel} className="px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm">
+              <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" /> Xuất Excel
+           </button>
+           <button onClick={handleAddNew} className="px-4 py-2 bg-blue-900 text-white rounded-md text-sm font-medium hover:bg-blue-800 flex items-center shadow-sm">
+              <Plus className="w-4 h-4 mr-2" /> Thêm Job
+           </button>
          </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-visible min-h-[400px]">
-         <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-               <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
-                  <tr>
-                     <th className="px-6 py-4">Tháng</th>
-                     <th className="px-6 py-4">Job Code</th>
-                     <th className="px-6 py-4">Booking</th>
-                     <th className="px-6 py-4">Khách Hàng</th>
-                     <th className="px-6 py-4 text-center">Cont</th>
-                     <th className="px-6 py-4 text-right">Cost</th>
-                     <th className="px-6 py-4 text-right">Sell</th>
-                     <th className="px-6 py-4 text-right">Profit</th>
-                     <th className="px-6 py-4 text-center">Thao Tác</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-gray-100">
-                  {paginatedJobs.length > 0 ? (
-                     paginatedJobs.map((job) => (
-                        <tr key={job.id} className="hover:bg-blue-50/30 transition-colors group">
-                           <td className="px-6 py-4 text-gray-500 font-medium">T{job.month}</td>
-                           <td className="px-6 py-4 font-bold text-blue-700 cursor-pointer hover:underline" onClick={() => handleView(job)}>
-                              {job.jobCode}
-                           </td>
-                           <td className="px-6 py-4 text-gray-600 font-mono">
-                              {job.booking ? (
-                                 <span 
-                                    className="cursor-pointer hover:text-blue-600 border-b border-dashed border-gray-400 hover:border-blue-600"
-                                    onClick={(e) => { e.stopPropagation(); handleViewBookingDetails(job.booking); }}
-                                    title="Xem chi tiết Booking"
-                                 >
-                                    {job.booking}
-                                 </span>
-                              ) : '-'}
-                           </td>
-                           <td className="px-6 py-4 text-gray-800 font-medium max-w-xs truncate" title={job.customerName}>
-                              {job.customerName}
-                           </td>
-                           <td className="px-6 py-4 text-center text-xs">
-                              {job.cont20 > 0 && <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded mr-1">20': {job.cont20}</span>}
-                              {job.cont40 > 0 && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">40': {job.cont40}</span>}
-                              {job.cont20 === 0 && job.cont40 === 0 && <span className="text-gray-300">-</span>}
-                           </td>
-                           <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(job.cost)}</td>
-                           <td className="px-6 py-4 text-right text-blue-600 font-medium">{formatCurrency(job.sell)}</td>
-                           <td className={`px-6 py-4 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {formatCurrency(job.profit)}
-                           </td>
-                           <td className="px-6 py-4 text-center relative">
-                              <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                                 <button 
-                                    onClick={() => setOpenActionMenuId(openActionMenuId === job.id ? null : job.id)}
-                                    className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                                 >
-                                    <MoreHorizontal className="w-5 h-5" />
-                                 </button>
-                                 
-                                 {openActionMenuId === job.id && (
-                                    <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 z-10 py-1 text-left animate-in fade-in zoom-in-95 duration-100 origin-top-right">
-                                       <button onClick={() => { handleView(job); setOpenActionMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
-                                          <Eye className="w-4 h-4 mr-2 text-gray-400" /> Xem chi tiết
-                                       </button>
-                                       <button onClick={() => { handleEdit(job); setOpenActionMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
-                                          <Edit2 className="w-4 h-4 mr-2 text-blue-500" /> Chỉnh sửa
-                                       </button>
-                                       <div className="border-t border-gray-100 my-1"></div>
-                                       <button onClick={() => { handleQuickReceive(job, 'local'); setOpenActionMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
-                                          <DollarSign className="w-4 h-4 mr-2 text-green-500" /> Thu Local Charge
-                                       </button>
-                                       <button onClick={() => { handleQuickReceive(job, 'deposit'); setOpenActionMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
-                                          <DollarSign className="w-4 h-4 mr-2 text-orange-500" /> Thu Cược
-                                       </button>
-                                       <button onClick={() => { handleQuickReceive(job, 'extension'); setOpenActionMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center">
-                                          <DollarSign className="w-4 h-4 mr-2 text-purple-500" /> Thu Gia Hạn
-                                       </button>
-                                       <div className="border-t border-gray-100 my-1"></div>
-                                       <button onClick={() => { handleDelete(job.id); setOpenActionMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
-                                          <Trash2 className="w-4 h-4 mr-2" /> Xóa Job
-                                       </button>
-                                    </div>
-                                 )}
-                              </div>
-                           </td>
-                        </tr>
-                     ))
-                  ) : (
-                     <tr>
-                        <td colSpan={9} className="text-center py-12 text-gray-400">
-                           {searchTerm ? 'Không tìm thấy kết quả phù hợp' : 'Chưa có dữ liệu Job'}
-                        </td>
-                     </tr>
-                  )}
-               </tbody>
-            </table>
-         </div>
-
-         {totalPages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
-               <div>
-                  Trang {currentPage} / {totalPages} (Tổng {filteredJobs.length} jobs)
+      {/* Filter Bar */}
+      <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+             <div>
+               <label className="block text-xs font-semibold text-gray-500 mb-1">Tháng</label>
+               <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none">
+                 <option value="">Tất cả</option>
+                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+               </select>
+             </div>
+             <div>
+               <label className="block text-xs font-semibold text-gray-500 mb-1">Khách hàng</label>
+               <select value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none">
+                 <option value="">Tất cả</option>
+                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+               </select>
+             </div>
+             <div>
+               <label className="block text-xs font-semibold text-gray-500 mb-1">Line</label>
+               <select value={filterLine} onChange={(e) => setFilterLine(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none">
+                 <option value="">Tất cả</option>
+                 {lines.map((line, idx) => <option key={idx} value={line.code}>{line.code} - {line.name}</option>)}
+               </select>
+             </div>
+             <div>
+               <label className="block text-xs font-semibold text-gray-500 mb-1">Booking</label>
+               <input type="text" placeholder="Tìm Booking..." value={filterBooking} onChange={(e) => setFilterBooking(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none" />
+             </div>
+             <div>
+               <label className="block text-xs font-semibold text-gray-500 mb-1">Job Code</label>
+               <div className="relative">
+                  <input type="text" placeholder="Tìm Job Code..." className="w-full p-2 pl-8 bg-blue-50/50 border border-blue-200 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none font-medium" value={filterJobCode} onChange={(e) => setFilterJobCode(e.target.value)} />
+                  <Search className="absolute left-2 top-2.5 w-4 h-4 text-blue-400" />
                </div>
-               <div className="flex space-x-2 items-center">
-                  <button 
-                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                     disabled={currentPage === 1}
-                     className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  
-                  <div className="flex space-x-1">
-                     {paginationRange.map((page, idx) => (
-                        page === '...' ? (
-                           <span key={`dots-${idx}`} className="px-2 py-1.5 text-gray-400">...</span>
-                        ) : (
-                           <button
-                              key={page}
-                              onClick={() => setCurrentPage(page as number)}
-                              className={`px-3 py-1.5 rounded border text-xs font-medium ${
-                                 currentPage === page
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                              }`}
-                           >
-                              {page}
-                           </button>
-                        )
-                     ))}
-                  </div>
-
-                  <button 
-                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                     disabled={currentPage === totalPages}
-                     className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     <ChevronRight className="w-4 h-4" />
-                  </button>
-               </div>
+             </div>
+          </div>
+          {(filterMonth || filterCustomer || filterBooking || filterJobCode || filterLine) && (
+            <div className="mt-3 flex justify-end">
+              <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-700 flex items-center"><X className="w-3 h-3 mr-1" /> Xóa bộ lọc</button>
             </div>
-         )}
+          )}
+      </div>
+
+      {/* Table */}
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tháng</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Job Code</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Customer</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Booking</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Line</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Cost</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Sell</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Profit</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center">Cont</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center w-16"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {paginatedJobs.length > 0 ? (
+              paginatedJobs.map((job) => (
+                <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
+                  <td className="px-6 py-3 text-gray-600">T{job.month}</td>
+                  <td className="px-6 py-3 font-semibold text-blue-700">{job.jobCode}</td>
+                  <td className="px-6 py-3 text-gray-700">
+                    <div>{job.customerName}</div>
+                    {job.hbl && <div className="text-[10px] text-orange-600 font-medium bg-orange-50 inline-block px-1 rounded border border-orange-100 mt-0.5">{job.hbl}</div>}
+                  </td>
+                  <td className="px-6 py-3 text-gray-500">{job.booking}</td>
+                  <td className="px-6 py-3 text-gray-500">{job.line}</td>
+                  <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
+                  <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.sell)}</td>
+                  <td className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(job.profit)}</td>
+                  <td className="px-6 py-3 text-center">
+                    <div className="flex flex-col gap-1 items-center">
+                      {job.cont20 > 0 && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded">{job.cont20} x 20'</span>}
+                      {job.cont40 > 0 && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-[10px] font-bold rounded">{job.cont40} x 40'</span>}
+                    </div>
+                  </td>
+                  <td className="px-6 py-3 text-center action-menu-container relative">
+                     <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === job.id ? null : job.id); }} className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                       <MoreVertical className="w-4 h-4" />
+                     </button>
+                     
+                     {/* Row Hover Actions (Inline) */}
+                     <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 backdrop-blur-[1px] p-1 rounded shadow-sm border border-gray-100">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleEdit(job); }} 
+                            className="p-1.5 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded"
+                            title="Sửa Job"
+                        >
+                            <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleDelete(job.id); }}
+                            className="p-1.5 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded"
+                            title="Xóa Job"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                     </div>
+
+                     {activeMenuId === job.id && (
+                       <div className="absolute right-8 top-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-100 z-50 py-1 text-left">
+                         <button onClick={() => handleDuplicate(job)} className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center"><Copy className="w-3 h-3 mr-2" /> Nhân bản</button>
+                         <button onClick={() => handleEdit(job)} className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center"><Edit2 className="w-3 h-3 mr-2" /> Chỉnh sửa</button>
+                         <div className="border-t my-1"></div>
+                         <button onClick={() => handleQuickReceive(job, 'local')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><FileText className="w-3 h-3 mr-2" /> Thu Local Charge</button>
+                         <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><Anchor className="w-3 h-3 mr-2" /> Thu Cược</button>
+                         <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><DollarSign className="w-3 h-3 mr-2" /> Thu Gia Hạn</button>
+                         <div className="border-t my-1"></div>
+                         <button onClick={() => handleDelete(job.id)} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center"><Trash2 className="w-3 h-3 mr-2" /> Xóa</button>
+                       </div>
+                     )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
+            )}
+          </tbody>
+          {/* Footer Totals */}
+          {filteredJobs.length > 0 && (
+            <tfoot className="bg-gray-50 border-t border-gray-300 font-bold text-gray-800 text-xs uppercase">
+              <tr>
+                <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng (Tất cả kết quả lọc):</td>
+                <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
+                <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
+                <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
+                <td className="px-6 py-4 text-center">
+                  <div className="flex flex-col gap-1 items-center">
+                    <span className="text-[10px]">{totals.cont20} x 20'</span>
+                    <span className="text-[10px]">{totals.cont40} x 40'</span>
+                  </div>
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+            <div>
+              Trang {currentPage} / {totalPages} (Tổng {filteredJobs.length} jobs)
+            </div>
+            <div className="flex space-x-2 items-center">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <div className="flex space-x-1">
+                {paginationRange.map((page, idx) => (
+                   page === '...' ? (
+                     <span key={`dots-${idx}`} className="px-2 py-1.5 text-gray-400">...</span>
+                   ) : (
+                     <button
+                        key={page}
+                        onClick={() => setCurrentPage(page as number)}
+                        className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                   )
+                ))}
+              </div>
+
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {isModalOpen && (
@@ -452,29 +541,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onViewBookingDetails={handleViewBookingDetails} 
           isViewMode={isViewMode} 
           onSwitchToEdit={() => setIsViewMode(false)} 
-          jobs={jobs} // Passed here for duplicate check
         />
       )}
       
-      {viewingBooking && (
-         <BookingDetailModal 
-            booking={viewingBooking} 
-            onClose={() => setViewingBooking(null)} 
-            onSave={handleSaveBookingDetails} 
-            zIndex="z-[60]" 
-         />
-      )}
-
-      {isQuickReceiveOpen && quickReceiveJob && (
-         <QuickReceiveModal 
-            isOpen={isQuickReceiveOpen} 
-            onClose={() => setIsQuickReceiveOpen(false)} 
-            onSave={handleSaveQuickReceive} 
-            job={quickReceiveJob} 
-            mode={quickReceiveMode} 
-            customers={customers} 
-         />
-      )}
+      {viewingBooking && <BookingDetailModal booking={viewingBooking} onClose={() => setViewingBooking(null)} onSave={handleSaveBookingDetails} zIndex="z-[60]" />}
+      {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={handleSaveQuickReceive} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} />}
     </div>
   );
 };
