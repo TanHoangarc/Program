@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
 import { JobModal } from '../components/JobModal';
@@ -87,9 +88,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       return matchMonth && matchSearch;
     }).sort((a, b) => {
        // Sort by Month Desc, then Job Code Desc
+       // Changed to: Month Desc -> Booking Asc (Trimmed) as per requirement
        const mDiff = Number(b.month) - Number(a.month);
        if (mDiff !== 0) return mDiff;
-       return (b.jobCode || '').localeCompare(a.jobCode || '');
+       
+       const bookingA = String(a.booking || '').trim().toLowerCase();
+       const bookingB = String(b.booking || '').trim().toLowerCase();
+       return bookingA.localeCompare(bookingB);
     });
   }, [jobs, filterMonth, searchTerm]);
 
@@ -168,15 +173,24 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           'Tháng', 'Job Code', 'Booking', 'Khách Hàng', 'Line', 'Cont 20', 'Cont 40', 
           'Cost', 'Sell', 'Profit', 
           'Số HĐ (Thu)', 'Ngày HĐ', 'Số Tiền (Thu Local)',
-          'Ngày Chi', 'Số Tiền (Chi)'
+          'Mã KH Cược', 'Thu Cược', 'Ngày Thu Cược', 'Ngày Thu Hoàn',
+          'Thu Gia Hạn', 'Invoice Gia Hạn'
       ];
       
-      const rows = filteredJobs.map(j => [
-          j.month, j.jobCode, j.booking, j.customerName, j.line, j.cont20, j.cont40,
-          j.cost, j.sell, j.profit,
-          j.localChargeInvoice, j.localChargeDate, j.localChargeTotal,
-          j.ngayChiCuoc, j.chiPayment
-      ]);
+      const rows = filteredJobs.map(j => {
+          const extTotal = (j.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+          const extInvoices = (j.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
+          // Safe customer code lookup
+          const customerCode = customers.find(c => c?.id === j.maKhCuocId)?.code || '';
+
+          return [
+            j.month, j.jobCode, j.booking, j.customerName, j.line, j.cont20, j.cont40,
+            j.cost, j.sell, j.profit,
+            j.localChargeInvoice, j.localChargeDate, j.localChargeTotal,
+            customerCode, j.thuCuoc, formatDateVN(j.ngayThuCuoc), formatDateVN(j.ngayThuHoan),
+            extTotal, extInvoices
+          ];
+      });
 
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
       const wb = XLSX.utils.book_new();
@@ -201,7 +215,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
              // Basic mapping logic - customize based on actual excel format
              const newJob: any = {
                  id: Date.now().toString() + Math.random().toString().slice(2,5),
-                 month: row['Tháng'] || '1',
+                 month: row['Tháng']?.toString() || '1',
                  jobCode: row['Job Code'] || '',
                  booking: row['Booking'] || '',
                  customerName: row['Khách Hàng'] || '',
@@ -444,7 +458,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onViewBookingDetails={handleViewBookingDetails} 
           isViewMode={isViewMode} 
           onSwitchToEdit={() => setIsViewMode(false)} 
-          jobs={jobs}
+          jobs={jobs} // Passed here for duplicate check
         />
       )}
       
