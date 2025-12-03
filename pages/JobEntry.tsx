@@ -115,7 +115,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const handleDuplicate = (job: JobData) => {
     const newJob: JobData = {
       ...job,
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       jobCode: `${job.jobCode} (Copy)`,
       booking: job.booking ? `${job.booking}` : '',
     };
@@ -237,7 +237,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         } else {
           const newJob: JobData = {
             ...mappedData as JobData,
-            id: Date.now().toString() + Math.random().toString().slice(2,5),
+            // Enhanced ID generation for fast imports
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.floor(Math.random()*1000)}`,
           };
           onAddJob(newJob);
           addedCount++;
