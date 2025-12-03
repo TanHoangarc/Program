@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
@@ -144,7 +143,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     if (newCustomer) {
       onAddCustomer(newCustomer);
     }
-    if (editingJob) {
+    
+    // FIX DUPLICATION BUG: Check if ID exists in current jobs list
+    const isExistingJob = jobs.some(j => j.id === job.id);
+
+    if (isExistingJob) {
       onEditJob(job);
     } else {
       onAddJob(job);
@@ -545,7 +548,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onAddLine={onAddLine} 
           onViewBookingDetails={handleViewBookingDetails} 
           isViewMode={isViewMode} 
-          onSwitchToEdit={() => setIsViewMode(false)} 
+          onSwitchToEdit={() => setIsViewMode(false)}
+          existingJobs={jobs}
         />
       )}
       
