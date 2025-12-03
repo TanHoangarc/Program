@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -21,11 +20,34 @@ const App: React.FC = () => {
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [targetJobId, setTargetJobId] = useState<string | null>(null);
   
-  // Jobs State
+  // Helper: Sanitize Data to prevent duplicate IDs (Self-Healing)
+  const sanitizeData = (data: JobData[]): JobData[] => {
+    const seenIds = new Set<string>();
+    let hasDuplicates = false;
+
+    const sanitized = data.map(job => {
+      // If ID is missing or duplicate, generate a new one
+      if (!job.id || seenIds.has(job.id)) {
+        hasDuplicates = true;
+        const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.floor(Math.random() * 1000)}`;
+        return { ...job, id: newId };
+      }
+      seenIds.add(job.id);
+      return job;
+    });
+
+    if (hasDuplicates) {
+      console.warn("Detected and fixed duplicate Job IDs in storage.");
+    }
+    return sanitized;
+  };
+
+  // Jobs State with Sanitization
   const [jobs, setJobs] = useState<JobData[]>(() => {
     try {
       const saved = localStorage.getItem('logistics_jobs_v2');
-      return saved ? JSON.parse(saved) : MOCK_DATA;
+      const parsedData = saved ? JSON.parse(saved) : MOCK_DATA;
+      return sanitizeData(parsedData);
     } catch (e) {
       console.error("Failed to parse jobs from local storage", e);
       return MOCK_DATA;
@@ -69,7 +91,12 @@ const App: React.FC = () => {
   }, [shippingLines]);
 
   const handleAddJob = (newJob: JobData) => {
-    setJobs(prev => [newJob, ...prev]);
+    // Ensure new job has a unique ID if not provided
+    const jobWithId = {
+        ...newJob,
+        id: newJob.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    setJobs(prev => [jobWithId, ...prev]);
   };
 
   const handleEditJob = (updatedJob: JobData) => {
@@ -135,7 +162,7 @@ const App: React.FC = () => {
 
   // Restore logic for System Page
   const handleSystemRestore = (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[] }) => {
-    if (data.jobs) setJobs(data.jobs);
+    if (data.jobs) setJobs(sanitizeData(data.jobs)); // Sanitize incoming backup data too
     if (data.customers && data.customers.length > 0) setCustomers(data.customers);
     if (data.lines && data.lines.length > 0) setShippingLines(data.lines);
   };
