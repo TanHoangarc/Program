@@ -25,6 +25,10 @@ export const DepositList: React.FC<DepositListProps> = ({
   const [filterEntity, setFilterEntity] = useState(''); // Stores Line Name or Customer ID
   const [filterMonth, setFilterMonth] = useState('');
   
+  // Custom Autocomplete State for Customer
+  const [custSearchTerm, setCustSearchTerm] = useState('');
+  const [showCustSuggestions, setShowCustSuggestions] = useState(false);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
@@ -47,6 +51,16 @@ export const DepositList: React.FC<DepositListProps> = ({
     return Array.from(lines);
   }, [jobs]);
 
+  // Filtered Customers for Autocomplete
+  const filteredCustomers = useMemo(() => {
+    if (!custSearchTerm) return customers;
+    const lower = custSearchTerm.toLowerCase();
+    return customers.filter(c => 
+      (c.code || '').toLowerCase().includes(lower) || 
+      (c.name || '').toLowerCase().includes(lower)
+    );
+  }, [customers, custSearchTerm]);
+
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
@@ -54,6 +68,13 @@ export const DepositList: React.FC<DepositListProps> = ({
     setFilterStatus('all');
     setFilterEntity('');
     setFilterMonth('');
+    setCustSearchTerm('');
+  };
+
+  const handleCustomerSelect = (customer: Customer) => {
+    setFilterEntity(customer.id);
+    setCustSearchTerm(customer.code);
+    setShowCustSuggestions(false);
   };
 
   const hasActiveFilters = filterStatus !== 'all' || filterEntity !== '' || filterMonth !== '';
@@ -229,17 +250,46 @@ export const DepositList: React.FC<DepositListProps> = ({
                  {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                </select>
 
-               <select 
-                 value={filterEntity} 
-                 onChange={(e) => setFilterEntity(e.target.value)}
-                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-               >
-                 <option value="">{mode === 'line' ? 'Tất cả Hãng Tàu' : 'Tất cả Khách Hàng'}</option>
-                 {mode === 'line' 
-                    ? uniqueLines.map(l => <option key={l} value={l}>{l}</option>)
-                    : customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
-                 }
-               </select>
+               {mode === 'line' ? (
+                 <select 
+                   value={filterEntity} 
+                   onChange={(e) => setFilterEntity(e.target.value)}
+                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                 >
+                   <option value="">Tất cả Hãng Tàu</option>
+                   {uniqueLines.map(l => <option key={l} value={l}>{l}</option>)}
+                 </select>
+               ) : (
+                  // Custom Searchable Input for Customer
+                  <div className="relative w-full">
+                     <input 
+                        type="text"
+                        value={custSearchTerm}
+                        onChange={(e) => {
+                           setCustSearchTerm(e.target.value);
+                           if (!e.target.value) setFilterEntity('');
+                        }}
+                        onFocus={() => setShowCustSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowCustSuggestions(false), 200)}
+                        placeholder="Tìm mã KH hoặc tên..."
+                        className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                     />
+                     {showCustSuggestions && custSearchTerm && filteredCustomers.length > 0 && (
+                        <ul className="absolute z-50 w-full bg-white border border-gray-300 rounded-b-lg shadow-lg max-h-60 overflow-y-auto mt-1 left-0">
+                          {filteredCustomers.map(c => (
+                             <li 
+                               key={c.id}
+                               onClick={() => handleCustomerSelect(c)}
+                               className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-50 last:border-0 flex flex-col"
+                             >
+                                <span className="font-bold text-blue-800">{c.code}</span>
+                                <span className="text-xs text-gray-500 truncate">{c.name}</span>
+                             </li>
+                          ))}
+                        </ul>
+                     )}
+                  </div>
+               )}
 
                <select 
                  value={filterStatus} 

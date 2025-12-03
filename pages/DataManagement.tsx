@@ -1,6 +1,7 @@
+
 import React, { useState, useRef } from 'react';
 import { Customer, ShippingLine } from '../types';
-import { Plus, Edit2, Trash2, Search, Save, X, Database, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Save, X, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getPaginationRange } from '../utils';
 
@@ -76,7 +77,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     if (mode === 'lines') headers.push('Tên Hàng (Mặc định)');
     
     // Export sorted data as well
-    const dataToExport = [...data].sort((a, b) => a.code.localeCompare(b.code));
+    const dataToExport = [...data].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
 
     const rows = dataToExport.map(item => {
       const row = [item.mst, item.code, item.name];
@@ -150,13 +151,17 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     reader.readAsBinaryString(file);
   };
 
+  // Safe filtering logic to prevent white screen crashes
   const filteredData = data
-    .filter(item => 
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.mst.includes(searchTerm)
-    )
-    .sort((a, b) => a.code.localeCompare(b.code));
+    .filter(item => {
+        const s = searchTerm.toLowerCase();
+        const name = (item.name || '').toLowerCase();
+        const code = (item.code || '').toLowerCase();
+        const mst = (item.mst || '').toLowerCase();
+        
+        return name.includes(s) || code.includes(s) || mst.includes(s);
+    })
+    .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
