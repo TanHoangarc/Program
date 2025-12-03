@@ -55,9 +55,10 @@ export const DepositList: React.FC<DepositListProps> = ({
   const filteredCustomers = useMemo(() => {
     if (!custSearchTerm) return customers;
     const lower = custSearchTerm.toLowerCase();
+    // Safe conversion to string to prevent crashes if data is numeric
     return customers.filter(c => 
-      (c.code || '').toLowerCase().includes(lower) || 
-      (c.name || '').toLowerCase().includes(lower)
+      String(c.code || '').toLowerCase().includes(lower) || 
+      String(c.name || '').toLowerCase().includes(lower)
     );
   }, [customers, custSearchTerm]);
 
@@ -73,7 +74,7 @@ export const DepositList: React.FC<DepositListProps> = ({
 
   const handleCustomerSelect = (customer: Customer) => {
     setFilterEntity(customer.id);
-    setCustSearchTerm(customer.code);
+    setCustSearchTerm(String(customer.code));
     setShowCustSuggestions(false);
   };
 

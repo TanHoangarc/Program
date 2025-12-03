@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
@@ -246,7 +247,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     if (initialData?.customerId) {
         // Safe check for customer existence and code property
         const c = (customers || []).find(c => c?.id === initialData.customerId);
-        return c?.code || ''; // Ensure it returns a string, never undefined
+        return String(c?.code || ''); // Ensure it returns a string, never undefined
     }
     return '';
   });
@@ -296,7 +297,7 @@ export const JobModal: React.FC<JobModalProps> = ({
   const safeInput = (custCodeInput || '').toLowerCase();
   
   const filteredCustomers = (customers || []).filter(c => 
-    c?.code && c.code.toLowerCase().startsWith(safeInput)
+    c?.code && String(c.code).toLowerCase().startsWith(safeInput)
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -344,7 +345,7 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     // Exact match check to auto-select
     // Safe check: c?.code prevents crash if customer list has issues
-    const match = (customers || []).find(c => c?.code && c.code.toLowerCase() === val.toLowerCase());
+    const match = (customers || []).find(c => c?.code && String(c.code).toLowerCase() === val.toLowerCase());
     
     if (match) {
         setIsAddingCustomer(false);

@@ -42,10 +42,10 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   const handleEdit = (item: Customer | ShippingLine) => {
     setEditingItem(item);
     setFormData({
-      code: item.code,
-      name: item.name,
-      mst: item.mst,
-      itemName: (item as ShippingLine).itemName || ''
+      code: String(item.code || ''),
+      name: String(item.name || ''),
+      mst: String(item.mst || ''),
+      itemName: String((item as ShippingLine).itemName || '')
     });
     setIsModalOpen(true);
   };
@@ -77,7 +77,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     if (mode === 'lines') headers.push('Tên Hàng (Mặc định)');
     
     // Export sorted data as well
-    const dataToExport = [...data].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    const dataToExport = [...data].sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
 
     const rows = dataToExport.map(item => {
       const row = [item.mst, item.code, item.name];
@@ -114,15 +114,15 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
       let updated = 0;
 
       jsonData.forEach((row: any) => {
-        // Flexible column mapping
-        const mst = row['MST'] || row['Mã số thuế'] || row['Tax Code'] || '';
-        const code = row['Code'] || row['Mã'] || row['Mã Khách hàng'] || row['Mã Line'] || '';
-        const name = row['Name'] || row['Tên'] || row['Tên Công Ty'] || '';
-        const itemName = row['Item Name'] || row['Tên Hàng'] || row['Tên Hàng (Mặc định)'] || '';
+        // Flexible column mapping - Force String conversion to prevent type errors
+        const mst = String(row['MST'] || row['Mã số thuế'] || row['Tax Code'] || '');
+        const code = String(row['Code'] || row['Mã'] || row['Mã Khách hàng'] || row['Mã Line'] || '');
+        const name = String(row['Name'] || row['Tên'] || row['Tên Công Ty'] || '');
+        const itemName = String(row['Item Name'] || row['Tên Hàng'] || row['Tên Hàng (Mặc định)'] || '');
 
         if (code && name) {
           // Check for duplicate code
-          const existing = data.find(d => d.code === code);
+          const existing = data.find(d => String(d.code) === code);
           
           if (existing) {
             onEdit({
@@ -155,13 +155,14 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   const filteredData = data
     .filter(item => {
         const s = searchTerm.toLowerCase();
-        const name = (item.name || '').toLowerCase();
-        const code = (item.code || '').toLowerCase();
-        const mst = (item.mst || '').toLowerCase();
+        // Force String conversion to prevent crashes if data is numeric
+        const name = String(item.name || '').toLowerCase();
+        const code = String(item.code || '').toLowerCase();
+        const mst = String(item.mst || '').toLowerCase();
         
         return name.includes(s) || code.includes(s) || mst.includes(s);
     })
-    .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
@@ -229,48 +230,56 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">MST</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">{labelCode}</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tên Công Ty</th>
-              {mode === 'lines' && <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tên Hàng</th>}
-              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center">Thao Tác</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Mã Số Thuế</th>
+              {mode === 'lines' && <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Mặt Hàng (Mặc định)</th>}
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.length > 0 ? (
               paginatedData.map((item) => (
-                <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
-                  <td className="px-6 py-3 font-mono text-gray-600">{item.mst}</td>
+                <tr key={item.id} className="hover:bg-blue-50/30">
                   <td className="px-6 py-3 font-bold text-blue-700">{item.code}</td>
-                  <td className="px-6 py-3 font-medium text-gray-900">{item.name}</td>
-                  {mode === 'lines' && <td className="px-6 py-3 text-gray-600">{(item as ShippingLine).itemName || '-'}</td>}
-                  <td className="px-6 py-3 text-center">
-                    <div className="flex items-center justify-center space-x-2">
-                      <button onClick={() => handleEdit(item)} className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50" title="Chỉnh sửa">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDelete(item.id)} className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50" title="Xóa">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                  <td className="px-6 py-3 text-gray-700">{item.name}</td>
+                  <td className="px-6 py-3 text-gray-500 font-mono">{item.mst}</td>
+                  {mode === 'lines' && (
+                     <td className="px-6 py-3 text-gray-500 text-xs italic">
+                       {(item as ShippingLine).itemName || '-'}
+                     </td>
+                  )}
+                  <td className="px-6 py-3 text-center flex justify-center space-x-2">
+                    <button 
+                      onClick={() => handleEdit(item)} 
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                      title="Sửa"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(item.id)} 
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                      title="Xóa"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))
             ) : (
-              <tr>
-                <td colSpan={mode === 'lines' ? 5 : 4} className="text-center py-12 text-gray-400">Không có dữ liệu phù hợp</td>
-              </tr>
+              <tr><td colSpan={mode === 'lines' ? 5 : 4} className="px-6 py-8 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
             )}
           </tbody>
         </table>
-        
-        {/* Pagination Controls */}
+
+         {/* Pagination Controls */}
         {totalPages > 1 && (
           <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
             <div>
-              Trang {currentPage} / {totalPages} (Tổng {filteredData.length} items)
+              Trang {currentPage} / {totalPages} (Tổng {filteredData.length} dòng)
             </div>
-            <div className="flex space-x-2">
+            <div className="flex space-x-2 items-center">
               <button 
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
@@ -311,75 +320,63 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
         )}
       </div>
 
-      {/* Modal */}
+      {/* Add/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-[1px] z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg animate-in zoom-in-95 duration-150 border border-gray-200">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-lg">
-              <h2 className="text-lg font-bold text-gray-900">
-                {editingItem ? 'Chỉnh Sửa' : 'Thêm Mới'} {title}
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-red-500 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-900">{editingItem ? 'Cập Nhật' : 'Thêm Mới'} {title}</h3>
+              <button onClick={() => setIsModalOpen(false)}><X className="w-5 h-5 text-gray-400 hover:text-red-500" /></button>
             </div>
-            
             <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase">Mã số thuế (MST)</label>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">{labelCode} (*)</label>
                 <input 
                   type="text" 
-                  required
-                  value={formData.mst} 
-                  onChange={e => setFormData(prev => ({...prev, mst: e.target.value}))} 
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
-                  placeholder="VD: 0301234567"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase">{labelCode}</label>
-                <input 
-                  type="text" 
-                  required
                   value={formData.code} 
-                  onChange={e => setFormData(prev => ({...prev, code: e.target.value}))} 
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
-                  placeholder={`VD: ${mode === 'customers' ? 'CUST01' : 'MSC'}`}
+                  onChange={(e) => setFormData({...formData, code: e.target.value})} 
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-900 outline-none" 
+                  required 
                 />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase">Tên Công Ty</label>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Tên Công Ty (*)</label>
                 <input 
                   type="text" 
-                  required
                   value={formData.name} 
-                  onChange={e => setFormData(prev => ({...prev, name: e.target.value}))} 
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
-                  placeholder="Nhập tên công ty đầy đủ"
+                  onChange={(e) => setFormData({...formData, name: e.target.value})} 
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-900 outline-none" 
+                  required 
                 />
               </div>
-
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Mã Số Thuế</label>
+                <input 
+                  type="text" 
+                  value={formData.mst} 
+                  onChange={(e) => setFormData({...formData, mst: e.target.value})} 
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-900 outline-none" 
+                />
+              </div>
+              
               {mode === 'lines' && (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Tên Hàng Mặc Định</label>
-                  <input 
-                    type="text" 
-                    value={formData.itemName} 
-                    onChange={e => setFormData(prev => ({...prev, itemName: e.target.value}))} 
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
-                    placeholder="VD: Phí Local Charge"
-                  />
-                </div>
+                 <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Tên Hàng Mặc Định</label>
+                    <input 
+                      type="text" 
+                      value={formData.itemName} 
+                      onChange={(e) => setFormData({...formData, itemName: e.target.value})} 
+                      className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-900 outline-none" 
+                      placeholder="VD: Phí Local Charge"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Dùng để tự động điền khi tạo phiếu mua hàng</p>
+                 </div>
               )}
 
-              <div className="pt-4 flex justify-end space-x-3 border-t border-gray-100 mt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
-                  Hủy
-                </button>
-                <button type="submit" className="px-4 py-2 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 flex items-center shadow-sm">
-                  <Save className="w-4 h-4 mr-2" /> Lưu
+              <div className="pt-4 flex justify-end space-x-2">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 text-sm font-medium">Hủy</button>
+                <button type="submit" className="px-4 py-2 bg-blue-900 text-white rounded hover:bg-blue-800 text-sm font-medium flex items-center">
+                   <Save className="w-4 h-4 mr-2" /> Lưu
                 </button>
               </div>
             </form>
