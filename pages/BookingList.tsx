@@ -1,10 +1,9 @@
 
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
-import { ChevronLeft, ChevronRight, Filter, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, FileText, Anchor, DollarSign } from 'lucide-react';
 import { MONTHS } from '../constants';
 
 interface BookingListProps {
@@ -18,7 +17,19 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterMonth, setFilterMonth] = useState('');
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null); // State for dropdown menu
   const ITEMS_PER_PAGE = 10;
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activeMenuId && !(event.target as Element).closest('.action-menu-container')) {
+        setActiveMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeMenuId]);
 
   // Reset pagination when filter changes
   useEffect(() => {
@@ -98,6 +109,14 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
     setSelectedBooking(prev => prev ? { ...prev, costDetails: updatedDetails } : null);
   };
 
+  // Helper to open modal from menu
+  const handleMenuAction = (booking: BookingSummary, action: string) => {
+    setActiveMenuId(null);
+    setSelectedBooking(booking);
+    // Note: All actions currently open the main BookingDetailModal. 
+    // You can extend functionality here to pre-scroll to specific sections in the modal if needed.
+  };
+
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
   };
@@ -125,7 +144,7 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
       </div>
 
       {/* Main Table List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden pb-32"> {/* Added pb-32 for dropdown space */}
         <table className="w-full text-sm text-left">
           <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs tracking-wider">
             <tr>
@@ -137,13 +156,13 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
               <th className="px-6 py-4 text-right">Tổng Chi (Payment)</th>
               <th className="px-6 py-4 text-right">Chênh lệch</th>
               <th className="px-6 py-4 text-right">Profit</th>
-              <th className="px-6 py-4 text-center">Cont 20'</th>
-              <th className="px-6 py-4 text-center">Cont 40'</th>
+              <th className="px-6 py-4 text-center">Cont</th>
+              <th className="px-6 py-4 text-center w-16">Chức năng</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.map((booking) => {
-              // CALCULATION FOR MISMATCH CHECK (Used only for Diff column now)
+              // CALCULATION FOR MISMATCH CHECK
               const target = booking.jobs.reduce((sum, j) => {
                 const deduction = (j.cont20 * 250000) + (j.cont40 * 500000);
                 return sum + (j.cost - deduction);
@@ -156,18 +175,17 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
               return (
                 <tr 
                   key={booking.bookingId} 
-                  onClick={() => setSelectedBooking(booking)}
-                  className="hover:bg-blue-50 cursor-pointer transition-colors"
+                  className="hover:bg-blue-50 transition-colors group"
                 >
-                  <td className="px-6 py-4 font-medium text-slate-900">Tháng {booking.month}</td>
-                  <td className="px-6 py-4 text-blue-600 font-bold">{booking.bookingId}</td>
+                  <td className="px-6 py-4 font-medium text-slate-900" onClick={() => setSelectedBooking(booking)}>Tháng {booking.month}</td>
+                  <td className="px-6 py-4 text-blue-600 font-bold cursor-pointer hover:underline" onClick={() => setSelectedBooking(booking)}>{booking.bookingId}</td>
                   <td className="px-6 py-4 text-slate-600">{booking.line}</td>
                   <td className="px-6 py-4 text-center">
                     <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold">{booking.jobCount}</span>
                   </td>
                   <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(booking.totalSell)}</td>
                   
-                  {/* Total Cost Column - Cleaned up */}
+                  {/* Total Cost Column */}
                   <td className="px-6 py-4 text-right font-medium text-red-600">
                      {formatCurrency(booking.totalCost)}
                   </td>
@@ -180,8 +198,51 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                   <td className={`px-6 py-4 text-right font-bold ${booking.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {formatCurrency(booking.totalProfit)}
                   </td>
-                  <td className="px-6 py-4 text-center text-gray-500">{booking.totalCont20}</td>
-                  <td className="px-6 py-4 text-center text-gray-500">{booking.totalCont40}</td>
+                  <td className="px-6 py-4 text-center text-gray-500">
+                     <div className="flex flex-col text-xs">
+                        {booking.totalCont20 > 0 && <span>{booking.totalCont20} x 20'</span>}
+                        {booking.totalCont40 > 0 && <span>{booking.totalCont40} x 40'</span>}
+                        {booking.totalCont20 === 0 && booking.totalCont40 === 0 && <span>-</span>}
+                     </div>
+                  </td>
+                  
+                  {/* ACTION COLUMN */}
+                  <td className="px-6 py-4 text-center relative action-menu-container">
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === booking.bookingId ? null : booking.bookingId); }} 
+                        className={`p-1.5 rounded-full hover:bg-white hover:shadow-md transition-all ${activeMenuId === booking.bookingId ? 'bg-white shadow-md text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
+                     >
+                       <MoreVertical className="w-4 h-4" />
+                     </button>
+
+                     {/* Dropdown Menu */}
+                     {activeMenuId === booking.bookingId && (
+                       <div className="absolute right-8 top-0 mt-0 w-56 bg-white rounded-lg shadow-xl border border-gray-100 z-[60] py-1 text-left animate-in fade-in zoom-in-95 duration-100">
+                         <div className="px-3 py-2 border-b border-gray-50 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                            Thao tác Booking
+                         </div>
+                         
+                         <button onClick={() => handleMenuAction(booking, 'view')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center transition-colors">
+                            <Eye className="w-4 h-4 mr-2.5 text-gray-400" /> Xem chi tiết
+                         </button>
+                         <button onClick={() => handleMenuAction(booking, 'edit')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center transition-colors">
+                            <Edit className="w-4 h-4 mr-2.5 text-gray-400" /> Chỉnh sửa
+                         </button>
+                         
+                         <div className="border-t border-gray-100 my-1"></div>
+                         
+                         <button onClick={() => handleMenuAction(booking, 'payment-lc')} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium">
+                            <FileText className="w-4 h-4 mr-2.5" /> Phiếu chi Local Charge
+                         </button>
+                         <button onClick={() => handleMenuAction(booking, 'payment-deposit')} className="w-full text-left px-4 py-2.5 text-sm text-indigo-600 hover:bg-indigo-50 flex items-center transition-colors font-medium">
+                            <Anchor className="w-4 h-4 mr-2.5" /> Chi Cược (Deposit)
+                         </button>
+                         <button onClick={() => handleMenuAction(booking, 'payment-ext')} className="w-full text-left px-4 py-2.5 text-sm text-orange-600 hover:bg-orange-50 flex items-center transition-colors font-medium">
+                            <DollarSign className="w-4 h-4 mr-2.5" /> Chi Gia Hạn
+                         </button>
+                       </div>
+                     )}
+                  </td>
                 </tr>
               );
             })}
@@ -200,8 +261,13 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                 <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                 <td className={`px-6 py-4 text-right ${totals.diff !== 0 ? 'text-orange-600' : 'text-gray-400'}`}>{formatCurrency(totals.diff)}</td>
                 <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
-                <td className="px-6 py-4 text-center text-gray-600">{totals.cont20}</td>
-                <td className="px-6 py-4 text-center text-gray-600">{totals.cont40}</td>
+                <td className="px-6 py-4 text-center text-gray-600">
+                    <div className="flex flex-col text-[10px]">
+                        <span>{totals.cont20} x 20'</span>
+                        <span>{totals.cont40} x 40'</span>
+                     </div>
+                </td>
+                <td></td>
               </tr>
             </tfoot>
           )}

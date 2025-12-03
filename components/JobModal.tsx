@@ -16,6 +16,7 @@ interface JobModalProps {
   onViewBookingDetails: (bookingId: string) => void;
   isViewMode?: boolean;
   onSwitchToEdit?: () => void;
+  existingJobs?: JobData[]; // Added for validation
 }
 
 // Styled Input Components
@@ -139,7 +140,7 @@ const MoneyInput: React.FC<{
 
 export const JobModal: React.FC<JobModalProps> = ({ 
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
-  isViewMode = false, onSwitchToEdit
+  isViewMode = false, onSwitchToEdit, existingJobs
 }) => {
   // Lazy init to ensure robust state start
   const [formData, setFormData] = useState<JobData>(() => {
@@ -371,6 +372,36 @@ export const JobModal: React.FC<JobModalProps> = ({
       onSwitchToEdit();
       return;
     }
+
+    // --- VALIDATION SECTION ---
+    const code = formData.jobCode || '';
+    
+    // 1. Check required
+    if (!code.trim()) {
+      alert("Vui lòng nhập Job Code");
+      return;
+    }
+
+    // 2. Check for whitespace
+    if (/\s/.test(code)) {
+      alert("Job Code không được chứa khoảng trắng. Vui lòng kiểm tra lại.");
+      return;
+    }
+
+    // 3. Check for uniqueness
+    if (existingJobs) {
+      const isDuplicate = existingJobs.some(j => 
+        j.jobCode.toLowerCase() === code.toLowerCase() && 
+        j.id !== formData.id // Exclude current job if editing
+      );
+      
+      if (isDuplicate) {
+        alert(`Job Code "${code}" đã tồn tại trong hệ thống. Vui lòng chọn mã khác.`);
+        return;
+      }
+    }
+    // --------------------------
+
     let createdCustomer: Customer | undefined;
     if (isAddingCustomer) {
       createdCustomer = saveNewCustomer();
@@ -453,6 +484,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                   <Input 
                     name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} 
                     className={isViewMode ? "font-bold text-blue-900" : ""}
+                    placeholder="VD: JOB123 (Không khoảng trắng)"
                   />
                 </div>
 
@@ -584,8 +616,9 @@ export const JobModal: React.FC<JobModalProps> = ({
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2">Tài Chính & Container</h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                <MoneyInput label="Cost (Chi phí)" name="cost" value={formData.cost} onChange={handleMoneyChange} readOnly={isViewMode} />
+                {/* Changed Order: Sell then Cost */}
                 <MoneyInput label="Sell (Doanh thu)" name="sell" value={formData.sell} onChange={handleMoneyChange} readOnly={isViewMode} />
+                <MoneyInput label="Cost (Chi phí)" name="cost" value={formData.cost} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Profit (Lợi nhuận)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly />
                 <NumberStepper label="Cont 20'" value={formData.cont20} onChange={(val) => setFormData(prev => ({...prev, cont20: val}))} readOnly={isViewMode} />
                 <NumberStepper label="Cont 40'" value={formData.cont40} onChange={(val) => setFormData(prev => ({...prev, cont40: val}))} readOnly={isViewMode} />
@@ -698,27 +731,44 @@ export const JobModal: React.FC<JobModalProps> = ({
                                 if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val);
                             }}
                             readOnly={isViewMode}
-                            className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900 text-right font-medium ${isViewMode ? 'bg-gray-50' : ''}`}
-                          />
+                            className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 text-right font-bold text-orange-700 ${isViewMode ? 'bg-transparent border-none' : ''}`}
+                            placeholder="0"
+                         />
                       </div>
                    </div>
                 ))}
+                {(!formData.extensions || formData.extensions.length === 0) && (
+                   <p className="text-sm text-gray-400 italic text-center py-2">Chưa có gia hạn nào</p>
+                )}
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="flex justify-end space-x-3 pt-4 sticky bottom-0 bg-white py-4 border-t border-gray-100">
-              <button type="button" onClick={onClose} className="px-5 py-2.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
-                {isViewMode ? 'Đóng' : 'Hủy bỏ'}
+            {/* Footer Buttons */}
+            <div className="flex justify-end space-x-3 pt-6 border-t border-gray-100 bg-gray-50 -mx-8 -mb-8 p-8 sticky bottom-0 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+              <button 
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
+              >
+                Đóng
               </button>
               
               {isViewMode ? (
-                <button type="button" onClick={handleEditClick} className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
-                  <Edit2 className="w-4 h-4" /> <span>Chỉnh sửa</span>
+                <button
+                    type="button"
+                    onClick={handleEditClick}
+                    className="px-6 py-2.5 bg-blue-900 text-white rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors flex items-center shadow-md"
+                >
+                    <Edit2 className="w-4 h-4 mr-2" />
+                    Chỉnh sửa
                 </button>
               ) : (
-                <button type="submit" className="px-5 py-2.5 rounded text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 transition-colors flex items-center space-x-2 shadow-sm">
-                  <Save className="w-4 h-4" /> <span>Lưu thay đổi</span>
+                <button 
+                    type="submit"
+                    className="px-6 py-2.5 bg-blue-900 text-white rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors flex items-center shadow-md"
+                >
+                    <Save className="w-4 h-4 mr-2" />
+                    Lưu Job
                 </button>
               )}
             </div>

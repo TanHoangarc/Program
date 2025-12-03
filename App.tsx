@@ -23,21 +23,36 @@ const App: React.FC = () => {
   
   // Jobs State
   const [jobs, setJobs] = useState<JobData[]>(() => {
-    const saved = localStorage.getItem('logistics_jobs_v2');
-    return saved ? JSON.parse(saved) : MOCK_DATA;
+    try {
+      const saved = localStorage.getItem('logistics_jobs_v2');
+      return saved ? JSON.parse(saved) : MOCK_DATA;
+    } catch (e) {
+      console.error("Failed to parse jobs from local storage", e);
+      return MOCK_DATA;
+    }
   });
 
   // Customers State
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem('logistics_customers');
-    return saved ? JSON.parse(saved) : MOCK_CUSTOMERS;
+    try {
+      const saved = localStorage.getItem('logistics_customers');
+      return saved ? JSON.parse(saved) : MOCK_CUSTOMERS;
+    } catch (e) {
+      console.error("Failed to parse customers from local storage", e);
+      return MOCK_CUSTOMERS;
+    }
   });
 
   // Shipping Lines State
   const [shippingLines, setShippingLines] = useState<ShippingLine[]>(() => {
-    const saved = localStorage.getItem('logistics_shipping_lines');
-    if (saved) return JSON.parse(saved);
-    return MOCK_SHIPPING_LINES;
+    try {
+      const saved = localStorage.getItem('logistics_shipping_lines');
+      if (saved) return JSON.parse(saved);
+      return MOCK_SHIPPING_LINES;
+    } catch (e) {
+      console.error("Failed to parse shipping lines from local storage", e);
+      return MOCK_SHIPPING_LINES;
+    }
   });
 
   // Persistence

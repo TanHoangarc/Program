@@ -193,15 +193,16 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         
         const mappedData: Partial<JobData> = {
           month: row['Tháng']?.toString() || '1',
-          jobCode: rowJobCode || `IMP-${Date.now()}`,
+          // Remove whitespace from Job Code
+          jobCode: rowJobCode ? String(rowJobCode).replace(/\s+/g, '') : `IMP-${Date.now()}`,
           booking: row['Booking'] || '',
           consol: row['Consol'] || '',
           line: row['Line'] || '',
           customerName: row['Customer'] || '',
           hbl: row['HBL'] || '',
           transit: row['Transit'] || 'HCM',
-          sell: Number(row['Sell']) || 0,
           cost: Number(row['Cost']) || 0,
+          sell: Number(row['Sell']) || 0,
           profit: Number(row['Profit']) || 0,
           cont20: Number(row['Cont 20']) || 0,
           cont40: Number(row['Cont 40']) || 0,
@@ -302,12 +303,12 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Totals Calculation (Based on Filtered Data)
   const totals = useMemo(() => {
     return filteredJobs.reduce((acc, job) => ({
-      sell: acc.sell + job.sell,
       cost: acc.cost + job.cost,
+      sell: acc.sell + job.sell,
       profit: acc.profit + job.profit,
       cont20: acc.cont20 + job.cont20,
       cont40: acc.cont40 + job.cont40,
-    }), { sell: 0, cost: 0, profit: 0, cont20: 0, cont40: 0 });
+    }), { cost: 0, sell: 0, profit: 0, cont20: 0, cont40: 0 });
   }, [filteredJobs]);
 
   const clearFilters = () => {
@@ -411,7 +412,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   </td>
                   <td className="px-6 py-3 text-gray-500">{job.booking}</td>
                   <td className="px-6 py-3 text-gray-500">{job.line}</td>
-                  <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.sell)}</td>
+                  <td className="px-6 py-3 text-right text-blue-700 font-medium">{formatCurrency(job.sell)}</td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
                   <td className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(job.profit)}</td>
                   <td className="px-6 py-3 text-center">
@@ -540,7 +541,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onAddLine={onAddLine} 
           onViewBookingDetails={handleViewBookingDetails} 
           isViewMode={isViewMode} 
-          onSwitchToEdit={() => setIsViewMode(false)} 
+          onSwitchToEdit={() => setIsViewMode(false)}
+          existingJobs={jobs}
         />
       )}
       

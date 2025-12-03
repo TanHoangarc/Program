@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText } from 'lucide-react';
 import { JobData, Customer } from '../types';
@@ -23,13 +24,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [newExtension, setNewExtension] = useState({
     customerId: '',
     invoice: '',
+    date: '', // Added date field
     total: 0
   });
 
   useEffect(() => {
     if (isOpen) {
       setFormData(JSON.parse(JSON.stringify(job)));
-      setNewExtension({ customerId: '', invoice: '', total: 0 });
+      setNewExtension({ 
+        customerId: '', 
+        invoice: '', 
+        date: new Date().toISOString().split('T')[0], // Default today
+        total: 0 
+      });
     }
   }, [isOpen, job]);
 
@@ -50,7 +57,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           id: Date.now().toString(),
           customerId: newExtension.customerId,
           invoice: newExtension.invoice,
-          invoiceDate: new Date().toISOString().split('T')[0], // Default today
+          invoiceDate: newExtension.date || new Date().toISOString().split('T')[0], // Use selected date
           net: 0, 
           vat: 0,
           total: newExtension.total
@@ -89,6 +96,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           {/* --- MODE: LOCAL CHARGE --- */}
           {mode === 'local' && (
             <>
+              {/* DATE FIELD MOVED TO TOP */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700 flex items-center">
+                  <Calendar className="w-4 h-4 mr-1 text-gray-400" /> Ngày Chứng Từ
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={formData.localChargeDate || ''}
+                  onChange={(e) => handleChange('localChargeDate', e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700 flex items-center">
                   <FileText className="w-4 h-4 mr-1 text-gray-400" /> Invoice
@@ -102,6 +123,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   placeholder="Số hóa đơn"
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700 flex items-center">
                   <DollarSign className="w-4 h-4 mr-1 text-gray-400" /> Số Tiền (Amount)
@@ -192,6 +214,21 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               <div className="bg-orange-50 p-3 rounded text-xs text-orange-800 mb-2">
                 Đang thêm phiếu thu gia hạn mới cho Job này.
               </div>
+
+              {/* DATE FIELD ADDED TO TOP */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700 flex items-center">
+                  <Calendar className="w-4 h-4 mr-1 text-gray-400" /> Ngày Chứng Từ
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={newExtension.date}
+                  onChange={(e) => setNewExtension(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Khách Hàng</label>
                 <select

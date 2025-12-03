@@ -32,33 +32,71 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
     
     switch (reportType) {
       case 'CUSTOMER_DEBT': {
-        // Group by Customer, sum debts
-        const grouped: Record<string, { id: string, name: string, totalDebt: number, jobCount: number }> = {};
+        // Aggregation by Customer ID
+        // Structure:
+        // - depositDebt: Nợ Cược
+        // - localChargeDebt: Sell + LocalChargeTotal (Cước/Dịch vụ chính)
+        // - extensionDebt: Tổng các khoản gia hạn
+        // - totalReceivable: localChargeDebt + extensionDebt (KHÔNG tính depositDebt)
+        
+        const grouped: Record<string, { 
+          id: string, 
+          name: string, 
+          localChargeDebt: number, 
+          extensionDebt: number,
+          depositDebt: number 
+        }> = {};
+        
+        // Helper to ensure customer entry exists
+        const ensureEntry = (id: string) => {
+           if (!grouped[id]) {
+             const cust = customers.find(c => c.id === id);
+             grouped[id] = {
+               id,
+               name: cust ? cust.name : 'Khách lẻ / Unknown',
+               localChargeDebt: 0,
+               extensionDebt: 0,
+               depositDebt: 0
+             };
+           }
+        };
+
         jobs.forEach(job => {
-          // Condition: Job has revenue but Bank is empty (Unpaid)
-          // We consider it a debt if there is ANY revenue (Sell, LocalCharge, Extensions) and no Bank record
-          const hasRevenue = job.sell > 0 || job.localChargeTotal > 0 || (job.extensions && job.extensions.length > 0);
+          // Ensure customer appears in the list even if no debt
+          if (job.customerId) ensureEntry(job.customerId);
+          if (job.maKhCuocId) ensureEntry(job.maKhCuocId);
+
+          // 1. Calculate Local Charge & Extension Debt
+          // Condition: Bank is empty (Unpaid) AND has revenue
+          // Note: We attribute extensions to the Job's customerId for simplicity in debt report
+          const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
+          const localChargeAmt = (job.sell || 0) + (job.localChargeTotal || 0);
+          const hasDebt = localChargeAmt > 0 || extTotal > 0;
           
-          if (!job.bank && hasRevenue) {
-            const custId = job.customerId;
-            if (!grouped[custId]) {
-              grouped[custId] = { 
-                id: custId, 
-                name: job.customerName || 'Unknown', 
-                totalDebt: 0, 
-                jobCount: 0 
-              };
-            }
-            
-            // Debt Calculation: Sum of ALL revenue components
-            const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
-            const debtAmt = (job.sell || 0) + (job.localChargeTotal || 0) + extTotal;
-            
-            grouped[custId].totalDebt += debtAmt;
-            grouped[custId].jobCount++;
+          if (hasDebt && !job.bank && job.customerId) {
+            // ensureEntry called above
+            grouped[job.customerId].localChargeDebt += localChargeAmt;
+            grouped[job.customerId].extensionDebt += extTotal;
+          }
+
+          // 2. Calculate Deposit Debt (Thu Cược)
+          // Condition: Thu Cược > 0 AND Ngay Thu Hoan is empty
+          if (job.thuCuoc > 0 && !job.ngayThuHoan && job.maKhCuocId) {
+            // ensureEntry called above
+            grouped[job.maKhCuocId].depositDebt += job.thuCuoc;
           }
         });
-        data = Object.values(grouped).sort((a, b) => b.totalDebt - a.totalDebt);
+
+        // Convert to array, calculate Total Receivable
+        // Removed filter to show ALL customers
+        data = Object.values(grouped)
+          .map(item => ({
+            ...item,
+            // Tổng Phải Thu = Local Charge + Gia Hạn (Không tính Cược)
+            totalReceivable: item.localChargeDebt + item.extensionDebt
+          }))
+          .sort((a, b) => b.totalReceivable - a.totalReceivable);
+          
         break;
       }
 
@@ -115,7 +153,6 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
 
       case 'BOOKING_NO_INVOICE': {
         // Booking Cost Details -> Local Charge Invoice/Date is missing
-        // Need to filter unique bookings that have issues
         const processed = new Set();
         data = jobs.filter(j => {
           if (!j.booking || processed.has(j.booking)) return false;
@@ -145,7 +182,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
     }
 
     return data;
-  }, [jobs, reportType, searchTerm]);
+  }, [jobs, reportType, searchTerm, customers]);
 
   // --- EXPORT ---
   const handleExportExcel = () => {
@@ -153,8 +190,14 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
     let rows: any[] = [];
 
     if (reportType === 'CUSTOMER_DEBT') {
-      headers = ['Khách Hàng', 'Số Job Nợ', 'Tổng Nợ'];
-      rows = reportData.map((d: any) => [d.name, d.jobCount, d.totalDebt]);
+      headers = ['Khách Hàng', 'Nợ Cược', 'Tổng Local Charge', 'Tổng Gia Hạn', 'Tổng Phải Thu (Không tính cược)'];
+      rows = reportData.map((d: any) => [
+        d.name, 
+        d.depositDebt, 
+        d.localChargeDebt, 
+        d.extensionDebt, 
+        d.totalReceivable
+      ]);
     } else if (reportType === 'LINE_DEBT') {
       headers = ['Hãng Tàu', 'Số Job', 'Tổng Chi Phí'];
       rows = reportData.map((d: any) => [d.line, d.jobCount, d.totalCost]);
@@ -237,34 +280,87 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
 
       {/* Results Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {reportType === 'CUSTOMER_DEBT' || reportType === 'LINE_DEBT' ? (
-          // Summary Table
+        {reportType === 'CUSTOMER_DEBT' ? (
+          // CUSTOMER DEBT TABLE
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
               <tr>
-                <th className="px-6 py-4">{reportType === 'CUSTOMER_DEBT' ? 'Khách Hàng' : 'Hãng Tàu'}</th>
-                <th className="px-6 py-4 text-center">Số lượng</th>
-                <th className="px-6 py-4 text-right">Tổng Tiền</th>
+                <th className="px-6 py-4">Khách Hàng</th>
+                <th className="px-6 py-4 text-right">Nợ Cược</th>
+                <th className="px-6 py-4 text-right">Tổng Local Charge</th>
+                <th className="px-6 py-4 text-right">Tổng Gia Hạn</th>
+                <th className="px-6 py-4 text-right">Tổng Phải Thu (Không tính Cược)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {reportData.length > 0 ? (
+                reportData.map((item: any, idx) => {
+                  const hasReceivable = item.totalReceivable > 0;
+                  const hasDepositDebt = item.depositDebt > 0;
+                  const isClean = !hasReceivable && !hasDepositDebt;
+                  
+                  return (
+                    <tr key={idx} className={`hover:bg-gray-50 ${isClean ? 'opacity-70 bg-gray-50/30' : ''}`}>
+                      <td className="px-6 py-4 font-medium text-slate-900">
+                        {item.name}
+                        {isClean && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">Sạch</span>}
+                      </td>
+                      
+                      {/* Nợ Cược */}
+                      <td className={`px-6 py-4 text-right font-medium ${item.depositDebt > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                        {formatCurrency(item.depositDebt)}
+                      </td>
+                      
+                      {/* Tổng Local Charge */}
+                      <td className={`px-6 py-4 text-right font-medium ${item.localChargeDebt > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                        {formatCurrency(item.localChargeDebt)}
+                      </td>
+
+                      {/* Tổng Gia Hạn */}
+                      <td className={`px-6 py-4 text-right font-medium ${item.extensionDebt > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                        {formatCurrency(item.extensionDebt)}
+                      </td>
+
+                      {/* Tổng Phải Thu (Sum of LC + Ext) */}
+                      <td className={`px-6 py-4 text-right font-bold text-base ${item.totalReceivable > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {formatCurrency(item.totalReceivable)}
+                      </td>
+                    </tr>
+                  )
+                })
+              ) : (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu công nợ</td></tr>
+              )}
+            </tbody>
+          </table>
+        ) : reportType === 'LINE_DEBT' ? (
+          // LINE DEBT TABLE
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
+              <tr>
+                <th className="px-6 py-4">Hãng Tàu</th>
+                <th className="px-6 py-4 text-center">Số lượng Job</th>
+                <th className="px-6 py-4 text-right">Tổng Chi Phí</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {reportData.length > 0 ? (
                 reportData.map((item: any, idx) => (
                   <tr key={idx} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-slate-900">{item.name || item.line}</td>
+                    <td className="px-6 py-4 font-medium text-slate-900">{item.line}</td>
                     <td className="px-6 py-4 text-center bg-gray-50/50">{item.jobCount}</td>
                     <td className="px-6 py-4 text-right font-bold text-red-600">
-                       {formatCurrency(reportType === 'CUSTOMER_DEBT' ? item.totalDebt : item.totalCost)}
+                       {formatCurrency(item.totalCost)}
                     </td>
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={3} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu</td></tr>
+                <tr><td colSpan={3} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu công nợ hãng tàu</td></tr>
               )}
             </tbody>
           </table>
         ) : (
-          // Detail Job Table
+          // DETAIL JOB TABLE (For Check/Warning reports)
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
               <tr>
