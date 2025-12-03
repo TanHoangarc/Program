@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
-import { formatDateVN } from '../utils';
+import { formatDateVN, parseDateVN } from '../utils';
 
 interface JobModalProps {
   isOpen: boolean;
@@ -45,6 +45,48 @@ const DateInput = ({
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
   readOnly?: boolean; 
 }) => {
+  // Internal state for display value (dd/mm/yyyy)
+  const [displayValue, setDisplayValue] = useState('');
+
+  // Sync display value when prop value changes
+  useEffect(() => {
+    setDisplayValue(formatDateVN(value));
+  }, [value]);
+
+  const handleBlur = () => {
+    if (!displayValue) {
+      if (value) triggerChange('');
+      return;
+    }
+    
+    // Try to parse dd/mm/yyyy
+    const parsed = parseDateVN(displayValue);
+    if (parsed) {
+      if (parsed !== value) triggerChange(parsed);
+    } else {
+      // If invalid, revert to previous valid value
+      setDisplayValue(formatDateVN(value));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
+  const triggerChange = (newVal: string) => {
+    // Create synthetic event
+    const e = {
+      target: { name, value: newVal }
+    } as React.ChangeEvent<HTMLInputElement>;
+    onChange(e);
+  };
+
+  const handleDateIconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    triggerChange(e.target.value);
+  };
+
   if (readOnly) {
     return (
       <Input 
@@ -54,7 +96,31 @@ const DateInput = ({
       />
     );
   }
-  return <Input type="date" name={name} value={value || ''} onChange={onChange} />;
+
+  return (
+    <div className="relative w-full">
+      <Input 
+        type="text" 
+        name={name}
+        value={displayValue} 
+        onChange={(e) => setDisplayValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder="dd/mm/yyyy"
+        className="pr-10" // Make room for icon
+      />
+      <div className="absolute right-0 top-0 h-full w-10 flex items-center justify-center">
+         {/* Hidden Date Input acting as a trigger */}
+         <input 
+            type="date" 
+            value={value || ''} 
+            onChange={handleDateIconChange}
+            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+         />
+         <Calendar className="w-4 h-4 text-gray-500" />
+      </div>
+    </div>
+  );
 };
 
 const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (

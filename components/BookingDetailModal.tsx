@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check } from 'lucide-react';
-import { formatDateVN } from '../utils';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar } from 'lucide-react';
+import { formatDateVN, parseDateVN } from '../utils';
 
 interface BookingDetailModalProps {
   booking: BookingSummary;
@@ -14,9 +14,82 @@ interface BookingDetailModalProps {
 const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
   <input 
     {...props} 
+    // Ensure value is never null
+    value={props.value ?? ''}
     className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT disabled:bg-gray-50 disabled:text-gray-500 transition-shadow ${props.className || ''}`}
   />
 );
+
+const DateInput = ({ 
+  value, 
+  name, 
+  onChange, 
+  className 
+}: { 
+  value: string; 
+  name?: string; 
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
+  className?: string;
+}) => {
+  const [displayValue, setDisplayValue] = useState('');
+
+  useEffect(() => {
+    setDisplayValue(formatDateVN(value));
+  }, [value]);
+
+  const handleBlur = () => {
+    if (!displayValue) {
+      if (value) triggerChange('');
+      return;
+    }
+    const parsed = parseDateVN(displayValue);
+    if (parsed) {
+      if (parsed !== value) triggerChange(parsed);
+    } else {
+      setDisplayValue(formatDateVN(value));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
+  const triggerChange = (newVal: string) => {
+    const e = {
+      target: { name, value: newVal }
+    } as React.ChangeEvent<HTMLInputElement>;
+    onChange(e);
+  };
+
+  const handleDateIconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    triggerChange(e.target.value);
+  };
+
+  return (
+    <div className={`relative w-full ${className}`}>
+      <input 
+        type="text" 
+        value={displayValue} 
+        onChange={(e) => setDisplayValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder="dd/mm/yyyy"
+        className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT pr-10 h-full"
+      />
+      <div className="absolute right-0 top-0 h-full w-10 flex items-center justify-center">
+         <input 
+            type="date" 
+            value={value || ''} 
+            onChange={handleDateIconChange}
+            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+         />
+         <Calendar className="w-4 h-4 text-gray-400" />
+      </div>
+    </div>
+  );
+};
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="block text-xs font-semibold text-gray-500 mb-1">{children}</label>
@@ -49,10 +122,14 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   // --- SYSTEM TABLE TOTALS ---
   const systemTotalSell = booking.jobs.reduce((sum, j) => sum + j.sell, 0);
+  
+  // Update Adjusted Cost Logic: Cost - (Kimberry + CIC + PSC + EMC + Other)
   const systemTotalAdjustedCost = booking.jobs.reduce((sum, j) => {
-    const costDeduction = (j.cont20 * 250000) + (j.cont40 * 500000);
-    return sum + (j.cost - costDeduction);
+    const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
+    const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
+    return sum + (j.cost - kimberry - otherFees);
   }, 0);
+  
   const systemTotalVat = booking.jobs.reduce((sum, j) => sum + (j.cost * 0.05263), 0);
 
 
@@ -203,8 +280,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     const values = booking.jobs.map(job => {
       if (type === 'sell') return job.sell;
       if (type === 'cost') {
-        const costDeduction = (job.cont20 * 250000) + (job.cont40 * 500000);
-        return job.cost - costDeduction;
+        const kimberry = (job.cont20 * 250000) + (job.cont40 * 500000);
+        const otherFees = (job.feeCic || 0) + (job.feePsc || 0) + (job.feeEmc || 0) + (job.feeOther || 0);
+        return job.cost - kimberry - otherFees;
       }
       if (type === 'vat') return job.cost * 0.05263;
       if (type === 'project') return getProjectCode(job);
@@ -278,8 +356,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {booking.jobs.map(job => {
-                    const costDeduction = (job.cont20 * 250000) + (job.cont40 * 500000);
-                    const adjustedCost = job.cost - costDeduction;
+                    const kimberry = (job.cont20 * 250000) + (job.cont40 * 500000);
+                    const otherFees = (job.feeCic || 0) + (job.feePsc || 0) + (job.feeEmc || 0) + (job.feeOther || 0);
+                    const adjustedCost = job.cost - kimberry - otherFees;
+                    
                     const vatCalc = job.cost * 0.05263;
                     const projectCode = getProjectCode(job);
                     
@@ -492,16 +572,14 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                               />
                            </td>
                            <td className="px-4 py-2">
-                              <Input 
-                                type="date"
+                              <DateInput 
                                 value={item.dateOut}
                                 onChange={(e) => handleUpdateDeposit(item.id, 'dateOut', e.target.value)}
                                 className="h-8"
                               />
                            </td>
                            <td className="px-4 py-2">
-                              <Input 
-                                type="date"
+                              <DateInput 
                                 value={item.dateIn}
                                 onChange={(e) => handleUpdateDeposit(item.id, 'dateIn', e.target.value)}
                                 className="h-8"

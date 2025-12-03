@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -37,66 +38,42 @@ const App: React.FC = () => {
     });
 
     if (hasDuplicates) {
-      console.warn("Detected and fixed duplicate Job IDs in storage.");
+      console.warn("Found and fixed duplicate IDs in initial data");
     }
     return sanitized;
   };
 
-  // Jobs State with Sanitization
+  // Load initial data from localStorage or use Mock
   const [jobs, setJobs] = useState<JobData[]>(() => {
-    try {
-      const saved = localStorage.getItem('logistics_jobs_v2');
-      const parsedData = saved ? JSON.parse(saved) : MOCK_DATA;
-      return sanitizeData(parsedData);
-    } catch (e) {
-      console.error("Failed to parse jobs from local storage", e);
-      return MOCK_DATA;
-    }
+    const saved = localStorage.getItem('logistics_jobs_v2');
+    return saved ? sanitizeData(JSON.parse(saved)) : sanitizeData(MOCK_DATA);
   });
 
-  // Customers State
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    try {
-      const saved = localStorage.getItem('logistics_customers');
-      return saved ? JSON.parse(saved) : MOCK_CUSTOMERS;
-    } catch (e) {
-      console.error("Failed to parse customers from local storage", e);
-      return MOCK_CUSTOMERS;
-    }
+    const saved = localStorage.getItem('logistics_customers_v1');
+    return saved ? JSON.parse(saved) : MOCK_CUSTOMERS;
   });
 
-  // Shipping Lines State
-  const [shippingLines, setShippingLines] = useState<ShippingLine[]>(() => {
-    try {
-      const saved = localStorage.getItem('logistics_shipping_lines');
-      if (saved) return JSON.parse(saved);
-      return MOCK_SHIPPING_LINES;
-    } catch (e) {
-      console.error("Failed to parse shipping lines from local storage", e);
-      return MOCK_SHIPPING_LINES;
-    }
+  const [lines, setLines] = useState<ShippingLine[]>(() => {
+    const saved = localStorage.getItem('logistics_lines_v1');
+    return saved ? JSON.parse(saved) : MOCK_SHIPPING_LINES;
   });
 
-  // Persistence
+  // Save to localStorage whenever data changes
   useEffect(() => {
     localStorage.setItem('logistics_jobs_v2', JSON.stringify(jobs));
   }, [jobs]);
 
   useEffect(() => {
-    localStorage.setItem('logistics_customers', JSON.stringify(customers));
+    localStorage.setItem('logistics_customers_v1', JSON.stringify(customers));
   }, [customers]);
 
   useEffect(() => {
-    localStorage.setItem('logistics_shipping_lines', JSON.stringify(shippingLines));
-  }, [shippingLines]);
+    localStorage.setItem('logistics_lines_v1', JSON.stringify(lines));
+  }, [lines]);
 
-  const handleAddJob = (newJob: JobData) => {
-    // Ensure new job has a unique ID if not provided
-    const jobWithId = {
-        ...newJob,
-        id: newJob.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    };
-    setJobs(prev => [jobWithId, ...prev]);
+  const handleAddJob = (job: JobData) => {
+    setJobs(prev => [job, ...prev]);
   };
 
   const handleEditJob = (updatedJob: JobData) => {
@@ -104,43 +81,54 @@ const App: React.FC = () => {
   };
 
   const handleDeleteJob = (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa job này không?')) {
-      setJobs(prev => prev.filter(job => job.id !== id));
-    }
+    setJobs(prev => prev.filter(job => job.id !== id));
   };
 
-  const handleAddCustomer = (newCustomer: Customer) => {
-    setCustomers(prev => [...prev, newCustomer]);
+  const handleAddCustomer = (customer: Customer) => {
+    setCustomers(prev => [...prev, customer]);
   };
 
-  const handleEditCustomer = (updatedCustomer: Customer) => {
-    setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+  const handleEditCustomer = (customer: Customer) => {
+    setCustomers(prev => prev.map(c => c.id === customer.id ? customer : c));
   };
 
   const handleDeleteCustomer = (id: string) => {
     setCustomers(prev => prev.filter(c => c.id !== id));
   };
 
-  const handleAddLine = (lineNameOrObj: string | ShippingLine) => {
-    if (typeof lineNameOrObj === 'string') {
-      const newLine: ShippingLine = {
-        id: Date.now().toString(),
-        code: lineNameOrObj.substring(0, 4).toUpperCase(),
-        name: lineNameOrObj,
-        mst: ''
-      };
-      setShippingLines(prev => [...prev, newLine]);
-    } else {
-      setShippingLines(prev => [...prev, lineNameOrObj]);
-    }
+  const handleAddLine = (lineData: any) => {
+     // Check if it's a string (old way) or object (new way)
+     if (typeof lineData === 'string') {
+        const newLine: ShippingLine = { 
+            id: Date.now().toString(), 
+            code: lineData, 
+            name: lineData, 
+            mst: '' 
+        };
+        setLines(prev => [...prev, newLine]);
+     } else {
+        setLines(prev => [...prev, lineData]);
+     }
   };
 
-  const handleEditLine = (updatedLine: ShippingLine) => {
-    setShippingLines(prev => prev.map(l => l.id === updatedLine.id ? updatedLine : l));
+  const handleEditLine = (line: ShippingLine) => {
+    setLines(prev => prev.map(l => l.id === line.id ? line : l));
   };
 
   const handleDeleteLine = (id: string) => {
-    setShippingLines(prev => prev.filter(l => l.id !== id));
+    setLines(prev => prev.filter(l => l.id !== id));
+  };
+
+  const handleResetData = () => {
+    if (window.confirm("Bạn có chắc chắn muốn reset về dữ liệu mẫu? Dữ liệu hiện tại sẽ bị mất.")) {
+      setJobs(sanitizeData(MOCK_DATA));
+      setCustomers(MOCK_CUSTOMERS);
+      setLines(MOCK_SHIPPING_LINES);
+      localStorage.removeItem('logistics_jobs_v2');
+      localStorage.removeItem('logistics_customers_v1');
+      localStorage.removeItem('logistics_lines_v1');
+      window.location.reload();
+    }
   };
 
   const handleNavigateToBooking = (bookingId: string) => {
@@ -153,130 +141,142 @@ const App: React.FC = () => {
     setCurrentPage('entry');
   };
 
-  const handleResetData = () => {
-    if (window.confirm('CẢNH BÁO: Hành động này sẽ XÓA TOÀN BỘ danh sách Job hiện tại.\nBạn có chắc chắn muốn tiếp tục không?')) {
-      setJobs([]);
-      localStorage.setItem('logistics_jobs_v2', JSON.stringify([]));
-    }
-  };
-
-  // Restore logic for System Page
-  const handleSystemRestore = (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[] }) => {
-    if (data.jobs) setJobs(sanitizeData(data.jobs)); // Sanitize incoming backup data too
-    if (data.customers && data.customers.length > 0) setCustomers(data.customers);
-    if (data.lines && data.lines.length > 0) setShippingLines(data.lines);
-  };
-
-  const renderContent = () => {
-    switch(currentPage) {
-      case 'entry':
-        return (
-          <JobEntry 
-            jobs={jobs} 
-            onAddJob={handleAddJob} 
-            onEditJob={handleEditJob} 
-            onDeleteJob={handleDeleteJob} 
-            customers={customers} 
-            onAddCustomer={handleAddCustomer} 
-            lines={shippingLines} 
-            onAddLine={handleAddLine}
-            initialJobId={targetJobId}
-            onClearTargetJob={() => setTargetJobId(null)}
-          />
-        );
-      case 'booking':
-        return <BookingList jobs={jobs} onEditJob={handleEditJob} initialBookingId={targetBookingId} onClearTargetBooking={() => setTargetBookingId(null)} />;
-      case 'reports':
-        return <Reports jobs={jobs} />;
-      case 'deposit-line':
-        return <DepositList mode="line" jobs={jobs} customers={customers} />;
-      case 'deposit-customer':
-        return <DepositList mode="customer" jobs={jobs} customers={customers} />;
-      case 'lhk':
-        return <LhkList jobs={jobs} />;
-      case 'amis-thu':
-        return <AmisExport jobs={jobs} customers={customers} mode="thu" />;
-      case 'amis-chi':
-        return <AmisExport jobs={jobs} customers={customers} mode="chi" />;
-      case 'amis-ban':
-        return <AmisExport jobs={jobs} customers={customers} mode="ban" />;
-      case 'amis-mua':
-        return <AmisExport jobs={jobs} customers={customers} mode="mua" />;
-      case 'reconciliation':
-        return <Reconciliation jobs={jobs} />;
-      case 'data-lines':
-        return <DataManagement mode="lines" data={shippingLines} onAdd={handleAddLine} onEdit={handleEditLine} onDelete={handleDeleteLine} />;
-      case 'data-customers':
-        return <DataManagement mode="customers" data={customers} onAdd={handleAddCustomer} onEdit={handleEditCustomer} onDelete={handleDeleteCustomer} />;
-      case 'debt':
-        return <DebtManagement jobs={jobs} customers={customers} />;
-      case 'profit':
-        return <ProfitReport jobs={jobs} onViewJob={handleNavigateToJob} />;
-      case 'system':
-        return <SystemPage jobs={jobs} customers={customers} lines={shippingLines} onRestore={handleSystemRestore} />;
-      default:
-        return null;
-    }
+  // --- RESTORE FUNCTION ---
+  const handleRestoreSystem = (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[] }) => {
+    setJobs(sanitizeData(data.jobs));
+    setCustomers(data.customers);
+    setLines(data.lines);
   };
 
   return (
-    <div className="flex flex-col min-h-screen font-sans bg-gray-100">
+    <div className="flex bg-gray-100 min-h-screen font-sans">
+      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} onResetData={handleResetData} />
       
-      {/* Top Header */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-brand-DEFAULT text-white z-50 flex items-center justify-between px-6 shadow-md">
-        <div className="flex items-center space-x-3">
-          <Ship className="w-6 h-6 text-blue-300" />
-          <span className="text-xl font-bold tracking-tight">LogiSoft</span>
-          <div className="hidden md:flex ml-8 space-x-1">
-             <button className="px-4 py-2 text-sm font-medium bg-brand-dark/50 rounded-t-md border-b-2 border-blue-400">Dashboard</button>
-             <button className="px-4 py-2 text-sm font-medium text-blue-200 hover:text-white">Operations</button>
-             <button className="px-4 py-2 text-sm font-medium text-blue-200 hover:text-white">Finance</button>
+      <div className="flex-1 ml-64 flex flex-col h-screen overflow-hidden">
+        {/* Top Navigation Bar */}
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shadow-sm z-30 flex-shrink-0">
+          <div className="flex items-center text-gray-400 text-sm">
+             <Ship className="w-5 h-5 mr-2" />
+             <span className="font-semibold text-gray-600">Logistics Management System</span>
+             <span className="mx-2">/</span>
+             <span className="text-gray-900 font-medium capitalize">{currentPage.replace('-', ' ')}</span>
           </div>
-        </div>
+          <div className="flex items-center space-x-6">
+            <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+            </button>
+            <div className="flex items-center space-x-3 pl-6 border-l border-gray-100 cursor-pointer hover:bg-gray-50 py-1 px-2 rounded-lg transition-colors">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+                AD
+              </div>
+              <div className="text-sm">
+                <p className="font-medium text-gray-700">Admin User</p>
+                <p className="text-xs text-gray-400">Quản trị viên</p>
+              </div>
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            </div>
+          </div>
+        </header>
 
-        <div className="flex items-center space-x-6">
-          <div className="relative hidden md:block">
-            <input 
-              type="text" 
-              placeholder="Search keyword" 
-              className="pl-4 pr-10 py-1.5 rounded bg-white text-slate-800 text-sm focus:outline-none w-64"
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-y-auto bg-gray-100 relative">
+          {currentPage === 'entry' && (
+            <div className="p-8">
+               <JobEntry 
+                  jobs={jobs} 
+                  onAddJob={handleAddJob} 
+                  onEditJob={handleEditJob} 
+                  onDeleteJob={handleDeleteJob} 
+                  customers={customers} 
+                  onAddCustomer={handleAddCustomer} 
+                  lines={lines}
+                  onAddLine={handleAddLine}
+                  initialJobId={targetJobId}
+                  onClearTargetJob={() => setTargetJobId(null)}
+               />
+            </div>
+          )}
+          
+          {currentPage === 'reports' && (
+            <Reports jobs={jobs} />
+          )}
+
+          {currentPage === 'booking' && (
+            <BookingList 
+               jobs={jobs} 
+               onEditJob={handleEditJob} 
+               initialBookingId={targetBookingId}
+               onClearTargetBooking={() => setTargetBookingId(null)}
             />
-            <div className="absolute right-0 top-0 h-full w-8 flex items-center justify-center bg-gray-200 rounded-r text-gray-500">
-               <ChevronDown className="w-4 h-4" />
-            </div>
-          </div>
-          
-          <button className="text-blue-200 hover:text-white relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
-          
-          <div className="flex items-center space-x-2 border-l border-blue-800 pl-6">
-            <span className="text-sm text-right hidden lg:block">
-              <div className="font-medium">Admin User</div>
-              <div className="text-xs text-blue-300">Logistics Manager</div>
-            </span>
-            <div className="w-8 h-8 rounded-full bg-blue-200 text-brand-DEFAULT flex items-center justify-center">
-               <User className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-      </header>
+          )}
 
-      {/* Main Layout */}
-      <div className="flex pt-16">
-        <Sidebar 
-          currentPage={currentPage} 
-          onNavigate={(page) => {
-            setCurrentPage(page);
-            setTargetBookingId(null);
-            setTargetJobId(null);
-          }} 
-          onResetData={handleResetData}
-        />
-        
-        <main className="ml-64 flex-1 p-6 min-h-[calc(100vh-64px)] overflow-auto">
-          {renderContent()}
+          {currentPage === 'deposit-line' && (
+            <DepositList 
+              mode="line" 
+              jobs={jobs} 
+              customers={customers} 
+              lines={lines}
+              onEditJob={handleEditJob}
+              onAddLine={handleAddLine}
+              onAddCustomer={handleAddCustomer}
+            />
+          )}
+
+          {currentPage === 'deposit-customer' && (
+            <DepositList 
+              mode="customer" 
+              jobs={jobs} 
+              customers={customers} 
+              lines={lines}
+              onEditJob={handleEditJob}
+              onAddLine={handleAddLine}
+              onAddCustomer={handleAddCustomer}
+            />
+          )}
+
+          {currentPage === 'lhk' && (
+            <LhkList jobs={jobs} />
+          )}
+
+          {/* Amis Export Pages */}
+          {currentPage === 'amis-thu' && <AmisExport jobs={jobs} customers={customers} mode="thu" />}
+          {currentPage === 'amis-chi' && <AmisExport jobs={jobs} customers={customers} mode="chi" />}
+          {currentPage === 'amis-ban' && <AmisExport jobs={jobs} customers={customers} mode="ban" />}
+          {currentPage === 'amis-mua' && <AmisExport jobs={jobs} customers={customers} mode="mua" />}
+          
+          {/* Data Management Pages */}
+          {currentPage === 'data-lines' && (
+            <DataManagement 
+               mode="lines" 
+               data={lines} 
+               onAdd={handleAddLine} 
+               onEdit={handleEditLine} 
+               onDelete={handleDeleteLine}
+            />
+          )}
+          {currentPage === 'data-customers' && (
+            <DataManagement 
+               mode="customers" 
+               data={customers} 
+               onAdd={handleAddCustomer} 
+               onEdit={handleEditCustomer} 
+               onDelete={handleDeleteCustomer}
+            />
+          )}
+
+          {currentPage === 'debt' && <DebtManagement jobs={jobs} customers={customers} />}
+          {currentPage === 'profit' && <ProfitReport jobs={jobs} onViewJob={handleNavigateToJob} />}
+          {currentPage === 'reconciliation' && <Reconciliation jobs={jobs} />}
+          
+          {currentPage === 'system' && (
+            <SystemPage 
+               jobs={jobs} 
+               customers={customers} 
+               lines={lines} 
+               onRestore={handleRestoreSystem} 
+            />
+          )}
         </main>
       </div>
     </div>

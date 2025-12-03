@@ -15,6 +15,27 @@ export const formatDateVN = (dateStr: any) => {
   return str;
 };
 
+export const parseDateVN = (str: string): string | null => {
+  if (!str) return null;
+  // match d/m/y or dd/mm/yyyy
+  const parts = str.split('/');
+  if (parts.length === 3) {
+    const d = parts[0].padStart(2, '0');
+    const m = parts[1].padStart(2, '0');
+    const y = parts[2];
+    
+    // Basic validation
+    if (y.length !== 4) return null;
+    
+    const iso = `${y}-${m}-${d}`;
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return null;
+    
+    return iso;
+  }
+  return null;
+};
+
 export const calculateBookingSummary = (jobs: JobData[], bookingId: string): BookingSummary | null => {
   const bookingJobs = jobs.filter(j => j.booking === bookingId);
   if (bookingJobs.length === 0) return null;

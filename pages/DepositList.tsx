@@ -1,16 +1,25 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
-import { JobData, Customer } from '../types';
-import { Search, ArrowRightLeft, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
+import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS } from '../constants';
-import { formatDateVN, getPaginationRange } from '../utils';
+import { formatDateVN, getPaginationRange, calculateBookingSummary } from '../utils';
+import { JobModal } from '../components/JobModal';
+import { BookingDetailModal } from '../components/BookingDetailModal';
 
 interface DepositListProps {
   mode: 'line' | 'customer';
   jobs: JobData[];
   customers: Customer[];
+  lines: ShippingLine[];
+  onEditJob: (job: JobData) => void;
+  onAddLine: (line: string) => void;
+  onAddCustomer: (customer: Customer) => void;
 }
 
-export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers }) => {
+export const DepositList: React.FC<DepositListProps> = ({ 
+    mode, jobs, customers, lines, onEditJob, onAddLine, onAddCustomer 
+}) => {
   // Filters
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
   const [filterEntity, setFilterEntity] = useState(''); // Stores Line Name or Customer ID
@@ -19,6 +28,11 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
+
+  // Modals State
+  const [editingJob, setEditingJob] = useState<JobData | null>(null);
+  const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+  const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -45,14 +59,9 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
   const hasActiveFilters = filterStatus !== 'all' || filterEntity !== '' || filterMonth !== '';
 
   // --- LOGIC FOR LINE DEPOSIT (HÃNG TÀU) ---
-  // Aggregated by Booking
   const lineDeposits = useMemo(() => {
     if (mode !== 'line') return [];
     
-    // Updated Logic: Use deposits from BookingCostDetails
-    // Since BookingCostDetails.deposits is the source of truth for "Cược Hãng Tàu" now.
-    
-    // We need to iterate over all jobs, extract unique bookings, and get their deposits
     const processedBookings = new Set<string>();
     const depositsList: any[] = [];
 
@@ -62,7 +71,6 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
         
         const details = job.bookingCostDetails;
         if (details && details.deposits && details.deposits.length > 0) {
-            // Aggregate all deposits for this booking
             let totalAmt = 0;
             let lastDateOut = '';
             let lastDateIn = '';
@@ -73,13 +81,6 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                 if (d.dateIn) lastDateIn = d.dateIn;
             });
 
-            // Status Check
-            let isPending = false;
-            // If any deposit line item is missing dateIn, consider the booking deposit pending? 
-            // Or use the last one? Let's assume if any amount is outstanding.
-            // Simplified: If 'lastDateIn' is present, it's completed (based on previous logic), 
-            // but strictly we should check if all items have dateIn.
-            // For listing, let's stick to the aggregate display.
             const allCompleted = details.deposits.every(d => !!d.dateIn);
 
             const item = {
@@ -88,7 +89,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                 line: job.line,
                 amount: totalAmt,
                 dateOut: lastDateOut,
-                dateIn: allCompleted ? lastDateIn : '', // If not all completed, show as pending
+                dateIn: allCompleted ? lastDateIn : '',
                 isCompleted: allCompleted
             };
 
@@ -97,7 +98,6 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
       }
     });
 
-    // Filter Logic
     let result = depositsList.filter(item => {
       const matchMonth = filterMonth ? item.month === filterMonth : true;
       const matchLine = filterEntity ? item.line === filterEntity : true;
@@ -113,13 +113,11 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
   }, [jobs, mode, filterMonth, filterEntity, filterStatus]);
 
   // --- LOGIC FOR CUSTOMER DEPOSIT (KHÁCH HÀNG) ---
-  // Individual Jobs
   const customerDeposits = useMemo(() => {
     if (mode !== 'customer') return [];
     
     let result = jobs.filter(job => job.thuCuoc > 0);
 
-    // Filter Logic
     result = result.filter(job => {
       const matchMonth = filterMonth ? job.month === filterMonth : true;
       const matchCustomer = filterEntity ? job.maKhCuocId === filterEntity : true;
@@ -140,8 +138,8 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
           customerCode: customer ? customer.code : 'N/A',
           customerName: customer ? customer.name : 'Unknown',
           amount: job.thuCuoc,
-          dateIn: job.ngayThuCuoc, // Ngay thu cuoc
-          dateOut: job.ngayThuHoan // Ngay tra hoan
+          dateIn: job.ngayThuCuoc, 
+          dateOut: job.ngayThuHoan
         };
       })
       .sort((a, b) => Number(b.month) - Number(a.month));
@@ -154,6 +152,42 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
   const totalPages = Math.ceil(currentList.length / ITEMS_PER_PAGE);
   const paginatedList = currentList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const paginationRange = getPaginationRange(currentPage, totalPages);
+
+  // --- CLICK HANDLERS ---
+  const handleRowClick = (item: any) => {
+    if (mode === 'line') {
+        const summary = calculateBookingSummary(jobs, item.booking);
+        if (summary) setViewingBooking(summary);
+    } else {
+         const job = jobs.find(j => j.id === item.id);
+         if (job) {
+             setEditingJob(JSON.parse(JSON.stringify(job)));
+             setIsJobModalOpen(true);
+         }
+    }
+  };
+
+  const handleSaveJob = (job: JobData, newCustomer?: Customer) => {
+    if (newCustomer) onAddCustomer(newCustomer);
+    onEditJob(job);
+    setIsJobModalOpen(false);
+  };
+
+  const handleSaveBooking = (details: BookingCostDetails) => {
+    if (!viewingBooking) return;
+    viewingBooking.jobs.forEach(job => {
+        const updatedJob = { ...job, bookingCostDetails: details };
+        onEditJob(updatedJob);
+    });
+    setViewingBooking(null);
+  };
+
+  const handleViewBookingFromJob = (bookingId: string) => {
+      const summary = calculateBookingSummary(jobs, bookingId);
+      if (summary) {
+           setViewingBooking(summary);
+      }
+  };
 
   return (
     <div className="p-8 max-w-full">
@@ -174,8 +208,8 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
         </div>
         <p className="text-slate-500 ml-11 mb-6">
           {mode === 'line' 
-            ? 'Theo dõi tiền cược đã chi cho hãng tàu theo Booking' 
-            : 'Theo dõi tiền cược đã thu từ khách hàng theo Job'}
+            ? 'Theo dõi tiền cược đã chi cho hãng tàu theo Booking. Click vào dòng để xem chi tiết.' 
+            : 'Theo dõi tiền cược đã thu từ khách hàng theo Job. Click vào dòng để xem chi tiết.'}
         </p>
 
         {/* Filters Bar */}
@@ -186,7 +220,6 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 w-full">
-               {/* Month Filter */}
                <select 
                  value={filterMonth} 
                  onChange={(e) => setFilterMonth(e.target.value)}
@@ -196,7 +229,6 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                  {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                </select>
 
-               {/* Entity Filter (Line or Customer) */}
                <select 
                  value={filterEntity} 
                  onChange={(e) => setFilterEntity(e.target.value)}
@@ -209,7 +241,6 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
                  }
                </select>
 
-               {/* Status Filter */}
                <select 
                  value={filterStatus} 
                  onChange={(e) => setFilterStatus(e.target.value as any)}
@@ -261,7 +292,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
               {mode === 'line' ? (
                 paginatedList.length > 0 ? (
                   paginatedList.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                    <tr key={idx} className="hover:bg-red-50/20 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
                       <td className="px-6 py-4 font-medium text-slate-900">Tháng {item.month}</td>
                       <td className="px-6 py-4 text-blue-600 font-bold">{item.booking}</td>
                       <td className="px-6 py-4 text-slate-600">{item.line}</td>
@@ -287,7 +318,7 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
               ) : (
                 paginatedList.length > 0 ? (
                   paginatedList.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={item.id} className="hover:bg-indigo-50/20 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
                       <td className="px-6 py-4 font-medium text-slate-900">Tháng {item.month}</td>
                       <td className="px-6 py-4 text-blue-600 font-bold">{item.jobCode}</td>
                       <td className="px-6 py-4 text-slate-600 font-mono">{item.customerCode}</td>
@@ -369,6 +400,29 @@ export const DepositList: React.FC<DepositListProps> = ({ mode, jobs, customers 
           </div>
         )}
       </div>
+
+      {isJobModalOpen && (
+        <JobModal 
+          isOpen={isJobModalOpen} 
+          onClose={() => setIsJobModalOpen(false)} 
+          onSave={handleSaveJob} 
+          initialData={editingJob} 
+          customers={customers} 
+          lines={lines} 
+          onAddLine={onAddLine} 
+          onViewBookingDetails={handleViewBookingFromJob}
+        />
+      )}
+      
+      {viewingBooking && (
+        <BookingDetailModal 
+            booking={viewingBooking} 
+            onClose={() => setViewingBooking(null)} 
+            onSave={handleSaveBooking} 
+            zIndex="z-[60]" 
+        />
+      )}
+
     </div>
   );
 };

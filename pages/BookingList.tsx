@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -60,17 +61,20 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
 
   const totals = useMemo(() => {
     return bookingData.reduce((acc, b) => {
+      // Formula: Target = Cost - (Kimberry + CIC + PSC + EMC + Other)
       const target = b.jobs.reduce((sum, j) => {
-        const deduction = (j.cont20 * 250000) + (j.cont40 * 500000);
-        return sum + (j.cost - deduction);
+        const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
+        const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
+        return sum + (j.cost - kimberry - otherFees);
       }, 0);
+
       const addNet = (b.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
       const actualNet = (b.costDetails.localCharge.net || 0) + addNet;
       const diff = actualNet - target;
 
       return {
         sell: acc.sell + b.totalSell,
-        cost: acc.cost + b.totalCost,
+        cost: acc.cost + b.totalCost, // Note: totalCost in summary is basically sum of job.cost
         profit: acc.profit + b.totalProfit,
         cont20: acc.cont20 + b.totalCont20,
         cont40: acc.cont40 + b.totalCont40,
@@ -165,9 +169,19 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedData.map((booking) => {
-              const target = booking.jobs.reduce((sum, j) => sum + (j.cost - ((j.cont20 * 250000) + (j.cont40 * 500000))), 0);
+              // Calculate Target (Net Cost expectation)
+              // Target = Job Cost - (Kimberry Fee + CIC + PSC + EMC + Other)
+              const target = booking.jobs.reduce((sum, j) => {
+                 const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
+                 const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
+                 return sum + (j.cost - kimberry - otherFees);
+              }, 0);
+
+              // Actual Net Payment
               const addNet = (booking.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
               const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
+              
+              // Diff = Actual Payment - Target
               const diff = actualNet - target;
 
               return (
