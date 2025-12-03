@@ -1,5 +1,3 @@
-
-
 import { JobData, Customer, ShippingLine } from './types';
 
 export const MONTHS = Array.from({ length: 12 }, (_, i) => ({
@@ -18,10 +16,10 @@ export const MOCK_CUSTOMERS: Customer[] = [
 ];
 
 export const MOCK_SHIPPING_LINES: ShippingLine[] = [
-  { id: '1', code: 'MSC', name: 'MSC Vietnam Company Ltd', mst: '0301112223' },
-  { id: '2', code: 'ONE', name: 'Ocean Network Express', mst: '0304445556' },
-  { id: '3', code: 'MAERSK', name: 'Maersk Vietnam', mst: '0307778889' },
-  { id: '4', code: 'COSCO', name: 'Cosco Shipping Lines', mst: '0302223334' },
+  { id: '1', code: 'MSC', name: 'MSC Vietnam Company Ltd', mst: '0301112223', itemName: 'Phí Local Charge' },
+  { id: '2', code: 'ONE', name: 'Ocean Network Express', mst: '0304445556', itemName: 'Phí D/O' },
+  { id: '3', code: 'MAERSK', name: 'Maersk Vietnam', mst: '0307778889', itemName: 'Phí Local Charge' },
+  { id: '4', code: 'COSCO', name: 'Cosco Shipping Lines', mst: '0302223334', itemName: 'Cước vận chuyển' },
 ];
 
 export const MOCK_DATA: JobData[] = [

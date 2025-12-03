@@ -25,7 +25,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   const [formData, setFormData] = useState({
     code: '',
     name: '',
-    mst: ''
+    mst: '',
+    itemName: '' // Only for lines
   });
 
   const title = mode === 'customers' ? 'Khách Hàng' : 'Hãng Tàu';
@@ -33,7 +34,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
 
   const handleAddNew = () => {
     setEditingItem(null);
-    setFormData({ code: '', name: '', mst: '' });
+    setFormData({ code: '', name: '', mst: '', itemName: '' });
     setIsModalOpen(true);
   };
 
@@ -42,7 +43,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     setFormData({
       code: item.code,
       name: item.name,
-      mst: item.mst
+      mst: item.mst,
+      itemName: (item as ShippingLine).itemName || ''
     });
     setIsModalOpen(true);
   };
@@ -71,15 +73,16 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   // --- EXPORT EXCEL ---
   const handleExportExcel = () => {
     const headers = ['MST', mode === 'customers' ? 'Mã Khách hàng' : 'Mã Line', 'Tên Công Ty'];
+    if (mode === 'lines') headers.push('Tên Hàng (Mặc định)');
     
     // Export sorted data as well
     const dataToExport = [...data].sort((a, b) => a.code.localeCompare(b.code));
 
-    const rows = dataToExport.map(item => [
-      item.mst,
-      item.code,
-      item.name
-    ]);
+    const rows = dataToExport.map(item => {
+      const row = [item.mst, item.code, item.name];
+      if (mode === 'lines') row.push((item as ShippingLine).itemName || '');
+      return row;
+    });
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
@@ -114,6 +117,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
         const mst = row['MST'] || row['Mã số thuế'] || row['Tax Code'] || '';
         const code = row['Code'] || row['Mã'] || row['Mã Khách hàng'] || row['Mã Line'] || '';
         const name = row['Name'] || row['Tên'] || row['Tên Công Ty'] || '';
+        const itemName = row['Item Name'] || row['Tên Hàng'] || row['Tên Hàng (Mặc định)'] || '';
 
         if (code && name) {
           // Check for duplicate code
@@ -123,7 +127,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
             onEdit({
               ...existing,
               mst: mst || existing.mst,
-              name: name || existing.name
+              name: name || existing.name,
+              itemName: mode === 'lines' ? (itemName || (existing as ShippingLine).itemName) : undefined
             });
             updated++;
           } else {
@@ -131,7 +136,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
               id: Date.now().toString() + Math.random().toString().slice(2,5),
               code,
               name,
-              mst
+              mst,
+              itemName: mode === 'lines' ? itemName : undefined
             });
             added++;
           }
@@ -221,6 +227,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">MST</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">{labelCode}</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tên Công Ty</th>
+              {mode === 'lines' && <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tên Hàng</th>}
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center">Thao Tác</th>
             </tr>
           </thead>
@@ -231,6 +238,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
                   <td className="px-6 py-3 font-mono text-gray-600">{item.mst}</td>
                   <td className="px-6 py-3 font-bold text-blue-700">{item.code}</td>
                   <td className="px-6 py-3 font-medium text-gray-900">{item.name}</td>
+                  {mode === 'lines' && <td className="px-6 py-3 text-gray-600">{(item as ShippingLine).itemName || '-'}</td>}
                   <td className="px-6 py-3 text-center">
                     <div className="flex items-center justify-center space-x-2">
                       <button onClick={() => handleEdit(item)} className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50" title="Chỉnh sửa">
@@ -245,7 +253,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
               ))
             ) : (
               <tr>
-                <td colSpan={4} className="text-center py-12 text-gray-400">Không có dữ liệu phù hợp</td>
+                <td colSpan={mode === 'lines' ? 5 : 4} className="text-center py-12 text-gray-400">Không có dữ liệu phù hợp</td>
               </tr>
             )}
           </tbody>
@@ -347,6 +355,19 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
                   placeholder="Nhập tên công ty đầy đủ"
                 />
               </div>
+
+              {mode === 'lines' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 uppercase">Tên Hàng Mặc Định</label>
+                  <input 
+                    type="text" 
+                    value={formData.itemName} 
+                    onChange={e => setFormData(prev => ({...prev, itemName: e.target.value}))} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900" 
+                    placeholder="VD: Phí Local Charge"
+                  />
+                </div>
+              )}
 
               <div className="pt-4 flex justify-end space-x-3 border-t border-gray-100 mt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">

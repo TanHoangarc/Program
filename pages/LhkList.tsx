@@ -1,9 +1,11 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
-import { Search, Briefcase, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { Search, Briefcase, ChevronLeft, ChevronRight, FileSpreadsheet, MoreVertical, ShoppingCart } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { getPaginationRange } from '../utils';
 import * as XLSX from 'xlsx';
+import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
 
 interface LhkListProps {
   jobs: JobData[];
@@ -13,11 +15,27 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  
+  // Sales Invoice State
+  const [salesInvoiceJob, setSalesInvoiceJob] = useState<JobData | null>(null);
+  const [isSalesInvoiceOpen, setIsSalesInvoiceOpen] = useState(false);
+
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     setCurrentPage(1);
   }, [filterMonth, searchTerm]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activeMenuId && !(event.target as Element).closest('.action-menu-container')) {
+        setActiveMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeMenuId]);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
@@ -64,6 +82,18 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
       cont40: acc.cont40 + job.cont40
     }), { sell: 0, cont20: 0, cont40: 0 });
   }, [lhkJobs]);
+
+  // Handlers
+  const handleSalesInvoice = (job: JobData) => {
+    setSalesInvoiceJob(job);
+    setIsSalesInvoiceOpen(true);
+    setActiveMenuId(null);
+  };
+
+  const handleSaveSalesInvoice = (data: any) => {
+    console.log("Sales Invoice Saved", data);
+    alert("Đã lưu thông tin Phiếu Bán Hàng tạm thời.");
+  };
 
   // Export Excel Function
   const handleExportExcel = () => {
@@ -121,7 +151,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto pb-24">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
               <tr>
@@ -132,7 +162,8 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
                 <th className="px-6 py-4">Line</th>
                 <th className="px-6 py-4 text-center">Cont 20'</th>
                 <th className="px-6 py-4 text-center">Cont 40'</th>
-                <th className="px-6 py-4 text-right">Sell</th> {/* Renamed Header */}
+                <th className="px-6 py-4 text-right">Sell</th>
+                <th className="px-6 py-4 text-center w-16">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -146,12 +177,24 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
                     <td className="px-6 py-4">{job.line}</td>
                     <td className="px-6 py-4 text-center">{job.cont20}</td>
                     <td className="px-6 py-4 text-center">{job.cont40}</td>
-                    {/* Display Sell instead of Profit */}
                     <td className="px-6 py-4 text-right font-medium text-blue-700">{formatCurrency(job.sell)}</td>
+                    <td className="px-6 py-4 text-center action-menu-container relative">
+                       <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === job.id ? null : job.id); }} className={`p-1.5 rounded-full hover:bg-white hover:shadow-md transition-all ${activeMenuId === job.id ? 'bg-white shadow-md text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}>
+                         <MoreVertical className="w-4 h-4" />
+                       </button>
+                       {activeMenuId === job.id && (
+                         <div className="absolute right-8 top-0 mt-0 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-[60] py-1 text-left animate-in fade-in zoom-in-95 duration-100">
+                           <div className="px-3 py-2 border-b border-gray-50 text-xs font-bold text-gray-400 uppercase tracking-wider">Chức năng</div>
+                           <button onClick={() => handleSalesInvoice(job)} className="w-full text-left px-4 py-2.5 text-sm text-purple-700 hover:bg-purple-50 flex items-center transition-colors font-medium">
+                              <ShoppingCart className="w-4 h-4 mr-2.5" /> Phiếu bán hàng
+                           </button>
+                         </div>
+                       )}
+                    </td>
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={8} className="text-center py-12 text-gray-400">Không tìm thấy Job LHK nào</td></tr>
+                <tr><td colSpan={9} className="text-center py-12 text-gray-400">Không tìm thấy Job LHK nào</td></tr>
               )}
             </tbody>
             {/* Added Footer */}
@@ -161,8 +204,8 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
                     <td colSpan={5} className="px-6 py-4 text-right">Tổng Cộng:</td>
                     <td className="px-6 py-4 text-center">{totals.cont20}</td>
                     <td className="px-6 py-4 text-center">{totals.cont40}</td>
-                    {/* Total Sell */}
                     <td className="px-6 py-4 text-right text-blue-700 font-bold text-sm">{formatCurrency(totals.sell)}</td>
+                    <td></td>
                   </tr>
                 </tfoot>
             )}
@@ -215,6 +258,15 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
           </div>
         )}
       </div>
+
+      {isSalesInvoiceOpen && salesInvoiceJob && (
+          <SalesInvoiceModal 
+             isOpen={isSalesInvoiceOpen} 
+             onClose={() => setIsSalesInvoiceOpen(false)} 
+             onSave={handleSaveSalesInvoice} 
+             job={salesInvoiceJob} 
+          />
+      )}
     </div>
   );
 };

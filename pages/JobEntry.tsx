@@ -393,8 +393,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Customer</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Booking</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Line</th>
-              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Sell</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Cost</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Sell</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Profit</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center">Cont</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-center w-16"></th>
@@ -402,7 +402,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedJobs.length > 0 ? (
-              paginatedJobs.map((job) => (
+              paginatedJobs.map((job) => {
+                const name = (job.customerName || '').toLowerCase();
+                const isLhk = name.includes('long hoàng') || name.includes('lhk') || name.includes('long hoang') || name.includes('longhoang');
+
+                return (
                 <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
                   <td className="px-6 py-3 text-gray-600">T{job.month}</td>
                   <td className="px-6 py-3 font-semibold text-blue-700">{job.jobCode}</td>
@@ -412,8 +416,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   </td>
                   <td className="px-6 py-3 text-gray-500">{job.booking}</td>
                   <td className="px-6 py-3 text-gray-500">{job.line}</td>
-                  <td className="px-6 py-3 text-right text-blue-700 font-medium">{formatCurrency(job.sell)}</td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
+                  <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.sell)}</td>
                   <td className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(job.profit)}</td>
                   <td className="px-6 py-3 text-center">
                     <div className="flex flex-col gap-1 items-center">
@@ -449,16 +453,16 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                          <button onClick={() => handleDuplicate(job)} className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center"><Copy className="w-3 h-3 mr-2" /> Nhân bản</button>
                          <button onClick={() => handleEdit(job)} className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center"><Edit2 className="w-3 h-3 mr-2" /> Chỉnh sửa</button>
                          <div className="border-t my-1"></div>
-                         <button onClick={() => handleQuickReceive(job, 'local')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><FileText className="w-3 h-3 mr-2" /> Thu Local Charge</button>
-                         <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><Anchor className="w-3 h-3 mr-2" /> Thu Cược</button>
-                         <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><DollarSign className="w-3 h-3 mr-2" /> Thu Gia Hạn</button>
+                         <button onClick={() => handleQuickReceive(job, 'local')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><FileText className="w-3 h-3 mr-2" /> Phiếu thu tiền (Local Charge)</button>
+                         <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><Anchor className="w-3 h-3 mr-2" /> Phiếu thu tiền (Cược)</button>
+                         <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-xs text-blue-700 hover:bg-gray-50 font-medium flex items-center"><DollarSign className="w-3 h-3 mr-2" /> Phiếu thu tiền (Gia Hạn)</button>
                          <div className="border-t my-1"></div>
                          <button onClick={() => handleDelete(job.id)} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center"><Trash2 className="w-3 h-3 mr-2" /> Xóa</button>
                        </div>
                      )}
                   </td>
                 </tr>
-              ))
+              )})
             ) : (
               <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
             )}
@@ -468,8 +472,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             <tfoot className="bg-gray-50 border-t border-gray-300 font-bold text-gray-800 text-xs uppercase">
               <tr>
                 <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng (Tất cả kết quả lọc):</td>
-                <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                 <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
+                <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                 <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
                 <td className="px-6 py-4 text-center">
                   <div className="flex flex-col gap-1 items-center">
@@ -541,8 +545,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onAddLine={onAddLine} 
           onViewBookingDetails={handleViewBookingDetails} 
           isViewMode={isViewMode} 
-          onSwitchToEdit={() => setIsViewMode(false)}
-          existingJobs={jobs}
+          onSwitchToEdit={() => setIsViewMode(false)} 
         />
       )}
       

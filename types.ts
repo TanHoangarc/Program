@@ -1,5 +1,3 @@
-
-
 export interface ExtensionData {
   id: string;
   customerId: string; // Ma KH
@@ -24,6 +22,7 @@ export interface ShippingLine {
   code: string; // Ma Line
   name: string; // Ten cong ty
   mst: string;
+  itemName?: string; // Ten hang mac dinh (New)
 }
 
 export interface BookingInvoice {
