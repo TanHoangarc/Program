@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2 } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
@@ -438,8 +437,16 @@ export const JobModal: React.FC<JobModalProps> = ({
   };
 
   // Safe checks for lookup
-  const selectedCustomerName = (customers || []).find(c => c?.id === formData.customerId)?.name || formData.customerName;
-  const isLongHoang = selectedCustomerName === 'Long Hoàng Logistics';
+  const selectedCustomer = (customers || []).find(c => c?.id === formData.customerId);
+  const displayCustName = selectedCustomer?.name || formData.customerName || '';
+  
+  // Revised Robust Check for Long Hoang
+  const nameLower = displayCustName.toLowerCase();
+  const isLongHoang = nameLower.includes('long hoàng') || 
+                      nameLower.includes('long hoang') || 
+                      nameLower.includes('lhk') || 
+                      nameLower.includes('longhoang');
+
   const selectedLineName = (lines || []).find(l => l?.code === formData.line)?.name || '';
 
   if (!isOpen) return null;
@@ -561,7 +568,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                         </ul>
                      )}
                   </div>
-                  {selectedCustomerName && <div className="text-[10px] text-gray-500 mt-1 truncate font-medium">{selectedCustomerName}</div>}
+                  {displayCustName && <div className="text-[10px] text-gray-500 mt-1 truncate font-medium">{displayCustName}</div>}
                   {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Đang thêm khách hàng mới</div>}
                 </div>
 
