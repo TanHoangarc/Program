@@ -32,13 +32,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
     
     switch (reportType) {
       case 'CUSTOMER_DEBT': {
-        // Aggregation by Customer ID
-        // Structure:
-        // - depositDebt: Nợ Cược
-        // - localChargeDebt: Sell + LocalChargeTotal (Cước/Dịch vụ chính)
-        // - extensionDebt: Tổng các khoản gia hạn
-        // - totalReceivable: localChargeDebt + extensionDebt (KHÔNG tính depositDebt)
-        
+        // Aggregation logic that is resilient to missing IDs
         const grouped: Record<string, { 
           id: string, 
           name: string, 
@@ -47,52 +41,84 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
           depositDebt: number 
         }> = {};
         
-        // Helper to ensure customer entry exists
-        const ensureEntry = (id: string) => {
-           if (!grouped[id]) {
-             const cust = customers.find(c => c.id === id);
-             grouped[id] = {
-               id,
-               name: cust ? cust.name : 'Khách lẻ / Unknown',
-               localChargeDebt: 0,
-               extensionDebt: 0,
-               depositDebt: 0
-             };
-           }
+        // Helper to resolve customer identity
+        const getCustomerIdentity = (id: string | undefined, name: string | undefined) => {
+            // 1. Try by ID
+            if (id) {
+                const found = customers.find(c => c.id === id);
+                if (found) return { key: found.id, name: found.name };
+            }
+            // 2. Try by Name matching
+            if (name) {
+                const foundByName = customers.find(c => 
+                    c.name.toLowerCase().trim() === name.toLowerCase().trim() || 
+                    c.code.toLowerCase().trim() === name.toLowerCase().trim()
+                );
+                if (foundByName) return { key: foundByName.id, name: foundByName.name };
+                
+                // 3. Fallback: Use name as key
+                return { key: `NAME_${name.trim()}`, name: name.trim() };
+            }
+            return null;
         };
 
         jobs.forEach(job => {
-          // Ensure customer appears in the list even if no debt
-          if (job.customerId) ensureEntry(job.customerId);
-          if (job.maKhCuocId) ensureEntry(job.maKhCuocId);
-
-          // 1. Calculate Local Charge & Extension Debt
-          // Condition: Bank is empty (Unpaid) AND has revenue
-          // Note: We attribute extensions to the Job's customerId for simplicity in debt report
+          // --- 1. LOCAL CHARGE & EXTENSION DEBT ---
+          // Determine main customer identity
+          const mainIdentity = getCustomerIdentity(job.customerId, job.customerName);
+          
           const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
           const localChargeAmt = (job.sell || 0) + (job.localChargeTotal || 0);
           const hasDebt = localChargeAmt > 0 || extTotal > 0;
-          
-          if (hasDebt && !job.bank && job.customerId) {
-            // ensureEntry called above
-            grouped[job.customerId].localChargeDebt += localChargeAmt;
-            grouped[job.customerId].extensionDebt += extTotal;
+
+          // Only count debt if Bank is empty (Unpaid)
+          if (hasDebt && !job.bank && mainIdentity) {
+             if (!grouped[mainIdentity.key]) {
+                 grouped[mainIdentity.key] = {
+                     id: mainIdentity.key,
+                     name: mainIdentity.name,
+                     localChargeDebt: 0,
+                     extensionDebt: 0,
+                     depositDebt: 0
+                 };
+             }
+             grouped[mainIdentity.key].localChargeDebt += localChargeAmt;
+             grouped[mainIdentity.key].extensionDebt += extTotal;
           }
 
-          // 2. Calculate Deposit Debt (Thu Cược)
-          // Condition: Thu Cược > 0 AND Ngay Thu Hoan is empty
-          if (job.thuCuoc > 0 && !job.ngayThuHoan && job.maKhCuocId) {
-            // ensureEntry called above
-            grouped[job.maKhCuocId].depositDebt += job.thuCuoc;
+          // --- 2. DEPOSIT DEBT ---
+          // Determine deposit customer identity (might be different or same)
+          // Often deposit customer ID is missing, try to infer or skip
+          if (job.thuCuoc > 0 && !job.ngayThuHoan) {
+              // Try to find who deposited. If maKhCuocId exists, use it. 
+              // If not, it's usually the main customer.
+              const depositId = job.maKhCuocId || job.customerId; 
+              // Note: We don't have a specific "Deposit Customer Name" field, so we rely on ID or main Name if ID matches
+              let depositIdentity = getCustomerIdentity(depositId, (depositId === job.customerId ? job.customerName : undefined));
+              
+              // If we still can't find identity but there is a main customer name, use that
+              if (!depositIdentity && job.customerName) {
+                  depositIdentity = getCustomerIdentity(undefined, job.customerName);
+              }
+
+              if (depositIdentity) {
+                  if (!grouped[depositIdentity.key]) {
+                      grouped[depositIdentity.key] = {
+                          id: depositIdentity.key,
+                          name: depositIdentity.name,
+                          localChargeDebt: 0,
+                          extensionDebt: 0,
+                          depositDebt: 0
+                      };
+                  }
+                  grouped[depositIdentity.key].depositDebt += job.thuCuoc;
+              }
           }
         });
 
-        // Convert to array, calculate Total Receivable
-        // Removed filter to show ALL customers
         data = Object.values(grouped)
           .map(item => ({
             ...item,
-            // Tổng Phải Thu = Local Charge + Gia Hạn (Không tính Cược)
             totalReceivable: item.localChargeDebt + item.extensionDebt
           }))
           .sort((a, b) => b.totalReceivable - a.totalReceivable);

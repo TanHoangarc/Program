@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
@@ -193,7 +194,19 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
       data.forEach((row: any) => {
         const rowJobCode = row['Job'] || row['Job Code'];
+        const custNameFromExcel = row['Customer'] || '';
         
+        // Find existing customer by Name or Code to set ID
+        let foundCustId = '';
+        if (custNameFromExcel) {
+             const cleanName = String(custNameFromExcel).toLowerCase().trim();
+             const found = customers.find(c => 
+                c.name.toLowerCase().trim() === cleanName || 
+                c.code.toLowerCase().trim() === cleanName
+             );
+             if (found) foundCustId = found.id;
+        }
+
         const mappedData: Partial<JobData> = {
           month: row['Tháng']?.toString() || '1',
           // Remove whitespace from Job Code
@@ -201,7 +214,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           booking: row['Booking'] || '',
           consol: row['Consol'] || '',
           line: row['Line'] || '',
-          customerName: row['Customer'] || '',
+          customerId: foundCustId, // Set ID if found
+          customerName: custNameFromExcel,
           hbl: row['HBL'] || '',
           transit: row['Transit'] || 'HCM',
           cost: Number(row['Cost']) || 0,
