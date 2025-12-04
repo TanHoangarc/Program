@@ -291,14 +291,18 @@ export const JobModal: React.FC<JobModalProps> = ({
     });
   }, [formData.cont20, formData.cont40, isViewMode]);
 
-  // Filter customers for custom dropdown - STARTS WITH logic
+  // Filter customers for custom dropdown - INCLUDES logic for flexible search
   // Safe check: c?.code ensures we don't crash on malformed customer data
   // Ensure custCodeInput is treated as string
-  const safeInput = (custCodeInput || '').toLowerCase();
+  const safeInput = (custCodeInput || '').toLowerCase().trim();
   
-  const filteredCustomers = (customers || []).filter(c => 
-    c?.code && String(c.code).toLowerCase().startsWith(safeInput)
-  );
+  const filteredCustomers = (customers || []).filter(c => {
+    if (!c) return false;
+    const code = String(c.code || '').toLowerCase();
+    const name = String(c.name || '').toLowerCase();
+    // Use includes for better search experience
+    return code.includes(safeInput) || name.includes(safeInput);
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (isViewMode) return;
@@ -345,7 +349,7 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     // Exact match check to auto-select
     // Safe check: c?.code prevents crash if customer list has issues
-    const match = (customers || []).find(c => c?.code && String(c.code).toLowerCase() === val.toLowerCase());
+    const match = (customers || []).find(c => c?.code && String(c.code).toLowerCase() === val.toLowerCase().trim());
     
     if (match) {
         setIsAddingCustomer(false);
@@ -614,7 +618,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                         onFocus={() => setShowSuggestions(true)}
                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                         readOnly={isViewMode}
-                        placeholder={isViewMode ? "" : "Nhập mã KH..."}
+                        placeholder={isViewMode ? "" : "Nhập mã KH hoặc tên..."}
                         className={isAddingCustomer ? "border-blue-500 ring-1 ring-blue-500" : ""}
                         autoComplete="off"
                      />

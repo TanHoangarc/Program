@@ -54,7 +54,7 @@ export const DepositList: React.FC<DepositListProps> = ({
   // Filtered Customers for Autocomplete
   const filteredCustomers = useMemo(() => {
     if (!custSearchTerm) return customers;
-    const lower = custSearchTerm.toLowerCase();
+    const lower = custSearchTerm.toLowerCase().trim();
     // Safe conversion to string to prevent crashes if data is numeric
     return customers.filter(c => 
       String(c.code || '').toLowerCase().includes(lower) || 

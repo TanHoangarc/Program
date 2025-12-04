@@ -115,10 +115,10 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
 
       jsonData.forEach((row: any) => {
         // Flexible column mapping - Force String conversion to prevent type errors
-        const mst = String(row['MST'] || row['Mã số thuế'] || row['Tax Code'] || '');
-        const code = String(row['Code'] || row['Mã'] || row['Mã Khách hàng'] || row['Mã Line'] || '');
-        const name = String(row['Name'] || row['Tên'] || row['Tên Công Ty'] || '');
-        const itemName = String(row['Item Name'] || row['Tên Hàng'] || row['Tên Hàng (Mặc định)'] || '');
+        const mst = String(row['MST'] || row['Mã số thuế'] || row['Tax Code'] || '').trim();
+        const code = String(row['Code'] || row['Mã'] || row['Mã Khách hàng'] || row['Mã Line'] || '').trim();
+        const name = String(row['Name'] || row['Tên'] || row['Tên Công Ty'] || '').trim();
+        const itemName = String(row['Item Name'] || row['Tên Hàng'] || row['Tên Hàng (Mặc định)'] || '').trim();
 
         if (code && name) {
           // Check for duplicate code
@@ -154,7 +154,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   // Safe filtering logic to prevent white screen crashes
   const filteredData = data
     .filter(item => {
-        const s = searchTerm.toLowerCase();
+        const s = searchTerm.toLowerCase().trim();
         // Force String conversion to prevent crashes if data is numeric
         const name = String(item.name || '').toLowerCase();
         const code = String(item.code || '').toLowerCase();
