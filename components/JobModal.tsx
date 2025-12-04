@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
@@ -16,21 +17,20 @@ interface JobModalProps {
   onViewBookingDetails: (bookingId: string) => void;
   isViewMode?: boolean;
   onSwitchToEdit?: () => void;
-  existingJobs?: JobData[]; // Added for validation
+  existingJobs?: JobData[];
 }
 
 // Styled Input Components
 const Label = ({ children }: { children?: React.ReactNode }) => (
-  <label className="block text-xs font-semibold text-gray-500 mb-1">{children}</label>
+  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 ml-1">{children}</label>
 );
 
 const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => (
   <input 
     {...props} 
     ref={ref}
-    // Fix: Ensure value is never null/undefined to prevent uncontrolled warning
     value={props.value ?? ''}
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-900 focus:border-blue-900 disabled:bg-gray-50 disabled:text-gray-500 placeholder-gray-400 transition-shadow ${props.className || ''}`}
+    className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:bg-slate-50 disabled:text-slate-500 placeholder-slate-400 transition-all shadow-sm ${props.className || ''}`}
   />
 ));
 Input.displayName = 'Input';
@@ -46,10 +46,8 @@ const DateInput = ({
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
   readOnly?: boolean; 
 }) => {
-  // Internal state for display value (dd/mm/yyyy)
   const [displayValue, setDisplayValue] = useState('');
 
-  // Sync display value when prop value changes
   useEffect(() => {
     setDisplayValue(formatDateVN(value));
   }, [value]);
@@ -59,13 +57,10 @@ const DateInput = ({
       if (value) triggerChange('');
       return;
     }
-    
-    // Try to parse dd/mm/yyyy
     const parsed = parseDateVN(displayValue);
     if (parsed) {
       if (parsed !== value) triggerChange(parsed);
     } else {
-      // If invalid, revert to previous valid value
       setDisplayValue(formatDateVN(value));
     }
   };
@@ -77,7 +72,6 @@ const DateInput = ({
   };
 
   const triggerChange = (newVal: string) => {
-    // Create synthetic event
     const e = {
       target: { name, value: newVal }
     } as React.ChangeEvent<HTMLInputElement>;
@@ -93,7 +87,7 @@ const DateInput = ({
       <Input 
         value={formatDateVN(value)} 
         readOnly 
-        className="bg-gray-50"
+        className="bg-slate-50 font-medium"
       />
     );
   }
@@ -108,29 +102,33 @@ const DateInput = ({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="dd/mm/yyyy"
-        className="pr-10" // Make room for icon
+        className="pr-10"
       />
       <div className="absolute right-0 top-0 h-full w-10 flex items-center justify-center">
-         {/* Hidden Date Input acting as a trigger */}
          <input 
             type="date" 
             value={value || ''} 
             onChange={handleDateIconChange}
             className="absolute inset-0 opacity-0 cursor-pointer z-10"
          />
-         <Calendar className="w-4 h-4 text-gray-500" />
+         <Calendar className="w-4 h-4 text-slate-400" />
       </div>
     </div>
   );
 };
 
 const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
-  <select
-    {...props}
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-900 focus:border-blue-900 disabled:bg-gray-50 disabled:text-gray-500 transition-shadow ${props.className || ''}`}
-  >
-    {props.children}
-  </select>
+  <div className="relative">
+    <select
+      {...props}
+      className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:bg-slate-50 disabled:text-slate-500 transition-all shadow-sm appearance-none ${props.className || ''}`}
+    >
+      {props.children}
+    </select>
+    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+    </div>
+  </div>
 );
 
 const NumberStepper: React.FC<{
@@ -146,21 +144,21 @@ const NumberStepper: React.FC<{
         <button 
           type="button"
           onClick={() => onChange(Math.max(0, (value || 0) - 1))}
-          className="w-9 h-9 border border-gray-300 rounded-l bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
+          className="w-10 h-10 border border-slate-200 rounded-l-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-colors"
         >
-          <Minus className="w-3 h-3" />
+          <Minus className="w-3.5 h-3.5" />
         </button>
       )}
-      <div className={`flex-1 h-9 flex items-center justify-center border-y border-gray-300 bg-white text-sm font-semibold ${readOnly ? 'border rounded w-full px-3 justify-start' : ''}`}>
+      <div className={`flex-1 h-10 flex items-center justify-center border-y border-slate-200 bg-white text-sm font-bold text-slate-800 ${readOnly ? 'border rounded-xl w-full px-3 justify-start bg-slate-50' : ''}`}>
         {value || 0}
       </div>
       {!readOnly && (
         <button 
           type="button"
           onClick={() => onChange((value || 0) + 1)}
-          className="w-9 h-9 border border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
+          className="w-10 h-10 border border-slate-200 rounded-r-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-colors"
         >
-          <Plus className="w-3 h-3" />
+          <Plus className="w-3.5 h-3.5" />
         </button>
       )}
     </div>
@@ -177,7 +175,6 @@ const MoneyInput: React.FC<{
   const [displayVal, setDisplayVal] = useState('');
 
   useEffect(() => {
-    // Check for null/undefined
     const safeValue = value || 0;
     setDisplayVal(safeValue === 0 && !readOnly ? '' : new Intl.NumberFormat('en-US').format(safeValue));
   }, [value, readOnly]);
@@ -198,7 +195,7 @@ const MoneyInput: React.FC<{
         onChange={handleChange}
         readOnly={readOnly}
         placeholder="0"
-        className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-900 text-right font-medium ${readOnly ? 'bg-gray-50 text-gray-700 font-bold' : ''}`}
+        className={`w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-bold transition-all shadow-sm ${readOnly ? 'bg-slate-50 text-slate-600' : 'bg-white text-blue-700'}`}
       />
     </div>
   );
@@ -208,15 +205,10 @@ export const JobModal: React.FC<JobModalProps> = ({
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
   isViewMode = false, onSwitchToEdit, existingJobs
 }) => {
-  // Lazy init to ensure robust state start
   const [formData, setFormData] = useState<JobData>(() => {
     if (initialData) {
-      // CRITICAL FIX: Merge with INITIAL_JOB to ensure all fields (extensions, new fees) exist
-      // This prevents "White Screen" crashes when opening old jobs
       try {
         const parsed = JSON.parse(JSON.stringify(initialData));
-        
-        // Force date fields to be strings to prevent formatting crashes
         const safeParsed = {
             ...parsed,
             ngayChiCuoc: String(parsed.ngayChiCuoc || ''),
@@ -225,13 +217,10 @@ export const JobModal: React.FC<JobModalProps> = ({
             ngayThuCuoc: String(parsed.ngayThuCuoc || ''),
             ngayThuHoan: String(parsed.ngayThuHoan || '')
         };
-
         return { 
           ...INITIAL_JOB, 
           ...safeParsed,
-          // Explicitly force arrays to be arrays (handle null/undefined from JSON)
           extensions: Array.isArray(safeParsed.extensions) ? safeParsed.extensions : [],
-          // Ensure nested objects are not null
           bookingCostDetails: safeParsed.bookingCostDetails || undefined
         };
       } catch (e) {
@@ -242,17 +231,14 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   });
 
-  // State for Customer Input
   const [custCodeInput, setCustCodeInput] = useState(() => {
     if (initialData?.customerId) {
-        // Safe check for customer existence and code property
         const c = (customers || []).find(c => c?.id === initialData.customerId);
-        return String(c?.code || ''); // Ensure it returns a string, never undefined
+        return String(c?.code || '');
     }
     return '';
   });
   const [showSuggestions, setShowSuggestions] = useState(false);
-
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ mst: '', name: '', code: '' });
   const [isAddingLine, setIsAddingLine] = useState(false);
@@ -260,29 +246,23 @@ export const JobModal: React.FC<JobModalProps> = ({
   
   const jobInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus effect for new entries
   useEffect(() => {
     if (isOpen && !initialData && !isViewMode) {
        setTimeout(() => jobInputRef.current?.focus(), 100);
     }
   }, [isOpen, initialData, isViewMode]);
 
-  // Sync booking details if they change externally while modal is open (unlikely with current conditional render but good practice)
   useEffect(() => {
     if (isOpen && initialData?.bookingCostDetails) {
         setFormData(prev => ({ ...prev, bookingCostDetails: initialData.bookingCostDetails }));
     }
   }, [initialData?.bookingCostDetails, isOpen]);
 
-  // NEW: Auto-calculate Kimberry Fee based on containers
   useEffect(() => {
     if (isViewMode) return;
     const fee20 = (formData.cont20 || 0) * 250000;
     const fee40 = (formData.cont40 || 0) * 500000;
     const totalFee = fee20 + fee40;
-    
-    // Only update if different to avoid infinite loops, but enforce formula
-    // Removed formData.feeKimberry from dependency array to prevent cyclic updates
     setFormData(prev => {
         if (prev.feeKimberry !== totalFee) {
             return { ...prev, feeKimberry: totalFee };
@@ -291,16 +271,11 @@ export const JobModal: React.FC<JobModalProps> = ({
     });
   }, [formData.cont20, formData.cont40, isViewMode]);
 
-  // Filter customers for custom dropdown - INCLUDES logic for flexible search
-  // Safe check: c?.code ensures we don't crash on malformed customer data
-  // Ensure custCodeInput is treated as string
   const safeInput = (custCodeInput || '').toLowerCase().trim();
-  
   const filteredCustomers = (customers || []).filter(c => {
     if (!c) return false;
     const code = String(c.code || '').toLowerCase();
     const name = String(c.name || '').toLowerCase();
-    // Use includes for better search experience
     return code.includes(safeInput) || name.includes(safeInput);
   });
 
@@ -347,8 +322,6 @@ export const JobModal: React.FC<JobModalProps> = ({
     setCustCodeInput(val);
     setShowSuggestions(true);
 
-    // Exact match check to auto-select
-    // Safe check: c?.code prevents crash if customer list has issues
     const match = (customers || []).find(c => c?.code && String(c.code).toLowerCase() === val.toLowerCase().trim());
     
     if (match) {
@@ -443,34 +416,25 @@ export const JobModal: React.FC<JobModalProps> = ({
       return;
     }
 
-    // --- VALIDATION SECTION ---
     const code = formData.jobCode || '';
-    
-    // 1. Check required
     if (!code.trim()) {
       alert("Vui lòng nhập Job Code");
       return;
     }
-
-    // 2. Check for whitespace
     if (/\s/.test(code)) {
       alert("Job Code không được chứa khoảng trắng. Vui lòng kiểm tra lại.");
       return;
     }
-
-    // 3. Check for uniqueness
     if (existingJobs) {
       const isDuplicate = existingJobs.some(j => 
         j.jobCode.toLowerCase() === code.toLowerCase() && 
-        j.id !== formData.id // Exclude current job if editing
+        j.id !== formData.id 
       );
-      
       if (isDuplicate) {
         alert(`Job Code "${code}" đã tồn tại trong hệ thống. Vui lòng chọn mã khác.`);
         return;
       }
     }
-    // --------------------------
 
     let createdCustomer: Customer | undefined;
     if (isAddingCustomer) {
@@ -481,7 +445,6 @@ export const JobModal: React.FC<JobModalProps> = ({
       }
     }
     
-    // Prepare final data
     const finalJob = { ...formData };
     if (createdCustomer) {
         finalJob.customerId = createdCustomer.id;
@@ -507,49 +470,47 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  // Safe checks for lookup
   const selectedCustomer = (customers || []).find(c => c?.id === formData.customerId);
   const displayCustName = selectedCustomer?.name || formData.customerName || '';
-  
-  // Revised Robust Check for Long Hoang
   const nameLower = displayCustName.toLowerCase();
   const isLongHoang = nameLower.includes('long hoàng') || 
                       nameLower.includes('long hoang') || 
                       nameLower.includes('lhk') || 
                       nameLower.includes('longhoang');
-
   const selectedLineName = (lines || []).find(l => l?.code === formData.line)?.name || '';
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 border border-gray-200">
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-white/50 ring-1 ring-black/5">
         
         {/* Header */}
-        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white">
+        <div className="px-8 py-5 border-b border-slate-200/60 flex justify-between items-center bg-white/50">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
+            <h2 className="text-2xl font-bold text-slate-800">
               {isViewMode ? 'Chi Tiết Job' : (initialData ? 'Chỉnh sửa Job' : 'Thêm Job Mới')}
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-slate-500 mt-1 font-medium">
               {isViewMode ? 'Xem thông tin chi tiết lô hàng' : 'Nhập thông tin lô hàng và tài chính'}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="p-2.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-red-500 transition-all">
+            <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50 custom-scrollbar">
           <form onSubmit={handleSubmit} className="space-y-8">
             
             {/* --- GENERAL INFO --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2">Thông Tin Chung</h3>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-6 border-b border-slate-100 pb-3 flex items-center">
+                 <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></div>
+                 Thông Tin Chung
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                
                 <div className="space-y-1">
                   <Label>Tháng</Label>
                   <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
@@ -561,8 +522,8 @@ export const JobModal: React.FC<JobModalProps> = ({
                   <Label>Job Code</Label>
                   <Input 
                     name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} 
-                    className={isViewMode ? "font-bold text-blue-900" : ""}
-                    placeholder="VD: JOB123 (Không khoảng trắng)"
+                    className={isViewMode ? "font-bold text-blue-700 bg-blue-50" : ""}
+                    placeholder="VD: JOB123"
                   />
                 </div>
 
@@ -574,7 +535,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                       <button 
                         type="button" 
                         onClick={handleBookingClick} 
-                        className="p-2 bg-gray-100 text-gray-600 rounded border border-gray-200 hover:bg-blue-50 hover:text-blue-900 transition-colors" 
+                        className="p-2.5 bg-slate-100 text-slate-500 rounded-xl border border-slate-200 hover:bg-blue-50 hover:text-blue-600 transition-all shadow-sm" 
                         title="Xem chi tiết Booking"
                       >
                         <ExternalLink className="w-4 h-4" />
@@ -595,20 +556,19 @@ export const JobModal: React.FC<JobModalProps> = ({
                       <Select name="line" value={formData.line} onChange={handleLineSelectChange} disabled={isViewMode}>
                         <option value="">-- Chọn Line --</option>
                         {(lines || []).map((l, i) => <option key={i} value={l?.code}>{l?.code}</option>)}
-                        {!isViewMode && <option value="new" className="font-bold text-blue-600">+ Thêm Line mới</option>}
+                        {!isViewMode && <option value="new">+ Thêm Line mới</option>}
                       </Select>
-                      {selectedLineName && <div className="text-[10px] text-gray-500 mt-1 truncate">{selectedLineName}</div>}
+                      {selectedLineName && <div className="text-[10px] text-slate-500 mt-1.5 truncate px-1">{selectedLineName}</div>}
                     </>
                   ) : (
                     <div className="flex space-x-1">
-                      <Input value={newLine} onChange={(e) => setNewLine(e.target.value)} placeholder="Nhập Mã Line..." autoFocus />
-                      <button type="button" onClick={saveNewLine} className="bg-green-600 text-white p-2 rounded"><Check className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => setIsAddingLine(false)} className="bg-gray-200 text-gray-600 p-2 rounded"><X className="w-4 h-4" /></button>
+                      <Input value={newLine} onChange={(e) => setNewLine(e.target.value)} placeholder="Nhập Mã..." autoFocus />
+                      <button type="button" onClick={saveNewLine} className="bg-green-500 text-white p-2.5 rounded-xl shadow-md hover:bg-green-600"><Check className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => setIsAddingLine(false)} className="bg-slate-200 text-slate-600 p-2.5 rounded-xl hover:bg-slate-300"><X className="w-4 h-4" /></button>
                     </div>
                   )}
                 </div>
 
-                {/* CUSTOMER INPUT REPLACEMENT - CUSTOM DROPDOWN */}
                 <div className="lg:col-span-2 space-y-1 relative group">
                   <Label>Customer (Mã KH)</Label>
                   <div className="relative">
@@ -619,34 +579,32 @@ export const JobModal: React.FC<JobModalProps> = ({
                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                         readOnly={isViewMode}
                         placeholder={isViewMode ? "" : "Nhập mã KH hoặc tên..."}
-                        className={isAddingCustomer ? "border-blue-500 ring-1 ring-blue-500" : ""}
+                        className={isAddingCustomer ? "border-blue-500 ring-2 ring-blue-100" : ""}
                         autoComplete="off"
                      />
-                     
-                     {/* Custom Dropdown List */}
                      {!isViewMode && showSuggestions && custCodeInput && filteredCustomers.length > 0 && (
-                        <ul className="absolute z-50 w-full bg-white border border-gray-300 rounded-b-md shadow-lg max-h-60 overflow-y-auto mt-1 left-0">
+                        <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto mt-2 left-0 py-2">
                           {filteredCustomers.map(c => (
                             <li 
                               key={c.id}
                               onClick={() => handleSelectSuggestion(c)}
-                              className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 flex flex-col border-b border-gray-50 last:border-0"
+                              className="px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 flex flex-col border-b border-slate-50 last:border-0 transition-colors"
                             >
-                              <span className="font-bold text-blue-800">{c.code}</span>
-                              <span className="text-xs text-gray-500 truncate">{c.name}</span>
+                              <span className="font-bold text-blue-700">{c.code}</span>
+                              <span className="text-xs text-slate-500 truncate">{c.name}</span>
                             </li>
                           ))}
                         </ul>
                      )}
                   </div>
-                  {displayCustName && <div className="text-[10px] text-gray-500 mt-1 truncate font-medium">{displayCustName}</div>}
-                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 italic">* Đang thêm khách hàng mới</div>}
+                  {displayCustName && <div className="text-[10px] text-slate-500 mt-1.5 truncate font-medium px-1">{displayCustName}</div>}
+                  {isAddingCustomer && !isViewMode && <div className="text-[10px] text-blue-600 mt-1 px-1 font-medium animate-pulse">* Đang thêm khách hàng mới</div>}
                 </div>
 
                 {isLongHoang && (
-                  <div className="space-y-1 animate-in slide-in-from-left">
+                  <div className="space-y-1 animate-in fade-in slide-in-from-left-2 duration-300">
                     <Label>HBL</Label>
-                    <Input name="hbl" value={formData.hbl} onChange={handleChange} readOnly={isViewMode} className="bg-yellow-50 border-yellow-200" />
+                    <Input name="hbl" value={formData.hbl} onChange={handleChange} readOnly={isViewMode} className="bg-orange-50 border-orange-200 text-orange-800 focus:ring-orange-200" />
                   </div>
                 )}
 
@@ -658,12 +616,11 @@ export const JobModal: React.FC<JobModalProps> = ({
                 </div>
               </div>
               
-              {/* Inline Add Customer */}
               {isAddingCustomer && !isViewMode && (
-                <div className="mt-4 p-4 bg-blue-50/50 rounded border border-blue-100 animate-in slide-in-from-top">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-xs font-bold text-blue-900 uppercase">Thêm khách hàng mới</h4>
-                    <button type="button" onClick={() => { setIsAddingCustomer(false); setCustCodeInput(''); setFormData(prev => ({...prev, customerId: '', customerName: ''})); }}><X className="w-4 h-4 text-gray-400 hover:text-red-500" /></button>
+                <div className="mt-4 p-5 bg-blue-50 rounded-xl border border-blue-100 animate-in fade-in zoom-in-95">
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wide">Thêm khách hàng mới</h4>
+                    <button type="button" onClick={() => { setIsAddingCustomer(false); setCustCodeInput(''); setFormData(prev => ({...prev, customerId: '', customerName: ''})); }}><X className="w-4 h-4 text-slate-400 hover:text-red-500" /></button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="flex space-x-2 items-end">
@@ -671,7 +628,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                           <Label>MST</Label>
                           <Input value={newCustomer.mst} onChange={e => setNewCustomer(prev => ({...prev, mst: e.target.value}))} placeholder="Nhập MST" />
                        </div>
-                       <button type="button" onClick={handleMstLookup} className="bg-blue-900 text-white px-3 py-2 rounded text-xs font-medium h-[38px]">Tra cứu</button>
+                       <button type="button" onClick={handleMstLookup} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2.5 rounded-xl text-xs font-bold shadow-md transition-all h-[42px]">Tra cứu</button>
                     </div>
                     <div>
                         <Label>Mã KH</Label>
@@ -680,7 +637,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             onChange={e => {
                                 const val = e.target.value;
                                 setNewCustomer(prev => ({...prev, code: val}));
-                                setCustCodeInput(val); // Sync main input
+                                setCustCodeInput(val); 
                             }} 
                         />
                     </div>
@@ -691,10 +648,12 @@ export const JobModal: React.FC<JobModalProps> = ({
             </div>
 
             {/* --- FINANCE --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-5 border-b pb-2">Tài Chính & Container</h3>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-6 border-b border-slate-100 pb-3 flex items-center">
+                 <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-2"></div>
+                 Tài Chính & Container
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                {/* Changed Order: Sell then Cost */}
                 <MoneyInput label="Sell (Doanh thu)" name="sell" value={formData.sell} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Cost (Chi phí)" name="cost" value={formData.cost} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Profit (Lợi nhuận)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly />
@@ -704,11 +663,13 @@ export const JobModal: React.FC<JobModalProps> = ({
             </div>
 
             {/* --- COST BREAKDOWN --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-5 border-b pb-2">Chi Tiết Chi Phí</h3>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="text-sm font-bold text-red-600 uppercase tracking-wide mb-6 border-b border-slate-100 pb-3 flex items-center">
+                 <div className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2"></div>
+                 Chi Tiết Chi Phí
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                 <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
-                {/* Updated Kimberry Input to be ReadOnly */}
                 <div className="relative">
                     <MoneyInput 
                         label="Phí Kimberry (Auto)" 
@@ -717,7 +678,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                         onChange={handleMoneyChange} 
                         readOnly={true} 
                     />
-                    {!isViewMode && <div className="absolute top-0 right-0 text-[10px] text-gray-400 italic">250k/20', 500k/40'</div>}
+                    {!isViewMode && <div className="absolute top-0 right-0 text-[10px] text-slate-400 italic">250k/20', 500k/40'</div>}
                 </div>
                 <MoneyInput label="Phí PSC" name="feePsc" value={formData.feePsc} onChange={handleMoneyChange} readOnly={isViewMode} />
                 <MoneyInput label="Phí EMC" name="feeEmc" value={formData.feeEmc} onChange={handleMoneyChange} readOnly={isViewMode} />
@@ -726,14 +687,17 @@ export const JobModal: React.FC<JobModalProps> = ({
             </div>
 
             {/* --- REVENUE IN --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wide mb-5 border-b pb-2">Thu (Revenue In)</h3>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wide mb-6 border-b border-slate-100 pb-3 flex items-center">
+                 <div className="w-1.5 h-1.5 bg-blue-800 rounded-full mr-2"></div>
+                 Thu (Revenue In)
+              </h3>
               
               <div className="space-y-6">
                 {/* Local Charge */}
-                <div className="bg-blue-50/30 p-4 rounded border border-blue-100">
-                  <h4 className="text-xs font-bold text-blue-800 mb-3">LOCAL CHARGE</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/60">
+                  <h4 className="text-xs font-bold text-slate-500 mb-4 uppercase tracking-wider">LOCAL CHARGE</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} /></div>
                     <MoneyInput label="Amount" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode} />
                     <div><Label>Ngân hàng</Label>
@@ -746,9 +710,9 @@ export const JobModal: React.FC<JobModalProps> = ({
                 </div>
 
                 {/* Deposit */}
-                <div className="bg-indigo-50/30 p-4 rounded border border-indigo-100">
-                   <h4 className="text-xs font-bold text-indigo-800 mb-3">DEPOSIT (CƯỢC)</h4>
-                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100/60">
+                   <h4 className="text-xs font-bold text-indigo-400 mb-4 uppercase tracking-wider">DEPOSIT (CƯỢC)</h4>
+                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                      <div>
                         <Label>Khách hàng</Label>
                         <Select name="maKhCuocId" value={formData.maKhCuocId} onChange={handleChange} disabled={isViewMode}>
@@ -771,22 +735,25 @@ export const JobModal: React.FC<JobModalProps> = ({
             </div>
 
             {/* --- EXTENSIONS --- */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <div className="flex justify-between items-center mb-4 border-b pb-2">
-                <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">Gia Hạn</h3>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-3">
+                <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide flex items-center">
+                   <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mr-2"></div>
+                   Gia Hạn
+                </h3>
                 {!isViewMode && (
-                  <button type="button" onClick={addExtension} className="flex items-center space-x-1 text-xs bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded hover:bg-orange-100 transition-colors">
-                    <Plus className="w-3 h-3" />
+                  <button type="button" onClick={addExtension} className="flex items-center space-x-1.5 text-xs font-bold bg-orange-50 text-orange-600 border border-orange-200 px-3 py-2 rounded-xl hover:bg-orange-100 transition-colors">
+                    <Plus className="w-3.5 h-3.5" />
                     <span>Thêm</span>
                   </button>
                 )}
               </div>
               
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {(formData.extensions || []).map((ext) => (
-                   <div key={ext.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-3 bg-orange-50/20 rounded border border-orange-100 relative group items-end">
+                   <div key={ext.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-orange-50/30 rounded-xl border border-orange-100 relative group items-end hover:shadow-sm transition-shadow">
                       {!isViewMode && (
-                        <button type="button" onClick={() => removeExtension(ext.id)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => removeExtension(ext.id)} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 p-1 rounded-full"><Trash2 className="w-4 h-4" /></button>
                       )}
                       <div className="md:col-span-2">
                          <Label>Khách hàng</Label>
@@ -809,24 +776,24 @@ export const JobModal: React.FC<JobModalProps> = ({
                                 if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val);
                             }}
                             readOnly={isViewMode}
-                            className={`w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 text-right font-bold text-orange-700 ${isViewMode ? 'bg-transparent border-none' : ''}`}
+                            className={`w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-right font-bold text-orange-700 bg-white transition-all ${isViewMode ? 'bg-transparent border-none' : ''}`}
                             placeholder="0"
                          />
                       </div>
                    </div>
                 ))}
                 {(!formData.extensions || formData.extensions.length === 0) && (
-                   <p className="text-sm text-gray-400 italic text-center py-2">Chưa có gia hạn nào</p>
+                   <div className="text-sm text-slate-400 italic text-center py-6 border-2 border-dashed border-slate-100 rounded-xl">Chưa có thông tin gia hạn</div>
                 )}
               </div>
             </div>
 
             {/* Footer Buttons */}
-            <div className="flex justify-end space-x-3 pt-6 border-t border-gray-100 bg-gray-50 -mx-8 -mb-8 p-8 sticky bottom-0 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <div className="flex justify-end space-x-3 pt-6 border-t border-slate-100 sticky bottom-0 z-10 bg-white/95 backdrop-blur-md p-4 -mx-8 -mb-8 rounded-b-3xl">
               <button 
                 type="button"
                 onClick={onClose}
-                className="px-6 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
+                className="px-6 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm"
               >
                 Đóng
               </button>
@@ -835,7 +802,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <button
                     type="button"
                     onClick={handleEditClick}
-                    className="px-6 py-2.5 bg-blue-900 text-white rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors flex items-center shadow-md"
+                    className="px-6 py-3 bg-blue-900 text-white rounded-xl text-sm font-bold hover:bg-blue-800 transition-all flex items-center shadow-lg hover:shadow-blue-900/20"
                 >
                     <Edit2 className="w-4 h-4 mr-2" />
                     Chỉnh sửa
@@ -843,10 +810,10 @@ export const JobModal: React.FC<JobModalProps> = ({
               ) : (
                 <button 
                     type="submit"
-                    className="px-6 py-2.5 bg-blue-900 text-white rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors flex items-center shadow-md"
+                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-blue-500/30 transition-all flex items-center transform active:scale-95 duration-100"
                 >
                     <Save className="w-4 h-4 mr-2" />
-                    Lưu Job
+                    Lưu Thay Đổi
                 </button>
               )}
             </div>
@@ -854,6 +821,7 @@ export const JobModal: React.FC<JobModalProps> = ({
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

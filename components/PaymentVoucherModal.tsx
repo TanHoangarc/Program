@@ -1,51 +1,101 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, DollarSign, Calendar, CreditCard, User, Building2, Banknote } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Save, DollarSign, Calendar, User, Banknote, CheckCircle } from 'lucide-react';
 import { JobData, BookingSummary } from '../types';
+import { formatDateVN, parseDateVN } from '../utils';
 
 interface PaymentVoucherModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: any) => void;
-  initialData?: any; // Can be row data from AmisExport
-  job?: JobData; // Context from JobEntry/BookingList
-  booking?: BookingSummary; // Context from BookingList
-  type?: 'local' | 'deposit' | 'extension'; // Payment type
+  initialData?: any; 
+  job?: JobData;
+  booking?: BookingSummary;
+  type?: 'local' | 'deposit' | 'extension';
 }
+
+const DateInput = ({ 
+  value, 
+  onChange, 
+  className 
+}: { 
+  value: string; 
+  onChange: (val: string) => void; 
+  className?: string;
+}) => {
+  const [displayValue, setDisplayValue] = useState('');
+
+  useEffect(() => {
+    setDisplayValue(formatDateVN(value));
+  }, [value]);
+
+  const handleBlur = () => {
+    if (!displayValue) {
+      if (value) onChange('');
+      return;
+    }
+    const parsed = parseDateVN(displayValue);
+    if (parsed) {
+      if (parsed !== value) onChange(parsed);
+    } else {
+      setDisplayValue(formatDateVN(value));
+    }
+  };
+
+  const handleDateIconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(e.target.value);
+  };
+
+  return (
+    <div className={`relative w-full ${className}`}>
+      <input 
+        type="text" 
+        value={displayValue} 
+        onChange={(e) => setDisplayValue(e.target.value)}
+        onBlur={handleBlur}
+        placeholder="dd/mm/yyyy"
+        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 pr-10 shadow-sm transition-all font-medium placeholder-slate-400"
+      />
+      <div className="absolute right-0 top-0 h-full w-10 flex items-center justify-center">
+         <input 
+            type="date" 
+            value={value || ''} 
+            onChange={handleDateIconChange}
+            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+         />
+         <Calendar className="w-4 h-4 text-slate-500" />
+      </div>
+    </div>
+  );
+};
+
+const Label = ({ children }: { children: React.ReactNode }) => (
+  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
+);
 
 export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
   isOpen, onClose, onSave, initialData, job, booking, type
 }) => {
-  // Default State matching Excel Template
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0], // Ngày hạch toán/chứng từ
+    date: new Date().toISOString().split('T')[0], 
     docNo: '',
     reason: 'Chi khác',
     paymentContent: '',
-    
-    // Payer Info (Defaults - Hidden from UI but kept for data structure)
     paymentAccount: '345673979999',
     paymentBank: 'Ngân hàng TMCP Quân đội',
-    
-    // Payee Info
     objCode: '',
     objName: '',
     address: '',
     receiverAccount: '',
     receiverBank: '',
     receiverName: '',
-    
-    // Metadata
     currency: 'VND',
     rate: '',
-    
-    // Accounting
     description: '',
     tkNo: '3311',
     tkCo: '1121',
     amount: 0,
-    
-    // Extra
     objCodeAccounting: '',
     loanContract: ''
   });
@@ -53,36 +103,27 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
-        // Load from existing row (AmisExport)
         setFormData(prev => ({ ...prev, ...initialData }));
       } else if (booking || job) {
-        // Auto-fill from Booking/Job Context
         let amount = 0;
         let content = '';
         let docNo = '';
         const lineCode = booking ? booking.line : (job?.line || '');
         const date = new Date().toISOString().split('T')[0];
         
-        // Generate Job String "JOB1+JOB2..."
         const jobListStr = booking 
             ? booking.jobs.map(j => j.jobCode).join('+') 
             : (job?.jobCode || '');
         const bookingNo = booking ? booking.bookingId : (job?.booking || '');
 
         if (type === 'local') {
-           // Chi Local Charge
            amount = booking ? booking.totalCost : (job?.chiPayment || 0);
-           // Format: "Chi tiền cho ncc lô a+b+c BL xx (Kimberry)"
            content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo} (Kimberry)`;
            docNo = `UNC-${bookingNo || jobListStr}-L`;
         } else if (type === 'deposit') {
-           // Chi Cược
-           // Format: "Chi tiền cho ncc CƯỢC lô a+b+c BL xx (Kimberry)"
            content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo} (Kimberry)`;
            docNo = `UNC-${bookingNo || jobListStr}-C`;
         } else if (type === 'extension') {
-           // Chi Gia Hạn
-           // Format: "Chi tiền cho ncc GH BL xx (Kimberry)"
            content = `Chi tiền cho ncc GH BL ${bookingNo} (Kimberry)`;
            docNo = `UNC-${bookingNo || jobListStr}-GH`;
         }
@@ -92,10 +133,10 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
             date,
             docNo,
             paymentContent: content,
-            description: content, // Description matches Content
+            description: content,
             amount: amount,
             objCode: lineCode,
-            objName: '', // User to fill or lookup
+            objName: '',
             objCodeAccounting: lineCode
         }));
       }
@@ -106,12 +147,15 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     const { name, value } = e.target;
     setFormData(prev => {
         const updated = { ...prev, [name]: value };
-        // Sync description with paymentContent if paymentContent changes
         if (name === 'paymentContent') {
             updated.description = value;
         }
         return updated;
     });
+  };
+
+  const handleDateChange = (val: string) => {
+    setFormData(prev => ({ ...prev, date: val }));
   };
 
   const handleAmountChange = (val: number) => {
@@ -126,107 +170,171 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-[2px] z-[70] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in fade-in zoom-in duration-200 border border-gray-200 flex flex-col max-h-[90vh]">
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200">
         
-        {/* Header */}
-        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-2xl">
+        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-red-50 rounded-t-2xl">
             <div className="flex items-center space-x-3">
-            <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+            <div className="p-2 bg-red-100 text-red-600 rounded-lg shadow-sm border border-red-200">
                 <Banknote className="w-5 h-5" />
             </div>
             <div>
-                <h2 className="text-xl font-bold text-slate-800">Phiếu Chi Tiền (Ủy Nhiệm Chi)</h2>
-                <p className="text-xs text-slate-400 font-medium">{formData.docNo}</p>
+                <h2 className="text-lg font-bold text-slate-800">Phiếu Chi Tiền</h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">{formData.docNo}</p>
             </div>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all">
+            <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all">
                <X className="w-5 h-5" />
             </button>
         </div>
 
-        <div className="overflow-y-auto p-8 bg-slate-50/50">
-            <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
+            <form onSubmit={handleSubmit} className="space-y-5">
                 
-                {/* 1. General Info */}
-                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                   <h3 className="text-xs font-bold text-gray-400 uppercase mb-4 flex items-center">
-                       <Calendar className="w-3 h-3 mr-1.5" /> Thông tin chứng từ
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                   <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
+                       <Calendar className="w-4 h-4 mr-2 text-red-500" /> Thông tin chung
                    </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <div className="space-y-1.5">
-                         <label className="text-xs font-semibold text-gray-500">Ngày chứng từ (*)</label>
-                         <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" required />
+                         <Label>Ngày Hạch toán</Label>
+                         <DateInput value={formData.date} onChange={handleDateChange} />
                       </div>
                       <div className="space-y-1.5">
-                         <label className="text-xs font-semibold text-gray-500">Số chứng từ (*)</label>
-                         <input type="text" name="docNo" value={formData.docNo} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-blue-700 bg-blue-50/30" required />
-                      </div>
-                      <div className="space-y-1.5">
-                         <label className="text-xs font-semibold text-gray-500">Lý do chi</label>
-                         <input type="text" name="reason" value={formData.reason} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
-                      </div>
-                   </div>
-                   <div className="mt-4 space-y-1.5">
-                      <label className="text-xs font-semibold text-gray-500">Nội dung thanh toán</label>
-                      <input type="text" name="paymentContent" value={formData.paymentContent} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium" placeholder="VD: Chi tiền cho ncc..." />
-                   </div>
-                </div>
-
-                {/* 2. Receiver Info (Simplified) */}
-                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                   <h3 className="text-xs font-bold text-gray-400 uppercase mb-4 flex items-center">
-                       <User className="w-3 h-3 mr-1.5" /> Thông tin đối tượng nhận tiền
-                   </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="space-y-1.5">
-                         <label className="text-xs font-semibold text-gray-500">Mã đối tượng</label>
-                         <input type="text" name="objCode" value={formData.objCode} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium" />
-                      </div>
-                      <div className="col-span-2 space-y-1.5">
-                         <label className="text-xs font-semibold text-gray-500">Tên đối tượng</label>
-                         <input type="text" name="objName" value={formData.objName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium" />
+                         <Label>Số chứng từ (Auto)</Label>
+                         <input 
+                            type="text" 
+                            name="docNo" 
+                            value={formData.docNo} 
+                            readOnly 
+                            className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-red-600 cursor-not-allowed" 
+                         />
                       </div>
                    </div>
                 </div>
 
-                {/* 3. Amount (Simplified - Hidden Accounting) */}
-                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                   <h3 className="text-xs font-bold text-gray-400 uppercase mb-4 flex items-center">
-                       <DollarSign className="w-3 h-3 mr-1.5" /> Số tiền
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                   <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
+                       <User className="w-4 h-4 mr-2 text-red-500" /> Đối tượng & Ngân hàng
                    </h3>
-                   <div className="relative">
-                      <input 
-                          type="text" 
-                          value={new Intl.NumberFormat('en-US').format(formData.amount)} 
-                          onChange={(e) => {
-                              const val = Number(e.target.value.replace(/,/g, ''));
-                              if (!isNaN(val)) handleAmountChange(val);
-                          }}
-                          className="w-full pl-3 pr-12 py-3 border border-red-200 rounded-lg text-2xl font-bold text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 bg-red-50/30 text-right"
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
+                      <div className="space-y-1.5">
+                         <Label>Mã Đối tượng</Label>
+                         <input 
+                            type="text" 
+                            name="objCode" 
+                            value={formData.objCode} 
+                            onChange={handleChange} 
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 font-medium focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
+                         />
+                      </div>
+                      <div className="space-y-1.5">
+                         <Label>Tên Đối tượng</Label>
+                         <input 
+                            type="text" 
+                            name="objName" 
+                            value={formData.objName} 
+                            onChange={handleChange} 
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
+                         />
+                      </div>
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="space-y-1.5">
+                         <Label>Tài khoản nhận</Label>
+                         <input 
+                            type="text" 
+                            name="receiverAccount" 
+                            value={formData.receiverAccount} 
+                            onChange={handleChange} 
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
+                         />
+                      </div>
+                      <div className="space-y-1.5">
+                         <Label>Ngân hàng nhận</Label>
+                         <input 
+                            type="text" 
+                            name="receiverBank" 
+                            value={formData.receiverBank} 
+                            onChange={handleChange} 
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
+                         />
+                      </div>
+                   </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                   <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
+                       <DollarSign className="w-4 h-4 mr-2 text-red-500" /> Chi tiết thanh toán
+                   </h3>
+                   
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
+                      <div className="col-span-1 space-y-1.5">
+                           <Label>Số tiền</Label>
+                           <input 
+                               type="text" 
+                               value={new Intl.NumberFormat('en-US').format(formData.amount)} 
+                               onChange={(e) => {
+                                   const val = Number(e.target.value.replace(/,/g, ''));
+                                   if (!isNaN(val)) handleAmountChange(val);
+                               }}
+                               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-red-600 text-right focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
+                           />
+                      </div>
+                      <div className="space-y-1.5">
+                           <Label>TK Nợ</Label>
+                           <input 
+                                type="text" 
+                                name="tkNo" 
+                                value={formData.tkNo} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center font-medium focus:ring-2 focus:ring-red-500 outline-none"
+                           />
+                      </div>
+                      <div className="space-y-1.5">
+                           <Label>TK Có</Label>
+                           <input 
+                                type="text" 
+                                name="tkCo" 
+                                value={formData.tkCo} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center font-medium focus:ring-2 focus:ring-red-500 outline-none"
+                           />
+                      </div>
+                   </div>
+
+                   <div className="space-y-1.5">
+                      <Label>Nội dung thanh toán</Label>
+                      <textarea 
+                        name="paymentContent" 
+                        rows={2}
+                        value={formData.paymentContent} 
+                        onChange={handleChange} 
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none resize-none" 
                       />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-red-300">VND</span>
                    </div>
-                   <div className="mt-3 text-xs text-gray-400 text-right italic">
-                      Hạch toán ngầm định: Nợ {formData.tkNo} / Có {formData.tkCo}
-                   </div>
+                </div>
+
+                <div className="flex items-center space-x-2 text-xs text-slate-600 px-3 py-2 font-medium bg-white rounded-lg border border-slate-200 shadow-sm">
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span>TK Chi: 345673979999 (MB Bank) - Lý do: Chi khác</span>
                 </div>
 
             </form>
         </div>
 
-        {/* Footer Actions */}
-        <div className="px-8 py-4 bg-white border-t border-gray-100 rounded-b-2xl flex justify-end space-x-3">
-            <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+        <div className="px-6 py-4 bg-white border-t border-slate-200 rounded-b-2xl flex justify-end space-x-3">
+            <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors shadow-sm">
             Hủy bỏ
             </button>
-            <button onClick={handleSubmit} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg transition-all flex items-center">
+            <button onClick={handleSubmit} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100">
             <Save className="w-4 h-4 mr-2" /> Lưu Thay Đổi
             </button>
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

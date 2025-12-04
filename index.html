@@ -1,11 +1,12 @@
+
 <!DOCTYPE html>
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Logistics Manager</title>
+    <title>Kimberry Merchant Line</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
@@ -14,17 +15,92 @@
               sans: ['Inter', 'sans-serif'],
             },
             colors: {
+              glass: {
+                100: 'rgba(255, 255, 255, 0.1)',
+                200: 'rgba(255, 255, 255, 0.2)',
+                300: 'rgba(255, 255, 255, 0.3)',
+                400: 'rgba(255, 255, 255, 0.4)',
+                500: 'rgba(255, 255, 255, 0.5)',
+                600: 'rgba(255, 255, 255, 0.6)',
+                700: 'rgba(255, 255, 255, 0.7)',
+                border: 'rgba(255, 255, 255, 0.5)',
+              },
               brand: {
-                DEFAULT: '#1e3a8a', // Deep Blue from image
-                light: '#3b82f6',
-                dark: '#172554',
-                bg: '#f3f4f6', // Light gray background
+                DEFAULT: '#0f766e', // Teal 700
+                light: '#2dd4bf', // Teal 400
+                dark: '#111827', // Gray 900
+                accent: '#f472b6', // Pink 400
               }
+            },
+            backdropBlur: {
+              xs: '2px',
             }
           }
         }
       }
     </script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      /* Mesh Gradient Background */
+      .mesh-bg {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        background-color: #e0f2fe; /* Light Blue base */
+        background-image: 
+          radial-gradient(at 0% 0%, hsla(192,90%,75%,1) 0, transparent 50%), 
+          radial-gradient(at 50% 0%, hsla(180,80%,70%,1) 0, transparent 50%), 
+          radial-gradient(at 100% 0%, hsla(280,70%,85%,1) 0, transparent 50%), 
+          radial-gradient(at 0% 50%, hsla(240,60%,85%,1) 0, transparent 50%), 
+          radial-gradient(at 100% 50%, hsla(320,60%,85%,1) 0, transparent 50%), 
+          radial-gradient(at 0% 100%, hsla(200,80%,80%,1) 0, transparent 50%), 
+          radial-gradient(at 100% 100%, hsla(220,70%,85%,1) 0, transparent 50%);
+      }
+      
+      /* Glass Card Utility */
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.65);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+      }
+
+      .glass-input {
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(4px);
+        transition: all 0.2s ease;
+      }
+      .glass-input:focus {
+        background: rgba(255, 255, 255, 0.9);
+        border-color: #0f766e;
+        box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.1);
+      }
+
+      /* Custom Scrollbar for Glass */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(156, 163, 175, 0.5); 
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(107, 114, 128, 0.8); 
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {
@@ -36,13 +112,15 @@
     "xlsx": "https://esm.sh/xlsx@0.18.5",
     "path": "https://aistudiocdn.com/path@^0.12.7",
     "vite": "https://aistudiocdn.com/vite@^7.2.6",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-brand-bg text-slate-800 antialiased font-sans">
+  <body class="antialiased font-sans text-slate-800">
+    <div class="mesh-bg"></div>
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>

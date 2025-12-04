@@ -212,40 +212,43 @@ export const DepositList: React.FC<DepositListProps> = ({
   };
 
   return (
-    <div className="p-8 max-w-full">
-      <div className="mb-6">
-        <div className="flex items-center space-x-3 text-slate-800 mb-2">
+    <div className="w-full h-full pb-10">
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6 px-2">
+        <div className="flex items-center space-x-3 text-slate-800">
           {mode === 'line' ? (
-             <div className="p-2 bg-red-100 text-red-600 rounded-lg">
+             <div className="p-2 bg-red-100 text-red-600 rounded-lg shadow-sm">
                <Building2 className="w-6 h-6" />
              </div>
           ) : (
-             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg shadow-sm">
                <UserCircle className="w-6 h-6" />
              </div>
           )}
-          <h1 className="text-3xl font-bold">
-            {mode === 'line' ? 'Quản lý Cược Hãng Tàu' : 'Quản lý Cược Khách Hàng'}
-          </h1>
+          <div>
+            <h1 className="text-2xl font-bold">
+                {mode === 'line' ? 'Quản lý Cược Hãng Tàu' : 'Quản lý Cược Khách Hàng'}
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+                {mode === 'line' 
+                    ? 'Theo dõi tiền cược đã chi cho hãng tàu theo Booking' 
+                    : 'Theo dõi tiền cược đã thu từ khách hàng theo Job'}
+            </p>
+          </div>
         </div>
-        <p className="text-slate-500 ml-11 mb-6">
-          {mode === 'line' 
-            ? 'Theo dõi tiền cược đã chi cho hãng tàu theo Booking. Click vào dòng để xem chi tiết.' 
-            : 'Theo dõi tiền cược đã thu từ khách hàng theo Job. Click vào dòng để xem chi tiết.'}
-        </p>
+      </div>
 
-        {/* Filters Bar */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-4 items-end md:items-center">
-            <div className="flex items-center text-slate-500 font-medium">
+      {/* Filters Bar */}
+      <div className="glass-panel p-5 rounded-2xl mb-6 mx-2 flex flex-col md:flex-row gap-4 items-end md:items-center">
+            <div className="flex items-center text-slate-500 font-bold text-xs uppercase tracking-wide">
               <Filter className="w-4 h-4 mr-2" />
-              Bộ lọc:
+              Bộ lọc
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 w-full">
                <select 
                  value={filterMonth} 
                  onChange={(e) => setFilterMonth(e.target.value)}
-                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                 className="glass-input w-full p-2.5 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                >
                  <option value="">Tất cả các tháng</option>
                  {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -255,7 +258,7 @@ export const DepositList: React.FC<DepositListProps> = ({
                  <select 
                    value={filterEntity} 
                    onChange={(e) => setFilterEntity(e.target.value)}
-                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                   className="glass-input w-full p-2.5 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                  >
                    <option value="">Tất cả Hãng Tàu</option>
                    {uniqueLines.map(l => <option key={l} value={l}>{l}</option>)}
@@ -273,15 +276,15 @@ export const DepositList: React.FC<DepositListProps> = ({
                         onFocus={() => setShowCustSuggestions(true)}
                         onBlur={() => setTimeout(() => setShowCustSuggestions(false), 200)}
                         placeholder="Tìm mã KH hoặc tên..."
-                        className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        className="glass-input w-full p-2.5 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                      />
                      {showCustSuggestions && custSearchTerm && filteredCustomers.length > 0 && (
-                        <ul className="absolute z-50 w-full bg-white border border-gray-300 rounded-b-lg shadow-lg max-h-60 overflow-y-auto mt-1 left-0">
+                        <ul className="absolute z-50 w-full bg-white border border-gray-100 rounded-xl shadow-xl max-h-60 overflow-y-auto mt-2 left-0 py-2">
                           {filteredCustomers.map(c => (
                              <li 
                                key={c.id}
                                onClick={() => handleCustomerSelect(c)}
-                               className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-50 last:border-0 flex flex-col"
+                               className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-50 last:border-0 flex flex-col"
                              >
                                 <span className="font-bold text-blue-800">{c.code}</span>
                                 <span className="text-xs text-gray-500 truncate">{c.name}</span>
@@ -295,68 +298,67 @@ export const DepositList: React.FC<DepositListProps> = ({
                <select 
                  value={filterStatus} 
                  onChange={(e) => setFilterStatus(e.target.value as any)}
-                 className={`w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium
-                    ${filterStatus === 'pending' ? 'text-orange-600 bg-orange-50' : ''}
-                    ${filterStatus === 'completed' ? 'text-green-600 bg-green-50' : ''}
+                 className={`glass-input w-full p-2.5 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold
+                    ${filterStatus === 'pending' ? 'text-orange-600' : ''}
+                    ${filterStatus === 'completed' ? 'text-green-600' : ''}
                  `}
                >
-                 <option value="all">Tất cả trạng thái</option>
-                 <option value="pending">Chưa hoàn (Pending)</option>
-                 <option value="completed">Đã hoàn (Completed)</option>
+                 <option value="all" className="text-slate-800">Tất cả trạng thái</option>
+                 <option value="pending" className="text-orange-600">Chưa hoàn (Pending)</option>
+                 <option value="completed" className="text-green-600">Đã hoàn (Completed)</option>
                </select>
             </div>
 
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors flex items-center space-x-1" title="Xóa bộ lọc">
+              <button onClick={clearFilters} className="text-red-500 hover:text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2.5 rounded-xl transition-colors flex items-center space-x-1" title="Xóa bộ lọc">
                 <X className="w-4 h-4" />
-                <span className="text-sm font-medium">Xóa lọc</span>
+                <span className="text-xs font-bold uppercase">Xóa lọc</span>
               </button>
             )}
-        </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="glass-panel rounded-2xl overflow-hidden mx-2 shadow-sm">
+        <div className="overflow-x-auto pb-24">
           <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs tracking-wider">
+            <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4">Tháng</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
                 {mode === 'line' ? (
                   <>
-                    <th className="px-6 py-4">Booking</th>
-                    <th className="px-6 py-4">Line</th>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Line</th>
                   </>
                 ) : (
                   <>
-                    <th className="px-6 py-4">Job Code</th>
-                    <th className="px-6 py-4">Mã KH</th>
-                    <th className="px-6 py-4">Tên Khách Hàng</th>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Mã KH</th>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tên Khách Hàng</th>
                   </>
                 )}
-                <th className="px-6 py-4 text-right">Tiền Cược</th>
-                <th className="px-6 py-4 text-center">Ngày Cược</th>
-                <th className="px-6 py-4 text-center">Ngày Hoàn</th>
-                <th className="px-6 py-4 text-center">Trạng Thái</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Tiền Cược</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Ngày Cược</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Ngày Hoàn</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Trạng Thái</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/40">
               {mode === 'line' ? (
                 paginatedList.length > 0 ? (
                   paginatedList.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-red-50/20 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
-                      <td className="px-6 py-4 font-medium text-slate-900">Tháng {item.month}</td>
-                      <td className="px-6 py-4 text-blue-600 font-bold">{item.booking}</td>
+                    <tr key={idx} className="hover:bg-white/40 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
+                      <td className="px-6 py-4 font-medium text-slate-500">T{item.month}</td>
+                      <td className="px-6 py-4 text-blue-700 font-bold">{item.booking}</td>
                       <td className="px-6 py-4 text-slate-600">{item.line}</td>
-                      <td className="px-6 py-4 text-right font-medium text-red-600">{formatCurrency(item.amount)}</td>
+                      <td className="px-6 py-4 text-right font-bold text-red-600">{formatCurrency(item.amount)}</td>
                       <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateOut)}</td>
                       <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateIn)}</td>
                       <td className="px-6 py-4 text-center">
                         {item.isCompleted ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100/80 text-green-700 border border-green-200">
                             Đã hoàn
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100/80 text-orange-700 border border-orange-200">
                             Chưa hoàn
                           </span>
                         )}
@@ -364,26 +366,26 @@ export const DepositList: React.FC<DepositListProps> = ({
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={7} className="text-center py-12 text-gray-400">Không có dữ liệu phù hợp</td></tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
                 )
               ) : (
                 paginatedList.length > 0 ? (
                   paginatedList.map((item) => (
-                    <tr key={item.id} className="hover:bg-indigo-50/20 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
-                      <td className="px-6 py-4 font-medium text-slate-900">Tháng {item.month}</td>
-                      <td className="px-6 py-4 text-blue-600 font-bold">{item.jobCode}</td>
-                      <td className="px-6 py-4 text-slate-600 font-mono">{item.customerCode}</td>
-                      <td className="px-6 py-4 text-slate-600 truncate max-w-xs" title={item.customerName}>{item.customerName}</td>
-                      <td className="px-6 py-4 text-right font-medium text-indigo-600">{formatCurrency(item.amount)}</td>
+                    <tr key={item.id} className="hover:bg-white/40 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
+                      <td className="px-6 py-4 font-medium text-slate-500">T{item.month}</td>
+                      <td className="px-6 py-4 text-blue-700 font-bold">{item.jobCode}</td>
+                      <td className="px-6 py-4 text-slate-600 font-mono text-xs">{item.customerCode}</td>
+                      <td className="px-6 py-4 text-slate-700 font-medium truncate max-w-xs" title={item.customerName}>{item.customerName}</td>
+                      <td className="px-6 py-4 text-right font-bold text-indigo-600">{formatCurrency(item.amount)}</td>
                       <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateIn)}</td>
                       <td className="px-6 py-4 text-center text-slate-600">{formatDateVN(item.dateOut)}</td>
                       <td className="px-6 py-4 text-center">
                         {item.dateOut ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100/80 text-green-700 border border-green-200">
                             Đã hoàn
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100/80 text-orange-700 border border-orange-200">
                             Chưa hoàn
                           </span>
                         )}
@@ -391,31 +393,33 @@ export const DepositList: React.FC<DepositListProps> = ({
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={8} className="text-center py-12 text-gray-400">Không có dữ liệu phù hợp</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
                 )
               )}
             </tbody>
-            <tfoot className="bg-gray-50 font-bold text-slate-700 uppercase text-xs">
-              <tr>
-                <td colSpan={mode === 'line' ? 3 : 4} className="px-6 py-4 text-right">Tổng Cộng (Tất cả kết quả lọc):</td>
-                <td className="px-6 py-4 text-right text-base text-red-600">{formatCurrency(totalAmount)}</td>
-                <td colSpan={3}></td>
-              </tr>
-            </tfoot>
+            {currentList.length > 0 && (
+                <tfoot className="bg-white/30 font-bold text-slate-800 uppercase text-xs border-t border-white/40">
+                <tr>
+                    <td colSpan={mode === 'line' ? 3 : 4} className="px-6 py-4 text-right">Tổng Cộng:</td>
+                    <td className="px-6 py-4 text-right text-base text-red-600">{formatCurrency(totalAmount)}</td>
+                    <td colSpan={3}></td>
+                </tr>
+                </tfoot>
+            )}
           </table>
         </div>
         
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+          <div className="px-6 py-4 border-t border-white/40 bg-white/30 flex justify-between items-center text-xs text-slate-600">
             <div>
               Trang {currentPage} / {totalPages} (Tổng {currentList.length} items)
             </div>
-            <div className="flex space-x-2 items-center">
+            <div className="flex space-x-1.5">
               <button 
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -423,15 +427,15 @@ export const DepositList: React.FC<DepositListProps> = ({
               <div className="flex space-x-1">
                  {paginationRange.map((page, idx) => (
                     page === '...' ? (
-                      <span key={`dots-${idx}`} className="px-2 py-1.5 text-gray-400">...</span>
+                      <span key={`dots-${idx}`} className="px-2 py-1.5 text-slate-400">...</span>
                     ) : (
                       <button
                         key={page}
                         onClick={() => setCurrentPage(page as number)}
-                        className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                        className={`px-3 py-1.5 rounded-lg border border-white/60 font-medium transition-colors ${
                           currentPage === page
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            ? 'bg-teal-600 text-white border-teal-600 shadow-md'
+                            : 'bg-white/40 hover:bg-white/80 text-slate-700'
                         }`}
                       >
                         {page}
@@ -443,7 +447,7 @@ export const DepositList: React.FC<DepositListProps> = ({
               <button 
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag } from 'lucide-react';
@@ -15,15 +16,14 @@ interface AmisExportProps {
 }
 
 export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode }) => {
+  // ... (Keep existing logic, no changes needed for main component logic)
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
   const [selectedBookingForModal, setSelectedBookingForModal] = useState<any | null>(null);
   
-  // State to store edited rows keyed by DocNo
   const [editedRows, setEditedRows] = useState<Record<string, any>>({});
   
-  // Selection & Locking State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
     try {
@@ -34,21 +34,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     }
   });
 
-  // Template State
   const [templateWb, setTemplateWb] = useState<XLSX.WorkBook | null>(null);
   const [templateName, setTemplateName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mock Lines data since not passed in props (can be improved by updating parent)
-  // For now we rely on booking.line as code and name if not available
   const mockLines: ShippingLine[] = [];
 
-  // Save locks whenever they change
   useEffect(() => {
     localStorage.setItem(`amis_locked_${mode}_v1`, JSON.stringify(Array.from(lockedIds)));
   }, [lockedIds, mode]);
 
-  // Reset selection when mode or filter changes
   useEffect(() => {
     setSelectedIds(new Set());
   }, [mode, filterMonth]);
@@ -74,14 +69,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
 
   const triggerFileUpload = () => fileInputRef.current?.click();
 
-  // --- DATA TRANSFORMATION LOGIC ---
   const exportData = useMemo(() => {
     let filteredJobs = jobs;
     if (filterMonth) {
       filteredJobs = jobs.filter(j => j.month === filterMonth);
     }
 
-    // --- MODE THU ---
     if (mode === 'thu') {
       const rows: any[] = [];
       filteredJobs.filter(j => j.thuCuoc > 0 && j.ngayThuCuoc).forEach(j => {
@@ -124,7 +117,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
       });
       return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     } 
-    // --- MODE CHI ---
     else if (mode === 'chi') {
         const rows: any[] = [];
         filteredJobs.filter(j => j.chiPayment > 0).forEach(j => {
@@ -159,7 +151,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
         });
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
-    // --- MODE BAN ---
     else if (mode === 'ban') {
         const rows: any[] = [];
         filteredJobs.filter(j => j.sell > 0).forEach(j => {
@@ -170,15 +161,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
             const defaultProjectCode = `K${year}${month}${j.jobCode}`;
             const desc = `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''} (không xuất hóa đơn)`;
             rows.push({
-                originalJob: j, // Store ref for modal
+                originalJob: j, 
                 date,
                 docDate: date,
                 docNo,
                 customerCode: 'LONGHOANGKIMBERRY',
                 desc,
-                amount: j.sell, // Don gia / Thanh tien (Quantity 1)
-                
-                // Defaults for Excel
+                amount: j.sell, 
                 salesType: 'Bán hàng hóa trong nước',
                 paymentMethod: 'Chưa thu tiền',
                 isDeliveryVoucher: 'Không',
@@ -192,13 +181,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                 vatRate: '0%',
                 tkVat: '33311',
                 projectCode: defaultProjectCode,
-                
                 ...(editedRows[docNo] || {})
             });
         });
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
-    // --- MODE MUA ---
     else if (mode === 'mua') {
         const bookingIds = Array.from(new Set(filteredJobs.map(j => j.booking).filter(b => !!b)));
         const rows: any[] = [];
@@ -228,7 +215,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                     desc,
                     itemName: 'Phí Local Charge',
                     amount: totalNet,
-                    // Excel Defaults
                     purchaseType: 'Mua hàng trong nước không qua kho',
                     paymentMethod: 'Chưa thanh toán',
                     invoiceIncluded: 'Nhận kèm hóa đơn',
@@ -252,7 +238,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     return [];
   }, [jobs, mode, filterMonth, customers, editedRows]); 
 
-  // --- SELECTION HANDLERS ---
   const handleSelectAll = () => {
     const unlockedRows = exportData.filter(r => !lockedIds.has(r.docNo));
     if (selectedIds.size === unlockedRows.length && unlockedRows.length > 0) setSelectedIds(new Set());
@@ -292,8 +277,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
       }
   };
 
-  // --- EXPORT ---
   const handleExport = () => {
+    // ... (Keep existing export logic)
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) {
         alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.");
@@ -356,7 +341,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
 
     XLSX.writeFile(wb, `amis_export_${mode}_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-    // Lock exported rows
     const newLocked = new Set(lockedIds);
     rowsToExport.forEach((r: any) => newLocked.add(r.docNo));
     setLockedIds(newLocked);
@@ -367,9 +351,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
   const unlockedCount = exportData.filter(r => !lockedIds.has(r.docNo)).length;
   const isAllSelected = unlockedCount > 0 && selectedIds.size === unlockedCount;
 
-  // --- SAVE EDIT ---
   const handleSaveEdit = (newData: any) => {
-     // Save merged data back to editedRows
      setEditedRows(prev => ({
          ...prev,
          [newData.docNo]: newData
@@ -385,6 +367,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     <div className="p-8 max-w-full">
       <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
 
+      {/* Main UI unchanged, skipping to modals */}
       <div className="mb-6">
         <div className="flex items-center space-x-3 text-slate-800 mb-2">
            <div className={`p-2 rounded-lg ${mode === 'chi' ? 'bg-red-100 text-red-700' : mode === 'ban' ? 'bg-purple-100 text-purple-700' : mode === 'mua' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -395,34 +378,34 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
         <p className="text-slate-500 ml-11 mb-4">Kết xuất dữ liệu kế toán: <span className="font-bold text-blue-600">{titles[mode]}</span></p>
         
         {/* Toolbar */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center sticky top-0 z-20">
+        <div className="glass-panel p-4 rounded-xl shadow-sm border border-white/40 flex justify-between items-center sticky top-0 z-20">
            <div className="flex items-center space-x-4">
               <div className="flex items-center text-slate-500 font-medium"><Filter className="w-4 h-4 mr-2" /> Lọc tháng:</div>
-              <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg text-sm w-48">
+              <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="p-2 glass-input rounded-lg text-sm w-48 focus:ring-0 outline-none">
                 <option value="">Tất cả</option>
                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
            </div>
            <div className="flex space-x-2">
-              <button onClick={triggerFileUpload} className="bg-white border hover:bg-gray-50 px-4 py-2 rounded-lg flex items-center space-x-2 text-gray-700">
+              <button onClick={triggerFileUpload} className="glass-panel hover:bg-white/80 px-4 py-2 rounded-lg flex items-center space-x-2 text-slate-700 transition-colors">
                  {templateName ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />} <span>{templateName ? 'Đã tải mẫu' : 'Cài đặt mẫu'}</span>
               </button>
               {isInteractiveMode && lockedIds.size > 0 && (
-                  <button onClick={() => setLockedIds(new Set())} className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg flex items-center space-x-2">
+                  <button onClick={() => setLockedIds(new Set())} className="bg-white/50 hover:bg-white/80 text-slate-600 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
                       <RefreshCw className="w-4 h-4" /> <span>Mở khóa tất cả</span>
                   </button>
               )}
-              <button onClick={handleExport} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-md">
+              <button onClick={handleExport} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95">
                   <FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span>
               </button>
            </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="glass-panel rounded-2xl shadow-sm border border-white/40 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
+            <thead className="bg-white/40 text-slate-700 font-bold border-b border-white/30 uppercase text-xs">
               <tr>
                 {isInteractiveMode && (
                     <th className="px-6 py-3 w-10 text-center">
@@ -438,18 +421,15 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                 {isInteractiveMode && <th className="px-6 py-3 text-center w-20">Sửa</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/20">
               {exportData.length > 0 ? (
                  exportData.map((row: any, idx) => {
                    const isLocked = isInteractiveMode && lockedIds.has(row.docNo);
                    const isSelected = selectedIds.has(row.docNo);
-
-                   // Display mapping for different modes
                    const objCode = mode === 'ban' ? row.customerCode : mode === 'mua' ? row.supplierCode : row.objCode;
-                   // const desc = mode === 'ban' ? row.desc : row.desc;
 
                    return (
-                   <tr key={idx} className={`${isLocked ? 'bg-gray-100 text-gray-500' : 'hover:bg-blue-50'} ${isSelected ? 'bg-blue-50' : ''}`}>
+                   <tr key={idx} className={`${isLocked ? 'bg-slate-100/50 text-gray-500' : 'hover:bg-white/30'} ${isSelected ? 'bg-blue-50/50' : ''}`}>
                       {isInteractiveMode && (
                           <td className="px-6 py-3 text-center">
                               <input type="checkbox" checked={isSelected} onChange={() => handleSelectRow(row.docNo)} disabled={isLocked} className="w-4 h-4 rounded border-gray-300" />
@@ -526,11 +506,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
   );
 };
 
-// ... ReceiptDetailModal ...
+// ... ReceiptDetailModal Updated ...
 const ReceiptDetailModal = ({ data, onClose, onSave }: { data: any, onClose: () => void, onSave: (data: any) => void }) => {
-    // Local state for editing
     const [formData, setFormData] = useState({
-        date: data.col1, // Ngay Hach Toan/Chung Tu
+        date: data.col1, 
         docNo: data.col3,
         objCode: data.col4,
         objName: data.col5,
@@ -560,7 +539,6 @@ const ReceiptDetailModal = ({ data, onClose, onSave }: { data: any, onClose: () 
              col16: formData.tkCo,
              col17: formData.amount,
              col19: formData.objCode,
-             // Update view props too for immediate UI refresh
              date: formData.date,
              docNo: formData.docNo,
              objCode: formData.objCode,
@@ -570,30 +548,41 @@ const ReceiptDetailModal = ({ data, onClose, onSave }: { data: any, onClose: () 
     };
 
     return (
-        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-[2px] z-[70] flex items-center justify-center p-4">
-           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in fade-in zoom-in duration-200 border border-gray-200 flex flex-col max-h-[90vh]">
-              <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-2xl">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+           <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 border border-white/50 flex flex-col max-h-[90vh]">
+              <div className="px-8 py-5 border-b border-slate-200/50 flex justify-between items-center bg-white/40">
                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><FileText className="w-5 h-5" /></div>
+                    <div className="p-2.5 bg-blue-100/80 text-blue-600 rounded-xl shadow-sm border border-blue-200/50"><FileText className="w-5 h-5" /></div>
                     <div><h2 className="text-xl font-bold text-slate-800">Phiếu Thu Tiền</h2></div>
                  </div>
-                 <button onClick={onClose} className="text-gray-400 hover:text-red-500"><X className="w-5 h-5" /></button>
+                 <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white/50 p-2.5 rounded-full transition-all"><X className="w-6 h-6" /></button>
               </div>
-              <div className="p-8 bg-slate-50/50 space-y-4">
-                 <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-bold text-gray-500">Ngày CT</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full p-2 border rounded" /></div>
-                    <div><label className="text-xs font-bold text-gray-500">Số CT</label><input type="text" name="docNo" value={formData.docNo} onChange={handleChange} className="w-full p-2 border rounded font-bold text-blue-600" /></div>
+              <div className="p-8 custom-scrollbar space-y-6">
+                 <div className="glass-panel p-6 rounded-2xl">
+                    <div className="grid grid-cols-2 gap-6">
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Ngày CT</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Số CT</label><input type="text" name="docNo" value={formData.docNo} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm font-bold text-blue-600 bg-blue-50/30" /></div>
+                    </div>
                  </div>
-                 <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-bold text-gray-500">Mã Đối Tượng</label><input type="text" name="objCode" value={formData.objCode} onChange={handleChange} className="w-full p-2 border rounded" /></div>
-                    <div><label className="text-xs font-bold text-gray-500">Số Tiền</label><input type="number" name="amount" value={formData.amount} onChange={handleChange} className="w-full p-2 border rounded font-bold" /></div>
+                 
+                 <div className="glass-panel p-6 rounded-2xl">
+                    <div className="grid grid-cols-2 gap-6 mb-4">
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Mã Đối Tượng</label><input type="text" name="objCode" value={formData.objCode} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Số Tiền</label><input type="number" name="amount" value={formData.amount} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm font-bold" /></div>
+                    </div>
+                    <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Diễn giải</label><textarea name="desc" value={formData.desc} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm" rows={2} /></div>
                  </div>
-                 <div><label className="text-xs font-bold text-gray-500">Diễn giải</label><textarea name="desc" value={formData.desc} onChange={handleChange} className="w-full p-2 border rounded" rows={2} /></div>
-                 <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-bold text-gray-500">TK Nợ</label><input type="text" name="tkNo" value={formData.tkNo} onChange={handleChange} className="w-full p-2 border rounded text-center" /></div>
-                    <div><label className="text-xs font-bold text-gray-500">TK Có</label><input type="text" name="tkCo" value={formData.tkCo} onChange={handleChange} className="w-full p-2 border rounded text-center" /></div>
+
+                 <div className="glass-panel p-6 rounded-2xl">
+                    <div className="grid grid-cols-2 gap-6">
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">TK Nợ</label><input type="text" name="tkNo" value={formData.tkNo} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm text-center" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">TK Có</label><input type="text" name="tkCo" value={formData.tkCo} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm text-center" /></div>
+                    </div>
                  </div>
-                 <div className="flex justify-end pt-4"><button onClick={handleSubmit} className="bg-blue-600 text-white px-4 py-2 rounded shadow">Lưu Thay Đổi</button></div>
+              </div>
+              <div className="px-8 py-5 bg-white/60 backdrop-blur-md border-t border-slate-100 rounded-b-3xl flex justify-end space-x-3">
+                 <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white/50 border border-slate-200 hover:bg-white transition-colors shadow-sm">Hủy bỏ</button>
+                 <button onClick={handleSubmit} className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg hover:shadow-blue-500/30 transition-all flex items-center transform active:scale-95 duration-100">Lưu Thay Đổi</button>
               </div>
            </div>
         </div>

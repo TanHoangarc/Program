@@ -85,72 +85,80 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
   const paginationRange = getPaginationRange(currentPage, totalPages);
 
   return (
-    <div className="p-8 max-w-full">
-      <div className="mb-6 flex justify-between items-end">
+    <div className="w-full h-full pb-10">
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6 px-2">
         <div>
           <div className="flex items-center space-x-3 text-slate-800 mb-2">
-            <div className="p-2 bg-teal-100 text-teal-600 rounded-lg">
+            <div className="p-2 bg-teal-100 text-teal-600 rounded-lg shadow-sm">
               <Scale className="w-6 h-6" />
             </div>
-            <h1 className="text-3xl font-bold">Đối Chiếu Số Liệu</h1>
+            <h1 className="text-2xl font-bold">Đối Chiếu Số Liệu</h1>
           </div>
-          <p className="text-slate-500 ml-11">So sánh dữ liệu hệ thống (System) và dữ liệu kế toán (Invoice)</p>
+          <p className="text-sm text-slate-500 ml-11">So sánh dữ liệu hệ thống (System) và dữ liệu kế toán (Invoice)</p>
         </div>
         
-        <div className="flex space-x-4">
-           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded text-sm min-w-[150px]">
+        <div className="flex space-x-3 glass-panel px-4 py-2 rounded-xl">
+           <select 
+             value={filterMonth} 
+             onChange={e => setFilterMonth(e.target.value)} 
+             className="bg-transparent text-sm font-medium text-slate-700 outline-none min-w-[120px]"
+           >
              <option value="">Tất cả tháng</option>
              {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
            </select>
+           <div className="w-px bg-slate-300"></div>
            <div className="relative">
-              <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
                 type="text" placeholder="Tìm kiếm..." 
                 value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                className="pl-8 p-2 border rounded text-sm w-64"
+                className="pl-6 bg-transparent text-sm outline-none w-48 text-slate-700 placeholder-slate-400"
               />
            </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="glass-panel rounded-2xl overflow-hidden mx-2 shadow-sm">
+        <div className="overflow-x-auto pb-24">
           <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
+            <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-4 py-3">Job Code</th>
-                <th className="px-4 py-3 text-right text-red-700 bg-red-50">Cost (System)</th>
-                <th className="px-4 py-3 text-right text-red-700 bg-red-50">Invoice Chi</th>
-                <th className="px-4 py-3 text-right text-gray-500 w-24">Lệch Chi</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
                 
-                <th className="px-4 py-3 border-l border-gray-200 text-right text-blue-700 bg-blue-50">Sell (System)</th>
-                <th className="px-4 py-3 text-right text-blue-700 bg-blue-50">Invoice Thu</th>
-                <th className="px-4 py-3 text-right text-gray-500 w-24">Lệch Thu</th>
+                {/* Cost Header Group */}
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right bg-red-50/50 text-red-800 border-l border-white/30">Cost (System)</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right bg-red-50/50 text-red-800">Invoice Chi</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right bg-red-50/50 text-red-800 w-28">Lệch Chi</th>
+                
+                {/* Sell Header Group */}
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right bg-blue-50/50 text-blue-800 border-l border-white/30">Sell (System)</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right bg-blue-50/50 text-blue-800">Invoice Thu</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right bg-blue-50/50 text-blue-800 w-28">Lệch Thu</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/40">
               {paginatedData.length > 0 ? (
                 paginatedData.map(item => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-bold text-gray-800">{item.jobCode}</td>
+                  <tr key={item.id} className="hover:bg-white/40 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-700">{item.jobCode}</td>
                     
                     {/* Cost Side */}
-                    <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(item.realCost)}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(item.actualExpense)}</td>
-                    <td className={`px-4 py-3 text-right font-bold ${Math.abs(item.diffCost) > 1000 ? 'text-red-500' : 'text-gray-300'}`}>
+                    <td className="px-6 py-4 text-right text-slate-600 border-l border-white/30 bg-red-50/10">{formatCurrency(item.realCost)}</td>
+                    <td className="px-6 py-4 text-right text-slate-600 bg-red-50/10">{formatCurrency(item.actualExpense)}</td>
+                    <td className={`px-6 py-4 text-right font-bold bg-red-50/10 ${Math.abs(item.diffCost) > 1000 ? 'text-red-500' : 'text-slate-300'}`}>
                         {Math.abs(item.diffCost) > 1000 ? formatCurrency(item.diffCost) : '-'}
                     </td>
 
                     {/* Sell Side */}
-                    <td className="px-4 py-3 border-l border-gray-200 text-right text-gray-700">{formatCurrency(item.sell)}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(item.actualRevenue)}</td>
-                    <td className={`px-4 py-3 text-right font-bold ${Math.abs(item.diffSell) > 1000 ? 'text-orange-500' : 'text-gray-300'}`}>
+                    <td className="px-6 py-4 border-l border-white/30 text-right text-slate-600 bg-blue-50/10">{formatCurrency(item.sell)}</td>
+                    <td className="px-6 py-4 text-right text-slate-600 bg-blue-50/10">{formatCurrency(item.actualRevenue)}</td>
+                    <td className={`px-6 py-4 text-right font-bold bg-blue-50/10 ${Math.abs(item.diffSell) > 1000 ? 'text-orange-500' : 'text-slate-300'}`}>
                         {Math.abs(item.diffSell) > 1000 ? formatCurrency(item.diffSell) : '-'}
                     </td>
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={7} className="text-center py-12 text-gray-400">Không có dữ liệu phù hợp</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
               )}
             </tbody>
           </table>
@@ -158,15 +166,15 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+          <div className="px-6 py-4 border-t border-white/40 bg-white/30 flex justify-between items-center text-xs text-slate-600">
             <div>
               Trang {currentPage} / {totalPages} (Tổng {reconData.length} dòng)
             </div>
-            <div className="flex space-x-2 items-center">
+            <div className="flex space-x-1.5">
               <button 
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -174,15 +182,15 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
               <div className="flex space-x-1">
                  {paginationRange.map((page, idx) => (
                     page === '...' ? (
-                      <span key={`dots-${idx}`} className="px-2 py-1.5 text-gray-400">...</span>
+                      <span key={`dots-${idx}`} className="px-2 py-1.5 text-slate-400">...</span>
                     ) : (
                       <button
                         key={page}
                         onClick={() => setCurrentPage(page as number)}
-                        className={`px-3 py-1.5 rounded border text-xs font-medium ${
+                        className={`px-3 py-1.5 rounded-lg border border-white/60 font-medium transition-colors ${
                           currentPage === page
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            ? 'bg-teal-600 text-white border-teal-600 shadow-md'
+                            : 'bg-white/40 hover:bg-white/80 text-slate-700'
                         }`}
                       >
                         {page}
@@ -194,7 +202,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
               <button 
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
-import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, FileText, Anchor, DollarSign, Banknote, ShoppingBag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
@@ -63,9 +63,9 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
     return bookingData.reduce((acc, b) => {
       // Formula: Target = Cost - (Kimberry + CIC + PSC + EMC + Other)
       const target = b.jobs.reduce((sum, j) => {
-        const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
-        const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
-        return sum + (j.cost - kimberry - otherFees);
+         const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
+         const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
+         return sum + (j.cost - kimberry - otherFees);
       }, 0);
 
       const addNet = (b.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
@@ -136,117 +136,118 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   return (
-    <div className="p-8 max-w-full">
-      <div className="mb-6 flex flex-col md:flex-row justify-between items-end gap-4">
+    <div className="w-full h-full pb-10">
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6 px-2">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">Quản lý Booking</h1>
-          <p className="text-slate-500 mt-1">Danh sách tổng hợp Booking và chi tiết hóa đơn chi phí</p>
+          <h1 className="text-2xl font-bold text-slate-800">Quản lý Booking</h1>
+          <p className="text-sm text-slate-500 mt-1">Danh sách tổng hợp Booking và chi tiết hóa đơn chi phí</p>
         </div>
-        <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-           <Filter className="w-4 h-4 text-gray-500" />
-           <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="text-sm border-none focus:ring-0 text-gray-700 font-medium bg-transparent outline-none cursor-pointer min-w-[120px]">
-             <option value="">Tất cả các tháng</option>
-             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-           </select>
+        <div className="flex items-center">
+           <div className="glass-panel px-4 py-2 flex items-center space-x-2 rounded-lg text-slate-700">
+               <Filter className="w-4 h-4 text-slate-500" />
+               <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none cursor-pointer min-w-[120px] text-slate-700"
+               >
+                 <option value="">Tất cả các tháng</option>
+                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+               </select>
+           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden pb-32">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs tracking-wider">
-            <tr>
-              <th className="px-6 py-4">Tháng</th>
-              <th className="px-6 py-4">Booking</th>
-              <th className="px-6 py-4">Line</th>
-              <th className="px-6 py-4 text-center">Số Job</th>
-              <th className="px-6 py-4 text-right">Tổng Thu</th>
-              <th className="px-6 py-4 text-right">Tổng Chi</th>
-              <th className="px-6 py-4 text-right">Chênh lệch</th>
-              <th className="px-6 py-4 text-right">Profit</th>
-              <th className="px-6 py-4 text-center">Cont</th>
-              <th className="px-6 py-4 text-center w-16">Chức năng</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {paginatedData.map((booking) => {
-              // Calculate Target (Net Cost expectation)
-              // Target = Job Cost - (Kimberry Fee + CIC + PSC + EMC + Other)
-              const target = booking.jobs.reduce((sum, j) => {
-                 const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
-                 const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
-                 return sum + (j.cost - kimberry - otherFees);
-              }, 0);
-
-              // Actual Net Payment
-              const addNet = (booking.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
-              const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
-              
-              // Diff = Actual Payment - Target
-              const diff = actualNet - target;
-
-              return (
-                <tr key={booking.bookingId} className="hover:bg-blue-50 transition-colors group">
-                  <td className="px-6 py-4 font-medium text-slate-900" onClick={() => setSelectedBooking(booking)}>Tháng {booking.month}</td>
-                  <td className="px-6 py-4 text-blue-600 font-bold cursor-pointer hover:underline" onClick={() => setSelectedBooking(booking)}>{booking.bookingId}</td>
-                  <td className="px-6 py-4 text-slate-600">{booking.line}</td>
-                  <td className="px-6 py-4 text-center"><span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold">{booking.jobCount}</span></td>
-                  <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(booking.totalSell)}</td>
-                  <td className="px-6 py-4 text-right font-medium text-red-600">{formatCurrency(booking.totalCost)}</td>
-                  <td className={`px-6 py-4 text-right font-bold ${diff !== 0 ? 'text-orange-600' : 'text-gray-300'}`}>{formatCurrency(diff)}</td>
-                  <td className={`px-6 py-4 text-right font-bold ${booking.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(booking.totalProfit)}</td>
-                  <td className="px-6 py-4 text-center text-gray-500">
-                     <div className="flex flex-col text-xs">
-                        {booking.totalCont20 > 0 && <span>{booking.totalCont20} x 20'</span>}
-                        {booking.totalCont40 > 0 && <span>{booking.totalCont40} x 40'</span>}
-                        {booking.totalCont20 === 0 && booking.totalCont40 === 0 && <span>-</span>}
-                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-center relative action-menu-container">
-                     <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === booking.bookingId ? null : booking.bookingId); }} className={`p-1.5 rounded-full hover:bg-white hover:shadow-md transition-all ${activeMenuId === booking.bookingId ? 'bg-white shadow-md text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}>
-                       <MoreVertical className="w-4 h-4" />
-                     </button>
-                     {activeMenuId === booking.bookingId && (
-                       <div className="absolute right-8 top-0 mt-0 w-60 bg-white rounded-lg shadow-xl border border-gray-100 z-[60] py-1 text-left animate-in fade-in zoom-in-95 duration-100">
-                         <div className="px-3 py-2 border-b border-gray-50 text-xs font-bold text-gray-400 uppercase tracking-wider">Thao tác Booking</div>
-                         <button onClick={() => handleMenuAction(booking, 'view')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center transition-colors"><Eye className="w-4 h-4 mr-2.5 text-gray-400" /> Xem chi tiết</button>
-                         <button onClick={() => handleMenuAction(booking, 'edit')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center transition-colors"><Edit className="w-4 h-4 mr-2.5 text-gray-400" /> Chỉnh sửa</button>
-                         <div className="border-t border-gray-100 my-1"></div>
-                         <button onClick={() => handleMenuAction(booking, 'payment-lc')} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium"><Banknote className="w-4 h-4 mr-2.5" /> Phiếu chi Local Charge</button>
-                         <button onClick={() => handleMenuAction(booking, 'payment-deposit')} className="w-full text-left px-4 py-2.5 text-sm text-indigo-600 hover:bg-indigo-50 flex items-center transition-colors font-medium"><Anchor className="w-4 h-4 mr-2.5" /> Chi Cược (Deposit)</button>
-                         <button onClick={() => handleMenuAction(booking, 'payment-ext')} className="w-full text-left px-4 py-2.5 text-sm text-orange-600 hover:bg-orange-50 flex items-center transition-colors font-medium"><DollarSign className="w-4 h-4 mr-2.5" /> Chi Gia Hạn</button>
-                         <button onClick={() => handleMenuAction(booking, 'purchase')} className="w-full text-left px-4 py-2.5 text-sm text-teal-600 hover:bg-teal-50 flex items-center transition-colors font-medium"><ShoppingBag className="w-4 h-4 mr-2.5" /> Phiếu mua hàng</button>
-                       </div>
-                     )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          {bookingData.length > 0 && (
-            <tfoot className="bg-gray-50 border-t border-gray-300 font-bold text-gray-800 text-xs uppercase">
+      <div className="glass-panel rounded-2xl overflow-hidden mx-2 shadow-sm">
+        <div className="overflow-x-auto pb-32">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <td colSpan={4} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
-                <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
-                <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
-                <td className={`px-6 py-4 text-right ${totals.diff !== 0 ? 'text-orange-600' : 'text-gray-400'}`}>{formatCurrency(totals.diff)}</td>
-                <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
-                <td colSpan={2}></td>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Line</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Số Job</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Tổng Thu</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Tổng Chi</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Chênh lệch</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Profit</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Cont</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center w-16">Chức năng</th>
               </tr>
-            </tfoot>
-          )}
-        </table>
+            </thead>
+            <tbody className="divide-y divide-white/40">
+              {paginatedData.map((booking) => {
+                const target = booking.jobs.reduce((sum, j) => {
+                   const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
+                   const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
+                   return sum + (j.cost - kimberry - otherFees);
+                }, 0);
+
+                const addNet = (booking.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
+                const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
+                const diff = actualNet - target;
+
+                return (
+                  <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
+                    <td className="px-6 py-4 font-medium text-slate-500" onClick={() => setSelectedBooking(booking)}>Tháng {booking.month}</td>
+                    <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => setSelectedBooking(booking)}>{booking.bookingId}</td>
+                    <td className="px-6 py-4 text-slate-600">{booking.line}</td>
+                    <td className="px-6 py-4 text-center"><span className="bg-slate-100/80 text-slate-600 px-2 py-1 rounded-md text-[10px] font-bold border border-slate-200/50">{booking.jobCount}</span></td>
+                    <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(booking.totalSell)}</td>
+                    <td className="px-6 py-4 text-right font-medium text-red-600">{formatCurrency(booking.totalCost)}</td>
+                    <td className={`px-6 py-4 text-right font-bold ${diff !== 0 ? 'text-orange-600' : 'text-slate-300'}`}>{formatCurrency(diff)}</td>
+                    <td className={`px-6 py-4 text-right font-bold ${booking.totalProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatCurrency(booking.totalProfit)}</td>
+                    <td className="px-6 py-4 text-center text-slate-500">
+                       <div className="flex flex-col text-[10px] items-center gap-1">
+                          {booking.totalCont20 > 0 && <span className="px-1.5 py-0.5 bg-blue-100/50 text-blue-700 rounded border border-blue-200/50">{booking.totalCont20} x 20'</span>}
+                          {booking.totalCont40 > 0 && <span className="px-1.5 py-0.5 bg-purple-100/50 text-purple-700 rounded border border-purple-200/50">{booking.totalCont40} x 40'</span>}
+                          {booking.totalCont20 === 0 && booking.totalCont40 === 0 && <span>-</span>}
+                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-center relative action-menu-container">
+                       <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === booking.bookingId ? null : booking.bookingId); }} className={`p-1.5 rounded-full hover:bg-white/50 transition-all ${activeMenuId === booking.bookingId ? 'bg-white shadow-md text-teal-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                         <MoreVertical className="w-4 h-4" />
+                       </button>
+                       {activeMenuId === booking.bookingId && (
+                         <div className="absolute right-8 top-0 mt-0 w-60 glass-panel bg-white/95 rounded-xl shadow-xl border border-white/20 z-[60] py-1 text-left animate-in fade-in zoom-in-95 duration-100">
+                           <div className="px-3 py-2 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Thao tác Booking</div>
+                           <button onClick={() => handleMenuAction(booking, 'view')} className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-teal-50 flex items-center transition-colors"><Eye className="w-4 h-4 mr-2.5 text-teal-500" /> Xem chi tiết</button>
+                           <button onClick={() => handleMenuAction(booking, 'edit')} className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-blue-50 flex items-center transition-colors"><Edit className="w-4 h-4 mr-2.5 text-blue-500" /> Chỉnh sửa</button>
+                           <div className="border-t border-slate-100 my-1"></div>
+                           <button onClick={() => handleMenuAction(booking, 'payment-lc')} className="w-full text-left px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium"><Banknote className="w-4 h-4 mr-2.5" /> Phiếu chi Local Charge</button>
+                           <button onClick={() => handleMenuAction(booking, 'payment-deposit')} className="w-full text-left px-4 py-2.5 text-xs text-indigo-600 hover:bg-indigo-50 flex items-center transition-colors font-medium"><Anchor className="w-4 h-4 mr-2.5" /> Chi Cược (Deposit)</button>
+                           <button onClick={() => handleMenuAction(booking, 'payment-ext')} className="w-full text-left px-4 py-2.5 text-xs text-orange-600 hover:bg-orange-50 flex items-center transition-colors font-medium"><DollarSign className="w-4 h-4 mr-2.5" /> Chi Gia Hạn</button>
+                           <button onClick={() => handleMenuAction(booking, 'purchase')} className="w-full text-left px-4 py-2.5 text-xs text-teal-600 hover:bg-teal-50 flex items-center transition-colors font-medium rounded-b-xl"><ShoppingBag className="w-4 h-4 mr-2.5" /> Phiếu mua hàng</button>
+                         </div>
+                       )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {bookingData.length > 0 && (
+              <tfoot className="bg-white/30 border-t border-white/40 font-bold text-slate-800 text-xs uppercase">
+                <tr>
+                  <td colSpan={4} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
+                  <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
+                  <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
+                  <td className={`px-6 py-4 text-right ${totals.diff !== 0 ? 'text-orange-600' : 'text-slate-400'}`}>{formatCurrency(totals.diff)}</td>
+                  <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
          {totalPages > 1 && (
-          <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center text-sm text-gray-600">
+          <div className="px-6 py-4 border-t border-white/40 bg-white/30 flex justify-between items-center text-xs text-slate-600">
             <div>Trang {currentPage} / {totalPages} (Tổng {bookingData.length} bookings)</div>
-            <div className="flex space-x-2 items-center">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
-              <div className="flex space-x-1">
-                 {paginationRange.map((page, idx) => (
-                    page === '...' ? <span key={`dots-${idx}`} className="px-2 py-1.5 text-gray-400">...</span> : 
-                    <button key={page} onClick={() => setCurrentPage(page as number)} className={`px-3 py-1.5 rounded border text-xs font-medium ${currentPage === page ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>{page}</button>
-                 ))}
-              </div>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
+            <div className="flex space-x-1.5">
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+              {paginationRange.map((page, idx) => (
+                 page === '...' ? <span key={`dots-${idx}`} className="px-2 py-1.5">...</span> : 
+                 <button key={page} onClick={() => setCurrentPage(page as number)} className={`px-3 py-1.5 rounded-lg border border-white/60 font-medium transition-colors ${currentPage === page ? 'bg-teal-600 text-white border-teal-600 shadow-md' : 'bg-white/40 hover:bg-white/80 text-slate-700'}`}>{page}</button>
+              ))}
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"><ChevronRight className="w-4 h-4" /></button>
             </div>
           </div>
         )}
@@ -273,7 +274,6 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
              isOpen={purchaseModalOpen}
              onClose={() => setPurchaseModalOpen(false)}
              booking={targetBookingForPurchase}
-             // You can pass shippingLines here if you have them in BookingList props, otherwise mock or rely on code
              onSave={handleSavePurchase}
           />
       )}
