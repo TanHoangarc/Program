@@ -13,11 +13,11 @@ import { SystemPage } from './pages/SystemPage';
 import { Reconciliation } from './pages/Reconciliation';
 import { ProfitReport } from './pages/ProfitReport';
 import { LoginPage } from './components/LoginPage';
-import { JobData, Customer, ShippingLine } from './types';
+import { JobData, Customer, ShippingLine, UserAccount } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
 
 // --- SECURITY CONFIGURATION ---
-const ALLOWED_USERS = [
+const DEFAULT_USERS: UserAccount[] = [
   { username: 'KimberryAdmin', pass: 'Jwckim@123#', role: 'Admin' },
   { username: 'Kimberrystaff', pass: 'Jwckim@124#', role: 'Staff' },
   { username: 'Kimberrymanager', pass: 'Jwckim@125#', role: 'Manager' }
@@ -75,6 +75,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : MOCK_SHIPPING_LINES;
   });
 
+  const [users, setUsers] = useState<UserAccount[]>(() => {
+    const saved = localStorage.getItem('logistics_users_v1');
+    return saved ? JSON.parse(saved) : DEFAULT_USERS;
+  });
+
   // --- AUTHENTICATION LOGIC & SINGLE SESSION ---
   useEffect(() => {
     const savedUser = sessionStorage.getItem('kb_user');
@@ -98,7 +103,9 @@ const App: React.FC = () => {
 
   const handleLogin = (usernameInput: string, passwordInput: string) => {
     setLoginError('');
-    const user = ALLOWED_USERS.find(u => u.username === usernameInput && u.pass === passwordInput);
+    // Check against dynamic users state
+    const user = users.find(u => u.username === usernameInput && u.pass === passwordInput);
+    
     if (user) {
       const userData = { username: user.username, role: user.role };
       setIsAuthenticated(true);
@@ -128,6 +135,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('logistics_jobs_v2', JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem('logistics_customers_v1', JSON.stringify(customers)); }, [customers]);
   useEffect(() => { localStorage.setItem('logistics_lines_v1', JSON.stringify(lines)); }, [lines]);
+  useEffect(() => { localStorage.setItem('logistics_users_v1', JSON.stringify(users)); }, [users]);
 
   const handleAddJob = (job: JobData) => setJobs(prev => [job, ...prev]);
   const handleEditJob = (updatedJob: JobData) => setJobs(prev => prev.map(job => job.id === updatedJob.id ? updatedJob : job));
@@ -145,10 +153,16 @@ const App: React.FC = () => {
   const handleEditLine = (line: ShippingLine) => setLines(prev => prev.map(l => l.id === line.id ? line : l));
   const handleDeleteLine = (id: string) => setLines(prev => prev.filter(l => l.id !== id));
 
+  // User Management Handlers
+  const handleAddUser = (user: UserAccount) => setUsers(prev => [...prev, user]);
+  const handleEditUser = (updatedUser: UserAccount, originalUsername: string) => 
+    setUsers(prev => prev.map(u => u.username === originalUsername ? updatedUser : u));
+  const handleDeleteUser = (username: string) => setUsers(prev => prev.filter(u => u.username !== username));
+
   const handleResetData = () => {
     if (window.confirm("Bạn có chắc chắn muốn reset về dữ liệu mẫu?")) {
-      setJobs(sanitizeData(MOCK_DATA)); setCustomers(MOCK_CUSTOMERS); setLines(MOCK_SHIPPING_LINES);
-      localStorage.removeItem('logistics_jobs_v2'); localStorage.removeItem('logistics_customers_v1'); localStorage.removeItem('logistics_lines_v1');
+      setJobs(sanitizeData(MOCK_DATA)); setCustomers(MOCK_CUSTOMERS); setLines(MOCK_SHIPPING_LINES); setUsers(DEFAULT_USERS);
+      localStorage.removeItem('logistics_jobs_v2'); localStorage.removeItem('logistics_customers_v1'); localStorage.removeItem('logistics_lines_v1'); localStorage.removeItem('logistics_users_v1');
       window.location.reload();
     }
   };
@@ -194,7 +208,19 @@ const App: React.FC = () => {
               {currentPage === 'debt' && <DebtManagement jobs={jobs} customers={customers} />}
               {currentPage === 'profit' && <ProfitReport jobs={jobs} onViewJob={(id) => { setTargetJobId(id); setCurrentPage('entry'); }} />}
               {currentPage === 'reconciliation' && <Reconciliation jobs={jobs} />}
-              {currentPage === 'system' && <SystemPage jobs={jobs} customers={customers} lines={lines} onRestore={handleRestoreSystem} />}
+              {currentPage === 'system' && (
+                <SystemPage 
+                  jobs={jobs} 
+                  customers={customers} 
+                  lines={lines} 
+                  users={users}
+                  currentUser={currentUser}
+                  onRestore={handleRestoreSystem} 
+                  onAddUser={handleAddUser}
+                  onEditUser={handleEditUser}
+                  onDeleteUser={handleDeleteUser}
+                />
+              )}
            </div>
         </main>
       </div>

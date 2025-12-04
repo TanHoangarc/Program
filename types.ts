@@ -1,3 +1,4 @@
+
 export interface ExtensionData {
   id: string;
   customerId: string; // Ma KH
@@ -127,6 +128,12 @@ export interface BookingSummary {
   
   // Invoice Details
   costDetails: BookingCostDetails;
+}
+
+export interface UserAccount {
+  username: string;
+  pass: string;
+  role: 'Admin' | 'Manager' | 'Staff';
 }
 
 export const INITIAL_JOB: JobData = {

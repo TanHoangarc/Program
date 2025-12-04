@@ -162,7 +162,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // ... (Keep existing upload logic)
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -174,7 +173,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const data = XLSX.utils.sheet_to_json(ws);
       let addedCount = 0; let updatedCount = 0;
       data.forEach((row: any) => {
-        // ... (Mapping Logic - Same as before)
         const rowJobCode = row['Job'] || row['Job Code'];
         const mappedData: Partial<JobData> = {
           month: row['Tháng']?.toString() || '1',
@@ -218,7 +216,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleExportExcel = () => {
-    // ... (Keep existing export logic)
     const dataToExport = filteredJobs.map(job => {
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
       return {
@@ -385,6 +382,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                            <div className="border-t border-slate-100 my-1"></div>
                            <button onClick={() => handleQuickReceive(job, 'local')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-indigo-50 font-medium flex items-center transition-colors"><FileText className="w-3 h-3 mr-2 text-indigo-500" /> Thu Local Charge</button>
                            <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-purple-50 font-medium flex items-center transition-colors"><Anchor className="w-3 h-3 mr-2 text-purple-500" /> Thu Cược</button>
+                           <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-orange-50 font-medium flex items-center transition-colors"><DollarSign className="w-3 h-3 mr-2 text-orange-500" /> Thu Gia Hạn</button>
                            <div className="border-t border-slate-100 my-1"></div>
                            <button onClick={() => handleDelete(job.id)} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center transition-colors rounded-b-xl"><Trash2 className="w-3 h-3 mr-2" /> Xóa</button>
                          </div>
