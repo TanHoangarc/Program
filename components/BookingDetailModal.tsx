@@ -16,7 +16,9 @@ const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
     {...props} 
     // Ensure value is never null
     value={props.value ?? ''}
-    className={`w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT disabled:bg-gray-50 disabled:text-gray-500 transition-shadow ${props.className || ''}`}
+    // Updated: Removed default py-2 to allow height classes to control vertical size precisely
+    // If no className is provided, default to h-10. If className is provided, expect it to include height if needed.
+    className={`w-full px-3 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT disabled:bg-gray-50 disabled:text-gray-500 transition-shadow ${props.className || 'h-10'}`}
   />
 );
 
@@ -68,7 +70,8 @@ const DateInput = ({
   };
 
   return (
-    <div className={`relative w-full ${className}`}>
+    // Default to h-10 if no height class provided
+    <div className={`relative w-full ${className || 'h-10'}`}>
       <input 
         type="text" 
         value={displayValue} 
@@ -76,7 +79,7 @@ const DateInput = ({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="dd/mm/yyyy"
-        className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT pr-10 h-full"
+        className="w-full px-3 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT focus:border-brand-DEFAULT pr-10 h-full"
       />
       <div className="absolute right-0 top-0 h-full w-10 flex items-center justify-center">
          <input 
@@ -450,14 +453,15 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     type="text" 
                     value={localCharge.invoice} 
                     onChange={(e) => handleLocalChargeChange('invoice', e.target.value)}
+                    className="h-10"
                   />
                 </div>
                 <div className="space-y-1">
                   <Label>Ngày hóa đơn</Label>
-                  <Input 
-                    type="date" 
+                  <DateInput 
                     value={localCharge.date} 
                     onChange={(e) => handleLocalChargeChange('date', e.target.value)}
+                    className="h-10"
                   />
                 </div>
                 <div className="space-y-1">
@@ -466,7 +470,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     type="number" 
                     value={localCharge.net || ''} 
                     onChange={(e) => handleLocalChargeChange('net', Number(e.target.value))}
-                    className="text-right"
+                    className="text-right h-10"
                   />
                 </div>
                 <div className="space-y-1">
@@ -475,7 +479,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     type="number" 
                     value={localCharge.vat || ''} 
                     onChange={(e) => handleLocalChargeChange('vat', Number(e.target.value))}
-                    className="text-right"
+                    className="text-right h-10"
                   />
                 </div>
              </div>
@@ -492,19 +496,19 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                                   <div className="space-y-1">
                                      <Label>Số hóa đơn</Label>
-                                     <Input value={item.invoice} onChange={e => handleUpdateAdditionalLC(item.id, 'invoice', e.target.value)} className="py-1.5 text-xs" />
+                                     <Input value={item.invoice} onChange={e => handleUpdateAdditionalLC(item.id, 'invoice', e.target.value)} className="h-8 text-xs" />
                                   </div>
                                   <div className="space-y-1">
                                      <Label>Ngày hóa đơn</Label>
-                                     <Input type="date" value={item.date} onChange={e => handleUpdateAdditionalLC(item.id, 'date', e.target.value)} className="py-1.5 text-xs" />
+                                     <DateInput value={item.date} onChange={e => handleUpdateAdditionalLC(item.id, 'date', e.target.value)} className="h-8 text-xs" />
                                   </div>
                                   <div className="space-y-1">
                                      <Label>Giá Net</Label>
-                                     <Input type="number" value={item.net || ''} onChange={e => handleUpdateAdditionalLC(item.id, 'net', Number(e.target.value))} className="py-1.5 text-xs text-right" placeholder="0" />
+                                     <Input type="number" value={item.net || ''} onChange={e => handleUpdateAdditionalLC(item.id, 'net', Number(e.target.value))} className="h-8 text-xs text-right" placeholder="0" />
                                   </div>
                                   <div className="space-y-1">
                                      <Label>VAT</Label>
-                                     <Input type="number" value={item.vat || ''} onChange={e => handleUpdateAdditionalLC(item.id, 'vat', Number(e.target.value))} className="py-1.5 text-xs text-right" placeholder="0" />
+                                     <Input type="number" value={item.vat || ''} onChange={e => handleUpdateAdditionalLC(item.id, 'vat', Number(e.target.value))} className="h-8 text-xs text-right" placeholder="0" />
                                   </div>
                               </div>
                            </div>
@@ -636,16 +640,15 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                             <Input 
                               value={ext.invoice} 
                               onChange={(e) => handleUpdateExtensionCost(ext.id, 'invoice', e.target.value)}
-                              className="py-1"
+                              className="h-8"
                               placeholder="Số HĐ"
                             />
                           </td>
                           <td className="px-4 py-2">
-                             <Input 
-                              type="date" 
+                             <DateInput 
                               value={ext.date} 
                               onChange={(e) => handleUpdateExtensionCost(ext.id, 'date', e.target.value)}
-                              className="py-1"
+                              className="h-8"
                             />
                           </td>
                           <td className="px-4 py-2">
@@ -653,7 +656,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                               type="number" 
                               value={ext.net || ''} 
                               onChange={(e) => handleUpdateExtensionCost(ext.id, 'net', Number(e.target.value))}
-                              className="py-1 text-right"
+                              className="h-8 text-right"
                               placeholder="0"
                             />
                           </td>
@@ -662,7 +665,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                               type="number" 
                               value={ext.vat || ''} 
                               onChange={(e) => handleUpdateExtensionCost(ext.id, 'vat', Number(e.target.value))}
-                              className="py-1 text-right"
+                              className="h-8 text-right"
                               placeholder="0"
                             />
                           </td>
