@@ -36,7 +36,8 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
         const grouped: Record<string, { 
           id: string, 
           name: string, 
-          localChargeDebt: number, 
+          localChargePaid: number,   // NEW: Đã thu (Có Bank)
+          localChargeUnpaid: number, // NEW: Còn nợ (Chưa Bank)
           extensionDebt: number,
           depositDebt: number 
         }> = {};
@@ -68,35 +69,41 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
           const mainIdentity = getCustomerIdentity(job.customerId, job.customerName);
           
           const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
-          const localChargeAmt = (job.sell || 0) + (job.localChargeTotal || 0);
-          const hasDebt = localChargeAmt > 0 || extTotal > 0;
-
-          // Only count debt if Bank is empty (Unpaid)
-          if (hasDebt && !job.bank && mainIdentity) {
+          
+          // UPDATED: Only take localChargeTotal (Amount), exclude Sell
+          const localChargeAmt = (job.localChargeTotal || 0);
+          
+          if (mainIdentity) {
              if (!grouped[mainIdentity.key]) {
                  grouped[mainIdentity.key] = {
                      id: mainIdentity.key,
                      name: mainIdentity.name,
-                     localChargeDebt: 0,
+                     localChargePaid: 0,
+                     localChargeUnpaid: 0,
                      extensionDebt: 0,
                      depositDebt: 0
                  };
              }
-             grouped[mainIdentity.key].localChargeDebt += localChargeAmt;
-             grouped[mainIdentity.key].extensionDebt += extTotal;
+
+             // Logic phân loại Đã thu / Còn nợ dựa trên trường Bank
+             if (job.bank) {
+                 // Đã chọn ngân hàng -> Đã thu
+                 grouped[mainIdentity.key].localChargePaid += localChargeAmt;
+             } else {
+                 // Chưa chọn ngân hàng -> Còn nợ
+                 grouped[mainIdentity.key].localChargeUnpaid += localChargeAmt;
+                 
+                 // Extension cũng tính là nợ nếu chưa có Bank (theo logic cũ)
+                 grouped[mainIdentity.key].extensionDebt += extTotal;
+             }
           }
 
           // --- 2. DEPOSIT DEBT ---
-          // Determine deposit customer identity (might be different or same)
-          // Often deposit customer ID is missing, try to infer or skip
+          // Determine deposit customer identity
           if (job.thuCuoc > 0 && !job.ngayThuHoan) {
-              // Try to find who deposited. If maKhCuocId exists, use it. 
-              // If not, it's usually the main customer.
               const depositId = job.maKhCuocId || job.customerId; 
-              // Note: We don't have a specific "Deposit Customer Name" field, so we rely on ID or main Name if ID matches
               let depositIdentity = getCustomerIdentity(depositId, (depositId === job.customerId ? job.customerName : undefined));
               
-              // If we still can't find identity but there is a main customer name, use that
               if (!depositIdentity && job.customerName) {
                   depositIdentity = getCustomerIdentity(undefined, job.customerName);
               }
@@ -106,7 +113,8 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
                       grouped[depositIdentity.key] = {
                           id: depositIdentity.key,
                           name: depositIdentity.name,
-                          localChargeDebt: 0,
+                          localChargePaid: 0,
+                          localChargeUnpaid: 0,
                           extensionDebt: 0,
                           depositDebt: 0
                       };
@@ -119,7 +127,8 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
         data = Object.values(grouped)
           .map(item => ({
             ...item,
-            totalReceivable: item.localChargeDebt + item.extensionDebt
+            // Tổng phải thu = Local Charge Nợ + Gia Hạn Nợ (Không tính Cược)
+            totalReceivable: item.localChargeUnpaid + item.extensionDebt
           }))
           .sort((a, b) => b.totalReceivable - a.totalReceivable);
           
@@ -127,7 +136,6 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
       }
 
       case 'LINE_DEBT': {
-        // Group by Line, sum expenses
         const grouped: Record<string, { line: string, totalCost: number, jobCount: number }> = {};
         jobs.forEach(job => {
           if (job.chiPayment > 0) {
@@ -144,13 +152,11 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
       }
 
       case 'UNPAID_JOBS': {
-        // Jobs where Bank is empty but has revenue
         data = jobs.filter(j => !j.bank && (j.sell > 0 || j.localChargeTotal > 0));
         break;
       }
 
       case 'LONGHOANG_NO_HBL': {
-        // Customer name contains "Long Hoàng" AND HBL is empty
         data = jobs.filter(j => 
           String(j.customerName).toLowerCase().includes('long hoàng') && !j.hbl
         );
@@ -158,7 +164,6 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
       }
 
       case 'NO_INVOICE_JOBS': {
-        // Has revenue but Invoice is empty
         data = jobs.filter(j => 
           (j.sell > 0 || j.localChargeTotal > 0) && !j.localChargeInvoice
         );
@@ -166,26 +171,21 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
       }
 
       case 'TCB_PAYMENT': {
-        // Paid via TCB Bank
         data = jobs.filter(j => j.bank === 'TCB Bank');
         break;
       }
 
       case 'DEPOSIT_MISSING_INFO': {
-        // Deposit > 0 but No Customer ID selected
         data = jobs.filter(j => j.thuCuoc > 0 && !j.maKhCuocId);
         break;
       }
 
       case 'BOOKING_NO_INVOICE': {
-        // Booking Cost Details -> Local Charge Invoice/Date is missing
         const processed = new Set();
         data = jobs.filter(j => {
           if (!j.booking || processed.has(j.booking)) return false;
-          
           const details = j.bookingCostDetails?.localCharge;
           const isMissing = !details?.invoice || !details?.date;
-          
           if (isMissing) {
             processed.add(j.booking);
             return true;
@@ -216,11 +216,12 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
     let rows: any[] = [];
 
     if (reportType === 'CUSTOMER_DEBT') {
-      headers = ['Khách Hàng', 'Nợ Cược', 'Tổng Local Charge', 'Tổng Gia Hạn', 'Tổng Phải Thu (Không tính cược)'];
+      headers = ['Khách Hàng', 'Nợ Cược', 'LC Đã Thu', 'LC Còn Nợ', 'Tổng Gia Hạn Nợ', 'Tổng Phải Thu (Không tính cược)'];
       rows = reportData.map((d: any) => [
         d.name, 
         d.depositDebt, 
-        d.localChargeDebt, 
+        d.localChargePaid,
+        d.localChargeUnpaid,
         d.extensionDebt, 
         d.totalReceivable
       ]);
@@ -313,8 +314,9 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
               <tr>
                 <th className="px-6 py-4">Khách Hàng</th>
                 <th className="px-6 py-4 text-right">Nợ Cược</th>
-                <th className="px-6 py-4 text-right">Tổng Local Charge</th>
-                <th className="px-6 py-4 text-right">Tổng Gia Hạn</th>
+                <th className="px-6 py-4 text-right bg-green-50 text-green-800 border-l border-green-100">LC Đã Thu</th>
+                <th className="px-6 py-4 text-right bg-red-50 text-red-800 border-r border-red-100">LC Còn Nợ</th>
+                <th className="px-6 py-4 text-right">Tổng Gia Hạn Nợ</th>
                 <th className="px-6 py-4 text-right">Tổng Phải Thu (Không tính Cược)</th>
               </tr>
             </thead>
@@ -337,9 +339,14 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
                         {formatCurrency(item.depositDebt)}
                       </td>
                       
-                      {/* Tổng Local Charge */}
-                      <td className={`px-6 py-4 text-right font-medium ${item.localChargeDebt > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-                        {formatCurrency(item.localChargeDebt)}
+                      {/* Local Charge Đã Thu */}
+                      <td className={`px-6 py-4 text-right font-medium bg-green-50/30 ${item.localChargePaid > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        {formatCurrency(item.localChargePaid)}
+                      </td>
+
+                       {/* Local Charge Còn Nợ */}
+                      <td className={`px-6 py-4 text-right font-medium bg-red-50/30 ${item.localChargeUnpaid > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                        {formatCurrency(item.localChargeUnpaid)}
                       </td>
 
                       {/* Tổng Gia Hạn */}
@@ -347,7 +354,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
                         {formatCurrency(item.extensionDebt)}
                       </td>
 
-                      {/* Tổng Phải Thu (Sum of LC + Ext) */}
+                      {/* Tổng Phải Thu (Sum of LC Unpaid + Ext) */}
                       <td className={`px-6 py-4 text-right font-bold text-base ${item.totalReceivable > 0 ? 'text-red-600' : 'text-green-600'}`}>
                         {formatCurrency(item.totalReceivable)}
                       </td>
@@ -355,7 +362,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
                   )
                 })
               ) : (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu công nợ</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu công nợ</td></tr>
               )}
             </tbody>
           </table>
