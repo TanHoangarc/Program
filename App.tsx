@@ -162,6 +162,23 @@ const autoBackup = async (overrideJobs?: JobData[]) => {
     console.error("AUTO BACKUP ERROR:", err);
   }
 };
+
+  // === AUTO BACKUP TRIGGER ===
+
+// Tự động backup khi thay đổi JOBS
+useEffect(() => {
+  autoBackup();
+}, [jobs]);
+
+// Tự động backup khi thay đổi CUSTOMERS
+useEffect(() => {
+  autoBackup();
+}, [customers]);
+
+// Tự động backup khi thay đổi LINES
+useEffect(() => {
+  autoBackup();
+}, [lines]);
   
   const handleAddJob = (job: JobData) => setJobs(prev => [job, ...prev]);
   const handleEditJob = (updatedJob: JobData) => setJobs(prev => prev.map(job => job.id === updatedJob.id ? updatedJob : job));
