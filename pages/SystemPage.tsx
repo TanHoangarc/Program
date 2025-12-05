@@ -41,7 +41,11 @@ const handleBackup = async () => {
 const res = await fetch("https://api.kimberry.id.vn/backup", {
     method: "POST",
     mode: "cors",
-    headers: { "Content-Type": "application/json" },
+    credentials: "omit",
+    headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    },
     body: JSON.stringify(data),
 });
 
