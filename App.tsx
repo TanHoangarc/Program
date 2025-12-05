@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -27,8 +28,8 @@ const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
 
 const App: React.FC = () => {
 
-  // Đánh dấu dữ liệu đã tải từ server chưa
-  const [loadedFromServer, setLoadedFromServer] = useState(false);
+  // Track server availability to prevent spamming failed requests
+  const [isServerAvailable, setIsServerAvailable] = useState(true);
 
   // --- AUTH STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -41,6 +42,9 @@ const App: React.FC = () => {
 
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [targetJobId, setTargetJobId] = useState<string | null>(null);
+  
+  // --- PENDING REQUESTS STATE (Admin Only) ---
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
 
   // Helper: Sanitize Data
   const sanitizeData = (data: JobData[]): JobData[] => {
@@ -83,11 +87,109 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEFAULT_USERS;
   });
 
+  // --- API FUNCTIONS (Defined BEFORE conditional return) ---
+
+  const sendPendingToServer = async () => {
+    if (!currentUser) return;
+    
+    if (!isServerAvailable) {
+        alert("Không thể kết nối với máy chủ (Chế độ Offline)");
+        return;
+    }
+
+    try {
+      const data = {
+        user: currentUser.username,
+        timestamp: new Date().toISOString(),
+        jobs, // Sends current state snapshots
+        customers,
+        lines
+      };
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      await fetch("https://api.kimberry.id.vn/pending", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      alert("Đã gửi dữ liệu lên server chờ Admin duyệt!");
+
+    } catch (err) {
+      console.error("Gửi pending thất bại:", err);
+      alert("Gửi thất bại: Không thể kết nối máy chủ.");
+    }
+  };
+
+  // --- ADMIN: FETCH PENDING REQUESTS ---
+  const fetchPendingRequests = async () => {
+    if (!currentUser || currentUser.role !== "Admin" || !isServerAvailable) return;
+    try {
+        const res = await fetch("https://api.kimberry.id.vn/pending");
+        if (res.ok) {
+            const data = await res.json();
+            // Ensure we get an array
+            setPendingRequests(Array.isArray(data) ? data : []);
+        }
+    } catch (e) {
+        console.warn("Failed to fetch pending requests", e);
+    }
+  };
+
+  // --- ADMIN: REJECT/DELETE REQUEST ---
+  const handleRejectRequest = async (requestId: string) => {
+      if (!isServerAvailable) return;
+      try {
+          await fetch(`https://api.kimberry.id.vn/pending/${requestId}`, { method: 'DELETE' });
+          // Update local state to remove item from UI immediately
+          setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+      } catch (e) {
+          console.error("Failed to delete request", e);
+          alert("Có lỗi khi xóa yêu cầu.");
+      }
+  };
+
+  // --- ADMIN: APPROVE REQUEST ---
+  const handleApproveRequest = async (requestId: string, incomingData: any) => {
+      // MERGE STRATEGY: Update existing by ID, add new
+      const mergeArrays = (current: any[], incoming: any[]) => {
+          const map = new Map(current.map(i => [i.id, i]));
+          incoming.forEach(i => map.set(i.id, i));
+          return Array.from(map.values());
+      };
+
+      const newJobs = mergeArrays(jobs, incomingData.jobs || []);
+      const newCustomers = mergeArrays(customers, incomingData.customers || []);
+      const newLines = mergeArrays(lines, incomingData.lines || []);
+
+      setJobs(newJobs);
+      setCustomers(newCustomers);
+      setLines(newLines);
+
+      // Delete the pending request after approval
+      await handleRejectRequest(requestId);
+      alert("Đã duyệt và cập nhật dữ liệu thành công!");
+  };
+
   // --- LOAD DATA FROM SERVER WHEN APP START ---
   useEffect(() => {
     const fetchServerData = async () => {
       try {
-        const res = await fetch("https://api.kimberry.id.vn/data");
+        // Use AbortController for timeout to fail fast if offline
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+
+        const res = await fetch("https://api.kimberry.id.vn/data", { 
+            signal: controller.signal 
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) throw new Error("Server response not OK");
+
         const data = await res.json();
 
         console.log("SERVER DATA LOADED:", data);
@@ -96,10 +198,11 @@ const App: React.FC = () => {
         if (data.customers) setCustomers(data.customers);
         if (data.lines) setLines(data.lines);
 
-        setLoadedFromServer(true);
+        setIsServerAvailable(true);
 
       } catch (err) {
-        console.error("Không lấy được dữ liệu từ máy A:", err);
+        console.warn("Server unavailable (Offline Mode): Using local data.");
+        setIsServerAvailable(false);
       }
     };
 
@@ -153,8 +256,8 @@ const App: React.FC = () => {
 
   // === AUTO BACKUP TO SERVER (Chỉ máy A ghi vào E) ===
   const autoBackup = async () => {
-    if (loadedFromServer) return; // tránh backup khi lấy từ máy A
     if (!currentUser || currentUser.role !== "Admin") return;
+    if (!isServerAvailable) return; // Don't try if server is down
 
     try {
       const data = {
@@ -165,23 +268,32 @@ const App: React.FC = () => {
         lines
       };
 
+      // Add simple timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       await fetch("https://api.kimberry.id.vn/backup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       console.log("AUTO BACKUP SUCCESS");
 
     } catch (err) {
-      console.error("AUTO BACKUP FAILED:", err);
+      console.warn("AUTO BACKUP FAILED (Offline Mode)", err);
+      // If auto backup fails, assume server is temporarily down
+      // We don't necessarily set isServerAvailable(false) here to allow retries later, 
+      // but we avoid spamming alerts.
     }
   };
 
   // Trigger auto backup on changes
-  useEffect(() => { autoBackup(); }, [jobs]);
-  useEffect(() => { autoBackup(); }, [customers]);
-  useEffect(() => { autoBackup(); }, [lines]);
+  useEffect(() => { 
+    if (isServerAvailable) autoBackup(); 
+  }, [jobs, customers, lines, isServerAvailable]);
 
   // SAVE TO LOCAL STORAGE
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
@@ -189,34 +301,16 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
 
-  
+  // Auto fetch pending when Admin goes to System page (HOOK MOVED UP)
+  useEffect(() => {
+      if (currentPage === 'system' && currentUser?.role === 'Admin') {
+          fetchPendingRequests();
+      }
+  }, [currentPage, currentUser]);
+
+  // --- EARLY RETURN FOR AUTH ---
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
-  
-const sendPendingToServer = async () => {
-  if (!currentUser) return;
-
-  try {
-    const data = {
-      user: currentUser.username,
-      timestamp: new Date().toISOString(),
-      jobs,
-      customers,
-      lines
-    };
-
-    await fetch("https://api.kimberry.id.vn/pending", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
-    });
-
-    alert("Đã gửi lên server chờ Admin duyệt!");
-
-  } catch (err) {
-    console.error("Gửi pending thất bại:", err);
-  }
-};
 
   return (
     <div className="flex w-full h-screen overflow-hidden relative">
@@ -244,14 +338,47 @@ const sendPendingToServer = async () => {
                 customers={customers}
                 onAddCustomer={(c) => setCustomers([...customers, c])}
                 lines={lines}
-                onAddLine={(l) => setLines([...lines, l])}
+                onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+                initialJobId={targetJobId}
+                onClearTargetJob={() => setTargetJobId(null)}
               />
             )}
 
             {currentPage === 'reports' && <Reports jobs={jobs} />}
-            {currentPage === 'booking' && <BookingList jobs={jobs} onEditJob={(j) => setJobs(prev => prev.map(x => x.id === j.id ? j : x))} />}
-            {currentPage === 'deposit-line' && <DepositList mode="line" jobs={jobs} customers={customers} lines={lines} />}
-            {currentPage === 'deposit-customer' && <DepositList mode="customer" jobs={jobs} customers={customers} lines={lines} />}
+            
+            {currentPage === 'booking' && (
+                <BookingList 
+                    jobs={jobs} 
+                    onEditJob={(j) => setJobs(prev => prev.map(x => x.id === j.id ? j : x))} 
+                    initialBookingId={targetBookingId}
+                    onClearTargetBooking={() => setTargetBookingId(null)}
+                />
+            )}
+            
+            {currentPage === 'deposit-line' && (
+                <DepositList 
+                    mode="line" 
+                    jobs={jobs} 
+                    customers={customers} 
+                    lines={lines} 
+                    onEditJob={(j) => setJobs(prev => prev.map(x => x.id === j.id ? j : x))}
+                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+                    onAddCustomer={(c) => setCustomers([...customers, c])}
+                />
+            )}
+            
+            {currentPage === 'deposit-customer' && (
+                <DepositList 
+                    mode="customer" 
+                    jobs={jobs} 
+                    customers={customers} 
+                    lines={lines} 
+                    onEditJob={(j) => setJobs(prev => prev.map(x => x.id === j.id ? j : x))}
+                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+                    onAddCustomer={(c) => setCustomers([...customers, c])}
+                />
+            )}
+            
             {currentPage === 'lhk' && <LhkList jobs={jobs} />}
             {currentPage === 'amis-thu' && <AmisExport jobs={jobs} customers={customers} mode="thu" />}
             {currentPage === 'amis-chi' && <AmisExport jobs={jobs} customers={customers} mode="chi" />}
@@ -263,11 +390,31 @@ const sendPendingToServer = async () => {
             )}
 
             {currentPage === 'data-lines' && (
-              <DataManagement mode="lines" data={lines} onAdd={(line) => setLines([...lines, line])} />
+              <DataManagement 
+                mode="lines" 
+                data={lines} 
+                onAdd={(line) => setLines([...lines, line])} 
+                onEdit={(line) => setLines(prev => prev.map(l => l.id === line.id ? line : l))}
+                onDelete={(id) => setLines(prev => prev.filter(l => l.id !== id))}
+              />
             )}
 
             {currentPage === 'data-customers' && (
-              <DataManagement mode="customers" data={customers} onAdd={(c) => setCustomers([...customers, c])} />
+              <DataManagement 
+                mode="customers" 
+                data={customers} 
+                onAdd={(c) => setCustomers([...customers, c])} 
+                onEdit={(c) => setCustomers(prev => prev.map(cust => cust.id === c.id ? c : cust))}
+                onDelete={(id) => setCustomers(prev => prev.filter(cust => cust.id !== id))}
+              />
+            )}
+
+            {currentPage === 'debt' && (
+              <DebtManagement jobs={jobs} customers={customers} />
+            )}
+
+            {currentPage === 'reconciliation' && (
+              <Reconciliation jobs={jobs} />
             )}
 
             {currentPage === 'system' && (
@@ -282,6 +429,13 @@ const sendPendingToServer = async () => {
                   setCustomers(d.customers);
                   setLines(d.lines);
                 }}
+                onAddUser={(u) => setUsers([...users, u])}
+                onEditUser={(u, oldName) => setUsers(users.map(user => user.username === oldName ? u : user))}
+                onDeleteUser={(name) => setUsers(users.filter(u => u.username !== name))}
+                // New Props for Pending Requests
+                pendingRequests={pendingRequests}
+                onApproveRequest={handleApproveRequest}
+                onRejectRequest={handleRejectRequest}
               />
             )}
 

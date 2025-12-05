@@ -1,7 +1,7 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Download, Upload, AlertTriangle, ShieldCheck, Users, Plus, Edit2, Trash2, X, Save, Eye, EyeOff } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -13,85 +13,23 @@ interface SystemPageProps {
   onAddUser: (user: UserAccount) => void;
   onEditUser: (user: UserAccount, originalUsername: string) => void;
   onDeleteUser: (username: string) => void;
+  // New Props for Pending Requests
+  pendingRequests?: any[];
+  onApproveRequest?: (requestId: string, data: any) => void;
+  onRejectRequest?: (requestId: string) => void;
 }
 
 export const SystemPage: React.FC<SystemPageProps> = ({ 
   jobs, customers, lines, users, currentUser, 
-  onRestore, onAddUser, onEditUser, onDeleteUser 
+  onRestore, onAddUser, onEditUser, onDeleteUser,
+  pendingRequests = [], onApproveRequest, onRejectRequest
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Staff' });
   const [showPass, setShowPass] = useState(false);
 
   const isAdmin = currentUser?.role === 'Admin';
-
-  // --- BACKUP ---
-const handleBackup = async () => {
-  const data = {
-    timestamp: new Date().toISOString(),
-    version: "2.1",
-    jobs,
-    customers,
-    lines,
-  };
-
-  try {
-const res = await fetch("https://api.kimberry.id.vn/backup", {
-    method: "POST",
-    mode: "cors",
-    credentials: "omit",
-    headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-});
-
-    const result = await res.json();
-    alert("Đã lưu dữ liệu vào máy chủ (Ổ E): " + result.message);
-  } catch (err) {
-    alert("Không thể kết nối máy chủ để sao lưu.");
-    console.error(err);
-  }
-};
-
-  // --- RESTORE ---
-  const handleRestoreClick = () => {
-    if (window.confirm('CẢNH BÁO: Việc khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại (Job, Khách hàng, Line) bằng dữ liệu trong file.\n\nBạn có chắc chắn muốn tiếp tục?')) {
-      fileInputRef.current?.click();
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        
-        // Simple validation
-        if (!json.jobs || !Array.isArray(json.jobs)) throw new Error('File không hợp lệ: Thiếu dữ liệu Job');
-        
-        onRestore({
-          jobs: json.jobs,
-          customers: json.customers || [],
-          lines: json.lines || []
-        });
-
-        alert(`Khôi phục thành công!\n- ${json.jobs.length} Jobs\n- ${json.customers?.length || 0} Khách hàng\n- ${json.lines?.length || 0} Hãng tàu`);
-      } catch (err) {
-        alert('Lỗi: File backup không hợp lệ hoặc bị hỏng.');
-        console.error(err);
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsText(file);
-  };
 
   // --- USER MANAGEMENT ---
   const handleAddUserClick = () => {
@@ -138,6 +76,19 @@ const res = await fetch("https://api.kimberry.id.vn/backup", {
       }
   };
 
+  // --- APPROVE HANDLERS ---
+  const handleApprove = (req: any) => {
+      if (window.confirm(`Duyệt dữ liệu từ ${req.user}?\n(Dữ liệu sẽ được gộp vào hệ thống)`)) {
+          if (onApproveRequest) onApproveRequest(req.id, req);
+      }
+  };
+
+  const handleReject = (id: string) => {
+      if (window.confirm("Bạn có chắc muốn từ chối và xóa yêu cầu này?")) {
+          if (onRejectRequest) onRejectRequest(id);
+      }
+  };
+
   return (
     <div className="p-8 max-w-full">
       <div className="mb-8">
@@ -147,56 +98,76 @@ const res = await fetch("https://api.kimberry.id.vn/backup", {
            </div>
            <h1 className="text-3xl font-bold">Quản Trị Hệ Thống</h1>
          </div>
-         <p className="text-slate-500 ml-11">Sao lưu, đồng bộ dữ liệu và quản lý tài khoản</p>
+         <p className="text-slate-500 ml-11">Đồng bộ dữ liệu và quản lý tài khoản</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        
-        {/* Backup Card */}
-        <div className="glass-panel p-8 rounded-2xl flex flex-col items-center text-center hover:border-blue-300 transition-colors">
-          <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6 shadow-md">
-            <Download className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">Sao Lưu Dữ Liệu</h2>
-          <p className="text-sm text-slate-500 mb-8 max-w-xs">
-            Tải xuống toàn bộ dữ liệu hiện tại (Job, Khách hàng, Hãng tàu) dưới dạng file .JSON để lưu trữ.
-          </p>
-          <button 
-            onClick={handleBackup}
-            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-xl shadow-lg hover:shadow-blue-500/30 transition-all flex items-center transform active:scale-95"
-          >
-            <Download className="w-5 h-5 mr-2" />
-            Tải Xuống File Backup
-          </button>
-        </div>
+      {/* PENDING REQUESTS SECTION - ADMIN ONLY */}
+      {isAdmin && (
+        <div className="glass-panel p-6 rounded-2xl mb-8 border border-white/40">
+            <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <FileInput className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-800">Duyệt Dữ Liệu Từ Nhân Viên</h2>
+                        <p className="text-xs text-slate-500">Các yêu cầu gửi dữ liệu đang chờ duyệt</p>
+                    </div>
+                </div>
+                <div className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-bold border border-orange-200">
+                    {pendingRequests.length} Yêu cầu
+                </div>
+            </div>
 
-        {/* Restore Card */}
-        <div className="glass-panel p-8 rounded-2xl flex flex-col items-center text-center hover:border-orange-300 transition-colors">
-          <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mb-6 shadow-md">
-            <Upload className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">Khôi Phục Dữ Liệu</h2>
-          <p className="text-sm text-slate-500 mb-8 max-w-xs">
-            Khôi phục dữ liệu từ file Backup (.JSON). Dữ liệu hiện tại sẽ bị ghi đè.
-          </p>
-          
-          <input 
-            type="file" 
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept=".json"
-            className="hidden" 
-          />
-          
-          <button 
-            onClick={handleRestoreClick}
-            className="px-6 py-3 bg-white border border-orange-200 text-orange-700 font-medium rounded-xl shadow-sm hover:bg-orange-50 transition-all flex items-center"
-          >
-            <Upload className="w-5 h-5 mr-2" />
-            Chọn File Khôi Phục
-          </button>
+            {pendingRequests.length > 0 ? (
+                <div className="space-y-4">
+                    {pendingRequests.map((req) => (
+                        <div key={req.id} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 transition-all hover:shadow-md">
+                            <div className="flex items-center space-x-4">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+                                    {req.user.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <div className="font-bold text-slate-800 flex items-center gap-2">
+                                        {req.user}
+                                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-normal">
+                                            {req.timestamp ? new Date(req.timestamp).toLocaleString('vi-VN') : 'N/A'}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-slate-500 mt-1 flex gap-3">
+                                        <span>Jobs: <strong>{(req.jobs || []).length}</strong></span>
+                                        <span>|</span>
+                                        <span>Customers: <strong>{(req.customers || []).length}</strong></span>
+                                        <span>|</span>
+                                        <span>Lines: <strong>{(req.lines || []).length}</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex space-x-3">
+                                <button 
+                                    onClick={() => handleReject(req.id)}
+                                    className="px-4 py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors flex items-center"
+                                >
+                                    <X className="w-3.5 h-3.5 mr-1.5" /> Từ chối
+                                </button>
+                                <button 
+                                    onClick={() => handleApprove(req)}
+                                    className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 shadow-md hover:shadow-green-600/30 transition-all flex items-center"
+                                >
+                                    <Check className="w-3.5 h-3.5 mr-1.5" /> Duyệt & Gộp Dữ Liệu
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center py-8 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                    <UserCheck className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Không có yêu cầu nào đang chờ duyệt</p>
+                </div>
+            )}
         </div>
-      </div>
+      )}
 
       {/* User Management Section - ADMIN ONLY */}
       {isAdmin && (
@@ -244,19 +215,6 @@ const res = await fetch("https://api.kimberry.id.vn/backup", {
             </div>
         </div>
       )}
-
-      {/* Footer Info */}
-      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/50 flex items-start space-x-3">
-         <ShieldCheck className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" />
-         <div>
-            <h4 className="font-bold text-blue-900 text-sm">Cơ chế hoạt động</h4>
-            <p className="text-xs text-blue-800 mt-1 leading-relaxed">
-              Trang web hoạt động không cần máy chủ (Serverless), dữ liệu được lưu trực tiếp trên trình duyệt của bạn. 
-              Để sử dụng dữ liệu trên máy tính khác, hãy sử dụng tính năng <strong>Sao Lưu</strong> để lấy file về, 
-              sau đó gửi file sang máy mới và dùng tính năng <strong>Khôi Phục</strong> để nạp dữ liệu.
-            </p>
-         </div>
-      </div>
 
       {/* User Modal */}
       {isUserModalOpen && (
