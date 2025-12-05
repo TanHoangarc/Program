@@ -301,13 +301,13 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
       // 3. Prepare Form Data
       const formData = new FormData();
-      formData.append('invoiceFile', selectedFile);
+      formData.append("file", selectedFile);
       formData.append('folderPath', folderName); // This goes to E:\ServerData\Invoice\{folderName}
       formData.append('bookingId', booking.bookingId);
       formData.append('fileName', newFileName);
 
       // 4. Send to Server
-      const res = await fetch("https://api.kimberry.id.vn/upload-invoice", {
+      const res = await fetch("https://api.kimberry.id.vn/upload-file", {
         method: "POST",
         body: formData
       });
