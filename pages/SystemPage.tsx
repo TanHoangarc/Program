@@ -38,11 +38,12 @@ const handleBackup = async () => {
   };
 
   try {
-    const res = await fetch("https://api.kimberry.id.vn/backup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
+const res = await fetch("https://api.kimberry.id.vn/backup", {
+    method: "POST",
+    mode: "cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+});
 
     const result = await res.json();
     alert("Đã lưu dữ liệu vào máy chủ (Ổ E): " + result.message);
