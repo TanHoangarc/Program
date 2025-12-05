@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
@@ -265,7 +266,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
     try {
       // 1. Determine Folder Name (YY.MM)
-      // Uses localCharge.date if available, otherwise current date
+      // Logic: Uses the Year and Month from the Invoice Date (localCharge.date)
       const dateStr = localCharge.date || new Date().toISOString(); 
       const dateObj = new Date(dateStr);
       let year = dateObj.getFullYear().toString().slice(-2);
@@ -280,25 +281,43 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
       const folderName = `${year}.${month}`; // e.g., "25.07"
 
-      // 2. Prepare Form Data
+      // 2. Generate New Filename: Line.Booking.Invoice.dd.mm.yyyy.ext
+      const originalName = selectedFile.name;
+      const extension = originalName.substring(originalName.lastIndexOf('.'));
+      
+      // Get safe strings for filename
+      const safeLine = (booking.line || 'Unknown').replace(/[^a-zA-Z0-9]/g, '');
+      const safeBooking = (booking.bookingId || 'Unknown').replace(/[^a-zA-Z0-9]/g, '');
+      const safeInvoice = (localCharge.invoice || 'NoInvoice').replace(/[^a-zA-Z0-9]/g, '');
+      
+      // Format date for filename: dd.mm.yyyy
+      const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
+      const dd = validDate.getDate().toString().padStart(2, '0');
+      const mm = (validDate.getMonth() + 1).toString().padStart(2, '0');
+      const yyyy = validDate.getFullYear();
+      const dateFileStr = `${dd}.${mm}.${yyyy}`;
+
+      const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateFileStr}${extension}`;
+
+      // 3. Prepare Form Data
       const formData = new FormData();
       formData.append('invoiceFile', selectedFile);
-      formData.append('folderPath', folderName);
+      formData.append('folderPath', folderName); // This goes to E:\ServerData\Invoice\{folderName}
       formData.append('bookingId', booking.bookingId);
-      formData.append('fileName', selectedFile.name);
+      formData.append('fileName', newFileName);
 
-      // 3. Send to Server
+      // 4. Send to Server
       const res = await fetch("https://api.kimberry.id.vn/upload-invoice", {
         method: "POST",
         body: formData
       });
 
       if (res.ok) {
-        alert(`Đã lưu file thành công vào: E:\\ServerData\\Invoice\\${folderName}\\${selectedFile.name}`);
+        alert(`Đã lưu file thành công!\n\nĐường dẫn: E:\\ServerData\\Invoice\\${folderName}\\${newFileName}`);
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
       } else {
-        alert("Lỗi khi tải file lên server. Vui lòng thử lại.");
+        alert("Lỗi khi tải file lên server. Vui lòng kiểm tra lại kết nối.");
       }
     } catch (err) {
       console.error("Upload failed", err);
