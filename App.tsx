@@ -26,6 +26,38 @@ const DEFAULT_USERS: UserAccount[] = [
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
 
 const App: React.FC = () => {
+  // === LOAD DATA FROM SERVER WHEN APP START ===
+useEffect(() => {
+  const fetchServerData = async () => {
+    try {
+      const res = await fetch("https://api.kimberry.id.vn/data", {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const data = await res.json();
+      console.log("SERVER DATA LOADED:", data);
+
+      if (data.jobs && Array.isArray(data.jobs)) {
+        setJobs(data.jobs);
+      }
+      if (data.customers) {
+        setCustomers(data.customers);
+      }
+      if (data.lines) {
+        setLines(data.lines);
+      }
+
+    } catch (err) {
+      console.error("Không lấy được dữ liệu từ máy A:", err);
+    }
+  };
+
+  fetchServerData();
+}, []);
+
   // --- AUTH STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<{ username: string, role: string } | null>(null);
