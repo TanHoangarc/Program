@@ -137,6 +137,32 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('logistics_lines_v1', JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem('logistics_users_v1', JSON.stringify(users)); }, [users]);
 
+  // === AUTO BACKUP TO SERVER (Ổ E) ===
+const autoBackup = async (overrideJobs?: JobData[]) => {
+  try {
+    const data = {
+      timestamp: new Date().toISOString(),
+      version: "2.1",
+      jobs: overrideJobs || jobs,
+      customers,
+      lines
+    };
+
+    const res = await fetch("https://api.kimberry.id.vn/backup", {
+      method: "POST",
+      mode: "cors",
+      credentials: "omit",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+
+    const result = await res.json();
+    console.log("AUTO BACKUP OK:", result.message);
+  } catch (err) {
+    console.error("AUTO BACKUP ERROR:", err);
+  }
+};
+  
   const handleAddJob = (job: JobData) => setJobs(prev => [job, ...prev]);
   const handleEditJob = (updatedJob: JobData) => setJobs(prev => prev.map(job => job.id === updatedJob.id ? updatedJob : job));
   const handleDeleteJob = (id: string) => setJobs(prev => prev.filter(job => job.id !== id));
