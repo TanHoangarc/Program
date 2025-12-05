@@ -1,8 +1,7 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, Upload, FileUp, HardDrive } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 
 interface BookingDetailModalProps {
@@ -102,6 +101,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [deposits, setDeposits] = useState<BookingDeposit[]>(booking.costDetails.deposits || []);
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // File Upload State
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => 
     sum + (job.extensions || []).reduce((s, ext) => s + ext.total, 0), 0
@@ -242,6 +246,66 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       deposits
     });
     onClose();
+  };
+
+  // --- FILE UPLOAD LOGIC ---
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleUploadFile = async () => {
+    if (!selectedFile) {
+      alert("Vui lòng chọn file hóa đơn trước.");
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      // 1. Determine Folder Name (YY.MM)
+      // Uses localCharge.date if available, otherwise current date
+      const dateStr = localCharge.date || new Date().toISOString(); 
+      const dateObj = new Date(dateStr);
+      let year = dateObj.getFullYear().toString().slice(-2);
+      let month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+      
+      // Fallback if parsing fails
+      if (isNaN(dateObj.getTime())) {
+         const now = new Date();
+         year = now.getFullYear().toString().slice(-2);
+         month = (now.getMonth() + 1).toString().padStart(2, '0');
+      }
+
+      const folderName = `${year}.${month}`; // e.g., "25.07"
+
+      // 2. Prepare Form Data
+      const formData = new FormData();
+      formData.append('invoiceFile', selectedFile);
+      formData.append('folderPath', folderName);
+      formData.append('bookingId', booking.bookingId);
+      formData.append('fileName', selectedFile.name);
+
+      // 3. Send to Server
+      const res = await fetch("https://api.kimberry.id.vn/upload-invoice", {
+        method: "POST",
+        body: formData
+      });
+
+      if (res.ok) {
+        alert(`Đã lưu file thành công vào: E:\\ServerData\\Invoice\\${folderName}\\${selectedFile.name}`);
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else {
+        alert("Lỗi khi tải file lên server. Vui lòng thử lại.");
+      }
+    } catch (err) {
+      console.error("Upload failed", err);
+      alert("Không thể kết nối với máy chủ để lưu file.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -496,6 +560,44 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     </div>
                  </div>
              )}
+
+             {/* File Upload Section - NEW */}
+             <div className="mt-6 pt-4 border-t border-dashed border-slate-200">
+                <div className="flex items-center justify-between bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                    <div className="flex items-center space-x-3">
+                        <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
+                        <button 
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()} 
+                            className="bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center shadow-sm transition-colors"
+                        >
+                           <FileUp className="w-3.5 h-3.5 mr-2 text-blue-500" /> Chọn File HĐ
+                        </button>
+                        {selectedFile ? (
+                            <span className="text-xs font-medium text-blue-600 flex items-center bg-blue-50 px-2 py-1 rounded">
+                                {selectedFile.name}
+                            </span>
+                        ) : (
+                            <span className="text-xs text-slate-400 italic">Chưa chọn file</span>
+                        )}
+                    </div>
+                    {selectedFile && (
+                        <button 
+                            type="button"
+                            onClick={handleUploadFile} 
+                            disabled={isUploading}
+                            className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 flex items-center shadow-md transition-colors disabled:opacity-50"
+                        >
+                           {isUploading ? (
+                               <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                           ) : (
+                               <HardDrive className="w-3.5 h-3.5 mr-2" />
+                           )}
+                           Lưu vào Server (Ổ E)
+                        </button>
+                    )}
+                </div>
+             </div>
 
              {/* Mismatch Warning */}
              {totalActualNet !== systemTotalAdjustedCost && (
