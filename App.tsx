@@ -226,6 +226,7 @@ const sendPendingToServer = async () => {
         onResetData={() => window.location.reload()}
         currentUser={currentUser}
         onLogout={() => handleLogout(false)}
+        onSendPending={sendPendingToServer}
       />
 
       <div className="flex-1 ml-[280px] p-4 h-full flex flex-col">
