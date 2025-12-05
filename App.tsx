@@ -154,6 +154,7 @@ const App: React.FC = () => {
   // === AUTO BACKUP TO SERVER (Chỉ máy A ghi vào E) ===
   const autoBackup = async () => {
     if (loadedFromServer) return; // tránh backup khi lấy từ máy A
+    if (!currentUser || currentUser.role !== "Admin") return;
 
     try {
       const data = {
@@ -188,8 +189,34 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
 
+  
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
+  
+const sendPendingToServer = async () => {
+  if (!currentUser) return;
+
+  try {
+    const data = {
+      user: currentUser.username,
+      timestamp: new Date().toISOString(),
+      jobs,
+      customers,
+      lines
+    };
+
+    await fetch("https://api.kimberry.id.vn/pending", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+
+    alert("Đã gửi lên server chờ Admin duyệt!");
+
+  } catch (err) {
+    console.error("Gửi pending thất bại:", err);
+  }
+};
 
   return (
     <div className="flex w-full h-screen overflow-hidden relative">
