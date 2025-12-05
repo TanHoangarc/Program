@@ -28,27 +28,28 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const isAdmin = currentUser?.role === 'Admin';
 
   // --- BACKUP ---
-  const handleBackup = () => {
-    const data = {
-      timestamp: new Date().toISOString(),
-      version: '2.1',
-      jobs,
-      customers,
-      lines
-    };
-    
-    const jsonString = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Logistics_System_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+const handleBackup = () => {
+  const data = {
+    timestamp: new Date().toISOString(),
+    version: '2.1',
+    jobs,
+    customers,
+    lines
   };
+
+  const jsonString = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Logistics_System_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 
   // --- RESTORE ---
   const handleRestoreClick = () => {
