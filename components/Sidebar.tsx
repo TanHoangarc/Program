@@ -8,9 +8,10 @@ interface SidebarProps {
   onResetData: () => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
+  onSendPending: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onResetData, currentUser, onLogout }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onResetData, currentUser, onLogout,onSendPending }) => {
   
   const MenuItem = ({ 
     active, 
@@ -203,7 +204,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
           label="Hệ Thống"
         />
       </nav>
-
+    {currentUser && currentUser.role !== "Admin" && (
+      <button
+        onClick={onSendPending}
+        className="w-full bg-yellow-500 text-black font-bold py-2 px-3 rounded-lg mb-3 hover:bg-yellow-400 transition-all"
+      >
+        Gửi dữ liệu chờ duyệt
+      </button>
+    )}
       {/* Footer */}
       <div className="relative z-10 p-4 mt-auto border-t border-white/5 bg-black/20 space-y-3">
         {currentUser && (
