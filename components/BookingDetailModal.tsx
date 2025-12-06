@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
@@ -294,7 +293,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
       // 3. Prepare Form Data
       const formData = new FormData();
-      formData.append("file", selectedFile);
+      // Pass newFileName as 3rd argument so the file uploaded has this name
+      formData.append("file", selectedFile, newFileName);
       formData.append('folderPath', folderName); // Empty string = root of Invoice folder
       formData.append('bookingId', booking.bookingId);
       formData.append('fileName', newFileName);
