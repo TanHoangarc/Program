@@ -148,7 +148,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
 
             {pendingRequests.length > 0 ? (
                 <div className="space-y-4">
-                    {pendingRequests.map((req) => {
+                    {pendingRequests.map((req, index) => {
                         // Safety check
                         if (!req || typeof req !== 'object') return null;
                         
@@ -158,7 +158,10 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                             ? changes.slice(0, 5).join(', ') + (changes.length > 5 ? ` (+${changes.length - 5} others)` : '')
                             : 'Không có thay đổi booking đáng kể';
 
-                        const username = req.user && typeof req.user === 'string' ? req.user : 'Staff Update (Unknown)';
+                        // LOGIC UPDATE: Use index for Unknown users
+                        const username = req.user && typeof req.user === 'string' && req.user.trim() !== '' 
+                            ? req.user 
+                            : `Staff Update ${index + 1}`;
 
                         return (
                         <div key={req.id || Math.random()} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:shadow-md">
