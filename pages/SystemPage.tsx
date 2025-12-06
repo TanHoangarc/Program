@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertCircle, ArrowRight, User } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertCircle, ArrowRight, User, AlertTriangle } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -12,7 +12,6 @@ interface SystemPageProps {
   onAddUser: (user: UserAccount) => void;
   onEditUser: (user: UserAccount, originalUsername: string) => void;
   onDeleteUser: (username: string) => void;
-  // New Props for Pending Requests
   pendingRequests?: any[];
   onApproveRequest?: (requestId: string, data: any) => void;
   onRejectRequest?: (requestId: string) => void;
@@ -55,7 +54,6 @@ export const SystemPage: React.FC<SystemPageProps> = ({
     if (editingUser) {
         onEditUser(formUser, editingUser.username);
     } else {
-        // Check duplicate
         if (users.some(u => u.username === formUser.username)) {
             alert("Tên tài khoản đã tồn tại!");
             return;
@@ -76,9 +74,10 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   };
 
   // --- APPROVE HANDLERS ---
-  const handleApprove = (req: any) => {
-      if (window.confirm(`Duyệt dữ liệu từ ${req.user}?\n(Dữ liệu sẽ được gộp vào hệ thống)`)) {
-          if (onApproveRequest) onApproveRequest(req.id, req);
+  const handleApprove = (req: any, realData: any) => {
+      // Use the extracted realData which contains the actual arrays
+      if (window.confirm(`Duyệt dữ liệu từ ${req.user || 'Staff'}?\n(Dữ liệu sẽ được gộp vào hệ thống)`)) {
+          if (onApproveRequest) onApproveRequest(req.id, realData);
       }
   };
 
@@ -101,6 +100,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
               newJobsCount++;
               if (incJob.booking) changedBookings.add(incJob.booking);
           } else {
+              // Strict JSON comparison to catch ANY change (customer name, dates, etc.)
               const strInc = JSON.stringify(incJob);
               const strCurr = JSON.stringify(currJob);
               
@@ -123,8 +123,8 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       const currentMap = new Map(currentCustomers.map(c => [c.id, c]));
       for (const incCust of incomingCustomers) {
           const currCust = currentMap.get(incCust.id);
-          if (!currCust) return true; // New customer
-          if (JSON.stringify(incCust) !== JSON.stringify(currCust)) return true; // Modified customer
+          if (!currCust) return true;
+          if (JSON.stringify(incCust) !== JSON.stringify(currCust)) return true;
       }
       return false;
   };
@@ -164,8 +164,16 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                     {pendingRequests.map((req, index) => {
                         if (!req || typeof req !== 'object') return null;
                         
-                        const stats = getChangeStats(jobs, req.jobs || []);
-                        const hasCustomerChanges = checkCustomerChanges(customers, req.customers || []);
+                        // Robust Data Extraction: Check for nested data structures
+                        const incJobs = Array.isArray(req.jobs) ? req.jobs : (req.data?.jobs || req.payload?.jobs || []);
+                        const incCustomers = Array.isArray(req.customers) ? req.customers : (req.data?.customers || req.payload?.customers || []);
+                        const incLines = Array.isArray(req.lines) ? req.lines : (req.data?.lines || req.payload?.lines || []);
+
+                        // Reconstruct a clean data object for approval
+                        const realData = { jobs: incJobs, customers: incCustomers, lines: incLines };
+
+                        const stats = getChangeStats(jobs, incJobs);
+                        const hasCustomerChanges = checkCustomerChanges(customers, incCustomers);
                         
                         const bookingDisplay = stats.bookings.length > 0 
                             ? stats.bookings.slice(0, 4).join(', ') + (stats.bookings.length > 4 ? ` (+${stats.bookings.length - 4})` : '')
@@ -176,9 +184,12 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                             username = `Staff Update ${index + 1}`;
                         }
 
-                        const totalIncoming = (req.jobs || []).length;
+                        const totalIncoming = incJobs.length;
                         const hasJobChanges = stats.newCount > 0 || stats.modCount > 0;
-                        const totalCustomers = (req.customers || []).length;
+                        const totalCustomers = incCustomers.length;
+                        
+                        // Empty Payload Check
+                        const isPayloadEmpty = totalIncoming === 0 && totalCustomers === 0;
 
                         return (
                         <div key={req.id || Math.random()} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:shadow-md">
@@ -195,32 +206,38 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                                         </span>
                                     </div>
                                     
-                                    {/* Change Details */}
-                                    <div className="flex flex-col gap-1 mt-2">
-                                        {/* Job Changes */}
-                                        <div className={`text-xs flex items-center p-2 rounded-lg border ${hasJobChanges ? 'bg-yellow-50 border-yellow-100 text-slate-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                                            <FileText className={`w-3.5 h-3.5 mr-1.5 flex-shrink-0 ${hasJobChanges ? 'text-yellow-600' : 'text-slate-400'}`} />
-                                            <div className="flex flex-col">
-                                                <span className="font-bold mb-0.5">Booking: {bookingDisplay}</span>
-                                                {hasJobChanges ? (
-                                                    <span className="text-[10px] text-green-600 font-bold flex items-center gap-2">
-                                                        <span className="flex items-center"><Plus className="w-3 h-3 mr-0.5" /> {stats.newCount} Mới</span>
-                                                        <span className="flex items-center"><Edit2 className="w-3 h-3 mr-0.5" /> {stats.modCount} Sửa</span>
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-[10px] text-slate-400 italic">Không thay đổi Job</span>
-                                                )}
-                                            </div>
+                                    {isPayloadEmpty ? (
+                                        <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 flex items-center">
+                                            <AlertTriangle className="w-4 h-4 mr-2" />
+                                            Gói tin rỗng (Không có dữ liệu Job/Khách). Có thể do lỗi gửi.
                                         </div>
-
-                                        {/* Customer/Data Changes Alert */}
-                                        {hasCustomerChanges && (
-                                            <div className="text-xs flex items-center p-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 font-medium">
-                                                <User className="w-3.5 h-3.5 mr-1.5" />
-                                                Có thay đổi trong danh mục Khách hàng
+                                    ) : (
+                                        <div className="flex flex-col gap-1 mt-2">
+                                            {/* Job Changes */}
+                                            <div className={`text-xs flex items-center p-2 rounded-lg border ${hasJobChanges ? 'bg-yellow-50 border-yellow-100 text-slate-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                                <FileText className={`w-3.5 h-3.5 mr-1.5 flex-shrink-0 ${hasJobChanges ? 'text-yellow-600' : 'text-slate-400'}`} />
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold mb-0.5">Booking: {bookingDisplay}</span>
+                                                    {hasJobChanges ? (
+                                                        <span className="text-[10px] text-green-600 font-bold flex items-center gap-2">
+                                                            <span className="flex items-center"><Plus className="w-3 h-3 mr-0.5" /> {stats.newCount} Mới</span>
+                                                            <span className="flex items-center"><Edit2 className="w-3 h-3 mr-0.5" /> {stats.modCount} Sửa</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-400 italic">Không thay đổi Job</span>
+                                                    )}
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
+
+                                            {/* Customer/Data Changes Alert */}
+                                            {hasCustomerChanges && (
+                                                <div className="text-xs flex items-center p-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 font-medium">
+                                                    <User className="w-3.5 h-3.5 mr-1.5" />
+                                                    Có thay đổi trong danh mục Khách hàng
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <div className="text-[11px] text-slate-500 mt-2 flex gap-3 opacity-80 pl-1">
                                         <span title="Số lượng bản ghi Job trong gói tin">
@@ -228,6 +245,8 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                                         </span>
                                         <span>|</span>
                                         <span>Khách: <strong>{totalCustomers}</strong></span>
+                                        <span>|</span>
+                                        <span>Lines: <strong>{incLines.length}</strong></span>
                                     </div>
                                 </div>
                             </div>
@@ -239,8 +258,9 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                                     <X className="w-3.5 h-3.5 mr-1.5" /> Từ chối
                                 </button>
                                 <button 
-                                    onClick={() => req.id && handleApprove(req)}
-                                    className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 shadow-md hover:shadow-green-600/30 transition-all flex items-center"
+                                    onClick={() => req.id && !isPayloadEmpty && handleApprove(req, realData)}
+                                    disabled={isPayloadEmpty}
+                                    className={`px-4 py-2 text-white text-xs font-bold rounded-lg shadow-md flex items-center transition-all ${isPayloadEmpty ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 hover:shadow-green-600/30'}`}
                                 >
                                     <Check className="w-3.5 h-3.5 mr-1.5" /> Duyệt & Gộp
                                 </button>
