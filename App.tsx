@@ -44,21 +44,6 @@ const App: React.FC = () => {
   
   // --- PENDING REQUESTS STATE (Admin Only) ---
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  
-  // NEW: Local Blacklist for "Deleted" requests to handle CORS/Network failures gracefully
-  const [localDeletedIds, setLocalDeletedIds] = useState<Set<string>>(() => {
-      try {
-          const saved = localStorage.getItem('kb_deleted_reqs');
-          return saved ? new Set(JSON.parse(saved)) : new Set();
-      } catch {
-          return new Set();
-      }
-  });
-
-  // Persist blacklist
-  useEffect(() => {
-      localStorage.setItem('kb_deleted_reqs', JSON.stringify(Array.from(localDeletedIds)));
-  }, [localDeletedIds]);
 
   // Helper: Sanitize Data
   const sanitizeData = (data: JobData[]): JobData[] => {
@@ -101,27 +86,6 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEFAULT_USERS;
   });
 
-  // --- DATA SYNC FUNCTIONS ---
-  // Khi sửa thông tin Khách hàng, tự động cập nhật tên trong tất cả các Job
-  const handleUpdateCustomer = (updatedCustomer: Customer) => {
-      setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
-      
-      // Sync Jobs
-      setJobs(prevJobs => prevJobs.map(job => {
-          if (job.customerId === updatedCustomer.id) {
-              return { ...job, customerName: updatedCustomer.name };
-          }
-          return job;
-      }));
-  };
-
-  // Khi sửa thông tin Line, tự động cập nhật trong các Job (ít xảy ra nhưng cần thiết)
-  const handleUpdateLine = (updatedLine: ShippingLine) => {
-      setLines(prev => prev.map(l => l.id === updatedLine.id ? updatedLine : l));
-      // Note: Jobs store 'line' as code usually, but if we stored ID we would need to sync.
-      // Current logic stores Line Code/Name string, so we might check if code changed.
-  };
-
   // --- API FUNCTIONS (Defined BEFORE conditional return) ---
 
   const sendPendingToServer = async () => {
@@ -130,9 +94,8 @@ const App: React.FC = () => {
         return;
     }
     
-    // Strict Empty Check
-    if ((!jobs || jobs.length === 0) && (!customers || customers.length === 0)) {
-        alert("Lỗi: Dữ liệu Job/Khách hàng đang TRỐNG. Không thể gửi gói tin rỗng.");
+    if (jobs.length === 0) {
+        alert("Cảnh báo: Dữ liệu Job đang trống. Vui lòng kiểm tra lại trước khi gửi.");
         return;
     }
     
@@ -146,13 +109,13 @@ const App: React.FC = () => {
       const payload = {
         user: currentUser.username, 
         timestamp: new Date().toISOString(),
-        jobs: [...jobs], // Spread to ensure new array reference
-        customers: [...customers],
-        lines: [...lines]
+        jobs: jobs, // Send current jobs
+        customers: customers,
+        lines: lines
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout for large data
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch("https://api.kimberry.id.vn/pending", {
         method: "POST",
@@ -181,49 +144,40 @@ const App: React.FC = () => {
         const res = await fetch("https://api.kimberry.id.vn/pending");
         if (res.ok) {
             const data = await res.json();
+            // Filter valid objects to prevent UI crashes
             const validData = (Array.isArray(data) ? data : []).filter(item => item && typeof item === 'object' && item.id);
-            
-            // 1. Prune blacklist
-            const serverIdSet = new Set(validData.map(d => d.id));
-            setLocalDeletedIds(prev => {
-                const next = new Set(prev);
-                let changed = false;
-                prev.forEach(id => {
-                    if (!serverIdSet.has(id)) {
-                        next.delete(id);
-                        changed = true;
-                    }
-                });
-                return changed ? next : prev;
-            });
-
-            // 2. Filter display
-            setPendingRequests(validData.filter(item => !localDeletedIds.has(item.id)));
+            setPendingRequests(validData);
         }
     } catch (e) {
         console.warn("Failed to fetch pending requests", e);
     }
   };
 
-  // --- ADMIN: REJECT/DELETE REQUEST (THOROUGH FIX) ---
+  // --- ADMIN: REJECT/DELETE REQUEST ---
   const handleRejectRequest = async (requestId: string) => {
-      setPendingRequests(prev => prev.filter(r => r.id !== requestId));
-      setLocalDeletedIds(prev => {
-          const newSet = new Set(prev);
-          newSet.add(requestId);
-          return newSet;
-      });
-
-      if (!isServerAvailable) return;
+      if (!isServerAvailable) {
+         alert("Server Offline, không thể thực hiện.");
+         return;
+      }
       
       try {
-          const encodedId = encodeURIComponent(requestId);
-          await fetch(`https://api.kimberry.id.vn/pending/${encodedId}`, { 
+          const res = await fetch(`https://api.kimberry.id.vn/pending/${requestId}`, { 
               method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' }
+              headers: {
+                  'Content-Type': 'application/json'
+              }
           });
+          
+          // Treat 404 as success (it's already deleted)
+          if (res.ok || res.status === 404) {
+             setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+          } else {
+             console.error(`Delete failed with status: ${res.status}`);
+             alert(`Lỗi server khi xóa: ${res.status}`);
+          }
       } catch (e) {
-          console.warn(`Background delete for ${requestId} failed, handled by local blacklist.`);
+          console.error("Failed to delete request", e);
+          alert("Lỗi kết nối mạng hoặc CORS khi xóa yêu cầu.");
       }
   };
 
@@ -231,20 +185,14 @@ const App: React.FC = () => {
   const handleApproveRequest = async (requestId: string, incomingData: any) => {
       // MERGE STRATEGY: Update existing by ID, add new
       const mergeArrays = (current: any[], incoming: any[]) => {
-          if (!incoming) return current;
           const map = new Map(current.map(i => [i.id, i]));
           incoming.forEach(i => map.set(i.id, i));
           return Array.from(map.values());
       };
 
-      // Safely access data structure which might be flattened or nested
-      const incJobs = Array.isArray(incomingData.jobs) ? incomingData.jobs : (incomingData.data?.jobs || incomingData.payload?.jobs || []);
-      const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
-      const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
-
-      const newJobs = mergeArrays(jobs, incJobs);
-      const newCustomers = mergeArrays(customers, incCustomers);
-      const newLines = mergeArrays(lines, incLines);
+      const newJobs = mergeArrays(jobs, incomingData.jobs || []);
+      const newCustomers = mergeArrays(customers, incomingData.customers || []);
+      const newLines = mergeArrays(lines, incomingData.lines || []);
 
       setJobs(newJobs);
       setCustomers(newCustomers);
@@ -467,7 +415,7 @@ const App: React.FC = () => {
                 mode="lines" 
                 data={lines} 
                 onAdd={(line) => setLines([...lines, line])} 
-                onEdit={handleUpdateLine}
+                onEdit={(line) => setLines(prev => prev.map(l => l.id === line.id ? line : l))}
                 onDelete={(id) => setLines(prev => prev.filter(l => l.id !== id))}
               />
             )}
@@ -477,7 +425,7 @@ const App: React.FC = () => {
                 mode="customers" 
                 data={customers} 
                 onAdd={(c) => setCustomers([...customers, c])} 
-                onEdit={handleUpdateCustomer}
+                onEdit={(c) => setCustomers(prev => prev.map(cust => cust.id === c.id ? c : cust))}
                 onDelete={(id) => setCustomers(prev => prev.filter(cust => cust.id !== id))}
               />
             )}
