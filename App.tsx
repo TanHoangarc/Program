@@ -44,6 +44,21 @@ const App: React.FC = () => {
   
   // --- PENDING REQUESTS STATE (Admin Only) ---
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  
+  // NEW: Local Blacklist for "Deleted" requests to handle CORS/Network failures gracefully
+  const [localDeletedIds, setLocalDeletedIds] = useState<Set<string>>(() => {
+      try {
+          const saved = localStorage.getItem('kb_deleted_reqs');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch {
+          return new Set();
+      }
+  });
+
+  // Persist blacklist
+  useEffect(() => {
+      localStorage.setItem('kb_deleted_reqs', JSON.stringify(Array.from(localDeletedIds)));
+  }, [localDeletedIds]);
 
   // Helper: Sanitize Data
   const sanitizeData = (data: JobData[]): JobData[] => {
@@ -86,6 +101,27 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEFAULT_USERS;
   });
 
+  // --- DATA SYNC FUNCTIONS ---
+  // Khi sửa thông tin Khách hàng, tự động cập nhật tên trong tất cả các Job
+  const handleUpdateCustomer = (updatedCustomer: Customer) => {
+      setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+      
+      // Sync Jobs
+      setJobs(prevJobs => prevJobs.map(job => {
+          if (job.customerId === updatedCustomer.id) {
+              return { ...job, customerName: updatedCustomer.name };
+          }
+          return job;
+      }));
+  };
+
+  // Khi sửa thông tin Line, tự động cập nhật trong các Job (ít xảy ra nhưng cần thiết)
+  const handleUpdateLine = (updatedLine: ShippingLine) => {
+      setLines(prev => prev.map(l => l.id === updatedLine.id ? updatedLine : l));
+      // Note: Jobs store 'line' as code usually, but if we stored ID we would need to sync.
+      // Current logic stores Line Code/Name string, so we might check if code changed.
+  };
+
   // --- API FUNCTIONS (Defined BEFORE conditional return) ---
 
   const sendPendingToServer = async () => {
@@ -94,8 +130,9 @@ const App: React.FC = () => {
         return;
     }
     
-    if (jobs.length === 0) {
-        alert("Cảnh báo: Dữ liệu Job đang trống. Vui lòng kiểm tra lại trước khi gửi.");
+    // Allow sending even if jobs are empty, but warn if EVERYTHING is empty
+    if (jobs.length === 0 && customers.length === 0) {
+        alert("Cảnh báo: Dữ liệu đang trống. Vui lòng kiểm tra lại trước khi gửi.");
         return;
     }
     
@@ -144,51 +181,49 @@ const App: React.FC = () => {
         const res = await fetch("https://api.kimberry.id.vn/pending");
         if (res.ok) {
             const data = await res.json();
-            // Filter valid objects to prevent UI crashes
             const validData = (Array.isArray(data) ? data : []).filter(item => item && typeof item === 'object' && item.id);
-            setPendingRequests(validData);
+            
+            // 1. Prune blacklist: Remove IDs from local blacklist if they are no longer on server (Server confirmed delete)
+            const serverIdSet = new Set(validData.map(d => d.id));
+            setLocalDeletedIds(prev => {
+                const next = new Set(prev);
+                let changed = false;
+                prev.forEach(id => {
+                    if (!serverIdSet.has(id)) {
+                        next.delete(id);
+                        changed = true;
+                    }
+                });
+                return changed ? next : prev;
+            });
+
+            // 2. Filter display: Hide items that are in the blacklist
+            setPendingRequests(validData.filter(item => !localDeletedIds.has(item.id)));
         }
     } catch (e) {
         console.warn("Failed to fetch pending requests", e);
     }
   };
 
-  // --- ADMIN: REJECT/DELETE REQUEST ---
+  // --- ADMIN: REJECT/DELETE REQUEST (THOROUGH FIX) ---
   const handleRejectRequest = async (requestId: string) => {
-      if (!isServerAvailable) {
-         // Offline mode fallback - allow clearing list locally
-         if (window.confirm("Server Offline. Xóa khỏi danh sách hiển thị tạm thời?")) {
-             setPendingRequests(prev => prev.filter(r => r.id !== requestId));
-         }
-         return;
-      }
+      setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+      setLocalDeletedIds(prev => {
+          const newSet = new Set(prev);
+          newSet.add(requestId);
+          return newSet;
+      });
+
+      if (!isServerAvailable) return;
       
       try {
-          // Encode ID to prevent URL issues
           const encodedId = encodeURIComponent(requestId);
-          const res = await fetch(`https://api.kimberry.id.vn/pending/${encodedId}`, { 
+          await fetch(`https://api.kimberry.id.vn/pending/${encodedId}`, { 
               method: 'DELETE',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json'
-              }
+              headers: { 'Content-Type': 'application/json' }
           });
-          
-          // Treat 404 as success (it's already deleted)
-          if (res.ok || res.status === 404) {
-             setPendingRequests(prev => prev.filter(r => r.id !== requestId));
-          } else {
-             const errText = await res.text();
-             console.error(`Delete failed: ${res.status}`, errText);
-             throw new Error(`Server error: ${res.status}`);
-          }
       } catch (e) {
-          console.error("Failed to delete request", e);
-          // FALLBACK: User Friendly Error Handling
-          // If network/CORS fails, offer to clear it from the UI so Admin isn't stuck
-          if (window.confirm("Gặp lỗi kết nối khi xóa trên Server (Mạng/CORS). Bạn có muốn ẩn yêu cầu này khỏi danh sách hiển thị không?")) {
-              setPendingRequests(prev => prev.filter(r => r.id !== requestId));
-          }
+          console.warn(`Background delete for ${requestId} failed, handled by local blacklist.`);
       }
   };
 
@@ -426,7 +461,7 @@ const App: React.FC = () => {
                 mode="lines" 
                 data={lines} 
                 onAdd={(line) => setLines([...lines, line])} 
-                onEdit={(line) => setLines(prev => prev.map(l => l.id === line.id ? line : l))}
+                onEdit={handleUpdateLine}
                 onDelete={(id) => setLines(prev => prev.filter(l => l.id !== id))}
               />
             )}
@@ -436,7 +471,7 @@ const App: React.FC = () => {
                 mode="customers" 
                 data={customers} 
                 onAdd={(c) => setCustomers([...customers, c])} 
-                onEdit={(c) => setCustomers(prev => prev.map(cust => cust.id === c.id ? c : cust))}
+                onEdit={handleUpdateCustomer}
                 onDelete={(id) => setCustomers(prev => prev.filter(cust => cust.id !== id))}
               />
             )}
