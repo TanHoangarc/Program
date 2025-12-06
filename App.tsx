@@ -130,9 +130,9 @@ const App: React.FC = () => {
         return;
     }
     
-    // Allow sending even if jobs are empty, but warn if EVERYTHING is empty
-    if (jobs.length === 0 && customers.length === 0) {
-        alert("Cảnh báo: Dữ liệu đang trống. Vui lòng kiểm tra lại trước khi gửi.");
+    // Strict Empty Check
+    if ((!jobs || jobs.length === 0) && (!customers || customers.length === 0)) {
+        alert("Lỗi: Dữ liệu Job/Khách hàng đang TRỐNG. Không thể gửi gói tin rỗng.");
         return;
     }
     
@@ -146,13 +146,13 @@ const App: React.FC = () => {
       const payload = {
         user: currentUser.username, 
         timestamp: new Date().toISOString(),
-        jobs: jobs, // Send current jobs
-        customers: customers,
-        lines: lines
+        jobs: [...jobs], // Spread to ensure new array reference
+        customers: [...customers],
+        lines: [...lines]
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout for large data
 
       const response = await fetch("https://api.kimberry.id.vn/pending", {
         method: "POST",
@@ -183,7 +183,7 @@ const App: React.FC = () => {
             const data = await res.json();
             const validData = (Array.isArray(data) ? data : []).filter(item => item && typeof item === 'object' && item.id);
             
-            // 1. Prune blacklist: Remove IDs from local blacklist if they are no longer on server (Server confirmed delete)
+            // 1. Prune blacklist
             const serverIdSet = new Set(validData.map(d => d.id));
             setLocalDeletedIds(prev => {
                 const next = new Set(prev);
@@ -197,7 +197,7 @@ const App: React.FC = () => {
                 return changed ? next : prev;
             });
 
-            // 2. Filter display: Hide items that are in the blacklist
+            // 2. Filter display
             setPendingRequests(validData.filter(item => !localDeletedIds.has(item.id)));
         }
     } catch (e) {
@@ -231,14 +231,20 @@ const App: React.FC = () => {
   const handleApproveRequest = async (requestId: string, incomingData: any) => {
       // MERGE STRATEGY: Update existing by ID, add new
       const mergeArrays = (current: any[], incoming: any[]) => {
+          if (!incoming) return current;
           const map = new Map(current.map(i => [i.id, i]));
           incoming.forEach(i => map.set(i.id, i));
           return Array.from(map.values());
       };
 
-      const newJobs = mergeArrays(jobs, incomingData.jobs || []);
-      const newCustomers = mergeArrays(customers, incomingData.customers || []);
-      const newLines = mergeArrays(lines, incomingData.lines || []);
+      // Safely access data structure which might be flattened or nested
+      const incJobs = Array.isArray(incomingData.jobs) ? incomingData.jobs : (incomingData.data?.jobs || incomingData.payload?.jobs || []);
+      const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
+      const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
+
+      const newJobs = mergeArrays(jobs, incJobs);
+      const newCustomers = mergeArrays(customers, incCustomers);
+      const newLines = mergeArrays(lines, incLines);
 
       setJobs(newJobs);
       setCustomers(newCustomers);
