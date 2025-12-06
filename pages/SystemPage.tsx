@@ -125,11 +125,11 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                         <div key={req.id} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 transition-all hover:shadow-md">
                             <div className="flex items-center space-x-4">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                                    {req.user.charAt(0).toUpperCase()}
+                                    {(req.user || '?').charAt(0).toUpperCase()}
                                 </div>
                                 <div>
                                     <div className="font-bold text-slate-800 flex items-center gap-2">
-                                        {req.user}
+                                        {req.user || 'Unknown'}
                                         <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-normal">
                                             {req.timestamp ? new Date(req.timestamp).toLocaleString('vi-VN') : 'N/A'}
                                         </span>

@@ -222,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
           <div className="flex items-center justify-between px-1">
              <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-500 to-blue-500 flex items-center justify-center shadow-lg border border-white/10">
-                   <span className="text-xs font-bold text-white">{currentUser.username.charAt(0).toUpperCase()}</span>
+                   <span className="text-xs font-bold text-white">{(currentUser.username || '?').charAt(0).toUpperCase()}</span>
                 </div>
                 <div className="overflow-hidden">
                    <p className="text-xs font-bold text-slate-200 truncate max-w-[100px]">{currentUser.username}</p>
