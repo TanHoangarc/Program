@@ -88,6 +88,34 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       }
   };
 
+  // Helper to find what changed (diffing)
+  const getChangedBookings = (currentJobs: JobData[], incomingJobs: JobData[]) => {
+      const currentMap = new Map(currentJobs.map(j => [j.id, j]));
+      const changedBookings = new Set<string>();
+
+      incomingJobs.forEach(incJob => {
+          const currJob = currentMap.get(incJob.id);
+          if (!currJob) {
+              // New Job, add its booking
+              if (incJob.booking) changedBookings.add(incJob.booking);
+          } else {
+              // Compare content to see if modified (simplified check)
+              // We compare key fields
+              const isDiff = 
+                  incJob.cost !== currJob.cost ||
+                  incJob.sell !== currJob.sell ||
+                  incJob.localChargeTotal !== currJob.localChargeTotal ||
+                  incJob.profit !== currJob.profit ||
+                  JSON.stringify(incJob.bookingCostDetails) !== JSON.stringify(currJob.bookingCostDetails);
+              
+              if (isDiff && incJob.booking) {
+                  changedBookings.add(incJob.booking);
+              }
+          }
+      });
+      return Array.from(changedBookings);
+  };
+
   return (
     <div className="p-8 max-w-full">
       <div className="mb-8">
@@ -121,13 +149,16 @@ export const SystemPage: React.FC<SystemPageProps> = ({
             {pendingRequests.length > 0 ? (
                 <div className="space-y-4">
                     {pendingRequests.map((req) => {
-                        // Safety check: ensure req is valid object
+                        // Safety check
                         if (!req || typeof req !== 'object') return null;
                         
-                        // Calculate Booking Summary for Display
-                        const bookingCodes = Array.from(new Set((req.jobs || []).map((j: any) => j.booking).filter(Boolean)));
-                        const bookingDisplay = bookingCodes.slice(0, 3).join(', ') + (bookingCodes.length > 3 ? ` (+${bookingCodes.length - 3})` : '');
-                        const username = req.user && typeof req.user === 'string' ? req.user : 'Unknown';
+                        // Calculate changed bookings
+                        const changes = getChangedBookings(jobs, req.jobs || []);
+                        const bookingDisplay = changes.length > 0 
+                            ? changes.slice(0, 5).join(', ') + (changes.length > 5 ? ` (+${changes.length - 5} others)` : '')
+                            : 'Không có thay đổi booking đáng kể';
+
+                        const username = req.user && typeof req.user === 'string' ? req.user : 'Staff Update (Unknown)';
 
                         return (
                         <div key={req.id || Math.random()} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:shadow-md">
@@ -144,20 +175,19 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                                         </span>
                                     </div>
                                     
-                                    {/* Detailed Booking Info */}
-                                    {bookingDisplay && (
-                                        <div className="text-xs text-slate-600 mt-1.5 flex items-center">
-                                            <FileText className="w-3 h-3 mr-1.5 text-slate-400" />
-                                            Booking: <span className="font-medium ml-1 text-slate-800">{bookingDisplay}</span>
-                                        </div>
-                                    )}
+                                    {/* Display Modified Bookings */}
+                                    <div className="text-xs text-slate-700 mt-2 flex items-start bg-yellow-50 p-2 rounded-lg border border-yellow-100">
+                                        <FileText className="w-3.5 h-3.5 mr-1.5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                                        <span className="font-medium">
+                                            <span className="text-slate-500 mr-1">Booking thay đổi:</span> 
+                                            {bookingDisplay}
+                                        </span>
+                                    </div>
 
-                                    <div className="text-[11px] text-slate-500 mt-1 flex gap-3 opacity-80">
-                                        <span>Jobs: <strong>{(req.jobs || []).length}</strong></span>
+                                    <div className="text-[11px] text-slate-500 mt-2 flex gap-3 opacity-80 pl-1">
+                                        <span>Tổng Jobs: <strong>{(req.jobs || []).length}</strong></span>
                                         <span>|</span>
                                         <span>Khách: <strong>{(req.customers || []).length}</strong></span>
-                                        <span>|</span>
-                                        <span>Lines: <strong>{(req.lines || []).length}</strong></span>
                                     </div>
                                 </div>
                             </div>

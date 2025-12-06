@@ -89,7 +89,7 @@ const App: React.FC = () => {
   // --- API FUNCTIONS (Defined BEFORE conditional return) ---
 
   const sendPendingToServer = async () => {
-    if (!currentUser) {
+    if (!currentUser || !currentUser.username) {
         alert("Lỗi: Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.");
         return;
     }
@@ -105,21 +105,22 @@ const App: React.FC = () => {
     }
 
     try {
-      const data = {
-        user: currentUser.username, // Ensure this is not null
+      // Ensure we send a snapshot of valid data
+      const payload = {
+        user: currentUser.username, 
         timestamp: new Date().toISOString(),
-        jobs, // Sends current state snapshots
-        customers,
-        lines
+        jobs: jobs, // Send current jobs
+        customers: customers,
+        lines: lines
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch("https://api.kimberry.id.vn/pending", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -167,6 +168,7 @@ const App: React.FC = () => {
               }
           });
           
+          // Treat 404 as success (it's already deleted)
           if (res.ok || res.status === 404) {
              setPendingRequests(prev => prev.filter(r => r.id !== requestId));
           } else {
