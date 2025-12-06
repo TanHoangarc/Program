@@ -265,21 +265,15 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     setIsUploading(true);
 
     try {
-      // 1. Determine Folder Name (YY.MM)
-      // Logic: Uses the Year and Month from the Invoice Date (localCharge.date)
+      // 1. Determine Date for Filename (DD.MM.YYYY)
       const dateStr = localCharge.date || new Date().toISOString(); 
       const dateObj = new Date(dateStr);
-      let year = dateObj.getFullYear().toString().slice(-2);
-      let month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
       
       // Fallback if parsing fails
-      if (isNaN(dateObj.getTime())) {
-         const now = new Date();
-         year = now.getFullYear().toString().slice(-2);
-         month = (now.getMonth() + 1).toString().padStart(2, '0');
-      }
+      const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
 
-      const folderName = `${year}.${month}`; // e.g., "25.07"
+      // NO SUBFOLDER: Save directly to E:\ServerData\Invoice
+      const folderName = ""; 
 
       // 2. Generate New Filename: Line.Booking.Invoice.dd.mm.yyyy.ext
       const originalName = selectedFile.name;
@@ -291,7 +285,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       const safeInvoice = (localCharge.invoice || 'NoInvoice').replace(/[^a-zA-Z0-9]/g, '');
       
       // Format date for filename: dd.mm.yyyy
-      const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
       const dd = validDate.getDate().toString().padStart(2, '0');
       const mm = (validDate.getMonth() + 1).toString().padStart(2, '0');
       const yyyy = validDate.getFullYear();
@@ -302,7 +295,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       // 3. Prepare Form Data
       const formData = new FormData();
       formData.append("file", selectedFile);
-      formData.append('folderPath', folderName); // This goes to E:\ServerData\Invoice\{folderName}
+      formData.append('folderPath', folderName); // Empty string = root of Invoice folder
       formData.append('bookingId', booking.bookingId);
       formData.append('fileName', newFileName);
 
@@ -313,7 +306,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       });
 
       if (res.ok) {
-        alert(`Đã lưu file thành công!\n\nĐường dẫn: E:\\ServerData\\Invoice\\${folderName}\\${newFileName}`);
+        alert(`Đã lưu file thành công!\n\nĐường dẫn: E:\\ServerData\\Invoice\\${newFileName}`);
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
       } else {
