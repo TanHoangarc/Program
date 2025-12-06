@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -121,44 +120,63 @@ export const SystemPage: React.FC<SystemPageProps> = ({
 
             {pendingRequests.length > 0 ? (
                 <div className="space-y-4">
-                    {pendingRequests.map((req) => (
-                        <div key={req.id} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 transition-all hover:shadow-md">
-                            <div className="flex items-center space-x-4">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                                    {(req.user || '?').charAt(0).toUpperCase()}
+                    {pendingRequests.map((req) => {
+                        // Safety check: ensure req is valid object
+                        if (!req || typeof req !== 'object') return null;
+                        
+                        // Calculate Booking Summary for Display
+                        const bookingCodes = Array.from(new Set((req.jobs || []).map((j: any) => j.booking).filter(Boolean)));
+                        const bookingDisplay = bookingCodes.slice(0, 3).join(', ') + (bookingCodes.length > 3 ? ` (+${bookingCodes.length - 3})` : '');
+                        const username = req.user && typeof req.user === 'string' ? req.user : 'Unknown';
+
+                        return (
+                        <div key={req.id || Math.random()} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:shadow-md">
+                            <div className="flex items-start space-x-4 w-full md:w-auto">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm flex-shrink-0">
+                                    {(username.charAt(0) || '?').toUpperCase()}
                                 </div>
-                                <div>
-                                    <div className="font-bold text-slate-800 flex items-center gap-2">
-                                        {req.user || 'Unknown'}
-                                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-normal">
+                                <div className="flex-1">
+                                    <div className="font-bold text-slate-800 flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                                        <span className="text-blue-700">Cập nhật từ: {username}</span>
+                                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-normal flex items-center w-fit">
+                                            <Clock className="w-3 h-3 mr-1" />
                                             {req.timestamp ? new Date(req.timestamp).toLocaleString('vi-VN') : 'N/A'}
                                         </span>
                                     </div>
-                                    <div className="text-xs text-slate-500 mt-1 flex gap-3">
+                                    
+                                    {/* Detailed Booking Info */}
+                                    {bookingDisplay && (
+                                        <div className="text-xs text-slate-600 mt-1.5 flex items-center">
+                                            <FileText className="w-3 h-3 mr-1.5 text-slate-400" />
+                                            Booking: <span className="font-medium ml-1 text-slate-800">{bookingDisplay}</span>
+                                        </div>
+                                    )}
+
+                                    <div className="text-[11px] text-slate-500 mt-1 flex gap-3 opacity-80">
                                         <span>Jobs: <strong>{(req.jobs || []).length}</strong></span>
                                         <span>|</span>
-                                        <span>Customers: <strong>{(req.customers || []).length}</strong></span>
+                                        <span>Khách: <strong>{(req.customers || []).length}</strong></span>
                                         <span>|</span>
                                         <span>Lines: <strong>{(req.lines || []).length}</strong></span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex space-x-3">
+                            <div className="flex space-x-3 w-full md:w-auto justify-end">
                                 <button 
-                                    onClick={() => handleReject(req.id)}
+                                    onClick={() => req.id && handleReject(req.id)}
                                     className="px-4 py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors flex items-center"
                                 >
                                     <X className="w-3.5 h-3.5 mr-1.5" /> Từ chối
                                 </button>
                                 <button 
-                                    onClick={() => handleApprove(req)}
+                                    onClick={() => req.id && handleApprove(req)}
                                     className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 shadow-md hover:shadow-green-600/30 transition-all flex items-center"
                                 >
-                                    <Check className="w-3.5 h-3.5 mr-1.5" /> Duyệt & Gộp Dữ Liệu
+                                    <Check className="w-3.5 h-3.5 mr-1.5" /> Duyệt & Gộp
                                 </button>
                             </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
             ) : (
                 <div className="text-center py-8 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">

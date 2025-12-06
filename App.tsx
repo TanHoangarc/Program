@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -90,16 +89,24 @@ const App: React.FC = () => {
   // --- API FUNCTIONS (Defined BEFORE conditional return) ---
 
   const sendPendingToServer = async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+        alert("Lỗi: Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.");
+        return;
+    }
+    
+    if (jobs.length === 0) {
+        alert("Cảnh báo: Dữ liệu Job đang trống. Vui lòng kiểm tra lại trước khi gửi.");
+        return;
+    }
     
     if (!isServerAvailable) {
-        alert("Không thể kết nối với máy chủ (Chế độ Offline)");
+        alert("Không thể kết nối với máy chủ (Chế độ Offline). Vui lòng thử lại sau.");
         return;
     }
 
     try {
       const data = {
-        user: currentUser.username,
+        user: currentUser.username, // Ensure this is not null
         timestamp: new Date().toISOString(),
         jobs, // Sends current state snapshots
         customers,
@@ -109,7 +116,7 @@ const App: React.FC = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      await fetch("https://api.kimberry.id.vn/pending", {
+      const response = await fetch("https://api.kimberry.id.vn/pending", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -117,11 +124,15 @@ const App: React.FC = () => {
       });
       clearTimeout(timeoutId);
 
-      alert("Đã gửi dữ liệu lên server chờ Admin duyệt!");
+      if (response.ok) {
+          alert("Đã gửi dữ liệu lên server thành công! Vui lòng chờ Admin duyệt.");
+      } else {
+          throw new Error(`Server returned ${response.status}`);
+      }
 
     } catch (err) {
       console.error("Gửi pending thất bại:", err);
-      alert("Gửi thất bại: Không thể kết nối máy chủ.");
+      alert("Gửi thất bại: Có lỗi khi kết nối đến máy chủ.");
     }
   };
 
@@ -132,8 +143,9 @@ const App: React.FC = () => {
         const res = await fetch("https://api.kimberry.id.vn/pending");
         if (res.ok) {
             const data = await res.json();
-            // Ensure we get an array
-            setPendingRequests(Array.isArray(data) ? data : []);
+            // Filter valid objects to prevent UI crashes
+            const validData = (Array.isArray(data) ? data : []).filter(item => item && typeof item === 'object' && item.id);
+            setPendingRequests(validData);
         }
     } catch (e) {
         console.warn("Failed to fetch pending requests", e);
@@ -142,14 +154,28 @@ const App: React.FC = () => {
 
   // --- ADMIN: REJECT/DELETE REQUEST ---
   const handleRejectRequest = async (requestId: string) => {
-      if (!isServerAvailable) return;
+      if (!isServerAvailable) {
+         alert("Server Offline, không thể thực hiện.");
+         return;
+      }
+      
       try {
-          await fetch(`https://api.kimberry.id.vn/pending/${requestId}`, { method: 'DELETE' });
-          // Update local state to remove item from UI immediately
-          setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+          const res = await fetch(`https://api.kimberry.id.vn/pending/${requestId}`, { 
+              method: 'DELETE',
+              headers: {
+                  'Content-Type': 'application/json'
+              }
+          });
+          
+          if (res.ok || res.status === 404) {
+             setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+          } else {
+             console.error(`Delete failed with status: ${res.status}`);
+             alert(`Lỗi server khi xóa: ${res.status}`);
+          }
       } catch (e) {
           console.error("Failed to delete request", e);
-          alert("Có lỗi khi xóa yêu cầu.");
+          alert("Lỗi kết nối mạng hoặc CORS khi xóa yêu cầu.");
       }
   };
 
@@ -179,9 +205,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const fetchServerData = async () => {
       try {
-        // Use AbortController for timeout to fail fast if offline
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
         const res = await fetch("https://api.kimberry.id.vn/data", { 
             signal: controller.signal 
@@ -194,9 +219,9 @@ const App: React.FC = () => {
 
         console.log("SERVER DATA LOADED:", data);
 
-        if (data.jobs) setJobs(data.jobs);
-        if (data.customers) setCustomers(data.customers);
-        if (data.lines) setLines(data.lines);
+        if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(data.jobs);
+        if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
+        if (data.lines && Array.isArray(data.lines)) setLines(data.lines);
 
         setIsServerAvailable(true);
 
@@ -268,7 +293,6 @@ const App: React.FC = () => {
         lines
       };
 
-      // Add simple timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
@@ -284,13 +308,9 @@ const App: React.FC = () => {
 
     } catch (err) {
       console.warn("AUTO BACKUP FAILED (Offline Mode)", err);
-      // If auto backup fails, assume server is temporarily down
-      // We don't necessarily set isServerAvailable(false) here to allow retries later, 
-      // but we avoid spamming alerts.
     }
   };
 
-  // Trigger auto backup on changes
   useEffect(() => { 
     if (isServerAvailable) autoBackup(); 
   }, [jobs, customers, lines, isServerAvailable]);
@@ -301,14 +321,13 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
 
-  // Auto fetch pending when Admin goes to System page (HOOK MOVED UP)
+  // Auto fetch pending when Admin goes to System page
   useEffect(() => {
       if (currentPage === 'system' && currentUser?.role === 'Admin') {
           fetchPendingRequests();
       }
   }, [currentPage, currentUser]);
 
-  // --- EARLY RETURN FOR AUTH ---
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
 
