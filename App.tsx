@@ -156,15 +156,21 @@ const App: React.FC = () => {
   // --- ADMIN: REJECT/DELETE REQUEST ---
   const handleRejectRequest = async (requestId: string) => {
       if (!isServerAvailable) {
-         alert("Server Offline, không thể thực hiện.");
+         // Offline mode fallback - allow clearing list locally
+         if (window.confirm("Server Offline. Xóa khỏi danh sách hiển thị tạm thời?")) {
+             setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+         }
          return;
       }
       
       try {
-          const res = await fetch(`https://api.kimberry.id.vn/pending/${requestId}`, { 
+          // Encode ID to prevent URL issues
+          const encodedId = encodeURIComponent(requestId);
+          const res = await fetch(`https://api.kimberry.id.vn/pending/${encodedId}`, { 
               method: 'DELETE',
               headers: {
-                  'Content-Type': 'application/json'
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json'
               }
           });
           
@@ -172,12 +178,17 @@ const App: React.FC = () => {
           if (res.ok || res.status === 404) {
              setPendingRequests(prev => prev.filter(r => r.id !== requestId));
           } else {
-             console.error(`Delete failed with status: ${res.status}`);
-             alert(`Lỗi server khi xóa: ${res.status}`);
+             const errText = await res.text();
+             console.error(`Delete failed: ${res.status}`, errText);
+             throw new Error(`Server error: ${res.status}`);
           }
       } catch (e) {
           console.error("Failed to delete request", e);
-          alert("Lỗi kết nối mạng hoặc CORS khi xóa yêu cầu.");
+          // FALLBACK: User Friendly Error Handling
+          // If network/CORS fails, offer to clear it from the UI so Admin isn't stuck
+          if (window.confirm("Gặp lỗi kết nối khi xóa trên Server (Mạng/CORS). Bạn có muốn ẩn yêu cầu này khỏi danh sách hiển thị không?")) {
+              setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+          }
       }
   };
 
