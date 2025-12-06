@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertCircle, ArrowRight } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertCircle, ArrowRight, User } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -88,7 +88,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       }
   };
 
-  // Helper: Deep Compare Jobs to find differences
+  // Helper: Deep Compare Jobs
   const getChangeStats = (currentJobs: JobData[], incomingJobs: JobData[]) => {
       const currentMap = new Map(currentJobs.map(j => [j.id, j]));
       const changedBookings = new Set<string>();
@@ -98,12 +98,9 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       incomingJobs.forEach(incJob => {
           const currJob = currentMap.get(incJob.id);
           if (!currJob) {
-              // New Job
               newJobsCount++;
               if (incJob.booking) changedBookings.add(incJob.booking);
           } else {
-              // Modified Job - Compare JSON strings for deep equality
-              // Exclude non-data fields if necessary, but full compare is safest for "Any Change"
               const strInc = JSON.stringify(incJob);
               const strCurr = JSON.stringify(currJob);
               
@@ -118,6 +115,18 @@ export const SystemPage: React.FC<SystemPageProps> = ({
           newCount: newJobsCount, 
           modCount: modifiedJobsCount 
       };
+  };
+
+  // Helper: Check Customer Changes
+  const checkCustomerChanges = (currentCustomers: Customer[], incomingCustomers: Customer[]) => {
+      if (!incomingCustomers || incomingCustomers.length === 0) return false;
+      const currentMap = new Map(currentCustomers.map(c => [c.id, c]));
+      for (const incCust of incomingCustomers) {
+          const currCust = currentMap.get(incCust.id);
+          if (!currCust) return true; // New customer
+          if (JSON.stringify(incCust) !== JSON.stringify(currCust)) return true; // Modified customer
+      }
+      return false;
   };
 
   return (
@@ -153,23 +162,23 @@ export const SystemPage: React.FC<SystemPageProps> = ({
             {pendingRequests.length > 0 ? (
                 <div className="space-y-4">
                     {pendingRequests.map((req, index) => {
-                        // Safety check
                         if (!req || typeof req !== 'object') return null;
                         
-                        // Calculate changed bookings
                         const stats = getChangeStats(jobs, req.jobs || []);
+                        const hasCustomerChanges = checkCustomerChanges(customers, req.customers || []);
+                        
                         const bookingDisplay = stats.bookings.length > 0 
                             ? stats.bookings.slice(0, 4).join(', ') + (stats.bookings.length > 4 ? ` (+${stats.bookings.length - 4})` : '')
                             : 'Không có thay đổi Booking';
 
-                        // LOGIC UPDATE: Handle "Unknown" strictly
                         let username = req.user;
                         if (!username || typeof username !== 'string' || username.trim() === '' || username === 'Unknown') {
                             username = `Staff Update ${index + 1}`;
                         }
 
                         const totalIncoming = (req.jobs || []).length;
-                        const hasChanges = stats.newCount > 0 || stats.modCount > 0;
+                        const hasJobChanges = stats.newCount > 0 || stats.modCount > 0;
+                        const totalCustomers = (req.customers || []).length;
 
                         return (
                         <div key={req.id || Math.random()} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:shadow-md">
@@ -186,28 +195,39 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                                         </span>
                                     </div>
                                     
-                                    {/* Display Modified Bookings */}
-                                    <div className={`text-xs mt-2 flex items-start p-2 rounded-lg border ${hasChanges ? 'bg-yellow-50 border-yellow-100 text-slate-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                                        <FileText className={`w-3.5 h-3.5 mr-1.5 flex-shrink-0 mt-0.5 ${hasChanges ? 'text-yellow-600' : 'text-slate-400'}`} />
-                                        <div className="flex flex-col">
-                                            <span className="font-bold mb-0.5">Booking liên quan: {bookingDisplay}</span>
-                                            {hasChanges ? (
-                                                <span className="text-[10px] text-green-600 font-bold flex items-center gap-2">
-                                                    <span className="flex items-center"><Plus className="w-3 h-3 mr-0.5" /> {stats.newCount} Mới</span>
-                                                    <span className="flex items-center"><Edit2 className="w-3 h-3 mr-0.5" /> {stats.modCount} Sửa</span>
-                                                </span>
-                                            ) : (
-                                                <span className="text-[10px] text-slate-400 italic">Dữ liệu giống hệt hệ thống hiện tại</span>
-                                            )}
+                                    {/* Change Details */}
+                                    <div className="flex flex-col gap-1 mt-2">
+                                        {/* Job Changes */}
+                                        <div className={`text-xs flex items-center p-2 rounded-lg border ${hasJobChanges ? 'bg-yellow-50 border-yellow-100 text-slate-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                            <FileText className={`w-3.5 h-3.5 mr-1.5 flex-shrink-0 ${hasJobChanges ? 'text-yellow-600' : 'text-slate-400'}`} />
+                                            <div className="flex flex-col">
+                                                <span className="font-bold mb-0.5">Booking: {bookingDisplay}</span>
+                                                {hasJobChanges ? (
+                                                    <span className="text-[10px] text-green-600 font-bold flex items-center gap-2">
+                                                        <span className="flex items-center"><Plus className="w-3 h-3 mr-0.5" /> {stats.newCount} Mới</span>
+                                                        <span className="flex items-center"><Edit2 className="w-3 h-3 mr-0.5" /> {stats.modCount} Sửa</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400 italic">Không thay đổi Job</span>
+                                                )}
+                                            </div>
                                         </div>
+
+                                        {/* Customer/Data Changes Alert */}
+                                        {hasCustomerChanges && (
+                                            <div className="text-xs flex items-center p-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 font-medium">
+                                                <User className="w-3.5 h-3.5 mr-1.5" />
+                                                Có thay đổi trong danh mục Khách hàng
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="text-[11px] text-slate-500 mt-2 flex gap-3 opacity-80 pl-1">
-                                        <span className="flex items-center" title="Số lượng bản ghi Job trong gói tin">
-                                            Tổng Job trong gói: <strong className="ml-1 text-slate-700">{totalIncoming}</strong>
+                                        <span title="Số lượng bản ghi Job trong gói tin">
+                                            Jobs: <strong>{totalIncoming}</strong>
                                         </span>
                                         <span>|</span>
-                                        <span>Khách: <strong>{(req.customers || []).length}</strong></span>
+                                        <span>Khách: <strong>{totalCustomers}</strong></span>
                                     </div>
                                 </div>
                             </div>
