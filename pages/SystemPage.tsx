@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -88,32 +88,36 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       }
   };
 
-  // Helper to find what changed (diffing)
-  const getChangedBookings = (currentJobs: JobData[], incomingJobs: JobData[]) => {
+  // Helper: Deep Compare Jobs to find differences
+  const getChangeStats = (currentJobs: JobData[], incomingJobs: JobData[]) => {
       const currentMap = new Map(currentJobs.map(j => [j.id, j]));
       const changedBookings = new Set<string>();
+      let newJobsCount = 0;
+      let modifiedJobsCount = 0;
 
       incomingJobs.forEach(incJob => {
           const currJob = currentMap.get(incJob.id);
           if (!currJob) {
-              // New Job, add its booking
+              // New Job
+              newJobsCount++;
               if (incJob.booking) changedBookings.add(incJob.booking);
           } else {
-              // Compare content to see if modified (simplified check)
-              // We compare key fields
-              const isDiff = 
-                  incJob.cost !== currJob.cost ||
-                  incJob.sell !== currJob.sell ||
-                  incJob.localChargeTotal !== currJob.localChargeTotal ||
-                  incJob.profit !== currJob.profit ||
-                  JSON.stringify(incJob.bookingCostDetails) !== JSON.stringify(currJob.bookingCostDetails);
+              // Modified Job - Compare JSON strings for deep equality
+              // Exclude non-data fields if necessary, but full compare is safest for "Any Change"
+              const strInc = JSON.stringify(incJob);
+              const strCurr = JSON.stringify(currJob);
               
-              if (isDiff && incJob.booking) {
-                  changedBookings.add(incJob.booking);
+              if (strInc !== strCurr) {
+                  modifiedJobsCount++;
+                  if (incJob.booking) changedBookings.add(incJob.booking);
               }
           }
       });
-      return Array.from(changedBookings);
+      return { 
+          bookings: Array.from(changedBookings), 
+          newCount: newJobsCount, 
+          modCount: modifiedJobsCount 
+      };
   };
 
   return (
@@ -153,21 +157,25 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                         if (!req || typeof req !== 'object') return null;
                         
                         // Calculate changed bookings
-                        const changes = getChangedBookings(jobs, req.jobs || []);
-                        const bookingDisplay = changes.length > 0 
-                            ? changes.slice(0, 5).join(', ') + (changes.length > 5 ? ` (+${changes.length - 5} others)` : '')
-                            : 'Không có thay đổi booking đáng kể';
+                        const stats = getChangeStats(jobs, req.jobs || []);
+                        const bookingDisplay = stats.bookings.length > 0 
+                            ? stats.bookings.slice(0, 4).join(', ') + (stats.bookings.length > 4 ? ` (+${stats.bookings.length - 4})` : '')
+                            : 'Không có thay đổi Booking';
 
-                        // LOGIC UPDATE: Use index for Unknown users
-                        const username = req.user && typeof req.user === 'string' && req.user.trim() !== '' 
-                            ? req.user 
-                            : `Staff Update ${index + 1}`;
+                        // LOGIC UPDATE: Handle "Unknown" strictly
+                        let username = req.user;
+                        if (!username || typeof username !== 'string' || username.trim() === '' || username === 'Unknown') {
+                            username = `Staff Update ${index + 1}`;
+                        }
+
+                        const totalIncoming = (req.jobs || []).length;
+                        const hasChanges = stats.newCount > 0 || stats.modCount > 0;
 
                         return (
                         <div key={req.id || Math.random()} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:shadow-md">
                             <div className="flex items-start space-x-4 w-full md:w-auto">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm flex-shrink-0">
-                                    {(username.charAt(0) || '?').toUpperCase()}
+                                    {(username.charAt(0) || 'S').toUpperCase()}
                                 </div>
                                 <div className="flex-1">
                                     <div className="font-bold text-slate-800 flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
@@ -179,16 +187,25 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                                     </div>
                                     
                                     {/* Display Modified Bookings */}
-                                    <div className="text-xs text-slate-700 mt-2 flex items-start bg-yellow-50 p-2 rounded-lg border border-yellow-100">
-                                        <FileText className="w-3.5 h-3.5 mr-1.5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                                        <span className="font-medium">
-                                            <span className="text-slate-500 mr-1">Booking thay đổi:</span> 
-                                            {bookingDisplay}
-                                        </span>
+                                    <div className={`text-xs mt-2 flex items-start p-2 rounded-lg border ${hasChanges ? 'bg-yellow-50 border-yellow-100 text-slate-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                        <FileText className={`w-3.5 h-3.5 mr-1.5 flex-shrink-0 mt-0.5 ${hasChanges ? 'text-yellow-600' : 'text-slate-400'}`} />
+                                        <div className="flex flex-col">
+                                            <span className="font-bold mb-0.5">Booking liên quan: {bookingDisplay}</span>
+                                            {hasChanges ? (
+                                                <span className="text-[10px] text-green-600 font-bold flex items-center gap-2">
+                                                    <span className="flex items-center"><Plus className="w-3 h-3 mr-0.5" /> {stats.newCount} Mới</span>
+                                                    <span className="flex items-center"><Edit2 className="w-3 h-3 mr-0.5" /> {stats.modCount} Sửa</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-400 italic">Dữ liệu giống hệt hệ thống hiện tại</span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="text-[11px] text-slate-500 mt-2 flex gap-3 opacity-80 pl-1">
-                                        <span>Tổng Jobs: <strong>{(req.jobs || []).length}</strong></span>
+                                        <span className="flex items-center" title="Số lượng bản ghi Job trong gói tin">
+                                            Tổng Job trong gói: <strong className="ml-1 text-slate-700">{totalIncoming}</strong>
+                                        </span>
                                         <span>|</span>
                                         <span>Khách: <strong>{(req.customers || []).length}</strong></span>
                                     </div>
