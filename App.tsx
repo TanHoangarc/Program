@@ -12,10 +12,10 @@ import { SystemPage } from './pages/SystemPage';
 import { Reconciliation } from './pages/Reconciliation';
 import { ProfitReport } from './pages/ProfitReport';
 import { LookupPage } from './pages/LookupPage'; 
-import { PaymentPage } from './pages/PaymentPage'; // Import new page
+import { PaymentPage } from './pages/PaymentPage'; 
 import { LoginPage } from './components/LoginPage';
 
-import { JobData, Customer, ShippingLine, UserAccount } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -30,7 +30,7 @@ const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
 
 const App: React.FC = () => {
 
-  // Track server availability to prevent spamming failed requests
+  // Track server availability
   const [isServerAvailable, setIsServerAvailable] = useState(true);
 
   // --- AUTH STATE ---
@@ -48,11 +48,19 @@ const App: React.FC = () => {
   // --- PENDING REQUESTS STATE (Admin Only) ---
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   
-  // --- TRACKING CHANGES (NEW FEATURE) ---
-  // Store IDs of jobs that have been added or modified since the last sync
+  // --- TRACKING CHANGES ---
   const [modifiedJobIds, setModifiedJobIds] = useState<Set<string>>(() => {
       try {
           const saved = localStorage.getItem('kb_modified_job_ids');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch {
+          return new Set();
+      }
+  });
+
+  const [modifiedPaymentIds, setModifiedPaymentIds] = useState<Set<string>>(() => {
+      try {
+          const saved = localStorage.getItem('kb_modified_payment_ids');
           return saved ? new Set(JSON.parse(saved)) : new Set();
       } catch {
           return new Set();
@@ -78,6 +86,10 @@ const App: React.FC = () => {
       localStorage.setItem('kb_modified_job_ids', JSON.stringify(Array.from(modifiedJobIds)));
   }, [modifiedJobIds]);
 
+  useEffect(() => {
+      localStorage.setItem('kb_modified_payment_ids', JSON.stringify(Array.from(modifiedPaymentIds)));
+  }, [modifiedPaymentIds]);
+
   // Helper: Sanitize Data
   const sanitizeData = (data: JobData[]): JobData[] => {
     const seenIds = new Set<string>();
@@ -92,13 +104,11 @@ const App: React.FC = () => {
       seenIds.add(job.id);
       return job;
     });
-
     if (hasDuplicates) console.warn("Fixed duplicate IDs");
-
     return sanitized;
   };
 
-  // Load initial data from localStorage
+  // --- MAIN DATA STATE ---
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('logistics_jobs_v2');
     return saved ? sanitizeData(JSON.parse(saved)) : sanitizeData(MOCK_DATA);
@@ -114,12 +124,19 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : MOCK_SHIPPING_LINES;
   });
 
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>(() => {
+    try {
+        const saved = localStorage.getItem('payment_requests_v1');
+        return saved ? JSON.parse(saved) : [];
+    } catch {
+        return [];
+    }
+  });
+
   const [users, setUsers] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('logistics_users_v1');
-    // Important: Merge default users to ensure new Dockimberry user exists even if local storage has old users
     if (saved) {
         const localUsers = JSON.parse(saved);
-        // Add defaults if they don't exist
         const updatedUsers = [...localUsers];
         DEFAULT_USERS.forEach(defUser => {
             if (!updatedUsers.some(u => u.username === defUser.username)) {
@@ -134,27 +151,16 @@ const App: React.FC = () => {
   // --- JOB HANDLERS WITH TRACKING ---
   const handleAddJob = (job: JobData) => {
       setJobs([job, ...jobs]);
-      setModifiedJobIds(prev => {
-          const newSet = new Set(prev);
-          newSet.add(job.id);
-          return newSet;
-      });
+      setModifiedJobIds(prev => new Set(prev).add(job.id));
   };
 
   const handleEditJob = (job: JobData) => {
       setJobs(prev => prev.map(x => x.id === job.id ? job : x));
-      setModifiedJobIds(prev => {
-          const newSet = new Set(prev);
-          newSet.add(job.id);
-          return newSet;
-      });
+      setModifiedJobIds(prev => new Set(prev).add(job.id));
   };
 
   const handleDeleteJob = (id: string) => {
       setJobs(prev => prev.filter(x => x.id !== id));
-      // If deleted, remove from modified list (since we can't send a deleted job object)
-      // Note: In a full sync system, we'd need a "deletedIds" list. 
-      // For this "partial update" logic, removing it locally is sufficient for now.
       setModifiedJobIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(id);
@@ -162,19 +168,38 @@ const App: React.FC = () => {
       });
   };
 
+  // --- PAYMENT HANDLERS WITH TRACKING ---
+  const handleUpdatePaymentRequests = (newRequests: PaymentRequest[]) => {
+      // Find which items are new or changed compared to current state
+      const currentMap = new Map(paymentRequests.map(r => [r.id, r]));
+      
+      const changedIds = new Set<string>();
+      
+      newRequests.forEach(req => {
+          const current = currentMap.get(req.id);
+          // If new or strictly different, mark as modified
+          if (!current || JSON.stringify(current) !== JSON.stringify(req)) {
+              changedIds.add(req.id);
+          }
+      });
+
+      // Also detect deletions if we want to sync deletions, but for now we sync the full list of "active" items
+      setPaymentRequests(newRequests);
+      
+      setModifiedPaymentIds(prev => {
+          const next = new Set(prev);
+          changedIds.forEach(id => next.add(id));
+          return next;
+      });
+  };
+
   // --- DATA SYNC FUNCTIONS ---
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
       
-      // Sync Jobs & Mark Modified
       setJobs(prevJobs => prevJobs.map(job => {
           if (job.customerId === updatedCustomer.id) {
-              // Side effect: Mark job as modified because name changed
-              setModifiedJobIds(prev => {
-                  const newSet = new Set(prev);
-                  newSet.add(job.id);
-                  return newSet;
-              });
+              setModifiedJobIds(prev => new Set(prev).add(job.id));
               return { ...job, customerName: updatedCustomer.name };
           }
           return job;
@@ -185,7 +210,7 @@ const App: React.FC = () => {
       setLines(prev => prev.map(l => l.id === updatedLine.id ? updatedLine : l));
   };
 
-  // --- API FUNCTIONS (Defined BEFORE conditional return) ---
+  // --- API FUNCTIONS ---
 
   const sendPendingToServer = async () => {
     if (!currentUser || !currentUser.username) {
@@ -193,15 +218,15 @@ const App: React.FC = () => {
         return;
     }
     
-    // FILTER: Only send jobs that are in the modifiedJobIds list
+    // FILTER MODIFIED DATA
     const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
+    const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
 
     // Allow sending if there are customer changes (even if no job changes)
-    // We send full customer/line lists as they are small reference data
-    const hasJobChanges = jobsToSend.length > 0;
+    const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0;
     
-    if (!hasJobChanges) {
-        alert("Không có thay đổi nào mới (Job) để gửi đi.");
+    if (!hasChanges) {
+        alert("Không có thay đổi nào mới (Job hoặc Thanh toán) để gửi đi.");
         return;
     }
     
@@ -214,7 +239,8 @@ const App: React.FC = () => {
       const payload = {
         user: currentUser.username, 
         timestamp: new Date().toISOString(),
-        jobs: jobsToSend, // ONLY SEND MODIFIED JOBS
+        jobs: jobsToSend, 
+        paymentRequests: paymentsToSend, // Include Payments
         customers: [...customers],
         lines: [...lines]
       };
@@ -231,9 +257,15 @@ const App: React.FC = () => {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-          alert(`Đã gửi thành công ${jobsToSend.length} Job đã thay đổi!`);
+          const msgParts = [];
+          if (jobsToSend.length > 0) msgParts.push(`${jobsToSend.length} Job`);
+          if (paymentsToSend.length > 0) msgParts.push(`${paymentsToSend.length} Thanh toán`);
+          
+          alert(`Đã gửi thành công: ${msgParts.join(', ')}!`);
+          
           // RESET TRACKING on success
           setModifiedJobIds(new Set());
+          setModifiedPaymentIds(new Set());
       } else {
           throw new Error(`Server returned ${response.status}`);
       }
@@ -273,14 +305,10 @@ const App: React.FC = () => {
     }
   };
 
-  // --- ADMIN: REJECT/DELETE REQUEST (THOROUGH FIX) ---
+  // --- ADMIN: REJECT/DELETE REQUEST ---
   const handleRejectRequest = async (requestId: string) => {
       setPendingRequests(prev => prev.filter(r => r.id !== requestId));
-      setLocalDeletedIds(prev => {
-          const newSet = new Set(prev);
-          newSet.add(requestId);
-          return newSet;
-      });
+      setLocalDeletedIds(prev => new Set(prev).add(requestId));
 
       if (!isServerAvailable) return;
       
@@ -291,7 +319,7 @@ const App: React.FC = () => {
               headers: { 'Content-Type': 'application/json' }
           });
       } catch (e) {
-          console.warn(`Background delete for ${requestId} failed, handled by local blacklist.`);
+          console.warn(`Background delete for ${requestId} failed.`);
       }
   };
 
@@ -305,14 +333,17 @@ const App: React.FC = () => {
       };
 
       const incJobs = Array.isArray(incomingData.jobs) ? incomingData.jobs : (incomingData.data?.jobs || incomingData.payload?.jobs || []);
+      const incPayments = Array.isArray(incomingData.paymentRequests) ? incomingData.paymentRequests : (incomingData.data?.paymentRequests || incomingData.payload?.paymentRequests || []);
       const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
 
       const newJobs = mergeArrays(jobs, incJobs);
+      const newPayments = mergeArrays(paymentRequests, incPayments);
       const newCustomers = mergeArrays(customers, incCustomers);
       const newLines = mergeArrays(lines, incLines);
 
       setJobs(newJobs);
+      setPaymentRequests(newPayments);
       setCustomers(newCustomers);
       setLines(newLines);
 
@@ -339,6 +370,7 @@ const App: React.FC = () => {
         console.log("SERVER DATA LOADED:", data);
 
         if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(data.jobs);
+        if (data.paymentRequests && Array.isArray(data.paymentRequests)) setPaymentRequests(data.paymentRequests);
         if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
         if (data.lines && Array.isArray(data.lines)) setLines(data.lines);
 
@@ -387,7 +419,6 @@ const App: React.FC = () => {
       setSessionError('');
       sessionStorage.setItem('kb_user', JSON.stringify(userData));
       
-      // Redirect based on role to a safe default page
       if (user.role === 'Docs') {
           setCurrentPage('lookup');
       } else {
@@ -405,16 +436,17 @@ const App: React.FC = () => {
     setSessionError(forced ? "Tài khoản đã được đăng nhập nơi khác." : "");
   }, []);
 
-  // === AUTO BACKUP TO SERVER (Chỉ máy A ghi vào E) ===
+  // === AUTO BACKUP TO SERVER ===
   const autoBackup = async () => {
     if (!currentUser || currentUser.role !== "Admin") return;
-    if (!isServerAvailable) return; // Don't try if server is down
+    if (!isServerAvailable) return; 
 
     try {
       const data = {
         timestamp: new Date().toISOString(),
-        version: "2.1",
+        version: "2.2",
         jobs,
+        paymentRequests, // Include Payments in backup
         customers,
         lines
       };
@@ -429,9 +461,7 @@ const App: React.FC = () => {
         signal: controller.signal
       });
       clearTimeout(timeoutId);
-
       console.log("AUTO BACKUP SUCCESS");
-
     } catch (err) {
       console.warn("AUTO BACKUP FAILED (Offline Mode)", err);
     }
@@ -439,10 +469,11 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     if (isServerAvailable) autoBackup(); 
-  }, [jobs, customers, lines, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, isServerAvailable]);
 
   // SAVE TO LOCAL STORAGE
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
+  useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
   useEffect(() => { localStorage.setItem("logistics_customers_v1", JSON.stringify(customers)); }, [customers]);
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
@@ -562,13 +593,17 @@ const App: React.FC = () => {
               <Reconciliation jobs={jobs} />
             )}
 
-            {/* --- NEW PAGES --- */}
             {currentPage === 'lookup' && (
               <LookupPage jobs={jobs} />
             )}
             
+            {/* UPDATED PaymentPage: Pass props instead of local state */}
             {currentPage === 'payment' && (
-              <PaymentPage lines={lines} />
+              <PaymentPage 
+                lines={lines} 
+                requests={paymentRequests}
+                onUpdateRequests={handleUpdatePaymentRequests}
+              />
             )}
 
             {currentPage === 'cvhc' && (
@@ -595,7 +630,6 @@ const App: React.FC = () => {
                 onAddUser={(u) => setUsers([...users, u])}
                 onEditUser={(u, oldName) => setUsers(users.map(user => user.username === oldName ? u : user))}
                 onDeleteUser={(name) => setUsers(users.filter(u => u.username !== name))}
-                // New Props for Pending Requests
                 pendingRequests={pendingRequests}
                 onApproveRequest={handleApproveRequest}
                 onRejectRequest={handleRejectRequest}
