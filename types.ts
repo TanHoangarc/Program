@@ -129,6 +129,28 @@ export interface BookingSummary {
   costDetails: BookingCostDetails;
 }
 
+export interface PaymentRequest {
+  id: string;
+  lineCode: string; // MSC, ONE, etc.
+  pod?: 'HCM' | 'HPH'; // Specific for MSC
+  booking: string;
+  amount: number;
+  
+  // Invoice File Info
+  invoiceFileName: string;
+  invoicePath: string; // Simulated Server Path
+  invoiceBlobUrl?: string; // For session preview
+  
+  // UNC File Info
+  uncFileName?: string;
+  uncPath?: string; // Simulated Server Path
+  uncBlobUrl?: string; // For session preview
+  
+  status: 'pending' | 'completed';
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface UserAccount {
   username: string;
   pass: string;
