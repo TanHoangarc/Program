@@ -1,48 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ShippingLine } from '../types';
+import React, { useState, useRef } from 'react';
+import { ShippingLine, PaymentRequest } from '../types';
 import { 
   CreditCard, Upload, Plus, FileText, CheckCircle, Trash2, 
   Eye, Download, AlertCircle, Search, Save, X, HardDrive, CornerDownRight 
 } from 'lucide-react';
 
-interface PaymentRequest {
-  id: string;
-  lineCode: string; // MSC, ONE, etc.
-  pod?: 'HCM' | 'HPH'; // Specific for MSC
-  booking: string;
-  amount: number;
-  
-  // Invoice File Info
-  invoiceFileName: string;
-  invoicePath: string; // Simulated Server Path
-  invoiceBlobUrl?: string; // For session preview
-  
-  // UNC File Info
-  uncFileName?: string;
-  uncPath?: string; // Simulated Server Path
-  uncBlobUrl?: string; // For session preview
-  
-  status: 'pending' | 'completed';
-  createdAt: string;
-  completedAt?: string;
-}
-
 interface PaymentPageProps {
   lines: ShippingLine[];
+  requests: PaymentRequest[];
+  onUpdateRequests: (reqs: PaymentRequest[]) => void;
 }
 
-export const PaymentPage: React.FC<PaymentPageProps> = ({ lines }) => {
-  // --- STATE ---
-  const [requests, setRequests] = useState<PaymentRequest[]>(() => {
-      try {
-          const saved = localStorage.getItem('payment_requests_v1');
-          return saved ? JSON.parse(saved) : [];
-      } catch {
-          return [];
-      }
-  });
-  
-  // Form State
+export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpdateRequests }) => {
+  // --- LOCAL FORM STATE (Transient) ---
   const [line, setLine] = useState('');
   const [pod, setPod] = useState<'HCM' | 'HPH'>('HCM');
   const [booking, setBooking] = useState('');
@@ -55,11 +25,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uncInputRef = useRef<HTMLInputElement>(null);
-
-  // Persist Metadata
-  useEffect(() => {
-      localStorage.setItem('payment_requests_v1', JSON.stringify(requests));
-  }, [requests]);
 
   // --- HANDLERS ---
 
@@ -93,7 +58,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines }) => {
         createdAt: new Date().toISOString()
     };
 
-    setRequests(prev => [newReq, ...prev]);
+    // CALL PARENT HANDLER
+    onUpdateRequests([newReq, ...requests]);
     
     // Reset Form
     setBooking('');
@@ -104,7 +70,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines }) => {
 
   const handleDelete = (id: string) => {
       if (window.confirm("Bạn có chắc chắn muốn xóa yêu cầu thanh toán này?")) {
-          setRequests(prev => prev.filter(r => r.id !== id));
+          onUpdateRequests(requests.filter(r => r.id !== id));
       }
   };
 
@@ -130,11 +96,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines }) => {
       const fileName = uncFile.name;
       const simulatedUncPath = `E:\\ServerData\\Uploads\\UNC\\${fileName}`;
 
-      setRequests(prev => prev.map(req => {
+      const updatedRequests = requests.map(req => {
           if (req.id === completingId) {
               return {
                   ...req,
-                  status: 'completed',
+                  status: 'completed' as const,
                   uncFileName: fileName,
                   uncPath: simulatedUncPath,
                   uncBlobUrl: URL.createObjectURL(uncFile),
@@ -142,7 +108,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines }) => {
               };
           }
           return req;
-      }));
+      });
+
+      // CALL PARENT HANDLER
+      onUpdateRequests(updatedRequests);
 
       setCompletingId(null);
       setUncFile(null);
@@ -166,18 +135,16 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines }) => {
 
   const openFile = (url: string | undefined) => {
       if (url) window.open(url, '_blank');
-      else alert("File gốc không tồn tại trong phiên làm việc này (đã bị xóa khỏi bộ nhớ đệm).");
+      else alert("File gốc không tồn tại trong phiên làm việc này (đã bị xóa khỏi bộ nhớ đệm hoặc reload trang).");
   };
 
   const downloadUNC = (req: PaymentRequest) => {
       if (!req.uncBlobUrl) {
-          alert("File không khả dụng để tải xuống.");
+          alert("File không khả dụng để tải xuống (Session Blob URL đã hết hạn sau khi reload).");
           return;
       }
       const link = document.createElement('a');
       link.href = req.uncBlobUrl;
-      // Rename file per requirement: UNC BL [booking].pdf
-      // We assume it's a PDF or keep original extension if possible
       const ext = req.uncFileName?.split('.').pop() || 'pdf';
       link.download = `UNC BL ${req.booking}.${ext}`;
       document.body.appendChild(link);
