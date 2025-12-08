@@ -1,14 +1,22 @@
+// ============================================================
+// EXTENSION (PHỤ THU / DOANH THU PHÁT SINH)
+// ============================================================
+
 export interface ExtensionData {
   id: string;
-  customerId: string; // Ma KH
-  
-  // Financial Details (Revenue - Thu)
-  invoice: string; // So hoa don
-  invoiceDate: string; // Ngay hoa don
-  net: number; // Gia net
-  vat: number; // Gia vat
-  total: number; // Tong (Auto calc)
+  customerId: string; // Mã KH
+
+  // Financial Details
+  invoice: string; 
+  invoiceDate: string;
+  net: number;
+  vat: number;
+  total: number; // Auto-calc
 }
+
+// ============================================================
+// CUSTOMER
+// ============================================================
 
 export interface Customer {
   id: string;
@@ -17,13 +25,21 @@ export interface Customer {
   mst: string;
 }
 
+// ============================================================
+// SHIPPING LINE
+// ============================================================
+
 export interface ShippingLine {
   id: string;
-  code: string; // Ma Line
-  name: string; // Ten cong ty
+  code: string; // MSC, ONE, HPL...
+  name: string; // Tên hãng tàu
   mst: string;
-  itemName?: string; // Ten hang mac dinh (New)
+  itemName?: string; // Tên hàng mặc định
 }
+
+// ============================================================
+// BOOKING INVOICE (1 Hoá đơn duy nhất)
+// ============================================================
 
 export interface BookingInvoice {
   invoice: string;
@@ -32,6 +48,10 @@ export interface BookingInvoice {
   vat: number;
   total: number;
 }
+
+// ============================================================
+// EXTENSION COST (Nhiều hoá đơn Local Charge)
+// ============================================================
 
 export interface BookingExtensionCost {
   id: string;
@@ -42,35 +62,45 @@ export interface BookingExtensionCost {
   total: number;
 }
 
+// ============================================================
+// BOOKING DEPOSIT
+// ============================================================
+
 export interface BookingDeposit {
   id: string;
-  // note removed
-  amount: number; // So tien cuoc
-  dateOut: string; // Ngay cuoc
-  dateIn: string; // Ngay hoan
+  amount: number;
+  dateOut: string;
+  dateIn: string;
 }
 
+// ============================================================
+// BOOKING COST DETAILS
+// ============================================================
+
 export interface BookingCostDetails {
-  // Expense Breakdown (Chi)
-  localCharge: BookingInvoice; 
-  additionalLocalCharges?: BookingExtensionCost[]; // New: Multiple Local Charge Invoices
+  localCharge: BookingInvoice;
+  additionalLocalCharges?: BookingExtensionCost[];
   extensionCosts: BookingExtensionCost[];
-  deposits: BookingDeposit[]; // New: Deposit at booking level
+  deposits: BookingDeposit[];
 }
+
+// ============================================================
+// JOB DATA – HOÀN CHỈNH
+// ============================================================
 
 export interface JobData {
   id: string;
-  
+
   // General
-  month: string; // Thang 1-12
-  jobCode: string; // Job
-  booking: string; // Booking
-  consol: string; // Consol (Input text)
-  line: string; // Line (MSC, TSLHN...)
-  customerId: string; // Reference to Customer
-  customerName: string; // Store name for easier display/search
-  hbl: string; // Only if Customer is Long Hoang
-  transit: string; // HCM, HPH
+  month: string;
+  jobCode: string;
+  booking: string;
+  consol: string;
+  line: string;
+  customerId: string;
+  customerName: string;
+  hbl: string;
+  transit: string;
 
   // Financials
   cost: number;
@@ -79,29 +109,29 @@ export interface JobData {
   cont20: number;
   cont40: number;
 
-  // Detailed Costs (Chi phi chi tiet)
+  // Detailed Fees
   feeCic: number;
   feeKimberry: number;
   feePsc: number;
   feeEmc: number;
   feeOther: number;
 
-  // Payment Out (Chi) - Legacy fields kept for compatibility but hidden in UI
+  // Legacy (Chi Payment)
   chiPayment: number;
   chiCuoc: number;
   ngayChiCuoc: string;
   ngayChiHoan: string;
 
-  // Payment In (Thu) - Local Charge (Revenue from Customer)
+  // Payment In (Local Charge – Thu KH)
   localChargeInvoice: string;
   localChargeDate: string;
   localChargeNet: number;
   localChargeVat: number;
   localChargeTotal: number;
-  bank: string; // TCB/MB
+  bank: string;
 
-  // Payment In (Thu) - Deposit
-  maKhCuocId: string; // Customer ID for Deposit
+  // Payment In (Deposit)
+  maKhCuocId: string;
   thuCuoc: number;
   ngayThuCuoc: string;
   ngayThuHoan: string;
@@ -109,56 +139,83 @@ export interface JobData {
   // Revenue Extensions
   extensions: ExtensionData[];
 
-  // Booking Level Expense Details (Shared across jobs with same booking)
+  // Chi phí theo Booking (dùng chung)
   bookingCostDetails?: BookingCostDetails;
 }
+
+// ============================================================
+// BOOKING SUMMARY
+// ============================================================
 
 export interface BookingSummary {
   bookingId: string;
   month: string;
   line: string;
+
   jobCount: number;
-  totalCost: number; // Chi Payment sum
+  totalCost: number;
   totalSell: number;
   totalProfit: number;
   totalCont20: number;
   totalCont40: number;
+
   jobs: JobData[];
-  
-  // Invoice Details
+
   costDetails: BookingCostDetails;
 }
 
+// ============================================================
+// PAYMENT REQUEST – ĐÃ ĐỒNG BỘ VỚI SERVER.JS & PAYMENTPAGE.TSX
+// ============================================================
+
 export interface PaymentRequest {
   id: string;
-  lineCode: string; // MSC, ONE, etc.
-  pod?: 'HCM' | 'HPH'; // Specific for MSC
-  booking: string;
-  amount: number;
-  
-  // Invoice File Info
-  invoiceFileName: string;
-  invoicePath: string; // Simulated Server Path
-  invoiceBlobUrl?: string; // For session preview
-  
-  // UNC File Info
-  uncFileName?: string;
-  uncPath?: string; // Simulated Server Path
-  uncBlobUrl?: string; // For session preview
-  
-  status: 'pending' | 'completed';
+
+  lineCode: string;            // MSC, ONE, EVERGREEN...
+  pod?: "HCM" | "HPH";         // Chỉ dùng cho MSC
+  booking: string;             // Số booking
+  amount: number;              // Số tiền
+
+  // ------------------------------------------
+  // INVOICE (HÓA ĐƠN)
+  // ------------------------------------------
+  invoiceFileName: string;     // INV_xxx.pdf
+  invoicePath: string;         // E:/ServerData/Uploads/UNC/xxx.pdf
+  invoiceUrl?: string;         // URL xem file qua HTTP
+  invoiceBlobUrl?: string;     // Blob dùng khi chưa reload trang
+
+  // ------------------------------------------
+  // UNC (ỦY NHIỆM CHI)
+  // ------------------------------------------
+  uncFileName?: string;         
+  uncPath?: string;             // Đường dẫn ổ E
+  uncUrl?: string;              // URL xem UNC qua server
+  uncBlobUrl?: string;          // Blob local
+
+  // Status
+  status: "pending" | "completed";
+
   createdAt: string;
   completedAt?: string;
 }
 
+// ============================================================
+// USER ACCOUNT
+// ============================================================
+
 export interface UserAccount {
   username: string;
   pass: string;
-  role: 'Admin' | 'Manager' | 'Staff' | 'Docs';
+  role: "Admin" | "Manager" | "Staff" | "Docs";
 }
+
+// ============================================================
+// INITIAL JOB (DEFAULT OBJECT)
+// ============================================================
 
 export const INITIAL_JOB: JobData = {
   id: '',
+
   month: '1',
   jobCode: '',
   booking: '',
@@ -168,7 +225,7 @@ export const INITIAL_JOB: JobData = {
   customerName: '',
   hbl: '',
   transit: 'HCM',
-  
+
   cost: 0,
   sell: 0,
   profit: 0,
