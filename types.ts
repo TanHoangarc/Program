@@ -1,4 +1,3 @@
-
 export interface ExtensionData {
   id: string;
   customerId: string; // Ma KH
@@ -133,7 +132,7 @@ export interface BookingSummary {
 export interface UserAccount {
   username: string;
   pass: string;
-  role: 'Admin' | 'Manager' | 'Staff';
+  role: 'Admin' | 'Manager' | 'Staff' | 'Docs';
 }
 
 export const INITIAL_JOB: JobData = {

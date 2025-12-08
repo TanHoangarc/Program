@@ -11,6 +11,8 @@ import { DebtManagement } from './pages/DebtManagement';
 import { SystemPage } from './pages/SystemPage';
 import { Reconciliation } from './pages/Reconciliation';
 import { ProfitReport } from './pages/ProfitReport';
+import { LookupPage } from './pages/LookupPage'; 
+import { PaymentPage } from './pages/PaymentPage'; // Import new page
 import { LoginPage } from './components/LoginPage';
 
 import { JobData, Customer, ShippingLine, UserAccount } from './types';
@@ -20,7 +22,8 @@ import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
 const DEFAULT_USERS: UserAccount[] = [
   { username: 'KimberryAdmin', pass: 'Jwckim@123#', role: 'Admin' },
   { username: 'Kimberrystaff', pass: 'Jwckim@124#', role: 'Staff' },
-  { username: 'Kimberrymanager', pass: 'Jwckim@125#', role: 'Manager' }
+  { username: 'Kimberrymanager', pass: 'Jwckim@125#', role: 'Manager' },
+  { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' }
 ];
 
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
@@ -37,7 +40,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation'>('entry');
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc'>('entry');
 
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [targetJobId, setTargetJobId] = useState<string | null>(null);
@@ -113,7 +116,19 @@ const App: React.FC = () => {
 
   const [users, setUsers] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('logistics_users_v1');
-    return saved ? JSON.parse(saved) : DEFAULT_USERS;
+    // Important: Merge default users to ensure new Dockimberry user exists even if local storage has old users
+    if (saved) {
+        const localUsers = JSON.parse(saved);
+        // Add defaults if they don't exist
+        const updatedUsers = [...localUsers];
+        DEFAULT_USERS.forEach(defUser => {
+            if (!updatedUsers.some(u => u.username === defUser.username)) {
+                updatedUsers.push(defUser);
+            }
+        });
+        return updatedUsers;
+    }
+    return DEFAULT_USERS;
   });
 
   // --- JOB HANDLERS WITH TRACKING ---
@@ -371,6 +386,13 @@ const App: React.FC = () => {
       setCurrentUser(userData);
       setSessionError('');
       sessionStorage.setItem('kb_user', JSON.stringify(userData));
+      
+      // Redirect based on role to a safe default page
+      if (user.role === 'Docs') {
+          setCurrentPage('lookup');
+      } else {
+          setCurrentPage('entry');
+      }
     } else {
       setLoginError("Thông tin đăng nhập không đúng");
     }
@@ -538,6 +560,24 @@ const App: React.FC = () => {
 
             {currentPage === 'reconciliation' && (
               <Reconciliation jobs={jobs} />
+            )}
+
+            {/* --- NEW PAGES --- */}
+            {currentPage === 'lookup' && (
+              <LookupPage jobs={jobs} />
+            )}
+            
+            {currentPage === 'payment' && (
+              <PaymentPage lines={lines} />
+            )}
+
+            {currentPage === 'cvhc' && (
+              <div className="flex items-center justify-center h-full text-slate-400">
+                 <div className="text-center">
+                    <h2 className="text-2xl font-bold mb-2">Nộp CVHC</h2>
+                    <p>Chức năng đang được phát triển...</p>
+                 </div>
+              </div>
             )}
 
             {currentPage === 'system' && (
