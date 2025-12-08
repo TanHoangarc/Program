@@ -1,5 +1,5 @@
-import React from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, BookUp, FileCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, BookUp, FileCheck, ChevronDown } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc';
@@ -25,20 +25,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
   const canViewRecon = isAdminOrManager;
   const canViewData = isAdminOrManager || isStaff;
   const canViewSystem = isAdminOrManager;
-  const canSendPending = isStaff || isAdminOrManager;
+  
+  // FIX: Chỉ Staff mới được gửi dữ liệu duyệt
+  const canSendPending = isStaff;
+
+  // State for Accordion Menus
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    deposit: false,
+    amis: false,
+    data: false
+  });
+
+  const toggleGroup = (group: string) => {
+    setOpenGroups(prev => ({ ...prev, [group]: !prev[group] }));
+  };
 
   const MenuItem = ({ 
     active, 
     onClick, 
     icon: Icon, 
     label, 
-    statusColor 
+    statusColor,
+    hasSubmenu = false,
+    isOpen = false
   }: { 
     active: boolean; 
     onClick: () => void; 
     icon: any; 
     label: string; 
     statusColor?: string; 
+    hasSubmenu?: boolean;
+    isOpen?: boolean;
   }) => (
     <button
       onClick={(e) => { e.preventDefault(); onClick(); }}
@@ -56,8 +73,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
         )}
         <span className={`text-sm ${active ? 'font-semibold tracking-wide' : 'font-medium'}`}>{label}</span>
       </div>
-      {active && <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_#2dd4bf]"></div>}
+      {hasSubmenu ? (
+        isOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />
+      ) : (
+        active && <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_#2dd4bf]"></div>
+      )}
     </button>
+  );
+
+  const SubMenuItem = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) => (
+      <button
+        onClick={(e) => { e.preventDefault(); onClick(); }}
+        className={`w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-sm transition-colors mb-1 ${
+            active ? 'text-teal-300 bg-white/5 font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+        }`}
+      >
+          <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-500'}`} />
+          <span>{label}</span>
+      </button>
   );
 
   return (
@@ -79,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
       </div>
 
       {/* Menu */}
-      <nav className="relative z-10 flex-1 px-4 space-y-1 overflow-visible pt-4 overflow-y-auto custom-scrollbar">
+      <nav className="relative z-10 flex-1 px-4 space-y-1 overflow-visible pt-4 overflow-y-auto custom-scrollbar pb-2">
         
         {/* OVERVIEW SECTION (Admin/Manager Only) */}
         {canViewOverview && (
@@ -124,28 +157,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
               label="Booking"
               statusColor="bg-blue-400"
             />
-            {/* Deposit Group */}
-            <div className="relative group">
+            
+            {/* Deposit Accordion */}
+            <div>
                <MenuItem 
                 active={['deposit-line', 'deposit-customer'].includes(currentPage)}
-                onClick={() => {}} // Hover only
+                onClick={() => toggleGroup('deposit')}
                 icon={ArrowRightLeft}
                 label="Quản lý Cược"
                 statusColor="bg-purple-400"
+                hasSubmenu={true}
+                isOpen={openGroups.deposit}
               />
-              <div className="hidden group-hover:block absolute left-[90%] top-0 pl-4 w-60 z-[60]">
-                <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-2 animate-in fade-in slide-in-from-left-2 duration-150">
-                  <div onClick={() => onNavigate('deposit-line')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer transition-colors mb-1 ${currentPage === 'deposit-line' ? 'bg-white/10 text-white shadow-inner' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}>
-                    <Building2 className="w-4 h-4 text-purple-300" />
-                    <span className="text-sm font-medium">Hãng Tàu</span>
-                  </div>
-                  <div onClick={() => onNavigate('deposit-customer')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${currentPage === 'deposit-customer' ? 'bg-white/10 text-white shadow-inner' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}>
-                    <UserCircle className="w-4 h-4 text-purple-300" />
-                    <span className="text-sm font-medium">Khách Hàng</span>
-                  </div>
+              {openGroups.deposit && (
+                <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                   <SubMenuItem 
+                      active={currentPage === 'deposit-line'}
+                      onClick={() => onNavigate('deposit-line')}
+                      icon={Building2}
+                      label="Hãng Tàu"
+                   />
+                   <SubMenuItem 
+                      active={currentPage === 'deposit-customer'}
+                      onClick={() => onNavigate('deposit-customer')}
+                      icon={UserCircle}
+                      label="Khách Hàng"
+                   />
                 </div>
-              </div>
+              )}
             </div>
+
             <MenuItem 
               active={currentPage === 'lhk'}
               onClick={() => onNavigate('lhk')}
@@ -184,29 +225,43 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
         {canViewAccounting && (
           <>
             <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-4 mb-1">Kế Toán</div>
-            <div className="relative group">
+            <div>
               <MenuItem 
                 active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)}
-                onClick={() => {}} // Hover
+                onClick={() => toggleGroup('amis')}
                 icon={FileUp}
                 label="Kế Toán AMIS"
+                hasSubmenu={true}
+                isOpen={openGroups.amis}
               />
-              <div className="hidden group-hover:block absolute left-[90%] top-0 pl-4 w-60 z-[60]">
-                <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-2 animate-in fade-in slide-in-from-left-2 duration-150">
-                  <div onClick={() => onNavigate('amis-thu')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer hover:bg-white/5 hover:text-white mb-1 ${currentPage === 'amis-thu' ? 'bg-white/10 text-white' : 'text-slate-300'}`}>
-                    <FileText className="w-4 h-4 text-teal-300" /><span className="text-sm font-medium">Phiếu Thu</span>
-                  </div>
-                  <div onClick={() => onNavigate('amis-chi')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer hover:bg-white/5 hover:text-white mb-1 ${currentPage === 'amis-chi' ? 'bg-white/10 text-white' : 'text-slate-300'}`}>
-                    <CreditCard className="w-4 h-4 text-red-300" /><span className="text-sm font-medium">Phiếu Chi</span>
-                  </div>
-                  <div onClick={() => onNavigate('amis-ban')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer hover:bg-white/5 hover:text-white mb-1 ${currentPage === 'amis-ban' ? 'bg-white/10 text-white' : 'text-slate-300'}`}>
-                    <ShoppingCart className="w-4 h-4 text-purple-300" /><span className="text-sm font-medium">Phiếu Bán Hàng</span>
-                  </div>
-                  <div onClick={() => onNavigate('amis-mua')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer hover:bg-white/5 hover:text-white ${currentPage === 'amis-mua' ? 'bg-white/10 text-white' : 'text-slate-300'}`}>
-                    <Briefcase className="w-4 h-4 text-orange-300" /><span className="text-sm font-medium">Phiếu Mua Hàng</span>
-                  </div>
+              {openGroups.amis && (
+                <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <SubMenuItem 
+                    active={currentPage === 'amis-thu'}
+                    onClick={() => onNavigate('amis-thu')}
+                    icon={FileText}
+                    label="Phiếu Thu"
+                  />
+                  <SubMenuItem 
+                    active={currentPage === 'amis-chi'}
+                    onClick={() => onNavigate('amis-chi')}
+                    icon={CreditCard}
+                    label="Phiếu Chi"
+                  />
+                  <SubMenuItem 
+                    active={currentPage === 'amis-ban'}
+                    onClick={() => onNavigate('amis-ban')}
+                    icon={ShoppingCart}
+                    label="Phiếu Bán Hàng"
+                  />
+                  <SubMenuItem 
+                    active={currentPage === 'amis-mua'}
+                    onClick={() => onNavigate('amis-mua')}
+                    icon={Briefcase}
+                    label="Phiếu Mua Hàng"
+                  />
                 </div>
-              </div>
+              )}
             </div>
           </>
         )}
@@ -226,23 +281,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
         )}
 
         {canViewData && (
-          <div className="relative group">
+          <div>
             <MenuItem 
               active={['data-lines', 'data-customers'].includes(currentPage)}
-              onClick={() => {}} 
+              onClick={() => toggleGroup('data')}
               icon={Database}
               label="Danh Mục"
+              hasSubmenu={true}
+              isOpen={openGroups.data}
             />
-            <div className="hidden group-hover:block absolute left-[90%] bottom-0 pl-4 w-60 z-[60]">
-               <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-2 animate-in fade-in slide-in-from-left-2 duration-150">
-                 <div onClick={() => onNavigate('data-lines')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer hover:bg-white/5 hover:text-white mb-1 ${currentPage === 'data-lines' ? 'bg-white/10 text-white' : 'text-slate-300'}`}>
-                  <Ship className="w-4 h-4 text-blue-300" /><span className="text-sm font-medium">Hãng Tàu</span>
+            {openGroups.data && (
+                <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                   <SubMenuItem 
+                      active={currentPage === 'data-lines'}
+                      onClick={() => onNavigate('data-lines')}
+                      icon={Ship}
+                      label="Hãng Tàu"
+                   />
+                   <SubMenuItem 
+                      active={currentPage === 'data-customers'}
+                      onClick={() => onNavigate('data-customers')}
+                      icon={UserCircle}
+                      label="Khách Hàng"
+                   />
                 </div>
-                <div onClick={() => onNavigate('data-customers')} className={`flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer hover:bg-white/5 hover:text-white ${currentPage === 'data-customers' ? 'bg-white/10 text-white' : 'text-slate-300'}`}>
-                  <UserCircle className="w-4 h-4 text-green-300" /><span className="text-sm font-medium">Khách Hàng</span>
-                </div>
-               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -258,7 +321,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
 
       {/* Footer */}
       <div className="relative z-10 p-4 mt-auto border-t border-white/5 bg-black/20 space-y-3">
-        {/* Send Pending Button - Visible for Staff/Manager */}
+        {/* Send Pending Button - Visible ONLY for Staff */}
         {canSendPending && (
           <button
             onClick={(e) => { e.preventDefault(); onSendPending(); }}
