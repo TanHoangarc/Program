@@ -40,7 +40,17 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc'>('entry');
+  // Fix: Check role immediately on initialization to set correct default page
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc'>(() => {
+      try {
+          const savedUser = sessionStorage.getItem('kb_user');
+          if (savedUser) {
+              const user = JSON.parse(savedUser);
+              if (user.role === 'Docs') return 'lookup';
+          }
+      } catch {}
+      return 'entry';
+  });
 
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [targetJobId, setTargetJobId] = useState<string | null>(null);
@@ -392,6 +402,11 @@ const App: React.FC = () => {
       const user = JSON.parse(savedUser);
       setIsAuthenticated(true);
       setCurrentUser(user);
+      
+      // Fix: Ensure correct page is set if role is Docs
+      if (user.role === 'Docs') {
+          setCurrentPage('lookup');
+      }
     }
   }, []);
 
