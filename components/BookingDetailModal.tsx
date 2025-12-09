@@ -353,8 +353,8 @@ const handleUploadFile = async () => {
     }
 
     if (res.ok) {
-      const serverPath = data?.serverPath || "";
-      const publicUrl = `https://api.kimberry.id.vn${data?.url || ""}`;
+      const serverPath = body?.serverPath || "";
+      const publicUrl = `https://api.kimberry.id.vn${body?.url || ""}`;
   
       alert(`Đã lưu file thành công!\n\nĐường dẫn:\n${serverPath}`);
   
@@ -719,6 +719,7 @@ const handleUploadFile = async () => {
             ===================================================== */}
             <div className="mt-6 border-t border-dashed pt-6">
               <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
+                {uploadedUrl && (
                   <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
                     <p className="text-sm text-green-700 font-semibold mb-1">
                       File đã lưu trên server:
