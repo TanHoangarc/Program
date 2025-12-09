@@ -618,6 +618,7 @@ const App: React.FC = () => {
                 lines={lines} 
                 requests={paymentRequests}
                 onUpdateRequests={handleUpdatePaymentRequests}
+                currentUser={currentUser}
               />
             )}
 

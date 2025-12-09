@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, HardDrive } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, HardDrive, Eye } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 
 interface BookingDetailModalProps {
@@ -17,7 +18,7 @@ const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
     value={props.value ?? ''}
     className={`w-full px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 
       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent 
-      disabled:bg-slate-50 disabled:text-slate-500 transition-all ${props.className || 'h-10'}`}
+      disabled:bg-slate-50 disabled:text-slate-500 transition-all ${props.className?.includes('h-') ? '' : 'h-10'} ${props.className || ''}`}
   />
 );
 
@@ -50,7 +51,7 @@ const DateInput = ({ value, name, onChange, className }:{
   };
 
   return (
-    <div className={`relative w-full ${className || 'h-10'}`}>
+    <div className={`relative w-full ${className?.includes('h-') ? '' : 'h-10'} ${className || ''}`}>
       <input
         type="text"
         value={displayValue}
@@ -81,7 +82,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave }) => {
 
   const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge || {
-    invoice: '', date: '', net: 0, vat: 0, total: 0
+    invoice: '', date: '', net: 0, vat: 0, total: 0, fileUrl: '', fileName: ''
   });
 
   const [additionalLocalCharges, setAdditionalLocalCharges] = useState<BookingExtensionCost[]>(
@@ -101,7 +102,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [folderName, setFolderName] = useState<string>("");
-  const [uploadedUrl, setUploadedUrl] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // -----------------------------
@@ -335,15 +335,11 @@ const handleUploadFile = async () => {
     formData.append("line", ((booking as any).line || "").toString());
     formData.append("file", selectedFile);
 
-    // debug (nếu cần)
-    console.log("[upload] to:", finalFolder, "file:", newFileName);
-
     const res = await fetch("https://api.kimberry.id.vn/upload-file", {
       method: "POST",
       body: formData,
     });
 
-    // Try parse json / text
     const contentType = res.headers.get("content-type") || "";
     let body: any = null;
     if (contentType.includes("application/json")) {
@@ -353,18 +349,17 @@ const handleUploadFile = async () => {
     }
 
     if (res.ok) {
-      const serverPath = body?.serverPath || "";
       const publicUrl = `https://api.kimberry.id.vn${body?.url || ""}`;
   
-      alert(`Đã lưu file thành công!\n\nĐường dẫn:\n${serverPath}`);
+      alert(`Đã lưu file thành công!`);
   
-      // LƯU URL để hiển thị trên giao diện
-      setUploadedUrl(publicUrl);
+      // UPDATE STATE TO PERSIST
+      handleLocalChargeChange('fileUrl', publicUrl);
+      handleLocalChargeChange('fileName', newFileName);
   
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } else {
-      console.error("Upload failed", res.status, body);
       const msg = (body && (body.message || body.error)) ? (body.message || body.error) : `Server responded ${res.status}`;
       alert(`Upload thất bại: ${msg}`);
     }
@@ -376,6 +371,13 @@ const handleUploadFile = async () => {
     setIsUploading(false);
   }
 };
+
+  const handleDeleteFile = () => {
+    if (window.confirm("Bạn có chắc muốn xóa file đính kèm này? (Thao tác này chỉ xóa liên kết, file trên server vẫn còn)")) {
+        handleLocalChargeChange('fileUrl', "");
+        handleLocalChargeChange('fileName', "");
+    }
+  };
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -610,7 +612,7 @@ const handleUploadFile = async () => {
             </div>
 
             {/* Main Invoice Row */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-4 gap-4">
 
               <div>
                 <Label>Số hóa đơn</Label>
@@ -664,7 +666,7 @@ const handleUploadFile = async () => {
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-4 gap-4">
 
                       <div>
                         <Label>Số hóa đơn</Label>
@@ -715,74 +717,77 @@ const handleUploadFile = async () => {
             )}
 
             {/* =====================================================
-                FILE UPLOAD (INVOICE CHI)
+                FILE UPLOAD (INVOICE CHI) - UPDATED
             ===================================================== */}
             <div className="mt-6 border-t border-dashed pt-6">
-              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
-                {uploadedUrl && (
-                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
-                    <p className="text-sm text-green-700 font-semibold mb-1">
-                      File đã lưu trên server:
-                    </p>
-                
-                    <a
-                      href={uploadedUrl}
-                      target="_blank"
-                      className="text-blue-600 underline text-sm font-medium hover:text-blue-800"
+              
+              {/* Nếu đã có file (từ state localCharge hoặc vừa upload xong) */}
+              {localCharge.fileUrl ? (
+                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center">
+                    <div className="flex items-center space-x-3">
+                       <div className="p-2 bg-green-100 text-green-700 rounded-lg">
+                          <Check className="w-5 h-5" />
+                       </div>
+                       <div>
+                          <p className="text-sm font-bold text-green-800">File đã lưu trên server:</p>
+                          <a href={localCharge.fileUrl} target="_blank" className="text-xs text-blue-600 underline hover:text-blue-800 flex items-center mt-0.5">
+                             <Eye className="w-3 h-3 mr-1" /> {localCharge.fileName || "Xem hóa đơn đã upload"}
+                          </a>
+                       </div>
+                    </div>
+                    <button 
+                       onClick={handleDeleteFile}
+                       className="p-2 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                       title="Xóa liên kết file"
                     >
-                      👉 Nhấn để xem hóa đơn đã upload
-                    </a>
-                  </div>
-                )}
-                <div className="flex items-center space-x-3">
-
-                  <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
-
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="bg-white border px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-slate-50"
-                  >
-                    <FileUp className="w-3.5 h-3.5 mr-2 text-blue-500" />
-                    Chọn File HĐ
-                  </button>
-
-                  {selectedFile ? (
-                    <span className="text-xs bg-blue-50 px-2 py-1 rounded text-blue-600 font-medium">
-                      {selectedFile.name}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">Chưa chọn file</span>
-                  )}
-                </div>
-
-                {selectedFile && (
-                  <div className="flex items-center space-x-2">
-
-                    <button
-                      disabled={isUploading}
-                      onClick={handleUploadFile}
-                      className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-indigo-700 disabled:opacity-50"
-                    >
-                      {isUploading
-                        ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                        : <HardDrive className="w-3.5 h-3.5 mr-2" />}
-                      Lưu vào Server
+                       <Trash2 className="w-4 h-4" />
                     </button>
+                 </div>
+              ) : (
+                 // Nếu chưa có file thì hiện khung upload
+                 <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
+                    <div className="flex items-center space-x-3">
+                        <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="bg-white border px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-slate-50"
+                        >
+                            <FileUp className="w-3.5 h-3.5 mr-2 text-blue-500" />
+                            {selectedFile ? "Đổi file khác" : "Chọn File HĐ"}
+                        </button>
+                        {selectedFile && (
+                            <span className="text-xs bg-blue-50 px-2 py-1 rounded text-blue-600 font-medium">
+                            {selectedFile.name}
+                            </span>
+                        )}
+                        {!selectedFile && <span className="text-xs text-slate-400 italic">Chưa chọn file</span>}
+                    </div>
 
-                    <button
-                      onClick={() => { 
-                        setSelectedFile(null); 
-                        if (fileInputRef.current) fileInputRef.current.value = ''; 
-                      }}
-                      className="bg-white border px-3 py-2 rounded-lg text-xs hover:bg-slate-50"
-                    >
-                      Hủy
-                    </button>
-
-                  </div>
-                )}
-
-              </div>
+                    {selectedFile && (
+                        <div className="flex items-center space-x-2">
+                            <button
+                            disabled={isUploading}
+                            onClick={handleUploadFile}
+                            className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                            {isUploading
+                                ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                                : <HardDrive className="w-3.5 h-3.5 mr-2" />}
+                            Lưu vào Server
+                            </button>
+                            <button
+                            onClick={() => { 
+                                setSelectedFile(null); 
+                                if (fileInputRef.current) fileInputRef.current.value = ''; 
+                            }}
+                            className="bg-white border px-3 py-2 rounded-lg text-xs hover:bg-slate-50"
+                            >
+                            Hủy
+                            </button>
+                        </div>
+                    )}
+                 </div>
+              )}
             </div>
 
             {/* WARNING MISMATCH */}

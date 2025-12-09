@@ -14,6 +14,7 @@ interface PaymentPageProps {
   lines: ShippingLine[];
   requests: PaymentRequest[];
   onUpdateRequests: (reqs: PaymentRequest[]) => void;
+  currentUser: { username: string, role: string } | null;
 }
 
 // BACKEND API (Cloudflare Tunnel)
@@ -22,7 +23,8 @@ const BACKEND_URL = "https://api.kimberry.id.vn";
 export const PaymentPage: React.FC<PaymentPageProps> = ({
   lines,
   requests,
-  onUpdateRequests
+  onUpdateRequests,
+  currentUser
 }) => {
 
   // ----------------- STATES -----------------
@@ -163,7 +165,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     const updated = requests.map(r =>
       r.id === completingId
-        ? {
+        ? ({
             ...r,
             status: "completed",
             uncFileName: uploaded.fileName,
@@ -171,7 +173,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             uncUrl: `${BACKEND_URL}${uploaded.url}`,
             uncBlobUrl: URL.createObjectURL(uncFile),
             completedAt: new Date().toISOString()
-          }
+          } as PaymentRequest)
         : r
     );
 
@@ -245,6 +247,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // RENDER
   // ============================================================
 
+  // Dynamic grid configuration based on selected Line
+  const gridConfig = line === "MSC" ? "md:grid-cols-5" : "md:grid-cols-4";
+
   return (
     <div className="p-8 w-full h-full flex flex-col overflow-hidden">
 
@@ -263,7 +268,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         <div className="glass-panel p-6 rounded-2xl border relative">
 
           {isUploading && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-2xl">
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-2xl z-20">
               <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
             </div>
           )}
@@ -273,15 +278,15 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             Tạo yêu cầu thanh toán
           </h2>
 
-          <form onSubmit={handleCreateRequest} className="grid grid-cols-1 md:grid-cols-5 gap-6">
+          <form onSubmit={handleCreateRequest} className={`grid grid-cols-1 ${gridConfig} gap-4 items-end`}>
 
-            {/* Line */}
-            <div>
-              <label className="text-[10px] font-bold">Mã Line</label>
+            {/* Line - Column 1 */}
+            <div className="w-full">
+              <label className="block text-[10px] font-bold mb-1.5 text-slate-600">Mã Line</label>
               <select
                 value={line}
                 onChange={e => setLine(e.target.value)}
-                className="glass-input w-full p-2.5 rounded-xl"
+                className="glass-input w-full px-3 rounded-xl h-11 text-sm font-medium focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">-- Chọn Line --</option>
                 {lines.map(l => (
@@ -290,62 +295,60 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               </select>
             </div>
 
-            {/* MSC POD */}
-            {line === "MSC" ? (
-              <div>
-                <label className="text-[10px] font-bold text-blue-500">POD (MSC)</label>
-
-                <div className="flex bg-white rounded-xl border p-1">
+            {/* MSC POD - Column 2 (Conditional) */}
+            {line === "MSC" && (
+              <div className="w-full animate-in fade-in zoom-in-95 duration-200">
+                <label className="block text-[10px] font-bold mb-1.5 text-blue-600">POD (MSC)</label>
+                <div className="flex bg-white rounded-xl border p-1 h-11 items-center">
                   <button
                     type="button"
                     onClick={() => setPod("HCM")}
-                    className={`flex-1 py-1.5 rounded-lg ${
-                      pod === "HCM" ? "bg-blue-600 text-white" : "text-slate-600"
+                    className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${
+                      pod === "HCM" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"
                     }`}
                   >
                     HCM
                   </button>
-
                   <button
                     type="button"
                     onClick={() => setPod("HPH")}
-                    className={`flex-1 py-1.5 rounded-lg ${
-                      pod === "HPH" ? "bg-blue-600 text-white" : "text-slate-600"
+                    className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${
+                      pod === "HPH" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"
                     }`}
                   >
                     HPH
                   </button>
                 </div>
               </div>
-            ) : <div />}
+            )}
 
-            {/* Booking */}
-            <div>
-              <label className="text-[10px] font-bold">Booking</label>
+            {/* Booking - Column 2 or 3 */}
+            <div className="w-full">
+              <label className="block text-[10px] font-bold mb-1.5 text-slate-600">Booking</label>
               <input
                 value={booking}
                 onChange={e => setBooking(e.target.value)}
-                className="glass-input w-full p-2.5 rounded-xl"
+                className="glass-input w-full px-3 rounded-xl h-11 text-sm font-medium focus:ring-2 focus:ring-emerald-500 placeholder-slate-400"
                 placeholder="Nhập Booking..."
               />
             </div>
 
-            {/* Amount */}
-            <div>
-              <label className="text-[10px] font-bold">Số tiền</label>
+            {/* Amount - Column 3 or 4 */}
+            <div className="w-full">
+              <label className="block text-[10px] font-bold mb-1.5 text-slate-600">Số tiền</label>
               <input
                 value={amount ? new Intl.NumberFormat().format(amount) : ""}
                 onChange={e => {
                   const v = Number(e.target.value.replace(/,/g, ""));
                   if (!isNaN(v)) setAmount(v);
                 }}
-                className="glass-input w-full p-2.5 rounded-xl text-right font-bold text-red-600"
+                className="glass-input w-full px-3 rounded-xl h-11 text-sm text-right font-bold text-red-600 focus:ring-2 focus:ring-emerald-500 placeholder-slate-300"
                 placeholder="0"
               />
             </div>
 
-            {/* Upload Invoice */}
-            <div className="flex items-center space-x-2">
+            {/* Buttons - Column 4 or 5 */}
+            <div className="flex items-center space-x-2 h-11">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -360,24 +363,24 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className={`flex-1 p-2.5 rounded-xl border text-xs font-bold 
+                className={`flex-1 h-full rounded-xl border text-xs font-bold transition-colors flex items-center justify-center
                   ${invoiceFile 
                     ? "bg-emerald-50 border-emerald-300 text-emerald-700"
-                    : "bg-white border-slate-300"
+                    : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
                   }`}
               >
                 {invoiceFile ? (
-                  <CheckCircle className="w-4 h-4 inline mr-2" />
+                  <CheckCircle className="w-4 h-4 mr-1.5" />
                 ) : (
-                  <Upload className="w-4 h-4 inline mr-2" />
+                  <Upload className="w-4 h-4 mr-1.5" />
                 )}
-                {invoiceFile ? "Đã chọn HĐ" : "Up Hóa Đơn"}
+                {invoiceFile ? "Đã chọn" : "Up HĐ"}
               </button>
 
               <button
                 type="submit"
                 disabled={isUploading}
-                className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold"
+                className="h-full bg-emerald-600 hover:bg-emerald-700 text-white px-5 rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center min-w-[80px]"
               >
                 {isUploading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -427,11 +430,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => openFile(req, "invoice")}
-                      className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border"
+                      className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border text-xs hover:bg-blue-100 transition-colors"
                     >
                       <Eye className="w-3 h-3 inline mr-1" /> Xem
                     </button>
-                    <div className="text-[9px] text-slate-400 mt-1">
+                    <div className="text-[9px] text-slate-400 mt-1 max-w-[150px] mx-auto truncate">
                       {req.invoiceFileName}
                     </div>
                   </td>
@@ -440,17 +443,21 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                     <div className="flex justify-center space-x-2">
                       <button
                         onClick={() => initiateComplete(req.id)}
-                        className="bg-emerald-100 text-emerald-700 p-2 rounded-lg"
+                        className="bg-emerald-100 text-emerald-700 p-2 rounded-lg hover:bg-emerald-200 transition-colors"
+                        title="Hoàn tất & Up UNC"
                       >
                         <CheckCircle className="w-4 h-4" />
                       </button>
 
-                      <button
-                        onClick={() => handleDelete(req.id)}
-                        className="bg-red-50 text-red-600 p-2 rounded-lg border"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {currentUser?.role !== 'Docs' && (
+                        <button
+                          onClick={() => handleDelete(req.id)}
+                          className="bg-red-50 text-red-600 p-2 rounded-lg border hover:bg-red-100 transition-colors"
+                          title="Xóa yêu cầu"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
 
@@ -496,13 +503,13 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                   <td className="px-6 py-4 text-center">
                     <div
                       onClick={() => openFile(req, "unc")}
-                      className="cursor-pointer bg-slate-50 border px-2 py-1 rounded flex items-center justify-center"
+                      className="cursor-pointer bg-slate-50 border px-2 py-1 rounded flex items-center justify-center hover:bg-slate-100 transition-colors"
                     >
-                      <HardDrive className="w-4 h-4 text-purple-600 mr-1" />
+                      <HardDrive className="w-3.5 h-3.5 text-purple-600 mr-1" />
                       <span className="text-xs font-mono">Xem UNC</span>
                     </div>
 
-                    <div className="text-[9px] text-slate-400 mt-1">
+                    <div className="text-[9px] text-slate-400 mt-1 max-w-[150px] mx-auto truncate">
                       {req.uncFileName}
                     </div>
                   </td>
@@ -512,24 +519,29 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
                       <button
                         onClick={() => openFile(req, "invoice")}
-                        className="text-blue-600 p-2"
+                        className="text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Xem Hóa Đơn"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
 
                       <button
                         onClick={() => downloadUNC(req)}
-                        className="text-purple-700 p-2 bg-purple-50 rounded border"
+                        className="text-purple-700 p-2 bg-purple-50 rounded-lg border hover:bg-purple-100 transition-colors"
+                        title="Tải về UNC"
                       >
                         <Download className="w-4 h-4" />
                       </button>
 
-                      <button
-                        onClick={() => handleDelete(req.id)}
-                        className="text-red-500 p-2"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {currentUser?.role !== 'Docs' && (
+                        <button
+                          onClick={() => handleDelete(req.id)}
+                          className="text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
 
                     </div>
                   </td>
@@ -551,7 +563,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-md relative">
 
             {isUploading && (
-              <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+              <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-2xl z-20">
                 <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
               </div>
             )}
@@ -564,7 +576,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             </div>
 
             <div
-              className="border-dashed border-2 border-slate-300 rounded-xl p-8 text-center cursor-pointer"
+              className="border-dashed border-2 border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:bg-slate-50 transition-colors"
               onClick={() => uncInputRef.current?.click()}
             >
               <input
@@ -578,10 +590,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
               <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
 
-              <p className="font-bold">
+              <p className="font-bold text-slate-700">
                 {uncFile ? uncFile.name : "Chọn file UNC"}
               </p>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 mt-1">
                 File sẽ được lưu vào Server Storage
               </p>
             </div>
@@ -589,7 +601,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             <div className="mt-6 flex justify-end space-x-3">
               <button
                 onClick={() => setCompletingId(null)}
-                className="px-4 py-2 bg-slate-200 rounded-xl font-bold"
+                className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
               >
                 Hủy
               </button>
@@ -597,7 +609,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               <button
                 onClick={confirmComplete}
                 disabled={isUploading}
-                className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold"
+                className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg"
               >
                 Xác nhận
               </button>

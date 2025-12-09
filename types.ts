@@ -1,3 +1,4 @@
+
 // ============================================================
 // EXTENSION (PHỤ THU / DOANH THU PHÁT SINH)
 // ============================================================
@@ -47,6 +48,9 @@ export interface BookingInvoice {
   net: number;
   vat: number;
   total: number;
+  // File attachments
+  fileUrl?: string;
+  fileName?: string;
 }
 
 // ============================================================
@@ -60,6 +64,9 @@ export interface BookingExtensionCost {
   net: number;
   vat: number;
   total: number;
+  // File attachments
+  fileUrl?: string;
+  fileName?: string;
 }
 
 // ============================================================
