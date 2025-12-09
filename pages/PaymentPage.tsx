@@ -17,7 +17,7 @@ interface PaymentPageProps {
 }
 
 // Backend
-const BACKEND_URL = "http://192.168.1.110:3001";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 
 export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpdateRequests }) => {
 
