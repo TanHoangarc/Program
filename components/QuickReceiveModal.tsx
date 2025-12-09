@@ -108,11 +108,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       if (mode === 'local') {
           // If already has Amis data, use it. Else generate.
           setAmisDocNo(deepCopyJob.amisLcDocNo || generateNTTK());
-          setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${deepCopyJob.localChargeInvoice || '...'}`);
+          setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${deepCopyJob.localChargeInvoice || '...'}`);
       } 
       else if (mode === 'deposit') {
           setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNTTK());
-          setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${deepCopyJob.jobCode}`);
+          setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BILL ${deepCopyJob.jobCode}`);
       } 
       else if (mode === 'extension') {
           // Extension is always "New" in this quick modal context
@@ -124,7 +124,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             date: new Date().toISOString().split('T')[0],
             total: 0,
             amisDocNo: generateNTTK(),
-            amisDesc: `Thu tiền khách hàng theo hoá đơn GH ${invoiceNo}`
+            amisDesc: `Thu tiền của KH theo hoá đơn GH ${invoiceNo}`
           });
       }
     }
