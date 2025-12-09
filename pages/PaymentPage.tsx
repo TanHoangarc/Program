@@ -202,15 +202,32 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
   };
 
   // Always download UNC
-  const downloadUNC = (req: PaymentRequest) => {
-    if (!req.uncUrl) return alert("Không tìm thấy file UNC!");
-
-    const link = document.createElement("a");
-    link.href = req.uncUrl;
-    link.download = `UNC BL ${req.booking}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const downloadUNC = async (req: PaymentRequest) => {
+    if (!req.uncUrl) {
+      alert("Không tìm thấy file UNC!");
+      return;
+    }
+  
+    try {
+      const response = await axios.get(req.uncUrl, {
+        responseType: "blob"
+      });
+  
+      const fileBlob = new Blob([response.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(fileBlob);
+  
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `UNC BL ${req.booking}.pdf`;
+  
+      document.body.appendChild(link);
+      link.click();
+  
+      URL.revokeObjectURL(url);
+      link.remove();
+    } catch (e) {
+      alert("Không thể tải UNC. Kiểm tra server hoặc Cloudflare Tunnel.");
+    }
   };
 
   // ============================================================
