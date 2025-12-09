@@ -1,6 +1,6 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box } from 'lucide-react';
+import { createPortal } from 'react-dom'; // Import createPortal
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -31,7 +31,10 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const [isViewMode, setIsViewMode] = useState(false);
   const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Menu State with Positioning
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
 
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
@@ -50,7 +53,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (activeMenuId && !(event.target as Element).closest('.action-menu-container')) {
+      const target = event.target as Element;
+      // Close menu if clicking outside of the menu portal and the trigger button
+      if (activeMenuId && 
+          !target.closest('.action-menu-portal') && 
+          !target.closest('.menu-trigger-btn')) {
         setActiveMenuId(null);
       }
     };
@@ -58,6 +65,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [activeMenuId]);
 
+  // ... (Keep existing logic for filters, pagination, etc.) ...
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
@@ -97,7 +105,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleRowClick = (job: JobData, e: React.MouseEvent) => {
-    if ((e.target as Element).closest('.action-menu-container')) return;
+    // Prevent opening if clicking on menu or buttons
+    if ((e.target as Element).closest('.action-menu-container') || (e.target as Element).closest('.menu-trigger-btn')) return;
+    
     try {
       const safeJob = JSON.parse(JSON.stringify(job));
       setEditingJob(safeJob);
@@ -106,6 +116,43 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     } catch (err) {
       console.error("Error parsing job data", err);
     }
+  };
+
+  // --- NEW MENU HANDLER WITH POSITIONING ---
+  const handleMenuClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (activeMenuId === id) {
+      setActiveMenuId(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const menuHeightEstimate = 280; // Approximate max height of menu
+    
+    // Calculate position: Align right edge of menu with right edge of button
+    // Menu width is w-48 (12rem = 192px)
+    const leftPos = rect.right - 192;
+
+    let style: React.CSSProperties = {
+        position: 'fixed',
+        left: `${leftPos}px`,
+        zIndex: 9999,
+        width: '12rem' // w-48
+    };
+
+    if (spaceBelow < menuHeightEstimate) {
+        // Not enough space below, open UPWARDS
+        style.bottom = `${window.innerHeight - rect.top + 5}px`;
+        style.transformOrigin = 'bottom right';
+    } else {
+        // Open DOWNWARDS
+        style.top = `${rect.bottom + 5}px`;
+        style.transformOrigin = 'top right';
+    }
+
+    setMenuStyle(style);
+    setActiveMenuId(id);
   };
 
   const handleDuplicate = (job: JobData) => {
@@ -136,15 +183,22 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleSave = (job: JobData, newCustomer?: Customer) => {
-    if (newCustomer) onAddCustomer(newCustomer);
-    if (editingJob) onEditJob(job);
-    else onAddJob(job);
+    if (newCustomer) {
+      onAddCustomer(newCustomer);
+    }
+    if (editingJob) {
+      onEditJob(job);
+    } else {
+      onAddJob(job);
+    }
     setIsModalOpen(false);
   };
 
   const handleViewBookingDetails = (bookingId: string) => {
     const summary = calculateBookingSummary(jobs, bookingId);
-    if (summary) setViewingBooking(summary);
+    if (summary) {
+      setViewingBooking(summary);
+    }
   };
 
   const handleSaveBookingDetails = (updatedDetails: BookingCostDetails) => {
@@ -162,6 +216,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // ... (Existing import logic) ...
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -171,8 +226,10 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws);
+      
       let addedCount = 0; let updatedCount = 0;
       data.forEach((row: any) => {
+        // ... (Mapping logic same as before) ...
         const rowJobCode = row['Job'] || row['Job Code'];
         const mappedData: Partial<JobData> = {
           month: row['Tháng']?.toString() || '1',
@@ -216,11 +273,20 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleExportExcel = () => {
+    // ... (Existing export logic) ...
     const dataToExport = filteredJobs.map(job => {
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+      const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
       return {
-        "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Customer": job.customerName,
-        "Sell": job.sell, "Cost": job.cost, "Profit": job.profit
+        "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
+        "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
+        "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
+        "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
+        "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '',
+        "Thu Cược": job.thuCuoc,
+        "Ngày Thu Cược": formatDateVN(job.ngayThuCuoc),
+        "Ngày Thu Hoàn": formatDateVN(job.ngayThuHoan),
+        "Thu Gia Hạn": extTotal, "Invoice Gia Hạn": extInvoices
       };
     });
     const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -229,6 +295,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     XLSX.writeFile(wb, `Logistics_Job_Data.xlsx`);
   };
 
+  // ... (Filtering & Pagination logic unchanged) ...
   const filteredJobs = useMemo(() => {
     let matches = jobs.filter(job => {
       const jCode = String(job.jobCode || '');
@@ -292,6 +359,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       {/* Filter Bar */}
       <div className="glass-panel p-5 rounded-2xl mb-6 mx-2">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+             {/* ... Filters UI ... */}
              <div>
                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tháng</label>
                <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="glass-input w-full p-2 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none">
@@ -371,21 +439,32 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                         {job.cont40 > 0 && <span className="px-2 py-0.5 bg-purple-100/50 text-purple-700 text-[10px] font-bold rounded-full border border-purple-200/50">{job.cont40} x 40'</span>}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center action-menu-container relative">
-                       <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === job.id ? null : job.id); }} className="p-1.5 rounded-full hover:bg-white/50 text-slate-400 hover:text-slate-600 transition-colors">
+                    <td className="px-6 py-4 text-center action-menu-container">
+                       <button 
+                          onClick={(e) => handleMenuClick(e, job.id)} 
+                          className={`p-1.5 rounded-full hover:bg-white/50 text-slate-400 hover:text-slate-600 transition-colors menu-trigger-btn ${activeMenuId === job.id ? 'bg-white shadow-sm text-teal-600' : ''}`}
+                        >
                          <MoreVertical className="w-4 h-4" />
                        </button>
-                       {activeMenuId === job.id && (
-                         <div className="absolute right-8 top-0 mt-0 w-48 glass-panel bg-white/95 rounded-xl shadow-xl border border-white/20 z-50 py-1 text-left animate-in zoom-in-95 duration-100">
+                       
+                       {/* PORTAL MENU RENDER - FIXED POSITION */}
+                       {activeMenuId === job.id && createPortal(
+                         <div 
+                            className="fixed z-[9999] glass-panel bg-white/95 rounded-xl shadow-2xl border border-white/20 py-1 text-left animate-in fade-in zoom-in-95 duration-100 action-menu-portal"
+                            style={menuStyle}
+                            onClick={(e) => e.stopPropagation()} // Prevent close on inside click
+                         >
                            <button onClick={() => handleDuplicate(job)} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-teal-50 flex items-center transition-colors"><Copy className="w-3 h-3 mr-2 text-teal-500" /> Nhân bản</button>
                            <button onClick={() => handleEdit(job)} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-blue-50 flex items-center transition-colors"><Edit2 className="w-3 h-3 mr-2 text-blue-500" /> Chỉnh sửa</button>
                            <div className="border-t border-slate-100 my-1"></div>
                            <button onClick={() => handleQuickReceive(job, 'local')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-indigo-50 font-medium flex items-center transition-colors"><FileText className="w-3 h-3 mr-2 text-indigo-500" /> Thu Local Charge</button>
                            <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-purple-50 font-medium flex items-center transition-colors"><Anchor className="w-3 h-3 mr-2 text-purple-500" /> Thu Cược</button>
                            <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-orange-50 font-medium flex items-center transition-colors"><DollarSign className="w-3 h-3 mr-2 text-orange-500" /> Thu Gia Hạn</button>
+                           <button onClick={() => handleQuickReceive(job, 'other')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-emerald-50 font-medium flex items-center transition-colors"><Wallet className="w-3 h-3 mr-2 text-emerald-500" /> Thu Khác</button>
                            <div className="border-t border-slate-100 my-1"></div>
                            <button onClick={() => handleDelete(job.id)} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center transition-colors rounded-b-xl"><Trash2 className="w-3 h-3 mr-2" /> Xóa</button>
-                         </div>
+                         </div>,
+                         document.body
                        )}
                     </td>
                   </tr>
@@ -394,6 +473,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                 <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu phù hợp</td></tr>
               )}
             </tbody>
+            {/* Footer Totals */}
             {filteredJobs.length > 0 && (
               <tfoot className="bg-white/30 border-t border-white/40 font-bold text-slate-800 text-xs uppercase">
                 <tr>

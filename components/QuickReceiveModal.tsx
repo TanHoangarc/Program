@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet } from 'lucide-react';
 import { JobData, Customer } from '../types';
 import { formatDateVN, parseDateVN } from '../utils';
 
-export type ReceiveMode = 'local' | 'deposit' | 'extension';
+export type ReceiveMode = 'local' | 'deposit' | 'extension' | 'other';
 
 interface QuickReceiveModalProps {
   isOpen: boolean;
@@ -102,21 +102,34 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     if (isOpen) {
       // 1. Reset Job Data
       const deepCopyJob = JSON.parse(JSON.stringify(job));
+      
+      // Logic xóa thông tin khách hàng nếu là mode "Thu Khác"
+      if (mode === 'other') {
+          deepCopyJob.customerId = '';
+          deepCopyJob.customerName = '';
+      }
+
       setFormData(deepCopyJob);
 
       // 2. Setup Amis Fields based on existing data or generate new
       if (mode === 'local') {
-          // If already has Amis data, use it. Else generate.
           setAmisDocNo(deepCopyJob.amisLcDocNo || generateNTTK());
-          setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${deepCopyJob.localChargeInvoice || '...'}`);
+          
+          const inv = deepCopyJob.localChargeInvoice || 'XXX';
+          const defaultDesc = `Thu tiền của KH theo hoá đơn ${inv} BL ${deepCopyJob.jobCode} (KIM)`;
+          
+          setAmisDesc(deepCopyJob.amisLcDesc || defaultDesc);
       } 
+      else if (mode === 'other') {
+          setAmisDocNo(deepCopyJob.amisLcDocNo || generateNTTK());
+          const inv = deepCopyJob.localChargeInvoice || 'XXX';
+          setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
+      }
       else if (mode === 'deposit') {
           setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNTTK());
-          setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BILL ${deepCopyJob.jobCode}`);
+          setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
       } 
       else if (mode === 'extension') {
-          // Extension is always "New" in this quick modal context
-          const nextIdx = (deepCopyJob.extensions || []).length + 1;
           const invoiceNo = '';
           setNewExtension({ 
             customerId: deepCopyJob.customerId || '', 
@@ -124,7 +137,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             date: new Date().toISOString().split('T')[0],
             total: 0,
             amisDocNo: generateNTTK(),
-            amisDesc: `Thu tiền của KH theo hoá đơn GH ${invoiceNo}`
+            amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${deepCopyJob.jobCode} (KIM)`
           });
       }
     }
@@ -139,10 +152,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       let currentCustomer = '';
       let currentInvoice = '';
 
-      // We use local state `amisDocNo` and `amisDesc` for the input fields
-      // but for other fields we read from `formData` or `newExtension`
-
-      if (mode === 'local') {
+      if (mode === 'local' || mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
           tkCo = '13111';
           currentDate = formData.localChargeDate || '';
@@ -172,34 +182,42 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   // --- Handlers ---
 
   const handleAmountChange = (val: number) => {
-      if (mode === 'local') setFormData(prev => ({ ...prev, localChargeTotal: val }));
+      if (mode === 'local' || mode === 'other') setFormData(prev => ({ ...prev, localChargeTotal: val }));
       else if (mode === 'deposit') setFormData(prev => ({ ...prev, thuCuoc: val }));
       else if (mode === 'extension') setNewExtension(prev => ({ ...prev, total: val }));
   };
 
   const handleDateChange = (val: string) => {
-      if (mode === 'local') setFormData(prev => ({ ...prev, localChargeDate: val }));
+      if (mode === 'local' || mode === 'other') setFormData(prev => ({ ...prev, localChargeDate: val }));
       else if (mode === 'deposit') setFormData(prev => ({ ...prev, ngayThuCuoc: val }));
       else if (mode === 'extension') setNewExtension(prev => ({ ...prev, date: val }));
   };
 
   const handleCustomerChange = (val: string) => {
-      if (mode === 'local') setFormData(prev => ({ ...prev, customerId: val }));
+      if (mode === 'local' || mode === 'other') {
+          setFormData(prev => ({ ...prev, customerId: val }));
+      }
       else if (mode === 'deposit') setFormData(prev => ({ ...prev, maKhCuocId: val }));
       else if (mode === 'extension') setNewExtension(prev => ({ ...prev, customerId: val }));
   };
 
   const handleInvoiceChange = (val: string) => {
+      const invPlaceholder = val || 'XXX';
+      const jobCode = formData.jobCode;
+
       if (mode === 'local') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
-          // Optional: Auto-update desc if user hasn't heavily modified it? 
-          // For now, keep it manual as requested.
+          setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} BL ${jobCode} (KIM)`);
+      }
+      else if (mode === 'other') {
+          setFormData(prev => ({ ...prev, localChargeInvoice: val }));
+          setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
       }
       else if (mode === 'extension') {
           setNewExtension(prev => ({ 
               ...prev, 
               invoice: val,
-              amisDesc: `Thu tiền khách hàng theo hoá đơn GH ${val}` // Auto update desc for new ext
+              amisDesc: `Thu tiền của KH theo hoá đơn GH ${invPlaceholder} BL ${jobCode} (KIM)`
           }));
       }
   };
@@ -207,7 +225,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Save Logic
     if (mode === 'extension') {
       const updatedExtensions = [
         ...(formData.extensions || []),
@@ -219,13 +236,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           net: 0, 
           vat: 0,
           total: newExtension.total,
-          amisDocNo: newExtension.amisDocNo, // Save AMIS info to Extension
+          amisDocNo: newExtension.amisDocNo,
           amisDesc: newExtension.amisDesc
         }
       ];
       onSave({ ...formData, extensions: updatedExtensions });
     } 
-    else if (mode === 'local') {
+    else if (mode === 'local' || mode === 'other') {
         // Save AMIS info to Job
         onSave({ 
             ...formData, 
@@ -250,6 +267,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const getTitle = () => {
     switch (mode) {
         case 'local': return 'Phiếu Thu Tiền (Local Charge)';
+        case 'other': return 'Phiếu Thu Tiền (Thu Khác)';
         case 'deposit': return 'Phiếu Thu Tiền (Cược)';
         case 'extension': return 'Phiếu Thu Tiền (Gia Hạn)';
     }

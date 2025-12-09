@@ -6,7 +6,7 @@ import React, { useState, useRef } from 'react';
 import { ShippingLine, PaymentRequest } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2 
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy 
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -37,6 +37,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [uncFile, setUncFile] = useState<File | null>(null);
+  
+  // State for copy feedback
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uncInputRef = useRef<HTMLInputElement>(null);
@@ -218,6 +221,12 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     } catch {
       alert("Không thể tải UNC. Kiểm tra Server hoặc Cloudflare.");
     }
+  };
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1000);
   };
 
   // ============================================================
@@ -418,13 +427,37 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
             <tbody className="divide-y">
               {pendingList.map(req => (
-                <tr key={req.id} className="hover:bg-white/40">
+                <tr key={req.id} className="hover:bg-white/40 group">
 
                   <td className="px-6 py-4">{getLineDisplay(req)}</td>
-                  <td className="px-6 py-4">{req.booking}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center space-x-2">
+                      <span>{req.booking}</span>
+                      {currentUser?.role === 'Admin' && (
+                        <button 
+                          onClick={() => copyToClipboard(`LONG HOANG PAYMENT BL ${req.booking} MST 0316113070`, `bk-${req.id}`)}
+                          className={`p-1 rounded-full transition-colors ${copiedId === `bk-${req.id}` ? 'text-green-600 bg-green-50' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                          title="Copy nội dung chuyển khoản"
+                        >
+                          {copiedId === `bk-${req.id}` ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  </td>
 
                   <td className="px-6 py-4 text-right font-bold text-red-600">
-                    {formatCurrency(req.amount)}
+                    <div className="flex items-center justify-end space-x-2">
+                        <span>{formatCurrency(req.amount)}</span>
+                        {currentUser?.role === 'Admin' && (
+                            <button 
+                                onClick={() => copyToClipboard(String(req.amount), `amt-${req.id}`)}
+                                className={`p-1 rounded-full transition-colors ${copiedId === `amt-${req.id}` ? 'text-green-600 bg-green-50' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                                title="Copy số tiền (không dấu)"
+                            >
+                                {copiedId === `amt-${req.id}` ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                        )}
+                    </div>
                   </td>
 
                   <td className="px-6 py-4 text-center">
