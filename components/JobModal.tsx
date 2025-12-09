@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar } from 'lucide-react';
@@ -34,6 +33,102 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
   />
 ));
 Input.displayName = 'Input';
+
+// --- NEW CUSTOMER INPUT WITH SUGGESTIONS ---
+const CustomerInput = ({ 
+  value, 
+  onChange, 
+  customers, 
+  readOnly, 
+  placeholder,
+  className
+}: { 
+  value: string; 
+  onChange: (val: string) => void; 
+  customers: Customer[];
+  readOnly?: boolean;
+  placeholder?: string;
+  className?: string;
+}) => {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [internalValue, setInternalValue] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Sync internal value with prop value (map ID to Code if possible)
+  useEffect(() => {
+    if (!isFocused) {
+        const found = customers.find(c => c.id === value || c.code === value);
+        setInternalValue(found ? found.code : (value || ''));
+    }
+  }, [value, customers, isFocused]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setInternalValue(val);
+    onChange(val); // Propagate text change immediately
+    setShowSuggestions(true);
+  };
+
+  const handleSelect = (customer: Customer) => {
+    setInternalValue(customer.code);
+    onChange(customer.id); // Propagate ID when selected
+    setShowSuggestions(false);
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    setShowSuggestions(true);
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    setTimeout(() => setShowSuggestions(false), 200);
+  };
+
+  const filtered = customers.filter(c => 
+    c.code.toLowerCase().includes(internalValue.toLowerCase()) || 
+    c.name.toLowerCase().includes(internalValue.toLowerCase())
+  );
+
+  // Find name for display below input
+  const selectedObj = customers.find(c => c.id === value || c.code === value);
+  const displayName = selectedObj ? selectedObj.name : '';
+
+  return (
+    <div className={`relative group w-full ${className || ''}`}>
+      <Input 
+        value={internalValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        readOnly={readOnly}
+        placeholder={placeholder}
+        autoComplete="off"
+      />
+      
+      {!readOnly && showSuggestions && internalValue && filtered.length > 0 && (
+        <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto mt-1 left-0 py-1">
+          {filtered.map(c => (
+            <li 
+              key={c.id} 
+              onMouseDown={() => handleSelect(c)}
+              className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0"
+            >
+              <div className="font-bold text-blue-700">{c.code}</div>
+              <div className="text-xs text-slate-500 truncate">{c.name}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+      
+      {displayName && (
+        <div className="text-[10px] text-slate-500 mt-1 truncate px-1 font-medium italic">
+          {displayName}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const DateInput = ({ 
   value, 
@@ -715,10 +810,13 @@ export const JobModal: React.FC<JobModalProps> = ({
                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                      <div>
                         <Label>Khách hàng</Label>
-                        <Select name="maKhCuocId" value={formData.maKhCuocId} onChange={handleChange} disabled={isViewMode}>
-                          <option value="">-- Chọn KH --</option>
-                          {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
-                        </Select>
+                        <CustomerInput 
+                          value={formData.maKhCuocId}
+                          onChange={(val) => setFormData(prev => ({ ...prev, maKhCuocId: val }))}
+                          customers={customers}
+                          readOnly={isViewMode}
+                          placeholder="Nhập mã KH"
+                        />
                      </div>
                      <MoneyInput label="Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
                      <div>
@@ -757,10 +855,13 @@ export const JobModal: React.FC<JobModalProps> = ({
                       )}
                       <div className="md:col-span-2">
                          <Label>Khách hàng</Label>
-                         <Select value={ext.customerId} onChange={(e) => handleExtensionChange(ext.id, 'customerId', e.target.value)} disabled={isViewMode}>
-                            <option value="">-- Chọn KH --</option>
-                            {(customers || []).map(c => <option key={c.id} value={c.id}>{c?.code}</option>)}
-                         </Select>
+                         <CustomerInput 
+                           value={ext.customerId}
+                           onChange={(val) => handleExtensionChange(ext.id, 'customerId', val)}
+                           customers={customers}
+                           readOnly={isViewMode}
+                           placeholder="Nhập mã KH"
+                         />
                       </div>
                       <div>
                         <Label>Invoice</Label>

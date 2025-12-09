@@ -94,6 +94,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
 
+  // Suggestions state for "Mã Đối Tượng"
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [custInputVal, setCustInputVal] = useState('');
+
   // Generate random number string
   const generateRandomStr = () => Math.floor(10000 + Math.random() * 90000).toString();
 
@@ -109,6 +113,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
 
       setFormData(deepCopyJob);
+
+      // Initialize Customer Input Value
+      let initialCustId = '';
+      if (mode === 'local' || mode === 'other') initialCustId = deepCopyJob.customerId;
+      else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
+      else if (mode === 'extension') {
+          const lastExt = (deepCopyJob.extensions || [])[deepCopyJob.extensions?.length - 1];
+          initialCustId = lastExt ? lastExt.customerId : deepCopyJob.customerId;
+      }
+
+      const foundCust = customers.find(c => c.id === initialCustId);
+      setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
       // 2. Setup Amis Fields based on mode
       if (mode === 'local') {
@@ -199,7 +215,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentCustomer = newExtension.customerId;
       }
 
-      const customerName = customers.find(c => c.id === currentCustomer)?.name || '';
+      // Try finding by ID first, then by Code
+      const customerName = customers.find(c => c.id === currentCustomer || c.code === currentCustomer)?.name || '';
 
       return { tkNo, tkCo, currentDate, currentAmount, currentCustomer, customerName, currentInvoice };
   };
@@ -222,6 +239,21 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const handleCustomerChange = (val: string) => {
+      // Update local input state
+      setCustInputVal(val);
+      setShowSuggestions(true);
+
+      // Also propagate to form data (temporarily store text until valid ID selected, or store text if system allows)
+      updateCustomerData(val);
+  };
+
+  const handleSelectCustomer = (customer: Customer) => {
+      setCustInputVal(customer.code);
+      updateCustomerData(customer.id);
+      setShowSuggestions(false);
+  };
+
+  const updateCustomerData = (val: string) => {
       if (mode === 'local' || mode === 'other') {
           setFormData(prev => ({ ...prev, customerId: val }));
       }
@@ -314,6 +346,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     
     onClose();
   };
+
+  // Filter Customers
+  const filteredCustomers = customers.filter(c => 
+      c.code.toLowerCase().includes(custInputVal.toLowerCase()) || 
+      c.name.toLowerCase().includes(custInputVal.toLowerCase())
+  );
 
   if (!isOpen) return null;
 
@@ -409,21 +447,32 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     Đối tượng & Số tiền
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
-                        <div>
-                        <Label>Mã Đối Tượng</Label>
-                         <div className="relative">
-                            <select
-                                value={display.currentCustomer}
+                        <div className="relative group">
+                            <Label>Mã Đối Tượng</Label>
+                            <input
+                                type="text"
+                                value={custInputVal}
                                 onChange={(e) => handleCustomerChange(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors appearance-none font-medium text-slate-900"
-                            >
-                                <option value="">-- Chọn khách hàng --</option>
-                                {customers.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
-                            </select>
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
-                         </div>
+                                onFocus={() => setShowSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Nhập mã đối tượng..."
+                                autoComplete="off"
+                            />
+                            {showSuggestions && custInputVal && filteredCustomers.length > 0 && (
+                                <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto mt-1 left-0 py-1">
+                                    {filteredCustomers.map(c => (
+                                        <li 
+                                            key={c.id} 
+                                            onMouseDown={() => handleSelectCustomer(c)}
+                                            className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0"
+                                        >
+                                            <div className="font-bold text-blue-700">{c.code}</div>
+                                            <div className="text-xs text-slate-500 truncate">{c.name}</div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                         <div>
                             <Label>Tên Đối Tượng</Label>
