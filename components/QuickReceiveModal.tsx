@@ -338,7 +338,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors appearance-none font-medium text-slate-900"
                             >
                                 <option value="">-- Chọn khách hàng --</option>
-                                {customers.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                                {customers.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                                 <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
