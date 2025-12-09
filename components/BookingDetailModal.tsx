@@ -101,6 +101,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [folderName, setFolderName] = useState<string>("");
+  const [uploadedUrl, setUploadedUrl] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // -----------------------------
@@ -352,8 +353,14 @@ const handleUploadFile = async () => {
     }
 
     if (res.ok) {
-      const serverPath = (body && body.serverPath) ? body.serverPath : `E:\\ServerData\\Invoice\\${finalFolder}\\${newFileName}`;
+      const serverPath = data?.serverPath || "";
+      const publicUrl = `https://api.kimberry.id.vn${data?.url || ""}`;
+  
       alert(`Đã lưu file thành công!\n\nĐường dẫn:\n${serverPath}`);
+  
+      // LƯU URL để hiển thị trên giao diện
+      setUploadedUrl(publicUrl);
+  
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } else {
@@ -712,7 +719,20 @@ const handleUploadFile = async () => {
             ===================================================== */}
             <div className="mt-6 border-t border-dashed pt-6">
               <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
-
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                    <p className="text-sm text-green-700 font-semibold mb-1">
+                      File đã lưu trên server:
+                    </p>
+                
+                    <a
+                      href={uploadedUrl}
+                      target="_blank"
+                      className="text-blue-600 underline text-sm font-medium hover:text-blue-800"
+                    >
+                      👉 Nhấn để xem hóa đơn đã upload
+                    </a>
+                  </div>
+                )}
                 <div className="flex items-center space-x-3">
 
                   <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
