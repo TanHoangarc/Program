@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle } from 'lucide-react';
 import { JobData, Customer } from '../types';
@@ -16,7 +15,7 @@ interface QuickReceiveModalProps {
   customers: Customer[];
 }
 
-// Reusable DateInput Component (High Contrast)
+// Reusable DateInput Component
 const DateInput = ({ 
   value, 
   onChange, 
@@ -75,32 +74,64 @@ const DateInput = ({
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   isOpen, onClose, onSave, job, mode, customers
 }) => {
+  // Main form data is the job itself
   const [formData, setFormData] = useState<JobData>(job);
   
+  // Specific state for Extension creation
   const [newExtension, setNewExtension] = useState({
     customerId: '',
     invoice: '',
     date: new Date().toISOString().split('T')[0],
-    total: 0
+    total: 0,
+    amisDocNo: '',
+    amisDesc: ''
   });
+
+  // State for "Manual" Amis fields (only valid during this session for LC/Deposit)
+  // We sync these back to the Job object on Save
+  const [amisDocNo, setAmisDocNo] = useState('');
+  const [amisDesc, setAmisDesc] = useState('');
+
+  // Generate random NTTK number
+  const generateNTTK = () => {
+      const random = Math.floor(10000 + Math.random() * 90000);
+      return `NTTK${random}`;
+  };
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(JSON.parse(JSON.stringify(job)));
-      if (mode === 'extension') {
+      // 1. Reset Job Data
+      const deepCopyJob = JSON.parse(JSON.stringify(job));
+      setFormData(deepCopyJob);
+
+      // 2. Setup Amis Fields based on existing data or generate new
+      if (mode === 'local') {
+          // If already has Amis data, use it. Else generate.
+          setAmisDocNo(deepCopyJob.amisLcDocNo || generateNTTK());
+          setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${deepCopyJob.localChargeInvoice || '...'}`);
+      } 
+      else if (mode === 'deposit') {
+          setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNTTK());
+          setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${deepCopyJob.jobCode}`);
+      } 
+      else if (mode === 'extension') {
+          // Extension is always "New" in this quick modal context
+          const nextIdx = (deepCopyJob.extensions || []).length + 1;
+          const invoiceNo = '';
           setNewExtension({ 
-            customerId: job.customerId || '', 
-            invoice: '', 
+            customerId: deepCopyJob.customerId || '', 
+            invoice: invoiceNo, 
             date: new Date().toISOString().split('T')[0],
-            total: 0 
+            total: 0,
+            amisDocNo: generateNTTK(),
+            amisDesc: `Thu tiền khách hàng theo hoá đơn GH ${invoiceNo}`
           });
       }
     }
   }, [isOpen, job, mode]);
 
+  // Derived Values for Display
   const getDisplayValues = () => {
-      let docNo = '';
-      let desc = '';
       let tkNo = '1121';
       let tkCo = '';
       let currentDate = '';
@@ -108,27 +139,23 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       let currentCustomer = '';
       let currentInvoice = '';
 
+      // We use local state `amisDocNo` and `amisDesc` for the input fields
+      // but for other fields we read from `formData` or `newExtension`
+
       if (mode === 'local') {
-          docNo = `PT-LC-${job.jobCode}`;
           currentInvoice = formData.localChargeInvoice || '';
-          desc = `Thu tiền khách hàng theo hoá đơn ${currentInvoice} (KIM)`;
           tkCo = '13111';
           currentDate = formData.localChargeDate || '';
           currentAmount = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
       } else if (mode === 'deposit') {
-          docNo = `PT-C-${job.jobCode}`;
-          desc = `Thu tiền khách hàng CƯỢC BL ${job.jobCode}`;
           tkCo = '1388';
           currentDate = formData.ngayThuCuoc || '';
           currentAmount = formData.thuCuoc || 0;
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A'; 
       } else if (mode === 'extension') {
-          const nextIdx = (job.extensions || []).length + 1;
-          docNo = `PT-GH-${job.jobCode}-${nextIdx}`;
           currentInvoice = newExtension.invoice;
-          desc = `Thu tiền khách hàng theo hoá đơn GH ${currentInvoice}`;
           tkCo = '13111';
           currentDate = newExtension.date;
           currentAmount = newExtension.total;
@@ -137,10 +164,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
       const customerName = customers.find(c => c.id === currentCustomer)?.name || '';
 
-      return { docNo, desc, tkNo, tkCo, currentDate, currentAmount, currentCustomer, customerName, currentInvoice };
+      return { tkNo, tkCo, currentDate, currentAmount, currentCustomer, customerName, currentInvoice };
   };
 
   const display = getDisplayValues();
+
+  // --- Handlers ---
 
   const handleAmountChange = (val: number) => {
       if (mode === 'local') setFormData(prev => ({ ...prev, localChargeTotal: val }));
@@ -161,12 +190,24 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const handleInvoiceChange = (val: string) => {
-      if (mode === 'local') setFormData(prev => ({ ...prev, localChargeInvoice: val }));
-      else if (mode === 'extension') setNewExtension(prev => ({ ...prev, invoice: val }));
+      if (mode === 'local') {
+          setFormData(prev => ({ ...prev, localChargeInvoice: val }));
+          // Optional: Auto-update desc if user hasn't heavily modified it? 
+          // For now, keep it manual as requested.
+      }
+      else if (mode === 'extension') {
+          setNewExtension(prev => ({ 
+              ...prev, 
+              invoice: val,
+              amisDesc: `Thu tiền khách hàng theo hoá đơn GH ${val}` // Auto update desc for new ext
+          }));
+      }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Save Logic
     if (mode === 'extension') {
       const updatedExtensions = [
         ...(formData.extensions || []),
@@ -177,13 +218,30 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           invoiceDate: newExtension.date,
           net: 0, 
           vat: 0,
-          total: newExtension.total
+          total: newExtension.total,
+          amisDocNo: newExtension.amisDocNo, // Save AMIS info to Extension
+          amisDesc: newExtension.amisDesc
         }
       ];
       onSave({ ...formData, extensions: updatedExtensions });
-    } else {
-      onSave(formData);
+    } 
+    else if (mode === 'local') {
+        // Save AMIS info to Job
+        onSave({ 
+            ...formData, 
+            amisLcDocNo: amisDocNo, 
+            amisLcDesc: amisDesc 
+        });
     }
+    else if (mode === 'deposit') {
+        // Save AMIS info to Job
+        onSave({ 
+            ...formData, 
+            amisDepositDocNo: amisDocNo, 
+            amisDepositDesc: amisDesc 
+        });
+    }
+    
     onClose();
   };
 
@@ -226,7 +284,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center">
                     <Calendar className="w-4 h-4 text-blue-600 mr-2" />
-                    Thông tin chung
+                    Thông tin chứng từ
                 </h3>
                 <div className="grid grid-cols-2 gap-5">
                     <div>
@@ -237,12 +295,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         />
                     </div>
                     <div>
-                        <Label>Số Chứng Từ (Auto)</Label>
+                        <Label>Số Chứng Từ (AMIS)</Label>
                         <input 
                             type="text" 
-                            value={display.docNo} 
-                            readOnly
-                            className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-blue-800 cursor-not-allowed"
+                            value={mode === 'extension' ? newExtension.amisDocNo : amisDocNo}
+                            onChange={(e) => {
+                                if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value}));
+                                else setAmisDocNo(e.target.value);
+                            }}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
                 </div>
@@ -342,12 +403,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
 
                 <div>
-                    <Label>Diễn giải lý do thu (Auto)</Label>
+                    <Label>Diễn giải lý do thu</Label>
                     <textarea 
-                        value={display.desc} 
-                        readOnly
+                        value={mode === 'extension' ? newExtension.amisDesc : amisDesc}
+                        onChange={(e) => {
+                            if(mode === 'extension') setNewExtension(prev => ({...prev, amisDesc: e.target.value}));
+                            else setAmisDesc(e.target.value);
+                        }}
                         rows={2}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-700 resize-none focus:outline-none"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                 </div>
             </div>

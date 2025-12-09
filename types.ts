@@ -1,4 +1,3 @@
-
 // ============================================================
 // EXTENSION (PHỤ THU / DOANH THU PHÁT SINH)
 // ============================================================
@@ -13,6 +12,10 @@ export interface ExtensionData {
   net: number;
   vat: number;
   total: number; // Auto-calc
+
+  // AMIS Fields
+  amisDocNo?: string;
+  amisDesc?: string;
 }
 
 // ============================================================
@@ -129,6 +132,16 @@ export interface JobData {
   ngayChiCuoc: string;
   ngayChiHoan: string;
 
+  // AMIS Fields for Payment Out (Chi Payment / Local Charge Hãng tàu)
+  amisPaymentDocNo?: string;
+  amisPaymentDesc?: string;
+  amisPaymentDate?: string;
+
+  // AMIS Fields for Deposit Out (Chi Cược Hãng tàu)
+  amisDepositOutDocNo?: string;
+  amisDepositOutDesc?: string;
+  amisDepositOutDate?: string;
+
   // Payment In (Local Charge – Thu KH)
   localChargeInvoice: string;
   localChargeDate: string;
@@ -136,12 +149,20 @@ export interface JobData {
   localChargeVat: number;
   localChargeTotal: number;
   bank: string;
+  
+  // AMIS Fields for Local Charge (Thu)
+  amisLcDocNo?: string;
+  amisLcDesc?: string;
 
-  // Payment In (Deposit)
+  // Payment In (Deposit - Thu)
   maKhCuocId: string;
   thuCuoc: number;
   ngayThuCuoc: string;
   ngayThuHoan: string;
+  
+  // AMIS Fields for Deposit (Thu)
+  amisDepositDocNo?: string;
+  amisDepositDesc?: string;
 
   // Revenue Extensions
   extensions: ExtensionData[];

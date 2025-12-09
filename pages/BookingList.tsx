@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -123,8 +122,27 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
   };
   
   const handleSavePayment = (data: any) => {
-      console.log("Saved Payment Voucher Data:", data);
-      alert("Đã lưu thông tin phiếu chi (Dữ liệu tạm thời trên giao diện).");
+      // Save data back to jobs in the booking
+      if (targetBookingForPayment) {
+          targetBookingForPayment.jobs.forEach(job => {
+              const updatedJob = { ...job };
+              
+              if (paymentType === 'local') {
+                  updatedJob.amisPaymentDocNo = data.docNo;
+                  updatedJob.amisPaymentDesc = data.paymentContent;
+                  updatedJob.amisPaymentDate = data.date;
+              } else if (paymentType === 'deposit') {
+                  updatedJob.amisDepositOutDocNo = data.docNo;
+                  updatedJob.amisDepositOutDesc = data.paymentContent;
+                  updatedJob.amisDepositOutDate = data.date;
+              }
+              // Extension can be handled similarly if needed, but usually linked via separate cost objects
+              // For simplicity, treating extension out as ad-hoc payment for now
+              
+              onEditJob(updatedJob);
+          });
+          alert("Đã lưu thông tin phiếu chi thành công!");
+      }
   };
 
   const handleSavePurchase = (data: any) => {

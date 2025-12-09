@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag } from 'lucide-react';
@@ -16,7 +15,6 @@ interface AmisExportProps {
 }
 
 export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode }) => {
-  // ... (Keep existing logic, no changes needed for main component logic)
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
@@ -77,39 +75,51 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
 
     if (mode === 'thu') {
       const rows: any[] = [];
-      filteredJobs.filter(j => j.thuCuoc > 0 && j.ngayThuCuoc).forEach(j => {
-         const docNo = `PT-C-${j.jobCode}`;
-         const desc = `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`;
+      
+      // 1. Thu Cược (Deposit) - Chỉ hiện nếu có amisDepositDocNo
+      filteredJobs.filter(j => j.thuCuoc > 0 && j.amisDepositDocNo).forEach(j => {
+         const docNo = j.amisDepositDocNo;
+         const desc = j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`;
+         const custCode = getCustomerCode(j.maKhCuocId); // Code only as requested
+         
          rows.push({
-             date: j.ngayThuCuoc, docNo, objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
+             date: j.ngayThuCuoc, docNo, objCode: custCode, objName: getCustomerName(j.maKhCuocId),
              desc, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
-             col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: getCustomerCode(j.maKhCuocId), col5: getCustomerName(j.maKhCuocId),
-             col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '1388', col17: j.thuCuoc, col19: getCustomerCode(j.maKhCuocId),
+             col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: custCode, col5: getCustomerName(j.maKhCuocId),
+             col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '1388', col17: j.thuCuoc, col19: custCode,
              ...(editedRows[docNo] || {})
          });
       });
-      filteredJobs.filter(j => j.localChargeTotal > 0 && j.localChargeInvoice && j.bank).forEach(j => {
-          const docNo = `PT-LC-${j.jobCode}`;
-          const desc = `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`;
+
+      // 2. Thu Local Charge - Chỉ hiện nếu có amisLcDocNo
+      filteredJobs.filter(j => j.localChargeTotal > 0 && j.amisLcDocNo).forEach(j => {
+          const docNo = j.amisLcDocNo;
+          const desc = j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`;
+          const custCode = getCustomerCode(j.customerId);
+
            rows.push({
-               date: j.localChargeDate, docNo, objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
+               date: j.localChargeDate, docNo, objCode: custCode, objName: getCustomerName(j.customerId),
                desc, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
-               col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: getCustomerCode(j.customerId), col5: getCustomerName(j.customerId),
-               col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: j.localChargeTotal, col19: getCustomerCode(j.customerId),
+               col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: custCode, col5: getCustomerName(j.customerId),
+               col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: j.localChargeTotal, col19: custCode,
                ...(editedRows[docNo] || {})
            });
       });
+
+      // 3. Thu Extension - Chỉ hiện nếu có amisDocNo
       filteredJobs.forEach(j => {
-          (j.extensions || []).forEach((ext, idx) => {
-              if (ext.total > 0 && ext.invoice) {
-                  const docNo = `PT-GH-${j.jobCode}-${idx + 1}`;
-                  const desc = `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`;
+          (j.extensions || []).forEach((ext) => {
+              if (ext.total > 0 && ext.amisDocNo) {
+                  const docNo = ext.amisDocNo;
+                  const desc = ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`;
                   const custId = ext.customerId || j.customerId;
+                  const custCode = getCustomerCode(custId);
+
                   rows.push({
-                      date: ext.invoiceDate, docNo, objCode: getCustomerCode(custId), objName: getCustomerName(custId),
+                      date: ext.invoiceDate, docNo, objCode: custCode, objName: getCustomerName(custId),
                       desc, amount: ext.total, tkNo: '1121', tkCo: '13111',
-                      col1: ext.invoiceDate, col2: ext.invoiceDate, col3: docNo, col4: getCustomerCode(custId), col5: getCustomerName(custId),
-                      col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: ext.total, col19: getCustomerCode(custId),
+                      col1: ext.invoiceDate, col2: ext.invoiceDate, col3: docNo, col4: custCode, col5: getCustomerName(custId),
+                      col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: ext.total, col19: custCode,
                       ...(editedRows[docNo] || {})
                   });
               }
@@ -119,36 +129,73 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     } 
     else if (mode === 'chi') {
         const rows: any[] = [];
-        filteredJobs.filter(j => j.chiPayment > 0).forEach(j => {
-             const date = j.bookingCostDetails?.localCharge?.date || j.localChargeDate || new Date().toISOString().split('T')[0];
-             const docNo = `UNC-${j.jobCode}-L`;
-             const content = `Chi tiền cho ncc ${j.line} lô ${j.jobCode}`;
-             const objCode = j.line; 
-             
-             rows.push({
-                 date, docNo, objCode, objName: '', desc: content, amount: j.chiPayment,
-                 reason: 'Chi khác',
-                 paymentContent: content,
-                 paymentAccount: '345673979999',
-                 paymentBank: 'Ngân hàng TMCP Quân đội',
-                 address: '', receiverAccount: '', receiverBank: '', receiverName: '',
-                 currency: 'VND', description: content, tkNo: '3311', tkCo: '1121',
-                 ...(editedRows[docNo] || {})
-             });
+        
+        // Use a set to avoid duplicates since multiple jobs in same booking might share same Payment Doc No
+        const processedDocNos = new Set<string>();
+
+        // 1. Chi Payment (General/Local Charge)
+        filteredJobs.forEach(j => {
+             if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo)) {
+                 processedDocNos.add(j.amisPaymentDocNo);
+                 
+                 // Reconstruct amount based on what was likely paid. 
+                 // If docNo is shared across booking, we need total amount for that docNo? 
+                 // For now, assume the job carries the info or we aggregate by DocNo
+                 // Better approach: Since we saved it per job, just take the first occurrence 
+                 // BUT wait, we need the TOTAL amount for that UNC.
+                 
+                 // Find all jobs with this DocNo to sum amount
+                 const relatedJobs = jobs.filter(job => job.amisPaymentDocNo === j.amisPaymentDocNo);
+                 // However, usually we save the full amount in each job? No, that would duplicate.
+                 // In `BookingList`, we saved the amount to `amisPaymentAmount`? No we didn't add amount field to JobData.
+                 // We only added DocNo/Desc/Date.
+                 // So we need to calculate amount again or rely on the fact that usually 1 UNC = 1 Booking Total Cost.
+                 
+                 const summary = calculateBookingSummary(jobs, j.booking);
+                 const amount = summary ? summary.totalCost : j.chiPayment; 
+
+                 rows.push({
+                     date: j.amisPaymentDate || new Date().toISOString().split('T')[0],
+                     docNo: j.amisPaymentDocNo,
+                     objCode: j.line, 
+                     objName: '', 
+                     desc: j.amisPaymentDesc, 
+                     amount: amount,
+                     reason: 'Chi khác',
+                     paymentContent: j.amisPaymentDesc,
+                     paymentAccount: '345673979999',
+                     paymentBank: 'Ngân hàng TMCP Quân đội',
+                     currency: 'VND', description: j.amisPaymentDesc, tkNo: '3311', tkCo: '1121',
+                     ...(editedRows[j.amisPaymentDocNo] || {})
+                 });
+             }
         });
-        filteredJobs.filter(j => j.chiCuoc > 0).forEach(j => {
-             const date = j.ngayChiCuoc || new Date().toISOString().split('T')[0];
-             const docNo = `UNC-${j.jobCode}-C`;
-             const content = `Chi cược hãng tàu ${j.line} lô ${j.jobCode}`;
-             
-             rows.push({
-                 date, docNo, objCode: j.line, objName: '', desc: content, amount: j.chiCuoc,
-                 reason: 'Chi khác', paymentContent: content,
-                 paymentAccount: '345673979999', paymentBank: 'Ngân hàng TMCP Quân đội',
-                 currency: 'VND', description: content, tkNo: '3311', tkCo: '1121',
-                 ...(editedRows[docNo] || {})
-             });
+
+        // 2. Chi Cược (Deposit Out)
+        filteredJobs.forEach(j => {
+             if (j.amisDepositOutDocNo && !processedDocNos.has(j.amisDepositOutDocNo)) {
+                 processedDocNos.add(j.amisDepositOutDocNo);
+                 
+                 const summary = calculateBookingSummary(jobs, j.booking);
+                 const depositAmt = summary ? summary.costDetails.deposits.reduce((s,d) => s + d.amount, 0) : j.chiCuoc;
+
+                 rows.push({
+                     date: j.amisDepositOutDate || new Date().toISOString().split('T')[0],
+                     docNo: j.amisDepositOutDocNo,
+                     objCode: j.line, 
+                     objName: '', 
+                     desc: j.amisDepositOutDesc, 
+                     amount: depositAmt,
+                     reason: 'Chi khác', 
+                     paymentContent: j.amisDepositOutDesc,
+                     paymentAccount: '345673979999', 
+                     paymentBank: 'Ngân hàng TMCP Quân đội',
+                     currency: 'VND', description: j.amisDepositOutDesc, tkNo: '3311', tkCo: '1121',
+                     ...(editedRows[j.amisDepositOutDocNo] || {})
+                 });
+             }
         });
+
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
     else if (mode === 'ban') {
@@ -238,6 +285,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     return [];
   }, [jobs, mode, filterMonth, customers, editedRows]); 
 
+  // ... (Keep existing handlers for select all, export, etc.)
   const handleSelectAll = () => {
     const unlockedRows = exportData.filter(r => !lockedIds.has(r.docNo));
     if (selectedIds.size === unlockedRows.length && unlockedRows.length > 0) setSelectedIds(new Set());
@@ -278,7 +326,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
   };
 
   const handleExport = () => {
-    // ... (Keep existing export logic)
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) {
         alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.");
@@ -295,7 +342,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
         csvRows = rowsToExport.map((d: any) => [
             d.date, d.date, d.docNo, d.reason || 'Chi khác', d.paymentContent,
             d.paymentAccount || '345673979999', d.paymentBank || 'Ngân hàng TMCP Quân đội',
-            d.objCode, d.objName, d.address, d.receiverAccount, d.receiverBank, d.receiverName,
+            d.objCode, d.objName, 
+            '', '', '', '', // Address, Receiver Account/Bank/Name REMOVED
             '', '', '', '', d.currency || 'VND', d.rate, d.description,
             d.tkNo || '3311', d.tkCo || '1121', d.amount, d.amount,
             d.objCodeAccounting || d.objCode, d.loanContract
@@ -328,6 +376,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
       if (mode === 'thu') {
          headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Mã đối tượng', 'Tên đối tượng', 'Địa chỉ', 'Nộp vào TK', 'Mở tại NH', 'Lý do thu', 'Diễn giải lý do', 'NV thu', 'Loại tiền', 'Tỷ giá', 'Diễn giải HT', 'TK Nợ', 'TK Có', 'Số tiền', 'Quy đổi', 'Mã ĐT HT', 'Khế ước'];
       } else if (mode === 'chi') {
+         // Updated headers to remove Receiver details
          headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Lý do chi', 'Nội dung TT', 'Số TK chi', 'Tên NH chi', 'Mã đối tượng', 'Tên đối tượng', 'Địa chỉ', 'Số TK nhận', 'Tên NH nhận', 'Người lĩnh', 'CMND', 'Ngày cấp', 'Nơi cấp', 'Mã NV', 'Loại tiền', 'Tỷ giá', 'Diễn giải HT', 'TK Nợ', 'TK Có', 'Số tiền', 'Quy đổi', 'Mã ĐT HT', 'Khế ước'];
       } else if (mode === 'ban') {
          headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Hình thức bán hàng', 'Phương thức TT', 'Mã khách hàng', 'Diễn giải', 'Mã hàng', 'TK Nợ', 'TK Có', 'Số lượng', 'Đơn giá', 'Thành tiền', '% Thuế GTGT', 'TK Thuế GTGT', 'Mã công trình', 'Kiêm phiếu XK', 'Lập kèm HĐ', 'Loại tiền', 'Là dòng ghi chú'];
@@ -415,7 +464,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                 {isInteractiveMode && <th className="px-6 py-3 w-10 text-center">Khóa</th>}
                 <th className="px-6 py-3">Ngày CT</th>
                 <th className="px-6 py-3">Số CT</th>
-                <th className="px-6 py-3">Đối Tượng</th>
+                <th className="px-6 py-3">Mã Đối Tượng</th>
                 <th className="px-6 py-3">Diễn giải</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
                 {isInteractiveMode && <th className="px-6 py-3 text-center w-20">Sửa</th>}
@@ -426,8 +475,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                  exportData.map((row: any, idx) => {
                    const isLocked = isInteractiveMode && lockedIds.has(row.docNo);
                    const isSelected = selectedIds.has(row.docNo);
-                   const objCode = mode === 'ban' ? row.customerCode : mode === 'mua' ? row.supplierCode : row.objCode;
-
+                   
                    return (
                    <tr key={idx} className={`${isLocked ? 'bg-slate-100/50 text-gray-500' : 'hover:bg-white/30'} ${isSelected ? 'bg-blue-50/50' : ''}`}>
                       {isInteractiveMode && (
@@ -445,7 +493,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                       
                       <td className="px-6 py-3">{formatDateVN(row.date)}</td>
                       <td className={`px-6 py-3 font-medium ${isLocked ? 'text-gray-600' : 'text-blue-600'}`}>{row.docNo}</td>
-                      <td className="px-6 py-3">{objCode}</td>
+                      <td className="px-6 py-3">{row.objCode}</td>
                       <td className="px-6 py-3 truncate max-w-xs">{row.desc}</td>
                       <td className="px-6 py-3 text-right font-medium">{formatCurrency(row.amount)}</td>
                       
@@ -461,7 +509,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                    </tr>
                  )})
               ) : (
-                <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu phù hợp</td></tr>
+                <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu phù hợp (Hãy tạo phiếu thu/chi trước)</td></tr>
               )}
             </tbody>
           </table>

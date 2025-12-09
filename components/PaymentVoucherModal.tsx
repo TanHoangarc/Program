@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, User, Banknote, CheckCircle } from 'lucide-react';
@@ -87,9 +86,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     objCode: '',
     objName: '',
     address: '',
-    receiverAccount: '',
-    receiverBank: '',
-    receiverName: '',
     currency: 'VND',
     rate: '',
     description: '',
@@ -100,6 +96,12 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     loanContract: ''
   });
 
+  // Generate random UNC number
+  const generateUNC = () => {
+      const random = Math.floor(10000 + Math.random() * 90000);
+      return `UNC${random}`;
+  };
+
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
@@ -108,6 +110,10 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         let amount = 0;
         let content = '';
         let docNo = '';
+        
+        // Try to check if existing AMIS data is present in the first job of the booking
+        const firstJob = booking?.jobs[0] || job;
+        
         const lineCode = booking ? booking.line : (job?.line || '');
         const date = new Date().toISOString().split('T')[0];
         
@@ -117,15 +123,35 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         const bookingNo = booking ? booking.bookingId : (job?.booking || '');
 
         if (type === 'local') {
+           // Check if already created
+           if (firstJob?.amisPaymentDocNo) {
+               docNo = firstJob.amisPaymentDocNo;
+               content = firstJob.amisPaymentDesc || '';
+               // Ensure we don't overwrite date if it exists, otherwise default
+               // date = firstJob.amisPaymentDate || date; 
+           } else {
+               docNo = generateUNC();
+               content = `Chi tiền cho ncc ${lineCode} lô ${jobListStr} BL ${bookingNo}`;
+           }
            amount = booking ? booking.totalCost : (job?.chiPayment || 0);
-           content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo} (Kimberry)`;
-           docNo = `UNC-${bookingNo || jobListStr}-L`;
+           
         } else if (type === 'deposit') {
-           content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo} (Kimberry)`;
-           docNo = `UNC-${bookingNo || jobListStr}-C`;
+           // Check if already created
+           if (firstJob?.amisDepositOutDocNo) {
+               docNo = firstJob.amisDepositOutDocNo;
+               content = firstJob.amisDepositOutDesc || '';
+           } else {
+               docNo = generateUNC();
+               content = `Chi tiền cược cho ncc ${lineCode} lô ${jobListStr}`;
+           }
+           // Calc deposit amount from booking details if available
+           const depositAmt = booking?.costDetails.deposits.reduce((s,d) => s + d.amount, 0) || job?.chiCuoc || 0;
+           amount = depositAmt;
+
         } else if (type === 'extension') {
-           content = `Chi tiền cho ncc GH BL ${bookingNo} (Kimberry)`;
-           docNo = `UNC-${bookingNo || jobListStr}-GH`;
+           docNo = generateUNC();
+           content = `Chi tiền gia hạn cho ncc ${lineCode} BL ${bookingNo}`;
+           // Extension logic might vary, usually simple
         }
 
         setFormData(prev => ({
@@ -216,7 +242,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                    <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
-                       <User className="w-4 h-4 mr-2 text-red-500" /> Đối tượng & Ngân hàng
+                       <User className="w-4 h-4 mr-2 text-red-500" /> Đối tượng
                    </h3>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
                       <div className="space-y-1.5">
@@ -235,28 +261,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                             type="text" 
                             name="objName" 
                             value={formData.objName} 
-                            onChange={handleChange} 
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
-                         />
-                      </div>
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="space-y-1.5">
-                         <Label>Tài khoản nhận</Label>
-                         <input 
-                            type="text" 
-                            name="receiverAccount" 
-                            value={formData.receiverAccount} 
-                            onChange={handleChange} 
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
-                         />
-                      </div>
-                      <div className="space-y-1.5">
-                         <Label>Ngân hàng nhận</Label>
-                         <input 
-                            type="text" 
-                            name="receiverBank" 
-                            value={formData.receiverBank} 
                             onChange={handleChange} 
                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
                          />
