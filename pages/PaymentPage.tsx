@@ -1,5 +1,5 @@
 // ============================================================
-// PAYMENT PAGE – FULL FIXED VERSION (UNC rename + download fix)
+// PAYMENT PAGE – FULL FIXED VERSION (NO MORE UNKNOWN)
 // ============================================================
 
 import React, { useState, useRef } from 'react';
@@ -16,7 +16,7 @@ interface PaymentPageProps {
   onUpdateRequests: (reqs: PaymentRequest[]) => void;
 }
 
-// Backend Tunnel Domain
+// Cloudflare backend
 const BACKEND_URL = "https://api.kimberry.id.vn";
 
 export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpdateRequests }) => {
@@ -30,7 +30,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
 
   const [isUploading, setIsUploading] = useState(false);
 
-  // Modal: upload UNC
+  // Modal upload UNC
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [uncFile, setUncFile] = useState<File | null>(null);
 
@@ -38,21 +38,26 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
   const uncInputRef = useRef<HTMLInputElement>(null);
 
   // ============================================================
-  // UPLOAD FUNCTION (INVOICE + UNC)
+  // UPLOAD FUNCTION – FIXED FOR UNC BOOKING
   // ============================================================
 
-  const uploadToServer = async (file: File, type: "INVOICE" | "UNC") => {
+  const uploadToServer = async (
+    file: File,
+    type: "INVOICE" | "UNC",
+    bookingFromReq: string = ""
+  ) => {
     const formData = new FormData();
     const ext = file.name.split(".").pop() || "pdf";
-    const safeBooking = booking.replace(/[^a-zA-Z0-9]/g, "") || "UNKNOWN";
+
+    const safeBooking = 
+      (bookingFromReq || "")
+        .replace(/[^a-zA-Z0-9]/g, "") || "UNKNOWN";
 
     let safeName = "";
 
     if (type === "UNC") {
-      // --- UNC filename format required by user ---
       safeName = `UNC BL ${safeBooking}.${ext}`;
     } else {
-      // Invoice keeps timestamp logic
       safeName = `INV_${safeBooking}_${Date.now()}.${ext}`;
     }
 
@@ -62,20 +67,16 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
     const endpoint = type === "INVOICE" ? "/upload-invoice" : "/upload-unc";
 
     try {
-      const res = await axios.post(`${BACKEND_URL}${endpoint}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
-
-      return res.data; // { fileName, serverPath, url }
-    } 
-    catch (err) {
-      alert("Không thể upload file. Vui lòng kiểm tra server.");
+      const res = await axios.post(`${BACKEND_URL}${endpoint}`, formData);
+      return res.data;
+    } catch (err) {
+      alert("Không thể upload file. Kiểm tra server.");
       return null;
     }
   };
 
   // ============================================================
-  // CREATE PAYMENT REQUEST
+  // TẠO YÊU CẦU THANH TOÁN
   // ============================================================
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -91,7 +92,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
     let uploaded = null;
 
     if (invoiceFile) {
-      uploaded = await uploadToServer(invoiceFile, "INVOICE");
+      uploaded = await uploadToServer(invoiceFile, "INVOICE", booking);
       if (!uploaded) {
         setIsUploading(false);
         return;
@@ -115,6 +116,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
 
     onUpdateRequests([newReq, ...requests]);
 
+    // Reset form
     setLine('');
     setBooking('');
     setAmount(0);
@@ -135,7 +137,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
   };
 
   // ============================================================
-  // COMPLETE → UPLOAD UNC
+  // HOÀN TẤT – UPLOAD UNC
   // ============================================================
 
   const initiateComplete = (id: string) => {
@@ -152,16 +154,23 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
 
     setIsUploading(true);
 
-    const uploaded = await uploadToServer(uncFile, "UNC");
+    const req = requests.find(r => r.id === completingId);
+
+    const uploaded = await uploadToServer(
+      uncFile,
+      "UNC",
+      req?.booking || "" // <-- FIXED: always use booking of item, not form
+    );
+
     if (!uploaded) {
       setIsUploading(false);
       return;
     }
 
-    const updated = requests.map(req => {
-      if (req.id === completingId) {
+    const updated = requests.map(r => {
+      if (r.id === completingId) {
         return {
-          ...req,
+          ...r,
           status: "completed",
           uncFileName: uploaded.fileName,
           uncPath: uploaded.serverPath,
@@ -170,7 +179,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
           completedAt: new Date().toISOString()
         };
       }
-      return req;
+      return r;
     });
 
     onUpdateRequests(updated);
@@ -179,7 +188,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
   };
 
   // ============================================================
-  // OPEN OR DOWNLOAD FILE
+  // FILE VIEW + DOWNLOAD
   // ============================================================
 
   const openFile = (req: PaymentRequest, type: "invoice" | "unc") => {
@@ -189,31 +198,23 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
       alert("Không tìm thấy file!");
       return;
     }
-
     window.open(url, "_blank");
   };
 
-  // --- FIXED DOWNLOAD: always download (UNC only) ---
+  // Always download UNC
   const downloadUNC = (req: PaymentRequest) => {
-    const url = req.uncUrl;
-    if (!url) {
-      alert("Không có file để tải xuống.");
-      return;
-    }
+    if (!req.uncUrl) return alert("Không tìm thấy file UNC!");
 
     const link = document.createElement("a");
-    link.href = url;
-
-    // required file name format:
+    link.href = req.uncUrl;
     link.download = `UNC BL ${req.booking}.pdf`;
-
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   // ============================================================
-  // FILTER LIST
+  // UI HELPERS
   // ============================================================
 
   const pendingList = requests.filter(r => r.status === "pending");
@@ -248,10 +249,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
         <h1 className="text-3xl font-bold text-slate-800">Thanh Toán MBL</h1>
       </div>
 
-      {/* MAIN SCROLL */}
+      {/* CONTENT SCROLL */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-20 space-y-10">
 
-        {/* --- FORM TẠO YÊU CẦU --- */}
+        {/* FORM */}
         <div className="glass-panel p-6 rounded-2xl border relative">
 
           {isUploading && (
@@ -281,7 +282,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
               </select>
             </div>
 
-            {/* POD */}
+            {/* MSC POD */}
             {line === "MSC" ? (
               <div>
                 <label className="text-[10px] font-bold text-blue-500">POD (MSC)</label>
@@ -289,14 +290,18 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
                   <button 
                     type="button"
                     onClick={() => setPod("HCM")}
-                    className={`flex-1 py-1.5 rounded-lg ${pod === "HCM" ? "bg-blue-600 text-white" : "text-slate-600"}`}
+                    className={`flex-1 py-1.5 rounded-lg ${pod === "HCM"
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-600"}`}
                   >
                     HCM
                   </button>
                   <button 
                     type="button"
                     onClick={() => setPod("HPH")}
-                    className={`flex-1 py-1.5 rounded-lg ${pod === "HPH" ? "bg-blue-600 text-white" : "text-slate-600"}`}
+                    className={`flex-1 py-1.5 rounded-lg ${pod === "HPH"
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-600"}`}
                   >
                     HPH
                   </button>
@@ -306,7 +311,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
 
             {/* Booking */}
             <div>
-              <label className="text-[10px] font-bold text-slate-500">MBL / Booking</label>
+              <label className="text-[10px] font-bold text-slate-500">Booking</label>
               <input
                 value={booking}
                 onChange={e => setBooking(e.target.value)}
@@ -357,7 +362,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
           </form>
         </div>
 
-        {/* --- PENDING LIST --- */}
+        {/* PENDING LIST */}
         <div className="glass-panel rounded-2xl overflow-hidden border">
           <div className="bg-orange-50 px-6 py-4 flex justify-between items-center">
             <h3 className="font-bold uppercase text-orange-800 flex items-center">
@@ -374,7 +379,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
                 <th className="px-6 py-3">Mã Line</th>
                 <th className="px-6 py-3">Booking</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
-                <th className="px-6 py-3 text-center">Xem file</th>
+                <th className="px-6 py-3 text-center">File</th>
                 <th className="px-6 py-3 text-center">Chức năng</th>
               </tr>
             </thead>
@@ -387,7 +392,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
                   <td className="px-6 py-4 text-right text-red-600 font-bold">
                     {formatCurrency(req.amount)}
                   </td>
-                  
+
                   <td className="px-6 py-4 text-center">
                     <button 
                       onClick={() => openFile(req, "invoice")} 
@@ -415,6 +420,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
                       </button>
                     </div>
                   </td>
+
                 </tr>
               ))}
             </tbody>
@@ -422,7 +428,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
           </table>
         </div>
 
-        {/* --- COMPLETED LIST --- */}
+        {/* COMPLETED LIST */}
         <div className="glass-panel rounded-2xl overflow-hidden border">
           <div className="bg-emerald-50 px-6 py-4 flex justify-between items-center">
             <h3 className="font-bold uppercase text-emerald-800 flex items-center">
@@ -472,7 +478,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      {/* FIXED DOWNLOAD UNC */}
+                      {/* Always download UNC */}
                       <button 
                         onClick={() => downloadUNC(req)}
                         className="text-purple-700 p-2 bg-purple-50 rounded border"
@@ -498,7 +504,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
 
       </div>
 
-      {/* --- MODAL UPLOAD UNC --- */}
+      {/* MODAL: UPLOAD UNC */}
       {completingId && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
 
@@ -526,7 +532,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ lines, requests, onUpd
               }} />
 
               <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-              
+
               <p className="font-bold">{uncFile ? uncFile.name : "Chọn file UNC"}</p>
               <p className="text-xs text-slate-400">File sẽ được lưu vào Server Storage</p>
             </div>
