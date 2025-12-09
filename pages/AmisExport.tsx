@@ -1,18 +1,24 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag } from 'lucide-react';
+import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2 } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx';
 import { formatDateVN, calculateBookingSummary } from '../utils';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
+import axios from 'axios';
 
 interface AmisExportProps {
   jobs: JobData[];
   customers: Customer[];
   mode: 'thu' | 'chi' | 'ban' | 'mua';
 }
+
+// Cấu hình đường dẫn Server
+const BACKEND_URL = "https://api.kimberry.id.vn";
+const TEMPLATE_FOLDER = "Templates";
+const TEMPLATE_FILENAME = "AmisTemplate.xlsx";
 
 export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode }) => {
   const [filterMonth, setFilterMonth] = useState('');
@@ -32,8 +38,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     }
   });
 
+  // Template State
   const [templateWb, setTemplateWb] = useState<XLSX.WorkBook | null>(null);
   const [templateName, setTemplateName] = useState<string>('');
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
+  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const mockLines: ShippingLine[] = [];
@@ -46,15 +56,45 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     setSelectedIds(new Set());
   }, [mode, filterMonth]);
 
+  // --- AUTO LOAD TEMPLATE FROM SERVER ---
+  useEffect(() => {
+    const fetchServerTemplate = async () => {
+        setIsLoadingTemplate(true);
+        try {
+            // Cố gắng tải file mẫu từ server
+            const fileUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${TEMPLATE_FILENAME}`;
+            const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+            
+            if (response.status === 200) {
+                const wb = XLSX.read(response.data, { type: 'array' });
+                setTemplateWb(wb);
+                setTemplateName("Mẫu Server (Tự động tải)");
+            }
+        } catch (error) {
+            // Không tìm thấy file trên server hoặc lỗi mạng -> Không làm gì, để người dùng tự upload
+            console.log("Chưa có file mẫu trên server hoặc lỗi tải.");
+        } finally {
+            setIsLoadingTemplate(false);
+        }
+    };
+
+    fetchServerTemplate();
+  }, []);
+
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
   const getCustomerCode = (id: string) => customers.find(c => c.id === id)?.code || id;
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || '';
 
-  const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // --- UPLOAD TEMPLATE TO SERVER ---
+  const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setIsUploadingTemplate(true);
+
+    // 1. Đọc file để sử dụng ngay lập tức (Local Preview)
     const reader = new FileReader();
     reader.onload = (evt) => {
       const bstr = evt.target?.result;
@@ -63,6 +103,24 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
       setTemplateName(file.name);
     };
     reader.readAsBinaryString(file);
+
+    // 2. Upload file lên Server để lưu trữ cho lần sau
+    try {
+        const formData = new FormData();
+        formData.append("folderPath", TEMPLATE_FOLDER);
+        formData.append("fileName", TEMPLATE_FILENAME); // Luôn lưu với tên cố định này để ghi đè
+        formData.append("file", file);
+
+        await axios.post(`${BACKEND_URL}/upload-file`, formData);
+        alert("Đã lưu mẫu lên Server! Lần sau truy cập sẽ tự động tải.");
+        setTemplateName("Mẫu Server (Mới cập nhật)");
+    } catch (err) {
+        console.error("Lỗi upload mẫu:", err);
+        alert("Có lỗi khi lưu mẫu lên server. Mẫu chỉ có hiệu lực trong phiên làm việc này.");
+    } finally {
+        setIsUploadingTemplate(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const triggerFileUpload = () => fileInputRef.current?.click();
@@ -129,28 +187,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     } 
     else if (mode === 'chi') {
         const rows: any[] = [];
-        
-        // Use a set to avoid duplicates since multiple jobs in same booking might share same Payment Doc No
         const processedDocNos = new Set<string>();
 
         // 1. Chi Payment (General/Local Charge)
         filteredJobs.forEach(j => {
              if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo)) {
                  processedDocNos.add(j.amisPaymentDocNo);
-                 
-                 // Reconstruct amount based on what was likely paid. 
-                 // If docNo is shared across booking, we need total amount for that docNo? 
-                 // For now, assume the job carries the info or we aggregate by DocNo
-                 // Better approach: Since we saved it per job, just take the first occurrence 
-                 // BUT wait, we need the TOTAL amount for that UNC.
-                 
-                 // Find all jobs with this DocNo to sum amount
-                 const relatedJobs = jobs.filter(job => job.amisPaymentDocNo === j.amisPaymentDocNo);
-                 // However, usually we save the full amount in each job? No, that would duplicate.
-                 // In `BookingList`, we saved the amount to `amisPaymentAmount`? No we didn't add amount field to JobData.
-                 // We only added DocNo/Desc/Date.
-                 // So we need to calculate amount again or rely on the fact that usually 1 UNC = 1 Booking Total Cost.
-                 
                  const summary = calculateBookingSummary(jobs, j.booking);
                  const amount = summary ? summary.totalCost : j.chiPayment; 
 
@@ -192,6 +234,30 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                      paymentBank: 'Ngân hàng TMCP Quân đội',
                      currency: 'VND', description: j.amisDepositOutDesc, tkNo: '3311', tkCo: '1121',
                      ...(editedRows[j.amisDepositOutDocNo] || {})
+                 });
+             }
+        });
+
+        // 3. Chi Hoàn Cược Khách Hàng (Deposit Refund)
+        filteredJobs.forEach(j => {
+             if (j.amisDepositRefundDocNo && !processedDocNos.has(j.amisDepositRefundDocNo)) {
+                 processedDocNos.add(j.amisDepositRefundDocNo);
+                 const custCode = getCustomerCode(j.maKhCuocId || j.customerId);
+                 const custName = getCustomerName(j.maKhCuocId || j.customerId);
+
+                 rows.push({
+                     date: j.amisDepositRefundDate || j.ngayThuHoan || new Date().toISOString().split('T')[0],
+                     docNo: j.amisDepositRefundDocNo,
+                     objCode: custCode, 
+                     objName: custName, 
+                     desc: j.amisDepositRefundDesc, 
+                     amount: j.thuCuoc,
+                     reason: 'Chi khác', 
+                     paymentContent: j.amisDepositRefundDesc,
+                     paymentAccount: '345673979999', 
+                     paymentBank: 'Ngân hàng TMCP Quân đội',
+                     currency: 'VND', description: j.amisDepositRefundDesc, tkNo: '1388', tkCo: '1121',
+                     ...(editedRows[j.amisDepositRefundDocNo] || {})
                  });
              }
         });
@@ -343,7 +409,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
             d.date, d.date, d.docNo, d.reason || 'Chi khác', d.paymentContent,
             d.paymentAccount || '345673979999', d.paymentBank || 'Ngân hàng TMCP Quân đội',
             d.objCode, d.objName, 
-            '', '', '', '', // Address, Receiver Account/Bank/Name REMOVED
+            '', '', '', '', 
             '', '', '', '', d.currency || 'VND', d.rate, d.description,
             d.tkNo || '3311', d.tkCo || '1121', d.amount, d.amount,
             d.objCodeAccounting || d.objCode, d.loanContract
@@ -376,7 +442,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
       if (mode === 'thu') {
          headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Mã đối tượng', 'Tên đối tượng', 'Địa chỉ', 'Nộp vào TK', 'Mở tại NH', 'Lý do thu', 'Diễn giải lý do', 'NV thu', 'Loại tiền', 'Tỷ giá', 'Diễn giải HT', 'TK Nợ', 'TK Có', 'Số tiền', 'Quy đổi', 'Mã ĐT HT', 'Khế ước'];
       } else if (mode === 'chi') {
-         // Updated headers to remove Receiver details
          headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Lý do chi', 'Nội dung TT', 'Số TK chi', 'Tên NH chi', 'Mã đối tượng', 'Tên đối tượng', 'Địa chỉ', 'Số TK nhận', 'Tên NH nhận', 'Người lĩnh', 'CMND', 'Ngày cấp', 'Nơi cấp', 'Mã NV', 'Loại tiền', 'Tỷ giá', 'Diễn giải HT', 'TK Nợ', 'TK Có', 'Số tiền', 'Quy đổi', 'Mã ĐT HT', 'Khế ước'];
       } else if (mode === 'ban') {
          headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Hình thức bán hàng', 'Phương thức TT', 'Mã khách hàng', 'Diễn giải', 'Mã hàng', 'TK Nợ', 'TK Có', 'Số lượng', 'Đơn giá', 'Thành tiền', '% Thuế GTGT', 'TK Thuế GTGT', 'Mã công trình', 'Kiêm phiếu XK', 'Lập kèm HĐ', 'Loại tiền', 'Là dòng ghi chú'];
@@ -436,9 +501,29 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
               </select>
            </div>
            <div className="flex space-x-2">
-              <button onClick={triggerFileUpload} className="glass-panel hover:bg-white/80 px-4 py-2 rounded-lg flex items-center space-x-2 text-slate-700 transition-colors">
-                 {templateName ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />} <span>{templateName ? 'Đã tải mẫu' : 'Cài đặt mẫu'}</span>
+              <button 
+                onClick={triggerFileUpload} 
+                disabled={isUploadingTemplate}
+                className="glass-panel hover:bg-white/80 px-4 py-2 rounded-lg flex items-center space-x-2 text-slate-700 transition-colors"
+                title="Tải file mẫu từ máy tính lên server"
+              >
+                 {isUploadingTemplate ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                 ) : (
+                    templateWb ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />
+                 )} 
+                 <span className="flex flex-col items-start text-xs">
+                    <span className="font-bold">{templateWb ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>
+                    {templateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{templateName}</span>}
+                 </span>
               </button>
+
+              {isLoadingTemplate && (
+                  <div className="flex items-center text-xs text-blue-500 px-2 animate-pulse">
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Đang tải mẫu...
+                  </div>
+              )}
+
               {isInteractiveMode && lockedIds.size > 0 && (
                   <button onClick={() => setLockedIds(new Set())} className="bg-white/50 hover:bg-white/80 text-slate-600 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
                       <RefreshCw className="w-4 h-4" /> <span>Mở khóa tất cả</span>

@@ -137,7 +137,7 @@ export interface JobData {
   amisPaymentDesc?: string;
   amisPaymentDate?: string;
 
-  // AMIS Fields for Deposit Out (Chi Cược Hãng tàu)
+  // AMIS Fields for Deposit Out (Chi Cược Hãng tàu - Booking)
   amisDepositOutDocNo?: string;
   amisDepositOutDesc?: string;
   amisDepositOutDate?: string;
@@ -160,9 +160,14 @@ export interface JobData {
   ngayThuCuoc: string;
   ngayThuHoan: string;
   
-  // AMIS Fields for Deposit (Thu)
+  // AMIS Fields for Deposit In (Thu Cược)
   amisDepositDocNo?: string;
   amisDepositDesc?: string;
+
+  // NEW: AMIS Fields for Deposit Refund (Hoàn Cược - Chi cho khách)
+  amisDepositRefundDocNo?: string;
+  amisDepositRefundDesc?: string;
+  amisDepositRefundDate?: string;
 
   // Revenue Extensions
   extensions: ExtensionData[];
@@ -193,7 +198,7 @@ export interface BookingSummary {
 }
 
 // ============================================================
-// PAYMENT REQUEST – ĐÃ ĐỒNG BỘ VỚI SERVER.JS & PAYMENTPAGE.TSX
+// PAYMENT REQUEST
 // ============================================================
 
 export interface PaymentRequest {
