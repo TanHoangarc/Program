@@ -100,6 +100,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   // FILE UPLOAD
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [folderName, setFolderName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // -----------------------------
@@ -234,10 +235,38 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   // -----------------------------
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
+    if (!e.target.files?.[0]) return;
+
+    const file = e.target.files[0];
+    setSelectedFile(file);
+
+    // Parse ngày từ localCharge.date (định dạng dd/mm/yyyy hoặc yyyy-mm-dd)
+    let dateObj: Date | null = null;
+
+    if (localCharge.date && localCharge.date.includes("/")) {
+      const parts = localCharge.date.split("/");
+      if (parts.length === 3) {
+        const [dd, mm, yyyy] = parts;
+        dateObj = new Date(`${yyyy}-${mm}-${dd}`);
+      }
+    } else if (localCharge.date) {
+      // try yyyy-mm-dd (HTML date) or other ISO
+      const tmp = new Date(localCharge.date);
+      if (!isNaN(tmp.getTime())) dateObj = tmp;
+    }
+
+    if (!dateObj || isNaN(dateObj.getTime())) {
+      // fallback: ngày hiện tại
+      dateObj = new Date();
+    }
+
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+
+    setFolderName(`${year}.${month}`);
   };
 
-// Thay thế toàn bộ function handleUploadFile bằng cái này
+
 const handleUploadFile = async () => {
   if (!selectedFile) {
     alert("Vui lòng chọn file hóa đơn trước.");
@@ -251,63 +280,69 @@ const handleUploadFile = async () => {
   setIsUploading(true);
 
   try {
-    // --- FIX DATE ALWAYS VALID FOR folderPath (YY.MM) ---
-    let dateObj;
-    
-    // Nếu định dạng dd/mm/yyyy → chuyển thành yyyy-mm-dd
-    if (localCharge.date && localCharge.date.includes("/")) {
-        const [dd, mm, yyyy] = localCharge.date.split("/");
-        dateObj = new Date(`${yyyy}-${mm}-${dd}`);
-    } else {
-        dateObj = new Date(localCharge.date || Date.now());
-    }
-    
-    // fallback nếu dateObj không hợp lệ
-    if (isNaN(dateObj.getTime())) {
-        dateObj = new Date();
-    }
-    
-    const year = dateObj.getFullYear().toString().slice(-2);
-    const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
-    
-    // FINAL FOLDER NAME
-    const folderName = `${year}.${month}`;
+    // --- Xác định folder final (YYYY.MM) ---
+    let finalFolder = folderName;
+    if (!finalFolder) {
+      // fallback: parse từ localCharge.date hoặc dùng ngày hiện tại
+      let dateObj: Date | null = null;
 
+      if (localCharge.date && localCharge.date.includes("/")) {
+        const parts = localCharge.date.split("/");
+        if (parts.length === 3) {
+          const [dd, mm, yyyy] = parts;
+          dateObj = new Date(`${yyyy}-${mm}-${dd}`);
+        }
+      } else if (localCharge.date) {
+        const tmp = new Date(localCharge.date);
+        if (!isNaN(tmp.getTime())) dateObj = tmp;
+      }
+
+      if (!dateObj || isNaN(dateObj.getTime())) dateObj = new Date();
+
+      finalFolder = `${dateObj.getFullYear()}.${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    // --- Tạo filename an toàn ---
     const ext = selectedFile.name.substring(selectedFile.name.lastIndexOf("."));
     const safeLine = ((booking as any).line || "Line").toString().replace(/[^a-zA-Z0-9]/g, "");
     const safeBooking = ((booking as any).booking || (booking as any).bookingId || (booking as any).bookingNo || "Booking").toString().replace(/[^a-zA-Z0-9]/g, "");
     const safeInvoice = (localCharge.invoice || "INV").toString().replace(/[^a-zA-Z0-9]/g, "");
 
-    const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
-    const dd = validDate.getDate().toString().padStart(2, "0");
-    const mm = (validDate.getMonth() + 1).toString().padStart(2, "0");
-    const yyyy = validDate.getFullYear().toString();
+    // format ngày dd.mm.yyyy cho filename
+    let dateForName: Date;
+    if (localCharge.date && localCharge.date.includes("/")) {
+      const [dd, mm, yyyy] = localCharge.date.split("/");
+      dateForName = new Date(`${yyyy}-${mm}-${dd}`);
+    } else {
+      const dtmp = new Date(localCharge.date || Date.now());
+      dateForName = isNaN(dtmp.getTime()) ? new Date() : dtmp;
+    }
+
+    const dd = String(dateForName.getDate()).padStart(2, "0");
+    const mm = String(dateForName.getMonth() + 1).padStart(2, "0");
+    const yyyy = dateForName.getFullYear();
     const dateStr = `${dd}.${mm}.${yyyy}`;
 
     const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateStr}${ext}`;
 
+    // --- Build FormData ---
     const formData = new FormData();
-    formData.append("folderPath", folderName);
+    formData.append("folderPath", finalFolder); // server sẽ lưu vào E:\ServerData\Invoice\<folderPath>\
     formData.append("fileName", newFileName);
     formData.append("type", "invoice");
     formData.append("bookingId", (booking as any).booking || (booking as any).bookingId || "");
     formData.append("line", ((booking as any).line || "").toString());
+    formData.append("file", selectedFile);
 
-    // DEBUG: log payload summary
-    console.log("[upload] uploading", {
-      to: "https://api.kimberry.id.vn/upload-file",
-      folderName,
-      newFileName,
-      file: selectedFile.name,
-      booking: (booking as any).booking
-    });
+    // debug (nếu cần)
+    console.log("[upload] to:", finalFolder, "file:", newFileName);
 
     const res = await fetch("https://api.kimberry.id.vn/upload-file", {
       method: "POST",
       body: formData,
     });
 
-    // Read response text/JSON
+    // Try parse json / text
     const contentType = res.headers.get("content-type") || "";
     let body: any = null;
     if (contentType.includes("application/json")) {
@@ -317,14 +352,12 @@ const handleUploadFile = async () => {
     }
 
     if (res.ok) {
-      // server should return { success: true, serverPath, ... }
-      const serverPath = (body && body.serverPath) ? body.serverPath : `E:\\ServerData\\Invoice\\${folderName}\\${newFileName}`;
+      const serverPath = (body && body.serverPath) ? body.serverPath : `E:\\ServerData\\Invoice\\${finalFolder}\\${newFileName}`;
       alert(`Đã lưu file thành công!\n\nĐường dẫn:\n${serverPath}`);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } else {
       console.error("Upload failed", res.status, body);
-      // show server message if available
       const msg = (body && (body.message || body.error)) ? (body.message || body.error) : `Server responded ${res.status}`;
       alert(`Upload thất bại: ${msg}`);
     }
