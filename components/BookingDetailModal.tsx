@@ -256,76 +256,85 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     }
   };
 
-  const handleUploadFile = async () => {
-    if (!selectedFile) {
-      alert("Vui lòng chọn file hóa đơn trước.");
-      return;
+// --- FILE UPLOAD LOGIC (UPDATED) ---
+const handleUploadFile = async () => {
+  if (!selectedFile) {
+    alert("Vui lòng chọn file hóa đơn trước.");
+    return;
+  }
+
+  if (!localCharge.invoice) {
+    alert("Vui lòng nhập SỐ HÓA ĐƠN trước khi upload file.");
+    return;
+  }
+
+  setIsUploading(true);
+
+  try {
+    // --- 1. Determine Folder Name (YY.MM) ---
+    const rawDate = localCharge.date || new Date().toISOString();
+    const dateObj = new Date(rawDate);
+
+    let year = dateObj.getFullYear().toString().slice(-2);
+    let month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+
+    if (isNaN(dateObj.getTime())) {
+      const now = new Date();
+      year = now.getFullYear().toString().slice(-2);
+      month = (now.getMonth() + 1).toString().padStart(2, "0");
     }
 
-    setIsUploading(true);
+    const folderName = `${year}.${month}`; // example: "25.02"
 
-    try {
-      // 1. Determine Folder Name (YY.MM)
-      // Logic: Uses the Year and Month from the Invoice Date (localCharge.date)
-      const dateStr = localCharge.date || new Date().toISOString(); 
-      const dateObj = new Date(dateStr);
-      let year = dateObj.getFullYear().toString().slice(-2);
-      let month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-      
-      // Fallback if parsing fails
-      if (isNaN(dateObj.getTime())) {
-         const now = new Date();
-         year = now.getFullYear().toString().slice(-2);
-         month = (now.getMonth() + 1).toString().padStart(2, '0');
-      }
+    // --- 2. Generate NEW File Name ---
+    const ext = selectedFile.name.substring(selectedFile.name.lastIndexOf("."));
 
-      const folderName = `${year}.${month}`; // e.g., "25.07"
+    const safeLine = (booking.line || "Line").replace(/[^a-zA-Z0-9]/g, "");
+    const safeBooking = (booking.bookingId || "Booking").replace(/[^a-zA-Z0-9]/g, "");
+    const safeInvoice = (localCharge.invoice || "INV").replace(/[^a-zA-Z0-9]/g, "");
 
-      // 2. Generate New Filename: Line.Booking.Invoice.dd.mm.yyyy.ext
-      const originalName = selectedFile.name;
-      const extension = originalName.substring(originalName.lastIndexOf('.'));
-      
-      // Get safe strings for filename
-      const safeLine = (booking.line || 'Unknown').replace(/[^a-zA-Z0-9]/g, '');
-      const safeBooking = (booking.bookingId || 'Unknown').replace(/[^a-zA-Z0-9]/g, '');
-      const safeInvoice = (localCharge.invoice || 'NoInvoice').replace(/[^a-zA-Z0-9]/g, '');
-      
-      // Format date for filename: dd.mm.yyyy
-      const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
-      const dd = validDate.getDate().toString().padStart(2, '0');
-      const mm = (validDate.getMonth() + 1).toString().padStart(2, '0');
-      const yyyy = validDate.getFullYear();
-      const dateFileStr = `${dd}.${mm}.${yyyy}`;
+    // Convert dd/mm/yyyy to dd.mm.yyyy
+    const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
+    const dd = validDate.getDate().toString().padStart(2, "0");
+    const mm = (validDate.getMonth() + 1).toString().padStart(2, "0");
+    const yyyy = validDate.getFullYear().toString();
+    const dateStr = `${dd}.${mm}.${yyyy}`;
 
-      const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateFileStr}${extension}`;
+    // FINAL FILE NAME (🔥 EXACT FORMAT YOU REQUESTED)
+    const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateStr}${ext}`;
 
-      // 3. Prepare Form Data
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append('folderPath', folderName); // This goes to E:\ServerData\Invoice\{folderName}
-      formData.append('bookingId', booking.bookingId);
-      formData.append('fileName', newFileName);
+    // --- 3. Prepare Upload Payload ---
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("folderPath", folderName);        // goes into Invoice\YY.MM\
+    formData.append("fileName", newFileName);         // final renamed file
+    formData.append("type", "invoice");               // Let server know this is Invoice Chi
 
-      // 4. Send to Server
-      const res = await fetch("https://api.kimberry.id.vn/upload-file", {
-        method: "POST",
-        body: formData
-      });
+    // --- 4. Send to Server ---
+    const res = await fetch("https://api.kimberry.id.vn/upload-file", {
+      method: "POST",
+      body: formData
+    });
 
-      if (res.ok) {
-        alert(`Đã lưu file thành công!\n\nĐường dẫn: E:\\ServerData\\Invoice\\${folderName}\\${newFileName}`);
-        setSelectedFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      } else {
-        alert("Lỗi khi tải file lên server. Vui lòng kiểm tra lại kết nối.");
-      }
-    } catch (err) {
-      console.error("Upload failed", err);
-      alert("Không thể kết nối với máy chủ để lưu file.");
-    } finally {
-      setIsUploading(false);
+    if (res.ok) {
+      alert(
+        `Đã lưu file thành công!\n\n` +
+        `Đường dẫn:\nE:\\ServerData\\Invoice\\${folderName}\\${newFileName}`
+      );
+
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } else {
+      alert("Upload thất bại. Vui lòng kiểm tra Server hoặc Cloudflare.");
     }
-  };
+  } catch (err) {
+    console.error("Upload failed", err);
+    alert("Không thể kết nối đến server.");
+  } finally {
+    setIsUploading(false);
+  }
+};
+
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
