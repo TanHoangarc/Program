@@ -287,11 +287,10 @@ const handleUploadFile = async () => {
     const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateStr}${ext}`;
 
     const formData = new FormData();
-    formData.append("file", selectedFile);
     formData.append("folderPath", folderName);
     formData.append("fileName", newFileName);
     formData.append("type", "invoice");
-    formData.append("bookingId", (booking as any).booking || (booking as any).bookingId || (booking as any).bookingNo || "");
+    formData.append("bookingId", (booking as any).booking || (booking as any).bookingId || "");
     formData.append("line", ((booking as any).line || "").toString());
 
     // DEBUG: log payload summary
