@@ -251,16 +251,26 @@ const handleUploadFile = async () => {
   setIsUploading(true);
 
   try {
-    const rawDate = localCharge.date || new Date().toISOString();
-    const dateObj = new Date(rawDate);
-
-    let year = dateObj.getFullYear().toString().slice(-2);
-    let month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
-    if (isNaN(dateObj.getTime())) {
-      const now = new Date();
-      year = now.getFullYear().toString().slice(-2);
-      month = (now.getMonth() + 1).toString().padStart(2, "0");
+    // --- FIX DATE ALWAYS VALID FOR folderPath (YY.MM) ---
+    let dateObj;
+    
+    // Nếu định dạng dd/mm/yyyy → chuyển thành yyyy-mm-dd
+    if (localCharge.date && localCharge.date.includes("/")) {
+        const [dd, mm, yyyy] = localCharge.date.split("/");
+        dateObj = new Date(`${yyyy}-${mm}-${dd}`);
+    } else {
+        dateObj = new Date(localCharge.date || Date.now());
     }
+    
+    // fallback nếu dateObj không hợp lệ
+    if (isNaN(dateObj.getTime())) {
+        dateObj = new Date();
+    }
+    
+    const year = dateObj.getFullYear().toString().slice(-2);
+    const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+    
+    // FINAL FOLDER NAME
     const folderName = `${year}.${month}`;
 
     const ext = selectedFile.name.substring(selectedFile.name.lastIndexOf("."));
