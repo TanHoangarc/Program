@@ -237,75 +237,97 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
   };
 
-  const handleUploadFile = async () => {
-    if (!selectedFile) return alert("Vui lòng chọn file trước.");
-    if (!localCharge.invoice) return alert("Vui lòng nhập số hóa đơn.");
+// Thay thế toàn bộ function handleUploadFile bằng cái này
+const handleUploadFile = async () => {
+  if (!selectedFile) {
+    alert("Vui lòng chọn file hóa đơn trước.");
+    return;
+  }
+  if (!localCharge.invoice) {
+    alert("Vui lòng nhập SỐ HÓA ĐƠN trước khi upload file.");
+    return;
+  }
 
-    setIsUploading(true);
+  setIsUploading(true);
 
-    try {
-      // YY.MM folder
-      const rawDate = localCharge.date || new Date().toISOString();
-      const dateObj = new Date(rawDate);
+  try {
+    const rawDate = localCharge.date || new Date().toISOString();
+    const dateObj = new Date(rawDate);
 
-      let year = dateObj.getFullYear().toString().slice(-2);
-      let month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+    let year = dateObj.getFullYear().toString().slice(-2);
+    let month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+    if (isNaN(dateObj.getTime())) {
+      const now = new Date();
+      year = now.getFullYear().toString().slice(-2);
+      month = (now.getMonth() + 1).toString().padStart(2, "0");
+    }
+    const folderName = `${year}.${month}`;
 
-      if (isNaN(dateObj.getTime())) {
-        const now = new Date();
-        year = now.getFullYear().toString().slice(-2);
-        month = (now.getMonth() + 1).toString().padStart(2, "0");
-      }
+    const ext = selectedFile.name.substring(selectedFile.name.lastIndexOf("."));
+    const safeLine = ((booking as any).line || "Line").toString().replace(/[^a-zA-Z0-9]/g, "");
+    const safeBooking = ((booking as any).booking || (booking as any).bookingId || (booking as any).bookingNo || "Booking").toString().replace(/[^a-zA-Z0-9]/g, "");
+    const safeInvoice = (localCharge.invoice || "INV").toString().replace(/[^a-zA-Z0-9]/g, "");
 
-      const folderName = `${year}.${month}`;
+    const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
+    const dd = validDate.getDate().toString().padStart(2, "0");
+    const mm = (validDate.getMonth() + 1).toString().padStart(2, "0");
+    const yyyy = validDate.getFullYear().toString();
+    const dateStr = `${dd}.${mm}.${yyyy}`;
 
-      // new file name
-      const ext = selectedFile.name.substring(selectedFile.name.lastIndexOf("."));
+    const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateStr}${ext}`;
 
-      const safeLine = (booking.line || "Line").toString().replace(/[^a-zA-Z0-9]/g, "");
-      const safeBooking = (
-        (booking as any).booking ||
-        (booking as any).bookingId ||
-        (booking as any).bookingNo ||
-        "Booking"
-      ).toString().replace(/[^a-zA-Z0-9]/g, "");
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("folderPath", folderName);
+    formData.append("fileName", newFileName);
+    formData.append("type", "invoice");
+    formData.append("bookingId", (booking as any).booking || (booking as any).bookingId || (booking as any).bookingNo || "");
+    formData.append("line", ((booking as any).line || "").toString());
 
-      const safeInvoice = localCharge.invoice.replace(/[^a-zA-Z0-9]/g, "");
+    // DEBUG: log payload summary
+    console.log("[upload] uploading", {
+      to: "https://api.kimberry.id.vn/upload-file",
+      folderName,
+      newFileName,
+      file: selectedFile.name,
+      booking: (booking as any).booking
+    });
 
-      const dd = dateObj.getDate().toString().padStart(2, "0");
-      const mm = (dateObj.getMonth() + 1).toString().padStart(2, "0");
-      const yyyy = dateObj.getFullYear().toString();
-      const dateStr = `${dd}.${mm}.${yyyy}`;
+    const res = await fetch("https://api.kimberry.id.vn/upload-file", {
+      method: "POST",
+      body: formData,
+    });
 
-      const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateStr}${ext}`;
-
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("folderPath", folderName);
-      formData.append("fileName", newFileName);
-
-      const res = await fetch("https://api.kimberry.id.vn/upload-file", {
-        method: "POST",
-        body: formData
-      });
-
-      if (!res.ok) {
-        const t = await res.text().catch(() => '');
-        console.error("Upload lỗi:", t);
-        alert("Upload thất bại!");
-      } else {
-        alert(`Đã lưu thành công:\nE:/ServerData/Invoice/${folderName}/${newFileName}`);
-        setSelectedFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-
-    } catch (err) {
-      console.error(err);
-      alert("Không thể upload file.");
+    // Read response text/JSON
+    const contentType = res.headers.get("content-type") || "";
+    let body: any = null;
+    if (contentType.includes("application/json")) {
+      body = await res.json().catch(() => null);
+    } else {
+      body = await res.text().catch(() => null);
     }
 
+    if (res.ok) {
+      // server should return { success: true, serverPath, ... }
+      const serverPath = (body && body.serverPath) ? body.serverPath : `E:\\ServerData\\Invoice\\${folderName}\\${newFileName}`;
+      alert(`Đã lưu file thành công!\n\nĐường dẫn:\n${serverPath}`);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } else {
+      console.error("Upload failed", res.status, body);
+      // show server message if available
+      const msg = (body && (body.message || body.error)) ? (body.message || body.error) : `Server responded ${res.status}`;
+      alert(`Upload thất bại: ${msg}`);
+    }
+
+  } catch (err: any) {
+    console.error("Upload failed (exception)", err);
+    alert(`Không thể kết nối đến server.\nChi tiết: ${err?.message || err}`);
+  } finally {
     setIsUploading(false);
-  };
+  }
+};
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
