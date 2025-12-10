@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2 } from 'lucide-react';
@@ -35,8 +34,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
   const [selectedBookingForModal, setSelectedBookingForModal] = useState<any | null>(null);
   
-  // Note: editedRows removed as we now update the job directly
-  
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
     try {
@@ -71,24 +68,20 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   useEffect(() => {
     const fetchServerTemplate = async () => {
         setIsLoadingTemplate(true);
-        setTemplateWb(null); // Reset when switching modes
+        setTemplateWb(null); 
         setTemplateName('');
         
         try {
-            // Cố gắng tải file mẫu từ server theo mode hiện tại
             const fileUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}`;
             const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
             
             if (response.status === 200) {
                 const wb = XLSX.read(response.data, { type: 'array' });
                 setTemplateWb(wb);
-                
-                // Format display name for user friendliness
                 const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
                 setTemplateName(`${displayName} (Server)`);
             }
         } catch (error) {
-            // Không tìm thấy file trên server hoặc lỗi mạng -> Không làm gì, để người dùng tự upload
             console.log(`Chưa có file mẫu ${currentTemplateFileName} trên server.`);
         } finally {
             setIsLoadingTemplate(false);
@@ -96,7 +89,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     };
 
     fetchServerTemplate();
-  }, [mode, currentTemplateFileName]); // Chạy lại khi mode thay đổi
+  }, [mode, currentTemplateFileName]);
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
@@ -111,7 +104,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
     setIsUploadingTemplate(true);
 
-    // 1. Đọc file để sử dụng ngay lập tức (Local Preview)
     const reader = new FileReader();
     reader.onload = (evt) => {
       const bstr = evt.target?.result;
@@ -121,11 +113,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     };
     reader.readAsBinaryString(file);
 
-    // 2. Upload file lên Server để lưu trữ cho lần sau (với tên chuẩn hóa theo mode)
     try {
         const formData = new FormData();
         formData.append("folderPath", TEMPLATE_FOLDER);
-        formData.append("fileName", currentTemplateFileName); // Luôn lưu với tên cố định theo mode để ghi đè
+        formData.append("fileName", currentTemplateFileName);
         formData.append("file", file);
 
         await axios.post(`${BACKEND_URL}/upload-file`, formData);
@@ -153,14 +144,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     if (mode === 'thu') {
       const rows: any[] = [];
       
-      // 1. Thu Cược (Deposit) - Chỉ hiện nếu có amisDepositDocNo
+      // 1. Thu Cược (Deposit)
       filteredJobs.filter(j => j.thuCuoc > 0 && j.amisDepositDocNo).forEach(j => {
          const docNo = j.amisDepositDocNo;
          const desc = j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`;
-         const custCode = getCustomerCode(j.maKhCuocId); // Code only as requested
+         const custCode = getCustomerCode(j.maKhCuocId);
          
          rows.push({
-             jobId: j.id, type: 'deposit_thu', // Added Metadata
+             jobId: j.id, type: 'deposit_thu',
              date: j.ngayThuCuoc, docNo, objCode: custCode, objName: getCustomerName(j.maKhCuocId),
              desc, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
              col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: custCode, col5: getCustomerName(j.maKhCuocId),
@@ -168,14 +159,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
          });
       });
 
-      // 2. Thu Local Charge - Chỉ hiện nếu có amisLcDocNo
+      // 2. Thu Local Charge
       filteredJobs.filter(j => j.localChargeTotal > 0 && j.amisLcDocNo).forEach(j => {
           const docNo = j.amisLcDocNo;
           const desc = j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`;
           const custCode = getCustomerCode(j.customerId);
 
            rows.push({
-               jobId: j.id, type: 'lc_thu', // Added Metadata
+               jobId: j.id, type: 'lc_thu',
                date: j.localChargeDate, docNo, objCode: custCode, objName: getCustomerName(j.customerId),
                desc, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
                col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: custCode, col5: getCustomerName(j.customerId),
@@ -183,7 +174,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
            });
       });
 
-      // 3. Thu Extension - Chỉ hiện nếu có amisDocNo
+      // 3. Thu Extension
       filteredJobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
               if (ext.total > 0 && ext.amisDocNo) {
@@ -193,7 +184,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                   const custCode = getCustomerCode(custId);
 
                   rows.push({
-                      jobId: j.id, type: 'ext_thu', extensionId: ext.id, // Added Metadata
+                      jobId: j.id, type: 'ext_thu', extensionId: ext.id,
                       date: ext.invoiceDate, docNo, objCode: custCode, objName: getCustomerName(custId),
                       desc, amount: ext.total, tkNo: '1121', tkCo: '13111',
                       col1: ext.invoiceDate, col2: ext.invoiceDate, col3: docNo, col4: custCode, col5: getCustomerName(custId),
@@ -212,11 +203,30 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         filteredJobs.forEach(j => {
              if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo)) {
                  processedDocNos.add(j.amisPaymentDocNo);
-                 const summary = calculateBookingSummary(jobs, j.booking);
-                 const amount = summary ? summary.totalCost : j.chiPayment; 
+                 
+                 // Logic updated: Sum up `chiPayment` of all jobs in the booking to get the true Voucher Amount
+                 // If user edited `chiPayment` for one job to represent the total, this sum will work if others are 0 or adjusted.
+                 // Default `chiPayment` usually equals `cost`. 
+                 // If the voucher is grouped, we need the sum.
+                 
+                 let amount = 0;
+                 if (j.booking) {
+                     // Sum all jobs in this booking
+                     const bookingJobs = jobs.filter(x => x.booking === j.booking);
+                     amount = bookingJobs.reduce((sum, x) => sum + (x.chiPayment || 0), 0);
+                 } else {
+                     amount = j.chiPayment || 0;
+                 }
+                 
+                 // Fallback if chiPayment is 0/missing, use cost? 
+                 // For now, prioritize chiPayment. If 0, try summary totalCost.
+                 if (amount === 0) {
+                     const summary = calculateBookingSummary(jobs, j.booking);
+                     amount = summary ? summary.totalCost : j.cost;
+                 }
 
                  rows.push({
-                     jobId: j.id, type: 'payment_chi', // Metadata
+                     jobId: j.id, type: 'payment_chi',
                      date: j.amisPaymentDate || new Date().toISOString().split('T')[0],
                      docNo: j.amisPaymentDocNo,
                      objCode: j.line, 
@@ -237,11 +247,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
              if (j.amisDepositOutDocNo && !processedDocNos.has(j.amisDepositOutDocNo)) {
                  processedDocNos.add(j.amisDepositOutDocNo);
                  
-                 const summary = calculateBookingSummary(jobs, j.booking);
-                 const depositAmt = summary ? summary.costDetails.deposits.reduce((s,d) => s + d.amount, 0) : j.chiCuoc;
+                 let depositAmt = 0;
+                 if (j.booking) {
+                     const bookingJobs = jobs.filter(x => x.booking === j.booking);
+                     depositAmt = bookingJobs.reduce((sum, x) => sum + (x.chiCuoc || 0), 0);
+                 } else {
+                     depositAmt = j.chiCuoc || 0;
+                 }
 
                  rows.push({
-                     jobId: j.id, type: 'deposit_chi', // Metadata
+                     jobId: j.id, type: 'deposit_chi',
                      date: j.amisDepositOutDate || new Date().toISOString().split('T')[0],
                      docNo: j.amisDepositOutDocNo,
                      objCode: j.line, 
@@ -265,7 +280,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  const custName = getCustomerName(j.maKhCuocId || j.customerId);
 
                  rows.push({
-                     jobId: j.id, type: 'deposit_refund', // Metadata
+                     jobId: j.id, type: 'deposit_refund',
                      date: j.amisDepositRefundDate || j.ngayThuHoan || new Date().toISOString().split('T')[0],
                      docNo: j.amisDepositRefundDocNo,
                      objCode: custCode, 
@@ -368,7 +383,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     return [];
   }, [jobs, mode, filterMonth, customers]); 
 
-  // ... (Keep existing handlers for select all, export, etc.)
+  // ... Handlers ...
   const handleSelectAll = () => {
     const unlockedRows = exportData.filter(r => !lockedIds.has(r.docNo));
     if (selectedIds.size === unlockedRows.length && unlockedRows.length > 0) setSelectedIds(new Set());
@@ -486,8 +501,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const handleSaveEdit = (newData: any) => {
      if (!onUpdateJob) return;
 
-     // 1. Identify context (type and JobID) from selectedItem (which is the row data)
-     // Note: `newData` comes from the modal form state, but `selectedItem` has the original metadata (jobId, type, etc)
      const context = selectedItem; 
      if (!context || !context.jobId) return;
 
@@ -496,21 +509,19 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
      let updatedJob = { ...originalJob };
 
-     // 2. Map form data back to Job fields based on type
-     // The modal returns generic fields: date, docNo, desc (or paymentContent)
-     
      if (context.type === 'deposit_thu') {
          updatedJob.amisDepositDocNo = newData.docNo;
-         updatedJob.amisDepositDesc = newData.desc; // ReceiptDetailModal returns 'desc'
-         updatedJob.ngayThuCuoc = newData.date; // Sync date
+         updatedJob.amisDepositDesc = newData.desc; 
+         updatedJob.ngayThuCuoc = newData.date; 
+         updatedJob.thuCuoc = newData.amount; // Save Amount
      } 
      else if (context.type === 'lc_thu') {
          updatedJob.amisLcDocNo = newData.docNo;
          updatedJob.amisLcDesc = newData.desc;
          updatedJob.localChargeDate = newData.date;
+         updatedJob.localChargeTotal = newData.amount; // Save Amount
      } 
      else if (context.type === 'ext_thu') {
-         // Need to update a specific extension inside the array
          if (updatedJob.extensions) {
              updatedJob.extensions = updatedJob.extensions.map(ext => {
                  if (ext.id === context.extensionId) {
@@ -518,7 +529,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                          ...ext,
                          amisDocNo: newData.docNo,
                          amisDesc: newData.desc,
-                         invoiceDate: newData.date
+                         invoiceDate: newData.date,
+                         total: newData.amount // Save Amount
                      };
                  }
                  return ext;
@@ -527,24 +539,41 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
      }
      else if (context.type === 'payment_chi') {
          updatedJob.amisPaymentDocNo = newData.docNo;
-         updatedJob.amisPaymentDesc = newData.paymentContent || newData.desc; // PaymentVoucherModal uses paymentContent
+         updatedJob.amisPaymentDesc = newData.paymentContent || newData.desc; 
          updatedJob.amisPaymentDate = newData.date;
+         
+         // Logic: Nếu là Payment Chi (Booking), cập nhật chiPayment cho Job đại diện thành TOTAL, các Job khác trong booking về 0.
+         // Để đảm bảo tổng chi phí không đổi trong báo cáo nhưng hiển thị đúng trên phiếu chi.
+         if (updatedJob.booking) {
+             const bookingJobs = jobs.filter(x => x.booking === updatedJob.booking && x.id !== updatedJob.id);
+             bookingJobs.forEach(bj => {
+                 onUpdateJob({ ...bj, chiPayment: 0 }); // Zero out others
+             });
+         }
+         updatedJob.chiPayment = newData.amount; // Set total to this job
      }
      else if (context.type === 'deposit_chi') {
          updatedJob.amisDepositOutDocNo = newData.docNo;
          updatedJob.amisDepositOutDesc = newData.paymentContent || newData.desc;
          updatedJob.amisDepositOutDate = newData.date;
+         
+         if (updatedJob.booking) {
+             const bookingJobs = jobs.filter(x => x.booking === updatedJob.booking && x.id !== updatedJob.id);
+             bookingJobs.forEach(bj => {
+                 onUpdateJob({ ...bj, chiCuoc: 0 }); // Zero out others
+             });
+         }
+         updatedJob.chiCuoc = newData.amount; // Set total to this job
      }
      else if (context.type === 'deposit_refund') {
          updatedJob.amisDepositRefundDocNo = newData.docNo;
          updatedJob.amisDepositRefundDesc = newData.paymentContent || newData.desc;
          updatedJob.amisDepositRefundDate = newData.date;
+         updatedJob.thuCuoc = newData.amount; // Update Refund Amount (Mapped to thuCuoc usually or create new field if needed)
      }
 
-     // 3. Trigger global update (which triggers backup)
      onUpdateJob(updatedJob);
 
-     // 4. Cleanup
      setSelectedItem(null);
      setSelectedJobForModal(null);
      setSelectedBookingForModal(null);
@@ -556,7 +585,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     <div className="p-8 max-w-full">
       <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
 
-      {/* Main UI unchanged, skipping to modals */}
+      {/* Header */}
       <div className="mb-6">
         <div className="flex items-center space-x-3 text-slate-800 mb-2">
            <div className={`p-2 rounded-lg ${mode === 'chi' ? 'bg-red-100 text-red-700' : mode === 'ban' ? 'bg-purple-100 text-purple-700' : mode === 'mua' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -714,7 +743,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   );
 };
 
-// ... ReceiptDetailModal Updated ...
 const ReceiptDetailModal = ({ data, onClose, onSave }: { data: any, onClose: () => void, onSave: (data: any) => void }) => {
     const [formData, setFormData] = useState({
         date: data.col1, 
@@ -751,7 +779,7 @@ const ReceiptDetailModal = ({ data, onClose, onSave }: { data: any, onClose: () 
              docNo: formData.docNo,
              objCode: formData.objCode,
              desc: formData.desc,
-             amount: formData.amount
+             amount: Number(formData.amount)
         });
     };
 
