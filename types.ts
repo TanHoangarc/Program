@@ -195,7 +195,6 @@ export interface BookingSummary {
   totalSell: number;
   totalProfit: number;
   totalCont20: number;
-  totalCont20: number;
   totalCont40: number;
 
   jobs: JobData[];

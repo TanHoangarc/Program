@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // Import createPortal
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw } from 'lucide-react';
@@ -251,16 +252,17 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       
       let addedCount = 0; let updatedCount = 0;
       data.forEach((row: any) => {
-        const rowJobCode = row['Job'] || row['Job Code'];
+        const rowJobCode = String(row['Job'] || row['Job Code'] || '');
+        
         const mappedData: Partial<JobData> = {
-          month: row['Tháng']?.toString() || '1',
+          month: String(row['Tháng'] || '1'),
           jobCode: rowJobCode || `IMP-${Date.now()}`,
-          booking: row['Booking'] || '',
-          consol: row['Consol'] || '',
-          line: row['Line'] || '',
-          customerName: row['Customer'] || '',
-          hbl: row['HBL'] || '',
-          transit: row['Transit'] || 'HCM',
+          booking: String(row['Booking'] || ''),
+          consol: String(row['Consol'] || ''),
+          line: String(row['Line'] || ''),
+          customerName: String(row['Customer'] || ''),
+          hbl: String(row['HBL'] || ''),
+          transit: String(row['Transit'] || 'HCM'),
           cost: Number(row['Cost']) || 0,
           sell: Number(row['Sell']) || 0,
           profit: Number(row['Profit']) || 0,
@@ -268,14 +270,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           cont40: Number(row['Cont 40']) || 0,
           chiPayment: Number(row['Chi Payment']) || 0,
           chiCuoc: Number(row['Chi Cược']) || 0,
-          ngayChiCuoc: row['Ngày Chi Cược'] || '',
-          ngayChiHoan: row['Ngày Chi Hoàn'] || '',
+          ngayChiCuoc: String(row['Ngày Chi Cược'] || ''),
+          ngayChiHoan: String(row['Ngày Chi Hoàn'] || ''),
           localChargeTotal: Number(row['Thu Payment (Local Charge)']) || Number(row['Thu Payment']) || 0,
-          localChargeInvoice: row['Invoice Thu'] || row['Invoice'] || '',
-          bank: row['Ngân hàng'] || '',
+          localChargeInvoice: String(row['Invoice Thu'] || row['Invoice'] || ''),
+          bank: String(row['Ngân hàng'] || ''),
           thuCuoc: Number(row['Thu Cược']) || 0,
-          ngayThuCuoc: row['Ngày Thu Cược'] || '',
-          ngayThuHoan: row['Ngày Thu Hoàn'] || '',
+          ngayThuCuoc: String(row['Ngày Thu Cược'] || ''),
+          ngayThuHoan: String(row['Ngày Thu Hoàn'] || ''),
           extensions: []
         };
         const existingJob = jobs.find(j => j.jobCode === mappedData.jobCode);
