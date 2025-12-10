@@ -142,6 +142,11 @@ export interface JobData {
   amisDepositOutDesc?: string;
   amisDepositOutDate?: string;
 
+  // AMIS Fields for Extension Payment (Chi Gia Hạn)
+  amisExtensionPaymentDocNo?: string;
+  amisExtensionPaymentDesc?: string;
+  amisExtensionPaymentDate?: string;
+
   // Payment In (Local Charge – Thu KH)
   localChargeInvoice: string;
   localChargeDate: string;
@@ -189,6 +194,7 @@ export interface BookingSummary {
   totalCost: number;
   totalSell: number;
   totalProfit: number;
+  totalCont20: number;
   totalCont20: number;
   totalCont40: number;
 

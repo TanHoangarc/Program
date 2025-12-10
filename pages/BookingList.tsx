@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -154,6 +153,10 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositOutDocNo = data.docNo;
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
+              } else if (paymentType === 'extension') {
+                  updatedJob.amisExtensionPaymentDocNo = data.docNo;
+                  updatedJob.amisExtensionPaymentDesc = data.paymentContent;
+                  updatedJob.amisExtensionPaymentDate = data.date;
               }
               onEditJob(updatedJob);
           });

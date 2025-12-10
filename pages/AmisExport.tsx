@@ -204,11 +204,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
              if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo)) {
                  processedDocNos.add(j.amisPaymentDocNo);
                  
-                 // Logic updated: Sum up `chiPayment` of all jobs in the booking to get the true Voucher Amount
-                 // If user edited `chiPayment` for one job to represent the total, this sum will work if others are 0 or adjusted.
-                 // Default `chiPayment` usually equals `cost`. 
-                 // If the voucher is grouped, we need the sum.
-                 
                  let amount = 0;
                  if (j.booking) {
                      // Sum all jobs in this booking
@@ -218,8 +213,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                      amount = j.chiPayment || 0;
                  }
                  
-                 // Fallback if chiPayment is 0/missing, use cost? 
-                 // For now, prioritize chiPayment. If 0, try summary totalCost.
                  if (amount === 0) {
                      const summary = calculateBookingSummary(jobs, j.booking);
                      amount = summary ? summary.totalCost : j.cost;
@@ -292,6 +285,37 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                      paymentAccount: '345673979999', 
                      paymentBank: 'Ngân hàng TMCP Quân đội',
                      currency: 'VND', description: j.amisDepositRefundDesc, tkNo: '1388', tkCo: '1121',
+                 });
+             }
+        });
+
+        // 4. Chi Gia Hạn (Extension Payment)
+        filteredJobs.forEach(j => {
+             if (j.amisExtensionPaymentDocNo && !processedDocNos.has(j.amisExtensionPaymentDocNo)) {
+                 processedDocNos.add(j.amisExtensionPaymentDocNo);
+                 
+                 // Get total extension cost
+                 let amount = 0;
+                 if (j.booking) {
+                     const summary = calculateBookingSummary(jobs, j.booking);
+                     if (summary) amount = summary.costDetails.extensionCosts.reduce((s, i) => s + i.total, 0);
+                 } else if (j.bookingCostDetails) {
+                     amount = j.bookingCostDetails.extensionCosts.reduce((s, i) => s + i.total, 0);
+                 }
+
+                 rows.push({
+                     jobId: j.id, type: 'extension_chi',
+                     date: j.amisExtensionPaymentDate || new Date().toISOString().split('T')[0],
+                     docNo: j.amisExtensionPaymentDocNo,
+                     objCode: j.line, 
+                     objName: '', 
+                     desc: j.amisExtensionPaymentDesc, 
+                     amount: amount,
+                     reason: 'Chi khác', 
+                     paymentContent: j.amisExtensionPaymentDesc,
+                     paymentAccount: '345673979999', 
+                     paymentBank: 'Ngân hàng TMCP Quân đội',
+                     currency: 'VND', description: j.amisExtensionPaymentDesc, tkNo: '3311', tkCo: '1121',
                  });
              }
         });
@@ -542,8 +566,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
          updatedJob.amisPaymentDesc = newData.paymentContent || newData.desc; 
          updatedJob.amisPaymentDate = newData.date;
          
-         // Logic: Nếu là Payment Chi (Booking), cập nhật chiPayment cho Job đại diện thành TOTAL, các Job khác trong booking về 0.
-         // Để đảm bảo tổng chi phí không đổi trong báo cáo nhưng hiển thị đúng trên phiếu chi.
          if (updatedJob.booking) {
              const bookingJobs = jobs.filter(x => x.booking === updatedJob.booking && x.id !== updatedJob.id);
              bookingJobs.forEach(bj => {
@@ -564,6 +586,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
              });
          }
          updatedJob.chiCuoc = newData.amount; // Set total to this job
+     }
+     else if (context.type === 'extension_chi') {
+         updatedJob.amisExtensionPaymentDocNo = newData.docNo;
+         updatedJob.amisExtensionPaymentDesc = newData.paymentContent || newData.desc;
+         updatedJob.amisExtensionPaymentDate = newData.date;
      }
      else if (context.type === 'deposit_refund') {
          updatedJob.amisDepositRefundDocNo = newData.docNo;

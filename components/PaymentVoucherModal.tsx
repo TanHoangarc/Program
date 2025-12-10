@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, User, Banknote, CheckCircle } from 'lucide-react';
@@ -128,15 +127,11 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
            if (firstJob?.amisPaymentDocNo) {
                docNo = firstJob.amisPaymentDocNo;
                content = firstJob.amisPaymentDesc || '';
-               // Ensure we don't overwrite date if it exists, otherwise default
-               // date = firstJob.amisPaymentDate || date; 
            } else {
                docNo = generateUNC();
-               // Updated format: Chi tiền cho ncc lô [jobs] BL [booking]
                content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo}`;
            }
            
-           // UPDATE: Calculate Amount = Main Invoice (Net + VAT) + Additional Invoices (Net + VAT)
            if (booking) {
                const lc = booking.costDetails.localCharge;
                const mainTotal = (lc.net || 0) + (lc.vat || 0);
@@ -152,47 +147,50 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
            }
            
         } else if (type === 'deposit') {
-           // Check if already created
            if (firstJob?.amisDepositOutDocNo) {
                docNo = firstJob.amisDepositOutDocNo;
                content = firstJob.amisDepositOutDesc || '';
            } else {
                docNo = generateUNC();
-               // Updated format: Chi tiền cho ncc CƯỢC lô [jobs] BL [booking]
                content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo}`;
            }
-           // Calc deposit amount from booking details if available
            const depositAmt = booking?.costDetails.deposits.reduce((s,d) => s + d.amount, 0) || job?.chiCuoc || 0;
            amount = depositAmt;
 
         } else if (type === 'extension') {
            docNo = generateUNC();
            
-           // Filter jobs that actually have extension fees > 0
-           let jobsWithExtension: string[] = [];
-           let totalExtAmount = 0;
+           if (firstJob?.amisExtensionPaymentDocNo) {
+                docNo = firstJob.amisExtensionPaymentDocNo;
+                content = firstJob.amisExtensionPaymentDesc || '';
+           } else {
+                let jobsWithExtension: string[] = [];
+                if (booking) {
+                    booking.jobs.forEach(j => {
+                        const extTotal = (j.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+                        if (extTotal > 0) {
+                            jobsWithExtension.push(j.jobCode);
+                        }
+                    });
+                } else if (job) {
+                    const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+                    if (extTotal > 0) {
+                        jobsWithExtension.push(job.jobCode);
+                    }
+                }
 
-           if (booking) {
-               booking.jobs.forEach(j => {
-                   const extTotal = (j.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
-                   if (extTotal > 0) {
-                       jobsWithExtension.push(j.jobCode);
-                       totalExtAmount += extTotal;
-                   }
-               });
-           } else if (job) {
-               // Single job case
-               const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
-               if (extTotal > 0) {
-                   jobsWithExtension.push(job.jobCode);
-                   totalExtAmount += extTotal;
-               }
+                const extJobStr = jobsWithExtension.length > 0 ? jobsWithExtension.join(', ') : jobListStr;
+                content = `Chi tiền cho ncc GH lô ${extJobStr} BL ${bookingNo} (Kimberry) (GIA HẠN)`;
            }
-
-           const extJobStr = jobsWithExtension.length > 0 ? jobsWithExtension.join(', ') : jobListStr;
            
-           content = `Chi tiền cho ncc GH lô ${extJobStr} BL ${bookingNo} (Kimberry) (GIA HẠN)`;
-           amount = totalExtAmount;
+           // Calculate Amount from COST (Booking Extension Costs)
+           let totalExtCost = 0;
+           if (booking && booking.costDetails && booking.costDetails.extensionCosts) {
+                totalExtCost = booking.costDetails.extensionCosts.reduce((sum, item) => sum + item.total, 0);
+           } else if (job && job.bookingCostDetails && job.bookingCostDetails.extensionCosts) {
+                totalExtCost = job.bookingCostDetails.extensionCosts.reduce((sum, item) => sum + item.total, 0);
+           }
+           amount = totalExtCost;
         }
 
         setFormData(prev => ({
