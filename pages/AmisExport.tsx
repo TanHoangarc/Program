@@ -8,7 +8,7 @@ import { formatDateVN, calculateBookingSummary, parseDateVN } from '../utils';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
-import { QuickReceiveModal } from '../components/QuickReceiveModal'; // Import standard modal
+import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal'; // Import standard modal
 import axios from 'axios';
 
 interface AmisExportProps {
@@ -62,9 +62,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
       }
   });
   
-  // Quick Receive Modal State (For Thu Khác)
+  // Quick Receive Modal State
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
+  const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
   const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
+  const [targetExtensionId, setTargetExtensionId] = useState<string | null>(null);
   
   // Copy Feedback State
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -485,11 +487,51 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   };
 
   const handleEditClick = (row: any) => {
-      setSelectedItem(row);
-      if (mode === 'ban') {
-          setSelectedJobForModal(row.originalJob);
-      } else if (mode === 'mua') {
-          setSelectedBookingForModal(row.originalBooking);
+      // If it's a "Chi" or Sales/Purchase receipt, we use the specific modals or fallback logic
+      if (mode === 'chi' || mode === 'ban' || mode === 'mua') {
+          setSelectedItem(row);
+          if (mode === 'ban') {
+              setSelectedJobForModal(row.originalJob);
+          } else if (mode === 'mua') {
+              setSelectedBookingForModal(row.originalBooking);
+          }
+          return;
+      }
+
+      // Handle "Thu" Receipts using QuickReceiveModal
+      if (row.type === 'external') {
+          // Convert row back to a dummy job for editing
+          const dummyJob: JobData = {
+              ...INITIAL_JOB,
+              id: row.id, // Keep original ID to update
+              jobCode: 'THU-KHAC', 
+              customerId: row.objCode, // Map code to ID field for simplicity in dummy
+              customerName: row.objName,
+              localChargeDate: row.date,
+              localChargeTotal: row.amount,
+              localChargeInvoice: '', // Invoice might be part of desc or handled by modal
+              amisLcDocNo: row.docNo,
+              amisLcDesc: row.desc
+          };
+          setQuickReceiveJob(dummyJob);
+          setQuickReceiveMode('other');
+          setTargetExtensionId(null);
+          setIsQuickReceiveOpen(true);
+      } else {
+          // It's a real job receipt
+          const job = jobs.find(j => j.id === row.jobId);
+          if (job) {
+              setQuickReceiveJob(job);
+              
+              if (row.type === 'deposit_thu') setQuickReceiveMode('deposit');
+              else if (row.type === 'lc_thu') setQuickReceiveMode('local');
+              else if (row.type === 'ext_thu') {
+                  setQuickReceiveMode('extension');
+                  setTargetExtensionId(row.extensionId);
+              }
+              
+              setIsQuickReceiveOpen(true);
+          }
       }
   };
 
@@ -614,15 +656,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const unlockedCount = exportData.filter(r => !lockedIds.has(r.docNo)).length;
   const isAllSelected = unlockedCount > 0 && selectedIds.size === unlockedCount;
 
-  // --- REFACTORED SAVE HANDLER ---
+  // --- SAVE HANDLER FOR CHI/BAN/MUA MODALS ---
   const handleSaveEdit = (newData: any) => {
-     // If it's a custom receipt
-     if (newData.type === 'external') {
-         setCustomReceipts(prev => prev.map(r => r.id === newData.id ? newData : r));
-         setSelectedItem(null);
-         return;
-     }
-
      if (!onUpdateJob) return;
 
      const context = selectedItem; 
@@ -633,35 +668,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
      let updatedJob = { ...originalJob };
 
-     if (context.type === 'deposit_thu') {
-         updatedJob.amisDepositDocNo = newData.docNo;
-         updatedJob.amisDepositDesc = newData.desc; 
-         updatedJob.ngayThuCuoc = newData.date; 
-         updatedJob.thuCuoc = newData.amount; // Save Amount
-     } 
-     else if (context.type === 'lc_thu') {
-         updatedJob.amisLcDocNo = newData.docNo;
-         updatedJob.amisLcDesc = newData.desc;
-         updatedJob.localChargeDate = newData.date;
-         updatedJob.localChargeTotal = newData.amount; // Save Amount
-     } 
-     else if (context.type === 'ext_thu') {
-         if (updatedJob.extensions) {
-             updatedJob.extensions = updatedJob.extensions.map(ext => {
-                 if (ext.id === context.extensionId) {
-                     return {
-                         ...ext,
-                         amisDocNo: newData.docNo,
-                         amisDesc: newData.desc,
-                         invoiceDate: newData.date,
-                         total: newData.amount // Save Amount
-                     };
-                 }
-                 return ext;
-             });
-         }
-     }
-     else if (context.type === 'payment_chi') {
+     if (context.type === 'payment_chi') {
          updatedJob.amisPaymentDocNo = newData.docNo;
          updatedJob.amisPaymentDesc = newData.paymentContent || newData.desc; 
          updatedJob.amisPaymentDate = newData.date;
@@ -724,47 +731,71 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
           amisLcDesc: 'Thu tiền khác'
       };
       setQuickReceiveJob(dummyJob);
+      setQuickReceiveMode('other');
+      setTargetExtensionId(null);
       setIsQuickReceiveOpen(true);
   };
 
   const handleSaveQuickReceive = (updatedJob: JobData) => {
-      // Extract data from the dummy job returned by the modal
-      const cust = customers.find(c => c.id === updatedJob.customerId);
-      const objCode = cust ? cust.code : (updatedJob.customerId || '');
-      const objName = cust ? cust.name : (updatedJob.customerName || '');
-      
-      const newReceipt = {
-          id: updatedJob.id,
-          type: 'external',
-          // Common fields
-          date: updatedJob.localChargeDate || new Date().toISOString().split('T')[0],
-          docNo: updatedJob.amisLcDocNo || '',
-          objCode,
-          objName,
-          desc: updatedJob.amisLcDesc || '',
-          amount: updatedJob.localChargeTotal || 0,
-          tkNo: '1121', // Default Cash/Bank
-          tkCo: '711',  // Thu Khác (Other Income)
+      // 1. Handle External Receipt (Thu Khác)
+      if (quickReceiveMode === 'other') {
+          // Check if this ID already exists in customReceipts (Editing case)
+          const existingIndex = customReceipts.findIndex(r => r.id === updatedJob.id);
           
-          // AMIS Columns mapping
-          col1: updatedJob.localChargeDate,
-          col2: updatedJob.localChargeDate,
-          col3: updatedJob.amisLcDocNo,
-          col4: objCode,
-          col5: objName,
-          col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác',
-          col10: updatedJob.amisLcDesc,
-          col12: 'VND',
-          col14: updatedJob.amisLcDesc,
-          col15: '1121',
-          col16: '711', // Thu Khác
-          col17: updatedJob.localChargeTotal,
-          col19: objCode
-      };
+          const cust = customers.find(c => c.id === updatedJob.customerId);
+          const objCode = cust ? cust.code : (updatedJob.customerId || '');
+          const objName = cust ? cust.name : (updatedJob.customerName || '');
+          
+          const receiptData = {
+              id: updatedJob.id,
+              type: 'external',
+              date: updatedJob.localChargeDate || new Date().toISOString().split('T')[0],
+              docNo: updatedJob.amisLcDocNo || '',
+              objCode,
+              objName,
+              desc: updatedJob.amisLcDesc || '',
+              amount: updatedJob.localChargeTotal || 0,
+              tkNo: '1121', 
+              tkCo: '711',
+              
+              // AMIS Columns mapping
+              col1: updatedJob.localChargeDate,
+              col2: updatedJob.localChargeDate,
+              col3: updatedJob.amisLcDocNo,
+              col4: objCode,
+              col5: objName,
+              col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác',
+              col10: updatedJob.amisLcDesc,
+              col12: 'VND',
+              col14: updatedJob.amisLcDesc,
+              col15: '1121',
+              col16: '711', 
+              col17: updatedJob.localChargeTotal,
+              col19: objCode
+          };
+
+          if (existingIndex >= 0) {
+              // Update existing
+              setCustomReceipts(prev => {
+                  const newArr = [...prev];
+                  newArr[existingIndex] = receiptData;
+                  return newArr;
+              });
+          } else {
+              // Add new
+              setCustomReceipts(prev => [...prev, receiptData]);
+          }
+      } 
+      // 2. Handle Real Job Receipt Update
+      else {
+          if (onUpdateJob) {
+              onUpdateJob(updatedJob);
+          }
+      }
       
-      setCustomReceipts(prev => [...prev, newReceipt]);
       setIsQuickReceiveOpen(false);
       setQuickReceiveJob(null);
+      setTargetExtensionId(null);
   };
 
   return (
@@ -943,10 +974,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
       </div>
 
       {/* Edit Modals */}
-      {selectedItem && (mode === 'thu' || (selectedItem.type === 'external')) && (
-         <ReceiptDetailModal data={selectedItem} onClose={() => setSelectedItem(null)} onSave={handleSaveEdit} />
-      )}
-
       {selectedItem && mode === 'chi' && (
          <PaymentVoucherModal 
             isOpen={true} 
@@ -977,78 +1004,19 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
           />
       )}
 
-      {/* QUICK RECEIVE MODAL FOR THU KHAC */}
+      {/* QUICK RECEIVE MODAL FOR THU KHAC & EDITING RECEIPTS */}
       {isQuickReceiveOpen && quickReceiveJob && (
           <QuickReceiveModal 
               isOpen={isQuickReceiveOpen}
               onClose={() => setIsQuickReceiveOpen(false)}
               onSave={handleSaveQuickReceive}
               job={quickReceiveJob}
-              mode="other"
+              mode={quickReceiveMode}
               customers={customers}
+              targetExtensionId={targetExtensionId}
           />
       )}
 
     </div>
   );
-};
-
-const ReceiptDetailModal = ({ data, onClose, onSave }: { data: any, onClose: () => void, onSave: (data: any) => void }) => {
-    const [formData, setFormData] = useState({
-        date: data.col1, 
-        docNo: data.col3,
-        objCode: data.col4,
-        objName: data.col5,
-        desc: data.col10,
-        amount: data.col17,
-        tkNo: data.col15,
-        tkCo: data.col16
-    });
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave({
-             ...data,
-             col1: formData.date, col2: formData.date, col3: formData.docNo, col4: formData.objCode, col5: formData.objName, col10: formData.desc, col14: formData.desc, col15: formData.tkNo, col16: formData.tkCo, col17: formData.amount, col19: formData.objCode,
-             date: formData.date, docNo: formData.docNo, objCode: formData.objCode, objName: formData.objName, desc: formData.desc, amount: Number(formData.amount), tkNo: formData.tkNo, tkCo: formData.tkCo
-        });
-    };
-
-    return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-           <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 border border-slate-200 flex flex-col max-h-[90vh]">
-              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-blue-50 rounded-t-2xl">
-                 <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shadow-sm border border-blue-200"><FileText className="w-5 h-5" /></div>
-                    <div><h2 className="text-lg font-bold text-slate-800">Chi tiết Phiếu Thu</h2></div>
-                 </div>
-                 <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="p-6 custom-scrollbar space-y-5 overflow-y-auto">
-                 <div className="grid grid-cols-2 gap-5">
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ngày CT</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium" /></div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số CT</label><input type="text" name="docNo" value={formData.docNo} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-blue-700" /></div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-5">
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mã Đối Tượng</label><input type="text" name="objCode" value={formData.objCode} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" /></div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền</label><input type="number" name="amount" value={formData.amount} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-right" /></div>
-                 </div>
-                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Diễn giải</label><textarea name="desc" value={formData.desc} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" rows={2} /></div>
-                 <div className="grid grid-cols-2 gap-5">
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">TK Nợ</label><input type="text" name="tkNo" value={formData.tkNo} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center" /></div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">TK Có</label><input type="text" name="tkCo" value={formData.tkCo} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center" /></div>
-                 </div>
-              </div>
-              <div className="px-6 py-4 bg-white border-t border-slate-200 rounded-b-2xl flex justify-end space-x-3">
-                 <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50">Hủy bỏ</button>
-                 <button onClick={handleSubmit} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md">Lưu Thay Đổi</button>
-              </div>
-           </div>
-        </div>
-    );
 };

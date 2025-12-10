@@ -14,7 +14,8 @@ interface QuickReceiveModalProps {
   job: JobData;
   mode: ReceiveMode;
   customers: Customer[];
-  allJobs?: JobData[]; // Added to allow searching for other jobs
+  allJobs?: JobData[];
+  targetExtensionId?: string | null; // NEW PROP
 }
 
 // Reusable DateInput Component
@@ -74,7 +75,7 @@ const DateInput = ({
 };
 
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
-  isOpen, onClose, onSave, job, mode, customers, allJobs
+  isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId
 }) => {
   // Main form data is the job itself
   const [formData, setFormData] = useState<JobData>(job);
@@ -89,9 +90,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     amisDesc: ''
   });
   
-  // ID of the extension being edited (if linking to existing one)
-  const [targetExtensionId, setTargetExtensionId] = useState<string | null>(null);
-
   // State for "Manual" Amis fields
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
@@ -152,12 +150,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const deepCopyJob = JSON.parse(JSON.stringify(job));
       
       if (mode === 'other') {
-          deepCopyJob.customerId = '';
-          deepCopyJob.customerName = '';
-          // Clear fields so user can input manually
-          deepCopyJob.localChargeDate = new Date().toISOString().split('T')[0];
-          deepCopyJob.localChargeInvoice = '';
-          deepCopyJob.localChargeTotal = 0;
+          // If editing an existing 'other' receipt, these fields might be populated from the dummy job passed in.
+          // If creating new, they might be empty.
+          // We rely on what's passed in `job`.
+          if (!deepCopyJob.localChargeDate) deepCopyJob.localChargeDate = new Date().toISOString().split('T')[0];
       }
 
       setFormData(deepCopyJob);
@@ -168,8 +164,14 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       if (mode === 'local' || mode === 'other') initialCustId = deepCopyJob.customerId;
       else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
       else if (mode === 'extension') {
-          const lastExt = (deepCopyJob.extensions || [])[deepCopyJob.extensions?.length - 1];
-          initialCustId = lastExt ? lastExt.customerId : deepCopyJob.customerId;
+          // If editing a specific extension, use its customer ID
+          if (targetExtensionId && deepCopyJob.extensions) {
+              const target = deepCopyJob.extensions.find((e: any) => e.id === targetExtensionId);
+              initialCustId = target ? target.customerId : deepCopyJob.customerId;
+          } else {
+              // Default to job customer
+              initialCustId = deepCopyJob.customerId;
+          }
       }
 
       const foundCust = customers.find(c => c.id === initialCustId);
@@ -190,6 +192,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'other') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || `NTTK${generateRandomStr()}`);
           const inv = deepCopyJob.localChargeInvoice || 'XXX';
+          // Use existing desc if present, else generate default
           setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
       }
       else if (mode === 'deposit') {
@@ -201,21 +204,29 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
       }
       else if (mode === 'extension') {
+          // Extension Logic Update
           const exts = deepCopyJob.extensions || [];
-          const lastExt = exts.length > 0 ? exts[exts.length - 1] : null;
+          let targetExt = null;
 
-          if (lastExt) {
-             setTargetExtensionId(lastExt.id);
+          if (targetExtensionId) {
+              targetExt = exts.find((e: any) => e.id === targetExtensionId);
+          } else {
+              // If no target ID provided, check if we should default to last one or new
+              // Standard behavior for "Add New" is to not pre-fill
+              targetExt = null;
+          }
+
+          if (targetExt) {
              setNewExtension({ 
-                customerId: lastExt.customerId || deepCopyJob.customerId || '', 
-                invoice: lastExt.invoice || '', 
-                date: lastExt.invoiceDate || new Date().toISOString().split('T')[0],
-                total: lastExt.total || 0,
-                amisDocNo: lastExt.amisDocNo || `NTTK${generateRandomStr()}`,
-                amisDesc: lastExt.amisDesc || `Thu tiền của KH theo hoá đơn GH ${lastExt.invoice || 'XXX'} BL ${deepCopyJob.jobCode} (KIM)`
+                customerId: targetExt.customerId || deepCopyJob.customerId || '', 
+                invoice: targetExt.invoice || '', 
+                date: targetExt.invoiceDate || new Date().toISOString().split('T')[0],
+                total: targetExt.total || 0,
+                amisDocNo: targetExt.amisDocNo || `NTTK${generateRandomStr()}`,
+                amisDesc: targetExt.amisDesc || `Thu tiền của KH theo hoá đơn GH ${targetExt.invoice || 'XXX'} BL ${deepCopyJob.jobCode} (KIM)`
              });
           } else {
-             setTargetExtensionId(null);
+             // New Extension
              setNewExtension({ 
                customerId: deepCopyJob.customerId || '', 
                invoice: '', 
@@ -227,7 +238,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
       }
     }
-  }, [isOpen, job, mode, customers]);
+  }, [isOpen, job, mode, customers, targetExtensionId]);
 
   // Derived Values for Display
   const getDisplayValues = () => {
@@ -376,6 +387,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     
     if (mode === 'extension') {
       let updatedExtensions;
+      // Use passed prop targetExtensionId to determine update logic
       if (targetExtensionId) {
           updatedExtensions = (formData.extensions || []).map(ext => {
               if (ext.id === targetExtensionId) {
