@@ -171,6 +171,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       if (mode === 'other') {
           deepCopyJob.customerId = '';
           deepCopyJob.customerName = '';
+          
+          // Clear these fields so user can input manually
+          deepCopyJob.localChargeDate = '';
+          deepCopyJob.localChargeInvoice = '';
+          deepCopyJob.localChargeTotal = 0;
       }
 
       setFormData(deepCopyJob);
