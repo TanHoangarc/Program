@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2 } from 'lucide-react';
@@ -13,20 +14,28 @@ interface AmisExportProps {
   jobs: JobData[];
   customers: Customer[];
   mode: 'thu' | 'chi' | 'ban' | 'mua';
+  onUpdateJob?: (job: JobData) => void;
 }
 
 // Cấu hình đường dẫn Server
 const BACKEND_URL = "https://api.kimberry.id.vn";
 const TEMPLATE_FOLDER = "Templates";
-const TEMPLATE_FILENAME = "AmisTemplate.xlsx";
 
-export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode }) => {
+// Map modes to specific filenames
+const TEMPLATE_MAP: Record<string, string> = {
+  thu: "Phieu_thu_Mau.xlsx",
+  chi: "Phieu_chi_Mau.xlsx",
+  ban: "Ban_hang_Mau.xlsx",
+  mua: "Mua_hang_Mau.xlsx"
+};
+
+export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
   const [selectedBookingForModal, setSelectedBookingForModal] = useState<any | null>(null);
   
-  const [editedRows, setEditedRows] = useState<Record<string, any>>({});
+  // Note: editedRows removed as we now update the job directly
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
@@ -48,6 +57,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
 
   const mockLines: ShippingLine[] = [];
 
+  const currentTemplateFileName = TEMPLATE_MAP[mode] || "AmisTemplate.xlsx";
+
   useEffect(() => {
     localStorage.setItem(`amis_locked_${mode}_v1`, JSON.stringify(Array.from(lockedIds)));
   }, [lockedIds, mode]);
@@ -60,26 +71,32 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
   useEffect(() => {
     const fetchServerTemplate = async () => {
         setIsLoadingTemplate(true);
+        setTemplateWb(null); // Reset when switching modes
+        setTemplateName('');
+        
         try {
-            // Cố gắng tải file mẫu từ server
-            const fileUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${TEMPLATE_FILENAME}`;
+            // Cố gắng tải file mẫu từ server theo mode hiện tại
+            const fileUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}`;
             const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
             
             if (response.status === 200) {
                 const wb = XLSX.read(response.data, { type: 'array' });
                 setTemplateWb(wb);
-                setTemplateName("Mẫu Server (Tự động tải)");
+                
+                // Format display name for user friendliness
+                const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
+                setTemplateName(`${displayName} (Server)`);
             }
         } catch (error) {
             // Không tìm thấy file trên server hoặc lỗi mạng -> Không làm gì, để người dùng tự upload
-            console.log("Chưa có file mẫu trên server hoặc lỗi tải.");
+            console.log(`Chưa có file mẫu ${currentTemplateFileName} trên server.`);
         } finally {
             setIsLoadingTemplate(false);
         }
     };
 
     fetchServerTemplate();
-  }, []);
+  }, [mode, currentTemplateFileName]); // Chạy lại khi mode thay đổi
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
@@ -104,16 +121,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     };
     reader.readAsBinaryString(file);
 
-    // 2. Upload file lên Server để lưu trữ cho lần sau
+    // 2. Upload file lên Server để lưu trữ cho lần sau (với tên chuẩn hóa theo mode)
     try {
         const formData = new FormData();
         formData.append("folderPath", TEMPLATE_FOLDER);
-        formData.append("fileName", TEMPLATE_FILENAME); // Luôn lưu với tên cố định này để ghi đè
+        formData.append("fileName", currentTemplateFileName); // Luôn lưu với tên cố định theo mode để ghi đè
         formData.append("file", file);
 
         await axios.post(`${BACKEND_URL}/upload-file`, formData);
-        alert("Đã lưu mẫu lên Server! Lần sau truy cập sẽ tự động tải.");
-        setTemplateName("Mẫu Server (Mới cập nhật)");
+        
+        const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
+        alert(`Đã lưu mẫu "${displayName}" lên Server! Lần sau truy cập sẽ tự động tải.`);
+        setTemplateName(`${displayName} (Mới cập nhật)`);
     } catch (err) {
         console.error("Lỗi upload mẫu:", err);
         alert("Có lỗi khi lưu mẫu lên server. Mẫu chỉ có hiệu lực trong phiên làm việc này.");
@@ -141,11 +160,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
          const custCode = getCustomerCode(j.maKhCuocId); // Code only as requested
          
          rows.push({
+             jobId: j.id, type: 'deposit_thu', // Added Metadata
              date: j.ngayThuCuoc, docNo, objCode: custCode, objName: getCustomerName(j.maKhCuocId),
              desc, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
              col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: custCode, col5: getCustomerName(j.maKhCuocId),
              col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '1388', col17: j.thuCuoc, col19: custCode,
-             ...(editedRows[docNo] || {})
          });
       });
 
@@ -156,11 +175,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
           const custCode = getCustomerCode(j.customerId);
 
            rows.push({
+               jobId: j.id, type: 'lc_thu', // Added Metadata
                date: j.localChargeDate, docNo, objCode: custCode, objName: getCustomerName(j.customerId),
                desc, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
                col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: custCode, col5: getCustomerName(j.customerId),
                col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: j.localChargeTotal, col19: custCode,
-               ...(editedRows[docNo] || {})
            });
       });
 
@@ -174,11 +193,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                   const custCode = getCustomerCode(custId);
 
                   rows.push({
+                      jobId: j.id, type: 'ext_thu', extensionId: ext.id, // Added Metadata
                       date: ext.invoiceDate, docNo, objCode: custCode, objName: getCustomerName(custId),
                       desc, amount: ext.total, tkNo: '1121', tkCo: '13111',
                       col1: ext.invoiceDate, col2: ext.invoiceDate, col3: docNo, col4: custCode, col5: getCustomerName(custId),
                       col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: ext.total, col19: custCode,
-                      ...(editedRows[docNo] || {})
                   });
               }
           });
@@ -197,6 +216,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                  const amount = summary ? summary.totalCost : j.chiPayment; 
 
                  rows.push({
+                     jobId: j.id, type: 'payment_chi', // Metadata
                      date: j.amisPaymentDate || new Date().toISOString().split('T')[0],
                      docNo: j.amisPaymentDocNo,
                      objCode: j.line, 
@@ -208,7 +228,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                      paymentAccount: '345673979999',
                      paymentBank: 'Ngân hàng TMCP Quân đội',
                      currency: 'VND', description: j.amisPaymentDesc, tkNo: '3311', tkCo: '1121',
-                     ...(editedRows[j.amisPaymentDocNo] || {})
                  });
              }
         });
@@ -222,6 +241,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                  const depositAmt = summary ? summary.costDetails.deposits.reduce((s,d) => s + d.amount, 0) : j.chiCuoc;
 
                  rows.push({
+                     jobId: j.id, type: 'deposit_chi', // Metadata
                      date: j.amisDepositOutDate || new Date().toISOString().split('T')[0],
                      docNo: j.amisDepositOutDocNo,
                      objCode: j.line, 
@@ -233,7 +253,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                      paymentAccount: '345673979999', 
                      paymentBank: 'Ngân hàng TMCP Quân đội',
                      currency: 'VND', description: j.amisDepositOutDesc, tkNo: '3311', tkCo: '1121',
-                     ...(editedRows[j.amisDepositOutDocNo] || {})
                  });
              }
         });
@@ -246,6 +265,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                  const custName = getCustomerName(j.maKhCuocId || j.customerId);
 
                  rows.push({
+                     jobId: j.id, type: 'deposit_refund', // Metadata
                      date: j.amisDepositRefundDate || j.ngayThuHoan || new Date().toISOString().split('T')[0],
                      docNo: j.amisDepositRefundDocNo,
                      objCode: custCode, 
@@ -257,7 +277,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                      paymentAccount: '345673979999', 
                      paymentBank: 'Ngân hàng TMCP Quân đội',
                      currency: 'VND', description: j.amisDepositRefundDesc, tkNo: '1388', tkCo: '1121',
-                     ...(editedRows[j.amisDepositRefundDocNo] || {})
                  });
              }
         });
@@ -294,7 +313,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                 vatRate: '0%',
                 tkVat: '33311',
                 projectCode: defaultProjectCode,
-                ...(editedRows[docNo] || {})
             });
         });
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -341,7 +359,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
                     vatRate: '5%',
                     vatAmount: (lcDetails.vat || 0) + additional.reduce((s,i) => s + (i.vat || 0), 0),
                     tkVat: '1331',
-                    ...(editedRows[docNo] || {})
                 });
             }
         });
@@ -349,7 +366,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
     }
 
     return [];
-  }, [jobs, mode, filterMonth, customers, editedRows]); 
+  }, [jobs, mode, filterMonth, customers]); 
 
   // ... (Keep existing handlers for select all, export, etc.)
   const handleSelectAll = () => {
@@ -465,11 +482,69 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode })
   const unlockedCount = exportData.filter(r => !lockedIds.has(r.docNo)).length;
   const isAllSelected = unlockedCount > 0 && selectedIds.size === unlockedCount;
 
+  // --- REFACTORED SAVE HANDLER ---
   const handleSaveEdit = (newData: any) => {
-     setEditedRows(prev => ({
-         ...prev,
-         [newData.docNo]: newData
-     }));
+     if (!onUpdateJob) return;
+
+     // 1. Identify context (type and JobID) from selectedItem (which is the row data)
+     // Note: `newData` comes from the modal form state, but `selectedItem` has the original metadata (jobId, type, etc)
+     const context = selectedItem; 
+     if (!context || !context.jobId) return;
+
+     const originalJob = jobs.find(j => j.id === context.jobId);
+     if (!originalJob) return;
+
+     let updatedJob = { ...originalJob };
+
+     // 2. Map form data back to Job fields based on type
+     // The modal returns generic fields: date, docNo, desc (or paymentContent)
+     
+     if (context.type === 'deposit_thu') {
+         updatedJob.amisDepositDocNo = newData.docNo;
+         updatedJob.amisDepositDesc = newData.desc; // ReceiptDetailModal returns 'desc'
+         updatedJob.ngayThuCuoc = newData.date; // Sync date
+     } 
+     else if (context.type === 'lc_thu') {
+         updatedJob.amisLcDocNo = newData.docNo;
+         updatedJob.amisLcDesc = newData.desc;
+         updatedJob.localChargeDate = newData.date;
+     } 
+     else if (context.type === 'ext_thu') {
+         // Need to update a specific extension inside the array
+         if (updatedJob.extensions) {
+             updatedJob.extensions = updatedJob.extensions.map(ext => {
+                 if (ext.id === context.extensionId) {
+                     return {
+                         ...ext,
+                         amisDocNo: newData.docNo,
+                         amisDesc: newData.desc,
+                         invoiceDate: newData.date
+                     };
+                 }
+                 return ext;
+             });
+         }
+     }
+     else if (context.type === 'payment_chi') {
+         updatedJob.amisPaymentDocNo = newData.docNo;
+         updatedJob.amisPaymentDesc = newData.paymentContent || newData.desc; // PaymentVoucherModal uses paymentContent
+         updatedJob.amisPaymentDate = newData.date;
+     }
+     else if (context.type === 'deposit_chi') {
+         updatedJob.amisDepositOutDocNo = newData.docNo;
+         updatedJob.amisDepositOutDesc = newData.paymentContent || newData.desc;
+         updatedJob.amisDepositOutDate = newData.date;
+     }
+     else if (context.type === 'deposit_refund') {
+         updatedJob.amisDepositRefundDocNo = newData.docNo;
+         updatedJob.amisDepositRefundDesc = newData.paymentContent || newData.desc;
+         updatedJob.amisDepositRefundDate = newData.date;
+     }
+
+     // 3. Trigger global update (which triggers backup)
+     onUpdateJob(updatedJob);
+
+     // 4. Cleanup
      setSelectedItem(null);
      setSelectedJobForModal(null);
      setSelectedBookingForModal(null);

@@ -195,13 +195,16 @@ export const DepositList: React.FC<DepositListProps> = ({
     setIsJobModalOpen(false);
   };
 
-  const handleSaveBooking = (details: BookingCostDetails) => {
+  const handleSaveBooking = (details: BookingCostDetails, shouldClose: boolean = true) => {
     if (!viewingBooking) return;
     viewingBooking.jobs.forEach(job => {
         const updatedJob = { ...job, bookingCostDetails: details };
         onEditJob(updatedJob);
     });
-    setViewingBooking(null);
+    
+    if (shouldClose) {
+       setViewingBooking(null);
+    }
   };
 
   const handleViewBookingFromJob = (bookingId: string) => {

@@ -8,7 +8,7 @@ import { formatDateVN, parseDateVN } from '../utils';
 interface BookingDetailModalProps {
   booking: BookingSummary;
   onClose: () => void;
-  onSave: (data: BookingCostDetails, updatedJobs?: JobData[]) => void;
+  onSave: (data: BookingCostDetails, shouldClose?: boolean) => void;
   zIndex?: string;
 }
 
@@ -241,7 +241,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     const file = e.target.files[0];
     setSelectedFile(file);
 
-    // Parse ngày từ localCharge.date (định dạng dd/mm/yyyy hoặc yyyy-mm-dd)
     let dateObj: Date | null = null;
 
     if (localCharge.date && localCharge.date.includes("/")) {
@@ -251,13 +250,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
         dateObj = new Date(`${yyyy}-${mm}-${dd}`);
       }
     } else if (localCharge.date) {
-      // try yyyy-mm-dd (HTML date) or other ISO
       const tmp = new Date(localCharge.date);
       if (!isNaN(tmp.getTime())) dateObj = tmp;
     }
 
     if (!dateObj || isNaN(dateObj.getTime())) {
-      // fallback: ngày hiện tại
       dateObj = new Date();
     }
 
@@ -281,10 +278,8 @@ const handleUploadFile = async () => {
   setIsUploading(true);
 
   try {
-    // --- Xác định folder final (YYYY.MM) ---
     let finalFolder = folderName;
     if (!finalFolder) {
-      // fallback: parse từ localCharge.date hoặc dùng ngày hiện tại
       let dateObj: Date | null = null;
 
       if (localCharge.date && localCharge.date.includes("/")) {
@@ -303,13 +298,11 @@ const handleUploadFile = async () => {
       finalFolder = `${dateObj.getFullYear()}.${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
     }
 
-    // --- Tạo filename an toàn ---
     const ext = selectedFile.name.substring(selectedFile.name.lastIndexOf("."));
     const safeLine = ((booking as any).line || "Line").toString().replace(/[^a-zA-Z0-9]/g, "");
     const safeBooking = ((booking as any).booking || (booking as any).bookingId || (booking as any).bookingNo || "Booking").toString().replace(/[^a-zA-Z0-9]/g, "");
     const safeInvoice = (localCharge.invoice || "INV").toString().replace(/[^a-zA-Z0-9]/g, "");
 
-    // format ngày dd.mm.yyyy cho filename
     let dateForName: Date;
     if (localCharge.date && localCharge.date.includes("/")) {
       const [dd, mm, yyyy] = localCharge.date.split("/");
@@ -326,9 +319,8 @@ const handleUploadFile = async () => {
 
     const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${dateStr}${ext}`;
 
-    // --- Build FormData ---
     const formData = new FormData();
-    formData.append("folderPath", finalFolder); // server sẽ lưu vào E:\ServerData\Invoice\<folderPath>\
+    formData.append("folderPath", finalFolder);
     formData.append("fileName", newFileName);
     formData.append("type", "invoice");
     formData.append("bookingId", (booking as any).booking || (booking as any).bookingId || "");
@@ -353,10 +345,19 @@ const handleUploadFile = async () => {
   
       alert(`Đã lưu file thành công!`);
   
-      // UPDATE STATE TO PERSIST
-      handleLocalChargeChange('fileUrl', publicUrl);
-      handleLocalChargeChange('fileName', newFileName);
+      // 1. UPDATE STATE TO PERSIST IN UI
+      const newLC = { ...localCharge, fileUrl: publicUrl, fileName: newFileName };
+      setLocalCharge(newLC);
   
+      // 2. AUTO SAVE TO PARENT (CRITICAL FIX)
+      // Call onSave immediately with close=false so the modal stays open but data is synced to App/Server
+      onSave({
+        localCharge: newLC,
+        additionalLocalCharges,
+        extensionCosts,
+        deposits
+      }, false);
+
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } else {
@@ -374,8 +375,16 @@ const handleUploadFile = async () => {
 
   const handleDeleteFile = () => {
     if (window.confirm("Bạn có chắc muốn xóa file đính kèm này? (Thao tác này chỉ xóa liên kết, file trên server vẫn còn)")) {
-        handleLocalChargeChange('fileUrl', "");
-        handleLocalChargeChange('fileName', "");
+        const newLC = { ...localCharge, fileUrl: "", fileName: "" };
+        setLocalCharge(newLC);
+        
+        // Auto Save Deletion
+        onSave({
+            localCharge: newLC,
+            additionalLocalCharges,
+            extensionCosts,
+            deposits
+        }, false);
     }
   };
 
@@ -723,7 +732,7 @@ const handleUploadFile = async () => {
               
               {/* Nếu đã có file (từ state localCharge hoặc vừa upload xong) */}
               {localCharge.fileUrl ? (
-                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center">
+                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center animate-in fade-in slide-in-from-top-1">
                     <div className="flex items-center space-x-3">
                        <div className="p-2 bg-green-100 text-green-700 rounded-lg">
                           <Check className="w-5 h-5" />

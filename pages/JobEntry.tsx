@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // Import createPortal
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw } from 'lucide-react';
@@ -65,7 +66,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [activeMenuId]);
 
-  // ... (Keep existing logic for filters, pagination, etc.) ...
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
@@ -201,7 +201,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     }
   };
 
-  const handleSaveBookingDetails = (updatedDetails: BookingCostDetails) => {
+  const handleSaveBookingDetails = (updatedDetails: BookingCostDetails, shouldClose: boolean = true) => {
      if (!viewingBooking) return;
      viewingBooking.jobs.forEach(job => {
          const updatedJob = { ...job, bookingCostDetails: updatedDetails };
@@ -210,13 +210,15 @@ export const JobEntry: React.FC<JobEntryProps> = ({
      if (editingJob && editingJob.booking === viewingBooking.bookingId) {
          setEditingJob(prev => prev ? ({ ...prev, bookingCostDetails: updatedDetails }) : null);
      }
-     setViewingBooking(null);
+     
+     if (shouldClose) {
+        setViewingBooking(null);
+     }
   };
 
   const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // ... (Existing import logic) ...
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -229,7 +231,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       
       let addedCount = 0; let updatedCount = 0;
       data.forEach((row: any) => {
-        // ... (Mapping logic same as before) ...
         const rowJobCode = row['Job'] || row['Job Code'];
         const mappedData: Partial<JobData> = {
           month: row['Tháng']?.toString() || '1',
@@ -273,7 +274,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleExportExcel = () => {
-    // ... (Existing export logic) ...
     const dataToExport = filteredJobs.map(job => {
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
       const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
@@ -295,7 +295,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     XLSX.writeFile(wb, `Logistics_Job_Data.xlsx`);
   };
 
-  // ... (Filtering & Pagination logic unchanged) ...
   const filteredJobs = useMemo(() => {
     let matches = jobs.filter(job => {
       const jCode = String(job.jobCode || '');

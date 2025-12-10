@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -90,13 +91,19 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
     }
   }, [initialBookingId, bookingData, onClearTargetBooking]);
 
-  const handleSaveDetails = (updatedDetails: BookingCostDetails) => {
+  const handleSaveDetails = (updatedDetails: BookingCostDetails, shouldClose: boolean = true) => {
     if (!selectedBooking) return;
     selectedBooking.jobs.forEach(job => {
         const updatedJob = { ...job, bookingCostDetails: updatedDetails };
         onEditJob(updatedJob);
     });
+    
+    // Update local state to reflect changes even if modal stays open
     setSelectedBooking(prev => prev ? { ...prev, costDetails: updatedDetails } : null);
+    
+    if (shouldClose) {
+       setSelectedBooking(null);
+    }
   };
 
   const handleMenuAction = (booking: BookingSummary, action: string) => {

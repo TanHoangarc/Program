@@ -571,10 +571,10 @@ const App: React.FC = () => {
             )}
             
             {currentPage === 'lhk' && <LhkList jobs={jobs} />}
-            {currentPage === 'amis-thu' && <AmisExport jobs={jobs} customers={customers} mode="thu" />}
-            {currentPage === 'amis-chi' && <AmisExport jobs={jobs} customers={customers} mode="chi" />}
-            {currentPage === 'amis-ban' && <AmisExport jobs={jobs} customers={customers} mode="ban" />}
-            {currentPage === 'amis-mua' && <AmisExport jobs={jobs} customers={customers} mode="mua" />}
+            {currentPage === 'amis-thu' && <AmisExport jobs={jobs} customers={customers} mode="thu" onUpdateJob={handleEditJob} />}
+            {currentPage === 'amis-chi' && <AmisExport jobs={jobs} customers={customers} mode="chi" onUpdateJob={handleEditJob} />}
+            {currentPage === 'amis-ban' && <AmisExport jobs={jobs} customers={customers} mode="ban" onUpdateJob={handleEditJob} />}
+            {currentPage === 'amis-mua' && <AmisExport jobs={jobs} customers={customers} mode="mua" onUpdateJob={handleEditJob} />}
 
             {currentPage === 'profit' && (
               <ProfitReport jobs={jobs} onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} />
