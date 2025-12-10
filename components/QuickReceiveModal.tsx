@@ -129,8 +129,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       // 2. Setup Amis Fields based on mode
       if (mode === 'local') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || `NTTK${generateRandomStr()}`);
-          const inv = deepCopyJob.localChargeInvoice || 'XXX';
-          setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${inv} BL ${deepCopyJob.jobCode} (KIM)`);
+          
+          if (deepCopyJob.amisLcDesc) {
+             setAmisDesc(deepCopyJob.amisLcDesc);
+          } else {
+             const inv = deepCopyJob.localChargeInvoice;
+             // Logic: If Invoice exists -> "Thu tiền của KH theo hoá đơn [INV] (KIM)"
+             // If Empty -> "Thu tiền của KH theo hoá đơn XXX BL [JOB] (KIM)"
+             if (inv) {
+                 setAmisDesc(`Thu tiền của KH theo hoá đơn ${inv} (KIM)`);
+             } else {
+                 setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${deepCopyJob.jobCode} (KIM)`);
+             }
+          }
       } 
       else if (mode === 'other') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || `NTTK${generateRandomStr()}`);
@@ -267,7 +278,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
       if (mode === 'local') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
-          setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} BL ${jobCode} (KIM)`);
+          // Logic: If invoice present -> "Thu tiền của KH theo hoá đơn [INV] (KIM)"
+          // If empty -> "Thu tiền của KH theo hoá đơn XXX BL [JOB] (KIM)"
+          if (val) {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn ${val} (KIM)`);
+          } else {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${jobCode} (KIM)`);
+          }
       }
       else if (mode === 'other') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));

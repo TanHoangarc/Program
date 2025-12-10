@@ -366,6 +366,30 @@ export const JobModal: React.FC<JobModalProps> = ({
     });
   }, [formData.cont20, formData.cont40, isViewMode]);
 
+  // --- NEW LOGIC: AUTO-SYNC SELL TO AMOUNT FOR LONG HOANG ---
+  useEffect(() => {
+    if (isViewMode) return;
+
+    const selectedCustomer = (customers || []).find(c => c?.id === formData.customerId);
+    const displayCustName = selectedCustomer?.name || formData.customerName || '';
+    const nameLower = displayCustName.toLowerCase();
+    const isLongHoang = nameLower.includes('long hoàng') || 
+                        nameLower.includes('long hoang') || 
+                        nameLower.includes('lhk') || 
+                        nameLower.includes('longhoang');
+
+    if (isLongHoang) {
+        setFormData(prev => {
+            // Only update if value is different to avoid unnecessary re-renders
+            if (prev.localChargeTotal !== prev.sell) {
+                return { ...prev, localChargeTotal: prev.sell };
+            }
+            return prev;
+        });
+    }
+  }, [formData.customerId, formData.customerName, formData.sell, customers, isViewMode]);
+  // --------------------------------------------------------
+
   const safeInput = (custCodeInput || '').toLowerCase().trim();
   const filteredCustomers = (customers || []).filter(c => {
     if (!c) return false;
@@ -606,14 +630,14 @@ export const JobModal: React.FC<JobModalProps> = ({
                  Thông Tin Chung
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label>Tháng</Label>
                   <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
                     {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </Select>
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label>Job Code</Label>
                   <Input 
                     name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} 
@@ -622,7 +646,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label>Booking</Label>
                   <div className="flex items-center space-x-1">
                     <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />
@@ -639,12 +663,12 @@ export const JobModal: React.FC<JobModalProps> = ({
                   </div>
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label>Consol</Label>
                   <Input name="consol" value={formData.consol} onChange={handleChange} readOnly={isViewMode} />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label>Line (Mã Line)</Label>
                   {!isAddingLine ? (
                     <>
@@ -664,7 +688,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                   )}
                 </div>
 
-                <div className="lg:col-span-2 space-y-1 relative group">
+                <div className="lg:col-span-2 space-y-1.5 relative group">
                   <Label>Customer (Mã KH)</Label>
                   <div className="relative">
                      <Input 
@@ -697,13 +721,13 @@ export const JobModal: React.FC<JobModalProps> = ({
                 </div>
 
                 {isLongHoang && (
-                  <div className="space-y-1 animate-in fade-in slide-in-from-left-2 duration-300">
+                  <div className="space-y-1.5 animate-in fade-in slide-in-from-left-2 duration-300">
                     <Label>HBL</Label>
                     <Input name="hbl" value={formData.hbl} onChange={handleChange} readOnly={isViewMode} className="bg-orange-50 border-orange-200 text-orange-800 focus:ring-orange-200" />
                   </div>
                 )}
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label>Transit</Label>
                   <Select name="transit" value={formData.transit} onChange={handleChange} disabled={isViewMode}>
                     {TRANSIT_PORTS.map(p => <option key={p} value={p}>{p}</option>)}

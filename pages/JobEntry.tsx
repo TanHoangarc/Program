@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // Import createPortal
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw } from 'lucide-react';
-import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
+import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine, INITIAL_JOB } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
@@ -156,13 +155,22 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleDuplicate = (job: JobData) => {
-    const newJob: JobData = {
-      ...job,
-      id: Date.now().toString(),
-      jobCode: `${job.jobCode} (Copy)`,
-      booking: job.booking ? `${job.booking}` : '',
+    // Create a template based on the requirement:
+    // Keep: Month, Booking, Consol, Line, Transit
+    // Reset: All other fields (Job Code, Customer, Financials, etc.)
+    const templateJob: JobData = {
+      ...INITIAL_JOB, // Reset all fields to default first
+      month: job.month,
+      booking: job.booking,
+      consol: job.consol,
+      line: job.line,
+      transit: job.transit,
+      id: '', // Ensure ID is empty so handleSave treats it as a NEW job
     };
-    onAddJob(newJob);
+
+    setEditingJob(templateJob);
+    setIsViewMode(false);
+    setIsModalOpen(true);
     setActiveMenuId(null);
   };
 
@@ -186,10 +194,15 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     if (newCustomer) {
       onAddCustomer(newCustomer);
     }
-    if (editingJob) {
+    
+    // Logic: If editingJob has an ID, it's an update. 
+    // If editingJob is null OR editingJob.id is empty (Duplicate case), it's a new job.
+    if (editingJob && editingJob.id) {
       onEditJob(job);
     } else {
-      onAddJob(job);
+      // Ensure we have a valid ID for the new job
+      const newJob = { ...job, id: job.id || Date.now().toString() };
+      onAddJob(newJob);
     }
     setIsModalOpen(false);
   };
