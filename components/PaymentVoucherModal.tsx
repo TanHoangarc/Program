@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, User, Banknote, CheckCircle } from 'lucide-react';
@@ -133,7 +134,21 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                docNo = generateUNC();
                content = `Chi tiền cho ncc ${lineCode} lô ${jobListStr} BL ${bookingNo}`;
            }
-           amount = booking ? booking.totalCost : (job?.chiPayment || 0);
+           
+           // UPDATE: Calculate Amount = Main Invoice (Net + VAT) + Additional Invoices (Net + VAT)
+           if (booking) {
+               const lc = booking.costDetails.localCharge;
+               const mainTotal = (lc.net || 0) + (lc.vat || 0);
+               const additionalTotal = (booking.costDetails.additionalLocalCharges || []).reduce((sum, item) => {
+                   return sum + (item.net || 0) + (item.vat || 0);
+               }, 0);
+               amount = mainTotal + additionalTotal;
+           } else if (job && job.bookingCostDetails) {
+               const lc = job.bookingCostDetails.localCharge;
+               amount = (lc.net || 0) + (lc.vat || 0);
+           } else {
+               amount = 0;
+           }
            
         } else if (type === 'deposit') {
            // Check if already created
