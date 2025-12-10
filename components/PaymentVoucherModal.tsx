@@ -129,7 +129,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                content = firstJob.amisPaymentDesc || '';
            } else {
                docNo = generateUNC();
-               content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo} (Kimberry)`;
+               content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo} (kimberry)`;
            }
            
            if (booking) {
@@ -152,7 +152,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                content = firstJob.amisDepositOutDesc || '';
            } else {
                docNo = generateUNC();
-               content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo} (Kimberry)`;
+               content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo} (kimberry)`;
            }
            const depositAmt = booking?.costDetails.deposits.reduce((s,d) => s + d.amount, 0) || job?.chiCuoc || 0;
            amount = depositAmt;

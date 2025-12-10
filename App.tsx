@@ -605,7 +605,14 @@ const App: React.FC = () => {
             )}
 
             {currentPage === 'debt' && (
-              <DebtManagement jobs={jobs} customers={customers} />
+              <DebtManagement 
+                jobs={jobs} 
+                customers={customers} 
+                onViewJob={(id) => {
+                    setTargetJobId(id);
+                    setCurrentPage("entry");
+                }}
+              />
             )}
 
             {currentPage === 'reconciliation' && (

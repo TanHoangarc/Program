@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
-import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag, Search } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
@@ -26,6 +26,7 @@ export const BookingList: React.FC<BookingListProps> = ({
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterBooking, setFilterBooking] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   
   // Job Modal State
@@ -55,16 +56,23 @@ export const BookingList: React.FC<BookingListProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth]);
+  }, [filterMonth, filterBooking]);
 
   const bookingData = useMemo(() => {
     const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter((b): b is string => !!b)));
     let summaries = bookingIds.map((id: string) => calculateBookingSummary(jobs, id)).filter((b): b is BookingSummary => !!b);
+    
     if (filterMonth) {
       summaries = summaries.filter(s => s.month === filterMonth);
     }
+    
+    if (filterBooking) {
+      const searchLower = filterBooking.toLowerCase();
+      summaries = summaries.filter(s => s.bookingId.toLowerCase().includes(searchLower));
+    }
+
     return summaries.sort((a, b) => Number(b.month) - Number(a.month));
-  }, [jobs, filterMonth]);
+  }, [jobs, filterMonth, filterBooking]);
 
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
   const paginatedData = bookingData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -218,7 +226,18 @@ export const BookingList: React.FC<BookingListProps> = ({
           <h1 className="text-2xl font-bold text-slate-800">Quản lý Booking</h1>
           <p className="text-sm text-slate-500 mt-1">Danh sách tổng hợp Booking và chi tiết hóa đơn chi phí</p>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center space-x-3">
+           <div className="glass-panel px-4 py-2 flex items-center space-x-2 rounded-lg text-slate-700">
+               <Search className="w-4 h-4 text-slate-500" />
+               <input 
+                  type="text"
+                  placeholder="Tìm Booking..."
+                  value={filterBooking}
+                  onChange={(e) => setFilterBooking(e.target.value)}
+                  className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none w-32 md:w-48 placeholder-slate-400 text-slate-700"
+               />
+           </div>
+
            <div className="glass-panel px-4 py-2 flex items-center space-x-2 rounded-lg text-slate-700">
                <Filter className="w-4 h-4 text-slate-500" />
                <select

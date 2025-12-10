@@ -180,6 +180,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleQuickReceive = (job: JobData, mode: ReceiveMode) => {
+    // VALIDATION: Require Bank for Local Charge
+    if (mode === 'local' && !job.bank) {
+        alert("Vui lòng cập nhật Ngân hàng trong chi tiết Job trước khi Thu Tiền (Local Charge)!");
+        handleEdit(job); // Open Edit Modal immediately so user can fix it
+        return;
+    }
+
     setQuickReceiveJob(job);
     setQuickReceiveMode(mode);
     setIsQuickReceiveOpen(true);
@@ -519,7 +526,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
       {isModalOpen && <JobModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingJob} customers={customers} lines={lines} onAddLine={onAddLine} onViewBookingDetails={handleViewBookingDetails} isViewMode={isViewMode} onSwitchToEdit={() => setIsViewMode(false)} existingJobs={jobs} />}
       {viewingBooking && <BookingDetailModal booking={viewingBooking} onClose={() => setViewingBooking(null)} onSave={handleSaveBookingDetails} zIndex="z-[60]" />}
-      {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={handleSaveQuickReceive} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} />}
+      {/* PASS ALL JOBS TO MODAL */}
+      {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={handleSaveQuickReceive} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} allJobs={jobs} />}
     </div>
   );
 };

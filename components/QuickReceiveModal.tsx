@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2 } from 'lucide-react';
 import { JobData, Customer } from '../types';
 import { formatDateVN, parseDateVN } from '../utils';
 
@@ -13,6 +13,7 @@ interface QuickReceiveModalProps {
   job: JobData;
   mode: ReceiveMode;
   customers: Customer[];
+  allJobs?: JobData[]; // Added to allow searching for other jobs
 }
 
 // Reusable DateInput Component
@@ -72,7 +73,7 @@ const DateInput = ({
 };
 
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
-  isOpen, onClose, onSave, job, mode, customers
+  isOpen, onClose, onSave, job, mode, customers, allJobs
 }) => {
   // Main form data is the job itself
   const [formData, setFormData] = useState<JobData>(job);
@@ -98,8 +99,68 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [custInputVal, setCustInputVal] = useState('');
 
+  // --- MERGE JOB STATE (LOCAL CHARGE) ---
+  const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
+  const [searchJobCode, setSearchJobCode] = useState('');
+
   // Generate random number string
   const generateRandomStr = () => Math.floor(10000 + Math.random() * 90000).toString();
+
+  // Helper to generate Description Logic for Merged Jobs
+  const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[]) => {
+      // Logic: 
+      // 1. Gather all invoices: [MainInvoice, ...ExtraJobInvoices] (ignore empty)
+      // 2. Gather all missing invoice jobs: [MainJobCode (if empty), ...ExtraJobCodes (if empty)]
+      // 3. Construct: "Thu tiền của KH theo hoá đơn [Inv1+Inv2] [+XXX BL Job1+Job2] (KIM)"
+
+      const invoices: string[] = [];
+      const missingJobCodes: string[] = [];
+
+      // Check Main Job
+      if (mainInvoice && mainInvoice.trim()) {
+          invoices.push(mainInvoice.trim());
+      } else {
+          missingJobCodes.push(formData.jobCode); // Use current job code
+      }
+
+      // Check Extra Jobs
+      extraJobs.forEach(j => {
+          if (j.localChargeInvoice && j.localChargeInvoice.trim()) {
+              invoices.push(j.localChargeInvoice.trim());
+          } else {
+              missingJobCodes.push(j.jobCode);
+          }
+      });
+
+      let desc = "Thu tiền của KH theo hoá đơn ";
+      
+      const invPart = invoices.join('+');
+      desc += invPart;
+
+      if (missingJobCodes.length > 0) {
+          if (invPart.length > 0) desc += "+"; // Connector if invoices exist
+          desc += "XXX BL " + missingJobCodes.join('+');
+      }
+
+      desc += " (KIM)";
+      return desc;
+  };
+
+  // Recalculate Total Amount and Description
+  const recalculateMerge = (currentMainInvoice: string, extraJobs: JobData[]) => {
+      // Recalc Description
+      const newDesc = generateMergedDescription(currentMainInvoice, extraJobs);
+      setAmisDesc(newDesc);
+
+      // Recalc Total Amount
+      // Main Amount + Sum(Extra Jobs Amounts)
+      // Note: We use the stored `localChargeTotal` for extra jobs. 
+      // For main job, we use the *current state* (formData.localChargeTotal might be stale if we just updated it, so rely on state flow)
+      // Actually, formData.localChargeTotal is controlled. We should calculate total based on current value.
+      // However, usually "Amount" field is editable. 
+      // Strategy: When adding a job, add its amount to the current total.
+      // When removing, subtract.
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -113,6 +174,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
 
       setFormData(deepCopyJob);
+      setAddedJobs([]); // Reset merged jobs
 
       // Initialize Customer Input Value
       let initialCustId = '';
@@ -133,14 +195,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           if (deepCopyJob.amisLcDesc) {
              setAmisDesc(deepCopyJob.amisLcDesc);
           } else {
+             // Initial Description Logic
              const inv = deepCopyJob.localChargeInvoice;
-             // Logic: If Invoice exists -> "Thu tiền của KH theo hoá đơn [INV] (KIM)"
-             // If Empty -> "Thu tiền của KH theo hoá đơn XXX BL [JOB] (KIM)"
-             if (inv) {
-                 setAmisDesc(`Thu tiền của KH theo hoá đơn ${inv} (KIM)`);
-             } else {
-                 setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${deepCopyJob.jobCode} (KIM)`);
-             }
+             const desc = generateMergedDescription(inv, []);
+             setAmisDesc(desc);
           }
       } 
       else if (mode === 'other') {
@@ -278,13 +336,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
       if (mode === 'local') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
-          // Logic: If invoice present -> "Thu tiền của KH theo hoá đơn [INV] (KIM)"
-          // If empty -> "Thu tiền của KH theo hoá đơn XXX BL [JOB] (KIM)"
-          if (val) {
-              setAmisDesc(`Thu tiền của KH theo hoá đơn ${val} (KIM)`);
-          } else {
-              setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${jobCode} (KIM)`);
-          }
+          // Recalculate Description including any added jobs
+          recalculateMerge(val, addedJobs);
       }
       else if (mode === 'other') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
@@ -296,6 +349,48 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               invoice: val,
               amisDesc: `Thu tiền của KH theo hoá đơn GH ${invPlaceholder} BL ${jobCode} (KIM)`
           }));
+      }
+  };
+
+  const handleAddJob = () => {
+      if (!allJobs) return;
+      const found = allJobs.find(j => j.jobCode === searchJobCode && j.id !== formData.id);
+      
+      if (!found) {
+          alert("Không tìm thấy Job Code này hoặc Job đang là Job chính!");
+          return;
+      }
+      if (addedJobs.some(j => j.id === found.id)) {
+          alert("Job này đã được thêm vào danh sách!");
+          return;
+      }
+
+      const newAddedJobs = [...addedJobs, found];
+      setAddedJobs(newAddedJobs);
+      setSearchJobCode('');
+
+      // 1. Update Description
+      recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+
+      // 2. Update Total Amount
+      // We assume user might have edited the amount, so we take current amount + new job amount
+      const currentAmt = formData.localChargeTotal || 0;
+      const addedAmt = found.localChargeTotal || 0; // Default amount from job data
+      setFormData(prev => ({ ...prev, localChargeTotal: currentAmt + addedAmt }));
+  };
+
+  const handleRemoveAddedJob = (id: string) => {
+      const jobToRemove = addedJobs.find(j => j.id === id);
+      const newAddedJobs = addedJobs.filter(j => j.id !== id);
+      setAddedJobs(newAddedJobs);
+
+      // 1. Update Description
+      recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+
+      // 2. Update Total Amount (Subtract)
+      if (jobToRemove) {
+          const currentAmt = formData.localChargeTotal || 0;
+          setFormData(prev => ({ ...prev, localChargeTotal: Math.max(0, currentAmt - (jobToRemove.localChargeTotal || 0)) }));
       }
   };
 
@@ -338,6 +433,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       onSave({ ...formData, extensions: updatedExtensions });
     } 
     else if (mode === 'local' || mode === 'other') {
+        // If there are added jobs, we might need to handle them. 
+        // For now, the requirement implies we just create ONE Receipt (Phieu Thu) 
+        // that covers multiple jobs. The system usually tracks payment by Job ID.
+        // If we want to mark multiple jobs as paid, we would need 'onSave' to handle array.
+        // BUT current architecture updates ONE job at a time via `onEditJob`.
+        // To support "Merge Payment", typically we update the main job with the total,
+        // and update the added jobs to mark them as paid (or linked).
+        // WARNING: This component only calls onSave for ONE job. 
+        // We will save the Description and Total Amount to the MAIN job.
+        // The user manually manages the accounting or we would need a refactor to update multiple jobs.
+        // Based on "Phieu Thu Tien (Local Charge)", this updates the Amis fields of the *current* job.
+        
         onSave({ 
             ...formData, 
             amisLcDocNo: amisDocNo, 
@@ -457,6 +564,52 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* --- ADD JOBS SECTION (ONLY FOR LOCAL CHARGE) --- */}
+            {mode === 'local' && (
+                <div className="bg-orange-50 p-5 rounded-xl border border-orange-200 shadow-sm">
+                    <h3 className="text-sm font-bold text-orange-800 mb-3 flex items-center">
+                        <Plus className="w-4 h-4 mr-2" /> Gộp Job (Thu nhiều lô)
+                    </h3>
+                    <div className="flex gap-2 mb-3">
+                        <input 
+                            type="text" 
+                            value={searchJobCode}
+                            onChange={(e) => setSearchJobCode(e.target.value)}
+                            className="flex-1 px-3 py-2 bg-white border border-orange-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            placeholder="Nhập Job Code để thêm..."
+                        />
+                        <button 
+                            type="button" 
+                            onClick={handleAddJob}
+                            className="bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 flex items-center"
+                        >
+                            <Search className="w-4 h-4 mr-1" /> Thêm
+                        </button>
+                    </div>
+                    {addedJobs.length > 0 && (
+                        <div className="space-y-2">
+                            {addedJobs.map((j) => (
+                                <div key={j.id} className="flex justify-between items-center bg-white p-2 rounded-lg border border-orange-100 text-sm">
+                                    <div>
+                                        <span className="font-bold text-slate-700">{j.jobCode}</span>
+                                        <span className="text-slate-500 ml-2 text-xs">
+                                            (Inv: {j.localChargeInvoice || 'Trống'}, Amt: {new Intl.NumberFormat('en-US').format(j.localChargeTotal)})
+                                        </span>
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => handleRemoveAddedJob(j.id)}
+                                        className="text-red-500 hover:bg-red-50 p-1 rounded"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center">

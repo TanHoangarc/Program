@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { JobData, Customer } from '../types';
 import { WalletCards, FileSpreadsheet, AlertTriangle, CheckCircle, Search } from 'lucide-react';
@@ -7,6 +6,7 @@ import * as XLSX from 'xlsx';
 interface DebtManagementProps {
   jobs: JobData[];
   customers: Customer[];
+  onViewJob?: (jobId: string) => void;
 }
 
 type ReportType = 
@@ -19,7 +19,7 @@ type ReportType =
   | 'DEPOSIT_MISSING_INFO'
   | 'BOOKING_NO_INVOICE';
 
-export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers }) => {
+export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers, onViewJob }) => {
   const [reportType, setReportType] = useState<ReportType>('CUSTOMER_DEBT');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -410,7 +410,11 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers 
                  reportData.map((job: JobData) => {
                    const amt = job.localChargeTotal || job.sell || job.thuCuoc;
                    return (
-                     <tr key={job.id} className="hover:bg-gray-50">
+                     <tr 
+                        key={job.id} 
+                        className="hover:bg-blue-50/50 cursor-pointer transition-colors"
+                        onClick={() => onViewJob && onViewJob(job.id)}
+                     >
                        <td className="px-6 py-4 text-gray-500">T{job.month}</td>
                        <td className="px-6 py-4 font-medium text-blue-600">{job.jobCode}</td>
                        <td className="px-6 py-4 text-gray-600">{job.booking}</td>
