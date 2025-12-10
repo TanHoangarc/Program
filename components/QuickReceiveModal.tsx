@@ -146,7 +146,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || `UNC${generateRandomStr()}`);
           // Default description for refund
           const custName = customers.find(c => c.id === deepCopyJob.maKhCuocId)?.name || 'KH';
-          setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho ${custName} HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
+          setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
       }
       else if (mode === 'extension') {
           // ... (extension logic kept same)
