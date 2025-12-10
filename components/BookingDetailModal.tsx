@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, HardDrive, Eye } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, HardDrive, Eye, ExternalLink } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 
 interface BookingDetailModalProps {
@@ -10,6 +10,7 @@ interface BookingDetailModalProps {
   onClose: () => void;
   onSave: (data: BookingCostDetails, shouldClose?: boolean) => void;
   zIndex?: string;
+  onViewJob?: (jobId: string) => void;
 }
 
 const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
@@ -79,7 +80,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="block text-xs font-bold text-slate-500 mb-1.5">{children}</label>
 );
 
-export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave }) => {
+export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, onViewJob }) => {
 
   const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge || {
     invoice: '', date: '', net: 0, vat: 0, total: 0, fileUrl: '', fileName: ''
@@ -345,12 +346,9 @@ const handleUploadFile = async () => {
   
       alert(`Đã lưu file thành công!`);
   
-      // 1. UPDATE STATE TO PERSIST IN UI
       const newLC = { ...localCharge, fileUrl: publicUrl, fileName: newFileName };
       setLocalCharge(newLC);
   
-      // 2. AUTO SAVE TO PARENT (CRITICAL FIX)
-      // Call onSave immediately with close=false so the modal stays open but data is synced to App/Server
       onSave({
         localCharge: newLC,
         additionalLocalCharges,
@@ -378,7 +376,6 @@ const handleUploadFile = async () => {
         const newLC = { ...localCharge, fileUrl: "", fileName: "" };
         setLocalCharge(newLC);
         
-        // Auto Save Deletion
         onSave({
             localCharge: newLC,
             additionalLocalCharges,
@@ -524,7 +521,20 @@ const handleUploadFile = async () => {
 
                     return (
                       <tr key={job.id} className="hover:bg-blue-50/50">
-                        <td className="px-4 py-3 border-r font-bold text-teal-700">{job.jobCode}</td>
+                        <td className="px-4 py-3 border-r font-bold text-teal-700 group/cell relative">
+                            <div className="flex items-center justify-between">
+                                <span>{job.jobCode}</span>
+                                {onViewJob && (
+                                    <button 
+                                        onClick={() => onViewJob(job.id)}
+                                        className="opacity-0 group-hover/cell:opacity-100 p-1 hover:bg-teal-50 text-teal-600 rounded transition-all"
+                                        title="Xem chi tiết Job"
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        </td>
                         <td className="px-4 py-3 border-r text-right text-slate-600 font-medium">{formatMoney(job.sell)}</td>
                         <td className="px-4 py-3 border-r text-right text-slate-600">{formatMoney(adjusted)}</td>
                         <td className="px-4 py-3 border-r text-right text-slate-500">{formatMoney(vat)}</td>
@@ -575,7 +585,20 @@ const handleUploadFile = async () => {
 
                     return (
                       <tr key={job.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 border-r text-slate-700">{job.jobCode}</td>
+                        <td className="px-4 py-3 border-r text-slate-700 group/cell relative">
+                            <div className="flex items-center justify-between">
+                                <span>{job.jobCode}</span>
+                                {onViewJob && (
+                                    <button 
+                                        onClick={() => onViewJob(job.id)}
+                                        className="opacity-0 group-hover/cell:opacity-100 p-1 hover:bg-blue-50 text-blue-600 rounded transition-all"
+                                        title="Xem chi tiết Job"
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        </td>
                         <td className="px-4 py-3 border-r text-right text-blue-600 font-medium">
                           {formatMoney(job.localChargeTotal)}
                         </td>
@@ -726,11 +749,10 @@ const handleUploadFile = async () => {
             )}
 
             {/* =====================================================
-                FILE UPLOAD (INVOICE CHI) - UPDATED
+                FILE UPLOAD (INVOICE CHI)
             ===================================================== */}
             <div className="mt-6 border-t border-dashed pt-6">
               
-              {/* Nếu đã có file (từ state localCharge hoặc vừa upload xong) */}
               {localCharge.fileUrl ? (
                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center animate-in fade-in slide-in-from-top-1">
                     <div className="flex items-center space-x-3">
@@ -753,7 +775,6 @@ const handleUploadFile = async () => {
                     </button>
                  </div>
               ) : (
-                 // Nếu chưa có file thì hiện khung upload
                  <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
                     <div className="flex items-center space-x-3">
                         <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />

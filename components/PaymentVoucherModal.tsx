@@ -132,7 +132,8 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                // date = firstJob.amisPaymentDate || date; 
            } else {
                docNo = generateUNC();
-               content = `Chi tiền cho ncc ${lineCode} lô ${jobListStr} BL ${bookingNo}`;
+               // Updated format: Chi tiền cho ncc lô [jobs] BL [booking]
+               content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo}`;
            }
            
            // UPDATE: Calculate Amount = Main Invoice (Net + VAT) + Additional Invoices (Net + VAT)
@@ -157,7 +158,8 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                content = firstJob.amisDepositOutDesc || '';
            } else {
                docNo = generateUNC();
-               content = `Chi tiền cược cho ncc ${lineCode} lô ${jobListStr}`;
+               // Updated format: Chi tiền cho ncc CƯỢC lô [jobs] BL [booking]
+               content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo}`;
            }
            // Calc deposit amount from booking details if available
            const depositAmt = booking?.costDetails.deposits.reduce((s,d) => s + d.amount, 0) || job?.chiCuoc || 0;
@@ -165,8 +167,32 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
         } else if (type === 'extension') {
            docNo = generateUNC();
-           content = `Chi tiền gia hạn cho ncc ${lineCode} BL ${bookingNo}`;
-           // Extension logic might vary, usually simple
+           
+           // Filter jobs that actually have extension fees > 0
+           let jobsWithExtension: string[] = [];
+           let totalExtAmount = 0;
+
+           if (booking) {
+               booking.jobs.forEach(j => {
+                   const extTotal = (j.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+                   if (extTotal > 0) {
+                       jobsWithExtension.push(j.jobCode);
+                       totalExtAmount += extTotal;
+                   }
+               });
+           } else if (job) {
+               // Single job case
+               const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
+               if (extTotal > 0) {
+                   jobsWithExtension.push(job.jobCode);
+                   totalExtAmount += extTotal;
+               }
+           }
+
+           const extJobStr = jobsWithExtension.length > 0 ? jobsWithExtension.join(', ') : jobListStr;
+           
+           content = `Chi tiền cho ncc GH lô ${extJobStr} BL ${bookingNo} (Kimberry) (GIA HẠN)`;
+           amount = totalExtAmount;
         }
 
         setFormData(prev => ({

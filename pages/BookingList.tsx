@@ -1,26 +1,38 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { JobData, BookingSummary, BookingCostDetails } from '../types';
+import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
 import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
+import { JobModal } from '../components/JobModal';
 
 interface BookingListProps {
   jobs: JobData[];
   onEditJob: (job: JobData) => void;
   initialBookingId?: string | null;
   onClearTargetBooking?: () => void;
+  customers: Customer[];
+  lines: ShippingLine[];
+  onAddCustomer: (c: Customer) => void;
+  onAddLine: (l: string) => void;
 }
 
-export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initialBookingId, onClearTargetBooking }) => {
+export const BookingList: React.FC<BookingListProps> = ({ 
+    jobs, onEditJob, initialBookingId, onClearTargetBooking, 
+    customers, lines, onAddCustomer, onAddLine 
+}) => {
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterMonth, setFilterMonth] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   
+  // Job Modal State
+  const [editingJob, setEditingJob] = useState<JobData | null>(null);
+  const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+
   // Payment Voucher State
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
@@ -143,9 +155,6 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
               }
-              // Extension can be handled similarly if needed, but usually linked via separate cost objects
-              // For simplicity, treating extension out as ad-hoc payment for now
-              
               onEditJob(updatedJob);
           });
           alert("Đã lưu thông tin phiếu chi thành công!");
@@ -155,6 +164,45 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
   const handleSavePurchase = (data: any) => {
       console.log("Saved Purchase Invoice Data:", data);
       alert("Đã lưu thông tin phiếu mua hàng (Dữ liệu tạm thời).");
+  };
+
+  // --- JOB MODAL HANDLERS ---
+  const handleViewJob = (jobId: string) => {
+      const job = jobs.find(j => j.id === jobId);
+      if (job) {
+          // Deep copy to avoid reference issues
+          setEditingJob(JSON.parse(JSON.stringify(job)));
+          setIsJobModalOpen(true);
+      }
+  };
+
+  const handleSaveJob = (updatedJob: JobData, newCustomer?: Customer) => {
+      if (newCustomer) onAddCustomer(newCustomer);
+      
+      // 1. Update Global State
+      onEditJob(updatedJob);
+      
+      // 2. Update Local Booking View if open to reflect changes immediately
+      if (selectedBooking) {
+          setSelectedBooking(prev => {
+              if (!prev) return null;
+              
+              const updatedJobs = prev.jobs.map(j => j.id === updatedJob.id ? updatedJob : j);
+              
+              // Recalculate totals for the modal view
+              return {
+                  ...prev,
+                  jobs: updatedJobs,
+                  totalSell: updatedJobs.reduce((s, j) => s + j.sell, 0),
+                  totalCost: updatedJobs.reduce((s, j) => s + j.cost, 0),
+                  totalProfit: updatedJobs.reduce((s, j) => s + j.profit, 0),
+                  totalCont20: updatedJobs.reduce((s, j) => s + j.cont20, 0),
+                  totalCont40: updatedJobs.reduce((s, j) => s + j.cont40, 0),
+              };
+          });
+      }
+      
+      setIsJobModalOpen(false);
   };
 
   const formatCurrency = (val: number) => 
@@ -279,7 +327,12 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
       </div>
 
       {selectedBooking && (
-        <BookingDetailModal booking={selectedBooking} onClose={() => setSelectedBooking(null)} onSave={handleSaveDetails} />
+        <BookingDetailModal 
+            booking={selectedBooking} 
+            onClose={() => setSelectedBooking(null)} 
+            onSave={handleSaveDetails} 
+            onViewJob={handleViewJob} 
+        />
       )}
 
       {/* Payment Voucher Modal */}
@@ -301,6 +354,21 @@ export const BookingList: React.FC<BookingListProps> = ({ jobs, onEditJob, initi
              booking={targetBookingForPurchase}
              onSave={handleSavePurchase}
           />
+      )}
+
+      {/* Job Modal for Editing/Viewing via BookingDetail */}
+      {isJobModalOpen && (
+        <JobModal
+            isOpen={isJobModalOpen}
+            onClose={() => setIsJobModalOpen(false)}
+            onSave={handleSaveJob}
+            initialData={editingJob}
+            customers={customers}
+            lines={lines}
+            onAddLine={onAddLine}
+            onViewBookingDetails={() => {}} // No need to re-open booking from here
+            existingJobs={jobs}
+        />
       )}
     </div>
   );

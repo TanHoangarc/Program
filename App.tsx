@@ -543,6 +543,10 @@ const App: React.FC = () => {
                     onEditJob={handleEditJob} 
                     initialBookingId={targetBookingId}
                     onClearTargetBooking={() => setTargetBookingId(null)}
+                    customers={customers}
+                    lines={lines}
+                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+                    onAddCustomer={(c) => setCustomers([...customers, c])}
                 />
             )}
             
