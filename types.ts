@@ -1,3 +1,4 @@
+
 // ============================================================
 // EXTENSION (PHỤ THU / DOANH THU PHÁT SINH)
 // ============================================================
@@ -51,6 +52,7 @@ export interface BookingInvoice {
   net: number;
   vat: number;
   total: number;
+  hasInvoice?: boolean; // Toggle: Check if official invoice exists
   // File attachments
   fileUrl?: string;
   fileName?: string;
@@ -67,6 +69,7 @@ export interface BookingExtensionCost {
   net: number;
   vat: number;
   total: number;
+  hasInvoice?: boolean;
   // File attachments
   fileUrl?: string;
   fileName?: string;

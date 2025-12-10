@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2 } from 'lucide-react';
@@ -108,22 +109,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   // Helper to generate Description Logic for Merged Jobs
   const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[]) => {
-      // Logic: 
-      // 1. Gather all invoices: [MainInvoice, ...ExtraJobInvoices] (ignore empty)
-      // 2. Gather all missing invoice jobs: [MainJobCode (if empty), ...ExtraJobCodes (if empty)]
-      // 3. Construct: "Thu tiền của KH theo hoá đơn [Inv1+Inv2] [+XXX BL Job1+Job2] (KIM)"
-
       const invoices: string[] = [];
       const missingJobCodes: string[] = [];
 
-      // Check Main Job
       if (mainInvoice && mainInvoice.trim()) {
           invoices.push(mainInvoice.trim());
       } else {
-          missingJobCodes.push(formData.jobCode); // Use current job code
+          missingJobCodes.push(formData.jobCode);
       }
 
-      // Check Extra Jobs
       extraJobs.forEach(j => {
           if (j.localChargeInvoice && j.localChargeInvoice.trim()) {
               invoices.push(j.localChargeInvoice.trim());
@@ -148,18 +142,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   // Recalculate Total Amount and Description
   const recalculateMerge = (currentMainInvoice: string, extraJobs: JobData[]) => {
-      // Recalc Description
       const newDesc = generateMergedDescription(currentMainInvoice, extraJobs);
       setAmisDesc(newDesc);
-
-      // Recalc Total Amount
-      // Main Amount + Sum(Extra Jobs Amounts)
-      // Note: We use the stored `localChargeTotal` for extra jobs. 
-      // For main job, we use the *current state* (formData.localChargeTotal might be stale if we just updated it, so rely on state flow)
-      // Actually, formData.localChargeTotal is controlled. We should calculate total based on current value.
-      // However, usually "Amount" field is editable. 
-      // Strategy: When adding a job, add its amount to the current total.
-      // When removing, subtract.
   };
 
   useEffect(() => {
@@ -167,19 +151,17 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       // 1. Reset Job Data
       const deepCopyJob = JSON.parse(JSON.stringify(job));
       
-      // Logic xóa thông tin khách hàng nếu là mode "Thu Khác"
       if (mode === 'other') {
           deepCopyJob.customerId = '';
           deepCopyJob.customerName = '';
-          
-          // Clear these fields so user can input manually
-          deepCopyJob.localChargeDate = '';
+          // Clear fields so user can input manually
+          deepCopyJob.localChargeDate = new Date().toISOString().split('T')[0];
           deepCopyJob.localChargeInvoice = '';
           deepCopyJob.localChargeTotal = 0;
       }
 
       setFormData(deepCopyJob);
-      setAddedJobs([]); // Reset merged jobs
+      setAddedJobs([]); 
 
       // Initialize Customer Input Value
       let initialCustId = '';
@@ -200,7 +182,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           if (deepCopyJob.amisLcDesc) {
              setAmisDesc(deepCopyJob.amisLcDesc);
           } else {
-             // Initial Description Logic
              const inv = deepCopyJob.localChargeInvoice;
              const desc = generateMergedDescription(inv, []);
              setAmisDesc(desc);
@@ -216,14 +197,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
       } 
       else if (mode === 'deposit_refund') {
-          // --- NEW MODE: HOÀN CƯỢC ---
           setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || `UNC${generateRandomStr()}`);
-          // Default description for refund
-          const custName = customers.find(c => c.id === deepCopyJob.maKhCuocId)?.name || 'KH';
           setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
       }
       else if (mode === 'extension') {
-          // ... (extension logic kept same)
           const exts = deepCopyJob.extensions || [];
           const lastExt = exts.length > 0 ? exts[exts.length - 1] : null;
 
@@ -261,9 +238,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       let currentCustomer = '';
       let currentInvoice = '';
 
-      if (mode === 'local' || mode === 'other') {
+      if (mode === 'local') {
           currentInvoice = formData.localChargeInvoice || '';
           tkCo = '13111';
+          currentDate = formData.localChargeDate || '';
+          currentAmount = formData.localChargeTotal || 0;
+          currentCustomer = formData.customerId || '';
+      } else if (mode === 'other') {
+          currentInvoice = formData.localChargeInvoice || '';
+          tkCo = '711'; // Thu Khác uses 711
           currentDate = formData.localChargeDate || '';
           currentAmount = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
@@ -274,11 +257,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A'; 
       } else if (mode === 'deposit_refund') {
-          // --- CONFIG FOR REFUND ---
-          tkNo = '1388'; // Debit Deposit Account
-          tkCo = '1121'; // Credit Cash/Bank
+          tkNo = '1388'; 
+          tkCo = '1121'; 
           currentDate = formData.ngayThuHoan || new Date().toISOString().split('T')[0];
-          currentAmount = formData.thuCuoc || 0; // Refund amount is typically the deposit amount
+          currentAmount = formData.thuCuoc || 0; 
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A';
       } else if (mode === 'extension') {
@@ -289,7 +271,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentCustomer = newExtension.customerId;
       }
 
-      // Try finding by ID first, then by Code
       const customerName = customers.find(c => c.id === currentCustomer || c.code === currentCustomer)?.name || '';
 
       return { tkNo, tkCo, currentDate, currentAmount, currentCustomer, customerName, currentInvoice };
@@ -313,11 +294,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const handleCustomerChange = (val: string) => {
-      // Update local input state
       setCustInputVal(val);
       setShowSuggestions(true);
-
-      // Also propagate to form data (temporarily store text until valid ID selected, or store text if system allows)
       updateCustomerData(val);
   };
 
@@ -341,7 +319,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
       if (mode === 'local') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
-          // Recalculate Description including any added jobs
           recalculateMerge(val, addedJobs);
       }
       else if (mode === 'other') {
@@ -374,13 +351,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setAddedJobs(newAddedJobs);
       setSearchJobCode('');
 
-      // 1. Update Description
       recalculateMerge(formData.localChargeInvoice, newAddedJobs);
 
-      // 2. Update Total Amount
-      // We assume user might have edited the amount, so we take current amount + new job amount
       const currentAmt = formData.localChargeTotal || 0;
-      const addedAmt = found.localChargeTotal || 0; // Default amount from job data
+      const addedAmt = found.localChargeTotal || 0; 
       setFormData(prev => ({ ...prev, localChargeTotal: currentAmt + addedAmt }));
   };
 
@@ -389,10 +363,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const newAddedJobs = addedJobs.filter(j => j.id !== id);
       setAddedJobs(newAddedJobs);
 
-      // 1. Update Description
       recalculateMerge(formData.localChargeInvoice, newAddedJobs);
 
-      // 2. Update Total Amount (Subtract)
       if (jobToRemove) {
           const currentAmt = formData.localChargeTotal || 0;
           setFormData(prev => ({ ...prev, localChargeTotal: Math.max(0, currentAmt - (jobToRemove.localChargeTotal || 0)) }));
@@ -438,18 +410,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       onSave({ ...formData, extensions: updatedExtensions });
     } 
     else if (mode === 'local' || mode === 'other') {
-        // If there are added jobs, we might need to handle them. 
-        // For now, the requirement implies we just create ONE Receipt (Phieu Thu) 
-        // that covers multiple jobs. The system usually tracks payment by Job ID.
-        // If we want to mark multiple jobs as paid, we would need 'onSave' to handle array.
-        // BUT current architecture updates ONE job at a time via `onEditJob`.
-        // To support "Merge Payment", typically we update the main job with the total,
-        // and update the added jobs to mark them as paid (or linked).
-        // WARNING: This component only calls onSave for ONE job. 
-        // We will save the Description and Total Amount to the MAIN job.
-        // The user manually manages the accounting or we would need a refactor to update multiple jobs.
-        // Based on "Phieu Thu Tien (Local Charge)", this updates the Amis fields of the *current* job.
-        
         onSave({ 
             ...formData, 
             amisLcDocNo: amisDocNo, 
@@ -464,19 +424,17 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         });
     }
     else if (mode === 'deposit_refund') {
-        // Save Refund info to Job
         onSave({ 
             ...formData, 
             amisDepositRefundDocNo: amisDocNo, 
             amisDepositRefundDesc: amisDesc,
-            amisDepositRefundDate: formData.ngayThuHoan // Ensure date is synced
+            amisDepositRefundDate: formData.ngayThuHoan
         });
     }
     
     onClose();
   };
 
-  // Filter Customers
   const filteredCustomers = customers.filter(c => 
       c.code.toLowerCase().includes(custInputVal.toLowerCase()) || 
       c.name.toLowerCase().includes(custInputVal.toLowerCase())

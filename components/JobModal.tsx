@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
 import { formatDateVN, parseDateVN } from '../utils';
@@ -339,6 +340,9 @@ export const JobModal: React.FC<JobModalProps> = ({
   const [isAddingLine, setIsAddingLine] = useState(false);
   const [newLine, setNewLine] = useState('');
   
+  // Job Code Copy State
+  const [isJobCodeCopied, setIsJobCodeCopied] = useState(false);
+  
   const jobInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -366,7 +370,7 @@ export const JobModal: React.FC<JobModalProps> = ({
     });
   }, [formData.cont20, formData.cont40, isViewMode]);
 
-  // --- NEW LOGIC: AUTO-SYNC SELL TO AMOUNT FOR LONG HOANG ---
+  // --- NEW LOGIC: AUTO-SYNC SELL TO AMOUNT FOR LONG HOANG & DEFAULT BANK ---
   useEffect(() => {
     if (isViewMode) return;
 
@@ -380,9 +384,23 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     if (isLongHoang) {
         setFormData(prev => {
-            // Only update if value is different to avoid unnecessary re-renders
+            const updates: Partial<JobData> = {};
+            let changed = false;
+
+            // Sync Sell to Local Charge Total
             if (prev.localChargeTotal !== prev.sell) {
-                return { ...prev, localChargeTotal: prev.sell };
+                updates.localChargeTotal = prev.sell;
+                changed = true;
+            }
+            
+            // Default Bank to MB Bank
+            if (prev.bank !== 'MB Bank') {
+                updates.bank = 'MB Bank';
+                changed = true;
+            }
+
+            if (changed) {
+                return { ...prev, ...updates };
             }
             return prev;
         });
@@ -528,6 +546,14 @@ export const JobModal: React.FC<JobModalProps> = ({
     }));
   };
 
+  const handleCopyJobCode = () => {
+    if (formData.jobCode) {
+      navigator.clipboard.writeText(formData.jobCode);
+      setIsJobCodeCopied(true);
+      setTimeout(() => setIsJobCodeCopied(false), 2000);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isViewMode && onSwitchToEdit) {
@@ -639,11 +665,25 @@ export const JobModal: React.FC<JobModalProps> = ({
 
                 <div className="space-y-1.5">
                   <Label>Job Code</Label>
-                  <Input 
-                    name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} 
-                    className={isViewMode ? "font-bold text-blue-700 bg-blue-50" : ""}
-                    placeholder="VD: JOB123"
-                  />
+                  <div className="relative">
+                    <Input 
+                      name="jobCode" 
+                      ref={jobInputRef} 
+                      value={formData.jobCode} 
+                      onChange={handleChange} 
+                      readOnly={isViewMode} 
+                      className={`${isViewMode ? "font-bold text-blue-700 bg-blue-50" : ""} pr-10`}
+                      placeholder="VD: JOB123"
+                    />
+                    <button
+                        type="button"
+                        onClick={handleCopyJobCode}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-all"
+                        title="Copy Job Code"
+                    >
+                        {isJobCodeCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
@@ -817,7 +857,9 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/60">
                   <h4 className="text-xs font-bold text-slate-500 mb-4 uppercase tracking-wider">LOCAL CHARGE</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} /></div>
+                    {!isLongHoang && (
+                        <div><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} /></div>
+                    )}
                     <MoneyInput label="Amount" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode} />
                     <div><Label>Ngân hàng</Label>
                       <Select name="bank" value={formData.bank} onChange={handleChange} disabled={isViewMode}>

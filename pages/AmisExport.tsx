@@ -1,12 +1,14 @@
+
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { JobData, Customer, ShippingLine } from '../types';
-import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2 } from 'lucide-react';
+import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
+import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx';
-import { formatDateVN, calculateBookingSummary } from '../utils';
+import { formatDateVN, calculateBookingSummary, parseDateVN } from '../utils';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
+import { QuickReceiveModal } from '../components/QuickReceiveModal'; // Import standard modal
 import axios from 'axios';
 
 interface AmisExportProps {
@@ -50,6 +52,23 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   
+  // Custom Receipts State (For "Thu Khác" external items)
+  const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
+      try {
+          const saved = localStorage.getItem('amis_custom_receipts');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+  
+  // Quick Receive Modal State (For Thu Khác)
+  const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
+  const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
+  
+  // Copy Feedback State
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const mockLines: ShippingLine[] = [];
@@ -59,6 +78,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   useEffect(() => {
     localStorage.setItem(`amis_locked_${mode}_v1`, JSON.stringify(Array.from(lockedIds)));
   }, [lockedIds, mode]);
+
+  useEffect(() => {
+      localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts));
+  }, [customReceipts]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -135,6 +158,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
   const triggerFileUpload = () => fileInputRef.current?.click();
 
+  const handleCopy = (text: string, id: string) => {
+      navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1000);
+  };
+
   const exportData = useMemo(() => {
     let filteredJobs = jobs;
     if (filterMonth) {
@@ -151,7 +180,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
          const custCode = getCustomerCode(j.maKhCuocId);
          
          rows.push({
-             jobId: j.id, type: 'deposit_thu',
+             jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
              date: j.ngayThuCuoc, docNo, objCode: custCode, objName: getCustomerName(j.maKhCuocId),
              desc, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
              col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: custCode, col5: getCustomerName(j.maKhCuocId),
@@ -166,7 +195,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
           const custCode = getCustomerCode(j.customerId);
 
            rows.push({
-               jobId: j.id, type: 'lc_thu',
+               jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
                date: j.localChargeDate, docNo, objCode: custCode, objName: getCustomerName(j.customerId),
                desc, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
                col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: custCode, col5: getCustomerName(j.customerId),
@@ -184,7 +213,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                   const custCode = getCustomerCode(custId);
 
                   rows.push({
-                      jobId: j.id, type: 'ext_thu', extensionId: ext.id,
+                      jobId: j.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                       date: ext.invoiceDate, docNo, objCode: custCode, objName: getCustomerName(custId),
                       desc, amount: ext.total, tkNo: '1121', tkCo: '13111',
                       col1: ext.invoiceDate, col2: ext.invoiceDate, col3: docNo, col4: custCode, col5: getCustomerName(custId),
@@ -193,6 +222,23 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               }
           });
       });
+
+      // 4. Custom Receipts (Thu Khác - Ngoài Job)
+      // Filter by Month if needed
+      customReceipts.forEach(r => {
+          const d = new Date(r.date);
+          const m = (d.getMonth() + 1).toString();
+          
+          if (!filterMonth || m === filterMonth) {
+              rows.push({
+                  ...r,
+                  type: 'external', rowId: `custom-${r.id}`,
+                  col1: r.date, col2: r.date, col3: r.docNo, col4: r.objCode, col5: r.objName,
+                  col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: r.desc, col12: 'VND', col14: r.desc, col15: r.tkNo, col16: r.tkCo, col17: r.amount, col19: r.objCode,
+              });
+          }
+      });
+
       return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     } 
     else if (mode === 'chi') {
@@ -219,7 +265,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  }
 
                  rows.push({
-                     jobId: j.id, type: 'payment_chi',
+                     jobId: j.id, type: 'payment_chi', rowId: `pay-${j.id}`,
                      date: j.amisPaymentDate || new Date().toISOString().split('T')[0],
                      docNo: j.amisPaymentDocNo,
                      objCode: j.line, 
@@ -249,7 +295,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  }
 
                  rows.push({
-                     jobId: j.id, type: 'deposit_chi',
+                     jobId: j.id, type: 'deposit_chi', rowId: `depchi-${j.id}`,
                      date: j.amisDepositOutDate || new Date().toISOString().split('T')[0],
                      docNo: j.amisDepositOutDocNo,
                      objCode: j.line, 
@@ -273,7 +319,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  const custName = getCustomerName(j.maKhCuocId || j.customerId);
 
                  rows.push({
-                     jobId: j.id, type: 'deposit_refund',
+                     jobId: j.id, type: 'deposit_refund', rowId: `depref-${j.id}`,
                      date: j.amisDepositRefundDate || j.ngayThuHoan || new Date().toISOString().split('T')[0],
                      docNo: j.amisDepositRefundDocNo,
                      objCode: custCode, 
@@ -304,7 +350,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  }
 
                  rows.push({
-                     jobId: j.id, type: 'extension_chi',
+                     jobId: j.id, type: 'extension_chi', rowId: `extchi-${j.id}`,
                      date: j.amisExtensionPaymentDate || new Date().toISOString().split('T')[0],
                      docNo: j.amisExtensionPaymentDocNo,
                      objCode: j.line, 
@@ -332,7 +378,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
             const defaultProjectCode = `K${year}${month}${j.jobCode}`;
             const desc = `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''} (không xuất hóa đơn)`;
             rows.push({
-                originalJob: j, 
+                originalJob: j, rowId: `ban-${j.id}`,
                 date,
                 docDate: date,
                 docNo,
@@ -376,7 +422,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                 const desc = `Mua hàng của ${supplierName} BILL ${summary.bookingId}`;
                 
                 rows.push({
-                    originalBooking: summary,
+                    originalBooking: summary, rowId: `mua-${summary.bookingId}`,
                     date, 
                     docNo,
                     invoiceNo: lcDetails.invoice || '',
@@ -405,7 +451,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     }
 
     return [];
-  }, [jobs, mode, filterMonth, customers]); 
+  }, [jobs, mode, filterMonth, customers, customReceipts]); 
 
   // ... Handlers ...
   const handleSelectAll = () => {
@@ -444,6 +490,53 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
           setSelectedJobForModal(row.originalJob);
       } else if (mode === 'mua') {
           setSelectedBookingForModal(row.originalBooking);
+      }
+  };
+
+  const handleDeleteRow = (row: any) => {
+      if (!window.confirm("Bạn có chắc chắn muốn xóa phiếu này?")) return;
+
+      if (row.type === 'external') {
+          setCustomReceipts(prev => prev.filter(r => r.id !== row.id));
+      } else {
+          // Standard Job deletion logic: Clear AMIS fields
+          if (!onUpdateJob) return;
+          
+          const job = jobs.find(j => j.id === row.jobId);
+          if (!job) return;
+
+          let updatedJob = { ...job };
+
+          if (row.type === 'deposit_thu') {
+              updatedJob.amisDepositDocNo = '';
+              updatedJob.amisDepositDesc = '';
+          } else if (row.type === 'lc_thu') {
+              updatedJob.amisLcDocNo = '';
+              updatedJob.amisLcDesc = '';
+          } else if (row.type === 'ext_thu') {
+              if (updatedJob.extensions) {
+                  updatedJob.extensions = updatedJob.extensions.map(ext => {
+                      if (ext.id === row.extensionId) {
+                          return { ...ext, amisDocNo: '', amisDesc: '' };
+                      }
+                      return ext;
+                  });
+              }
+          } else if (row.type === 'payment_chi') {
+              updatedJob.amisPaymentDocNo = '';
+              updatedJob.amisPaymentDesc = '';
+          } else if (row.type === 'deposit_chi') {
+              updatedJob.amisDepositOutDocNo = '';
+              updatedJob.amisDepositOutDesc = '';
+          } else if (row.type === 'extension_chi') {
+              updatedJob.amisExtensionPaymentDocNo = '';
+              updatedJob.amisExtensionPaymentDesc = '';
+          } else if (row.type === 'deposit_refund') {
+              updatedJob.amisDepositRefundDocNo = '';
+              updatedJob.amisDepositRefundDesc = '';
+          }
+
+          onUpdateJob(updatedJob);
       }
   };
 
@@ -523,6 +616,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
   // --- REFACTORED SAVE HANDLER ---
   const handleSaveEdit = (newData: any) => {
+     // If it's a custom receipt
+     if (newData.type === 'external') {
+         setCustomReceipts(prev => prev.map(r => r.id === newData.id ? newData : r));
+         setSelectedItem(null);
+         return;
+     }
+
      if (!onUpdateJob) return;
 
      const context = selectedItem; 
@@ -596,7 +696,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
          updatedJob.amisDepositRefundDocNo = newData.docNo;
          updatedJob.amisDepositRefundDesc = newData.paymentContent || newData.desc;
          updatedJob.amisDepositRefundDate = newData.date;
-         updatedJob.thuCuoc = newData.amount; // Update Refund Amount (Mapped to thuCuoc usually or create new field if needed)
+         updatedJob.thuCuoc = newData.amount; 
      }
 
      onUpdateJob(updatedJob);
@@ -607,6 +707,65 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   };
   
   const isInteractiveMode = mode === 'thu' || mode === 'chi' || mode === 'ban' || mode === 'mua';
+
+  // --- THU KHÁC (STANDALONE RECEIPT) ---
+  const handleOpenThuKhac = () => {
+      // Create a dummy job container for the QuickReceiveModal
+      const dummyJob: JobData = {
+          ...INITIAL_JOB,
+          id: `EXT-${Date.now()}`,
+          jobCode: 'THU-KHAC', // Display name in modal
+          // Reset key fields
+          customerId: '',
+          customerName: '',
+          localChargeTotal: 0,
+          localChargeDate: new Date().toISOString().split('T')[0],
+          amisLcDocNo: '',
+          amisLcDesc: 'Thu tiền khác'
+      };
+      setQuickReceiveJob(dummyJob);
+      setIsQuickReceiveOpen(true);
+  };
+
+  const handleSaveQuickReceive = (updatedJob: JobData) => {
+      // Extract data from the dummy job returned by the modal
+      const cust = customers.find(c => c.id === updatedJob.customerId);
+      const objCode = cust ? cust.code : (updatedJob.customerId || '');
+      const objName = cust ? cust.name : (updatedJob.customerName || '');
+      
+      const newReceipt = {
+          id: updatedJob.id,
+          type: 'external',
+          // Common fields
+          date: updatedJob.localChargeDate || new Date().toISOString().split('T')[0],
+          docNo: updatedJob.amisLcDocNo || '',
+          objCode,
+          objName,
+          desc: updatedJob.amisLcDesc || '',
+          amount: updatedJob.localChargeTotal || 0,
+          tkNo: '1121', // Default Cash/Bank
+          tkCo: '711',  // Thu Khác (Other Income)
+          
+          // AMIS Columns mapping
+          col1: updatedJob.localChargeDate,
+          col2: updatedJob.localChargeDate,
+          col3: updatedJob.amisLcDocNo,
+          col4: objCode,
+          col5: objName,
+          col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác',
+          col10: updatedJob.amisLcDesc,
+          col12: 'VND',
+          col14: updatedJob.amisLcDesc,
+          col15: '1121',
+          col16: '711', // Thu Khác
+          col17: updatedJob.localChargeTotal,
+          col19: objCode
+      };
+      
+      setCustomReceipts(prev => [...prev, newReceipt]);
+      setIsQuickReceiveOpen(false);
+      setQuickReceiveJob(null);
+  };
 
   return (
     <div className="p-8 max-w-full">
@@ -660,6 +819,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                       <RefreshCw className="w-4 h-4" /> <span>Mở khóa tất cả</span>
                   </button>
               )}
+
+              {/* THU KHÁC BUTTON */}
+              {mode === 'thu' && (
+                  <button 
+                    onClick={handleOpenThuKhac} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-md transition-all transform active:scale-95"
+                  >
+                      <Wallet className="w-5 h-5" /> <span>Thu Khác</span>
+                  </button>
+              )}
+
               <button onClick={handleExport} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95">
                   <FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span>
               </button>
@@ -683,7 +853,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                 <th className="px-6 py-3">Mã Đối Tượng</th>
                 <th className="px-6 py-3">Diễn giải</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
-                {isInteractiveMode && <th className="px-6 py-3 text-center w-20">Sửa</th>}
+                {isInteractiveMode && <th className="px-6 py-3 text-center w-28">Chức năng</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/20">
@@ -691,9 +861,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  exportData.map((row: any, idx) => {
                    const isLocked = isInteractiveMode && lockedIds.has(row.docNo);
                    const isSelected = selectedIds.has(row.docNo);
+                   const rowKey = row.rowId || `${row.type}-${row.docNo}-${idx}`;
                    
                    return (
-                   <tr key={idx} className={`${isLocked ? 'bg-slate-100/50 text-gray-500' : 'hover:bg-white/30'} ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                   <tr key={rowKey} className={`${isLocked ? 'bg-slate-100/50 text-gray-500' : 'hover:bg-white/30'} ${isSelected ? 'bg-blue-50/50' : ''}`}>
                       {isInteractiveMode && (
                           <td className="px-6 py-3 text-center">
                               <input type="checkbox" checked={isSelected} onChange={() => handleSelectRow(row.docNo)} disabled={isLocked} className="w-4 h-4 rounded border-gray-300" />
@@ -710,15 +881,54 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                       <td className="px-6 py-3">{formatDateVN(row.date)}</td>
                       <td className={`px-6 py-3 font-medium ${isLocked ? 'text-gray-600' : 'text-blue-600'}`}>{row.docNo}</td>
                       <td className="px-6 py-3">{row.objCode}</td>
-                      <td className="px-6 py-3 truncate max-w-xs">{row.desc}</td>
-                      <td className="px-6 py-3 text-right font-medium">{formatCurrency(row.amount)}</td>
+                      
+                      {/* Description with Copy */}
+                      <td className="px-6 py-3 max-w-xs group relative">
+                          <div className="flex items-center justify-between">
+                              <span className="truncate mr-2" title={row.desc}>{row.desc}</span>
+                              <button 
+                                  onClick={() => handleCopy(row.desc, `desc-${rowKey}`)}
+                                  className="text-slate-300 hover:text-blue-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Copy diễn giải"
+                              >
+                                  {copiedId === `desc-${rowKey}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                          </div>
+                      </td>
+
+                      {/* Amount with Copy */}
+                      <td className="px-6 py-3 text-right font-medium group relative">
+                          <div className="flex items-center justify-end">
+                              <span className="mr-2">{formatCurrency(row.amount)}</span>
+                              <button 
+                                  onClick={() => handleCopy(row.amount.toString(), `amt-${rowKey}`)}
+                                  className="text-slate-300 hover:text-blue-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Copy số tiền"
+                              >
+                                  {copiedId === `amt-${rowKey}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                          </div>
+                      </td>
                       
                       {isInteractiveMode && (
                           <td className="px-6 py-3 text-center">
                               {!isLocked && (
-                                  <button onClick={() => handleEditClick(row)} className="text-gray-400 hover:text-blue-500 hover:bg-blue-100 p-1 rounded">
-                                      <Edit3 className="w-4 h-4" />
-                                  </button>
+                                  <div className="flex justify-center space-x-2">
+                                      <button 
+                                        onClick={() => handleEditClick(row)} 
+                                        className="text-gray-400 hover:text-blue-500 hover:bg-blue-100 p-1.5 rounded transition-colors"
+                                        title="Sửa"
+                                      >
+                                          <Edit3 className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDeleteRow(row)} 
+                                        className="text-gray-400 hover:text-red-500 hover:bg-red-100 p-1.5 rounded transition-colors"
+                                        title="Xóa phiếu"
+                                      >
+                                          <Trash2 className="w-4 h-4" />
+                                      </button>
+                                  </div>
                               )}
                           </td>
                       )}
@@ -733,7 +943,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
       </div>
 
       {/* Edit Modals */}
-      {selectedItem && mode === 'thu' && (
+      {selectedItem && (mode === 'thu' || (selectedItem.type === 'external')) && (
          <ReceiptDetailModal data={selectedItem} onClose={() => setSelectedItem(null)} onSave={handleSaveEdit} />
       )}
 
@@ -766,6 +976,19 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
              onSave={handleSaveEdit}
           />
       )}
+
+      {/* QUICK RECEIVE MODAL FOR THU KHAC */}
+      {isQuickReceiveOpen && quickReceiveJob && (
+          <QuickReceiveModal 
+              isOpen={isQuickReceiveOpen}
+              onClose={() => setIsQuickReceiveOpen(false)}
+              onSave={handleSaveQuickReceive}
+              job={quickReceiveJob}
+              mode="other"
+              customers={customers}
+          />
+      )}
+
     </div>
   );
 };
@@ -791,61 +1014,39 @@ const ReceiptDetailModal = ({ data, onClose, onSave }: { data: any, onClose: () 
         e.preventDefault();
         onSave({
              ...data,
-             col1: formData.date,
-             col2: formData.date,
-             col3: formData.docNo,
-             col4: formData.objCode,
-             col5: formData.objName,
-             col10: formData.desc,
-             col14: formData.desc,
-             col15: formData.tkNo,
-             col16: formData.tkCo,
-             col17: formData.amount,
-             col19: formData.objCode,
-             date: formData.date,
-             docNo: formData.docNo,
-             objCode: formData.objCode,
-             desc: formData.desc,
-             amount: Number(formData.amount)
+             col1: formData.date, col2: formData.date, col3: formData.docNo, col4: formData.objCode, col5: formData.objName, col10: formData.desc, col14: formData.desc, col15: formData.tkNo, col16: formData.tkCo, col17: formData.amount, col19: formData.objCode,
+             date: formData.date, docNo: formData.docNo, objCode: formData.objCode, objName: formData.objName, desc: formData.desc, amount: Number(formData.amount), tkNo: formData.tkNo, tkCo: formData.tkCo
         });
     };
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-           <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 border border-white/50 flex flex-col max-h-[90vh]">
-              <div className="px-8 py-5 border-b border-slate-200/50 flex justify-between items-center bg-white/40">
+           <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 border border-slate-200 flex flex-col max-h-[90vh]">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-blue-50 rounded-t-2xl">
                  <div className="flex items-center space-x-3">
-                    <div className="p-2.5 bg-blue-100/80 text-blue-600 rounded-xl shadow-sm border border-blue-200/50"><FileText className="w-5 h-5" /></div>
-                    <div><h2 className="text-xl font-bold text-slate-800">Phiếu Thu Tiền</h2></div>
+                    <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shadow-sm border border-blue-200"><FileText className="w-5 h-5" /></div>
+                    <div><h2 className="text-lg font-bold text-slate-800">Chi tiết Phiếu Thu</h2></div>
                  </div>
-                 <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white/50 p-2.5 rounded-full transition-all"><X className="w-6 h-6" /></button>
+                 <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all"><X className="w-5 h-5" /></button>
               </div>
-              <div className="p-8 custom-scrollbar space-y-6">
-                 <div className="glass-panel p-6 rounded-2xl">
-                    <div className="grid grid-cols-2 gap-6">
-                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Ngày CT</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Số CT</label><input type="text" name="docNo" value={formData.docNo} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm font-bold text-blue-600 bg-blue-50/30" /></div>
-                    </div>
+              <div className="p-6 custom-scrollbar space-y-5 overflow-y-auto">
+                 <div className="grid grid-cols-2 gap-5">
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ngày CT</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium" /></div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số CT</label><input type="text" name="docNo" value={formData.docNo} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-blue-700" /></div>
                  </div>
-                 
-                 <div className="glass-panel p-6 rounded-2xl">
-                    <div className="grid grid-cols-2 gap-6 mb-4">
-                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Mã Đối Tượng</label><input type="text" name="objCode" value={formData.objCode} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Số Tiền</label><input type="number" name="amount" value={formData.amount} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm font-bold" /></div>
-                    </div>
-                    <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Diễn giải</label><textarea name="desc" value={formData.desc} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm" rows={2} /></div>
+                 <div className="grid grid-cols-2 gap-5">
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mã Đối Tượng</label><input type="text" name="objCode" value={formData.objCode} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền</label><input type="number" name="amount" value={formData.amount} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-right" /></div>
                  </div>
-
-                 <div className="glass-panel p-6 rounded-2xl">
-                    <div className="grid grid-cols-2 gap-6">
-                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">TK Nợ</label><input type="text" name="tkNo" value={formData.tkNo} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm text-center" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">TK Có</label><input type="text" name="tkCo" value={formData.tkCo} onChange={handleChange} className="glass-input w-full px-4 py-2.5 rounded-xl text-sm text-center" /></div>
-                    </div>
+                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Diễn giải</label><textarea name="desc" value={formData.desc} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" rows={2} /></div>
+                 <div className="grid grid-cols-2 gap-5">
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">TK Nợ</label><input type="text" name="tkNo" value={formData.tkNo} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center" /></div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">TK Có</label><input type="text" name="tkCo" value={formData.tkCo} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center" /></div>
                  </div>
               </div>
-              <div className="px-8 py-5 bg-white/60 backdrop-blur-md border-t border-slate-100 rounded-b-3xl flex justify-end space-x-3">
-                 <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white/50 border border-slate-200 hover:bg-white transition-colors shadow-sm">Hủy bỏ</button>
-                 <button onClick={handleSubmit} className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg hover:shadow-blue-500/30 transition-all flex items-center transform active:scale-95 duration-100">Lưu Thay Đổi</button>
+              <div className="px-6 py-4 bg-white border-t border-slate-200 rounded-b-2xl flex justify-end space-x-3">
+                 <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50">Hủy bỏ</button>
+                 <button onClick={handleSubmit} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md">Lưu Thay Đổi</button>
               </div>
            </div>
         </div>

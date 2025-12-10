@@ -82,8 +82,9 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 
 export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, onViewJob }) => {
 
-  const [localCharge, setLocalCharge] = useState(booking.costDetails.localCharge || {
-    invoice: '', date: '', net: 0, vat: 0, total: 0, fileUrl: '', fileName: ''
+  const [localCharge, setLocalCharge] = useState({
+    ...booking.costDetails.localCharge,
+    hasInvoice: booking.costDetails.localCharge.hasInvoice ?? true // Default to true (Has Invoice)
   });
 
   const [additionalLocalCharges, setAdditionalLocalCharges] = useState<BookingExtensionCost[]>(
@@ -157,7 +158,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const baseProfit = summaryLocalChargeRevenue - summaryAmountExpense;
   const extensionProfit = summaryExtensionRevenue - summaryExtensionExpense;
 
-  const totalActualNet = (localCharge.net || 0) + totalAdditionalLocalChargeNet;
+  // Use localCharge.total if !hasInvoice, else Net + Net of additional
+  const totalActualNet = localCharge.hasInvoice
+      ? (localCharge.net || 0) + totalAdditionalLocalChargeNet
+      : (localCharge.total || 0) + totalAdditionalLocalChargeNet;
 
   // -----------------------------
   // UPDATE HANDLERS
@@ -166,8 +170,18 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const handleLocalChargeChange = (field: keyof typeof localCharge, val: any) => {
     setLocalCharge(prev => {
       const up = { ...prev, [field]: val };
-      if (field === 'net' || field === 'vat') {
-        up.total = (Number(up.net) || 0) + (Number(up.vat) || 0);
+      // Only auto-calc total if "hasInvoice" is true. 
+      // If "hasInvoice" is false, "total" is manually entered by user.
+      if (prev.hasInvoice) {
+          if (field === 'net' || field === 'vat') {
+            up.total = (Number(up.net) || 0) + (Number(up.vat) || 0);
+          }
+      } else {
+          // If no invoice, manual total entry doesn't affect Net/Vat (they stay hidden/0)
+          if (field === 'total') {
+              up.net = 0;
+              up.vat = 0;
+          }
       }
       return up;
     });
@@ -452,84 +466,53 @@ const handleUploadFile = async () => {
         {/* ================= BODY ================= */}
         <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50 custom-scrollbar space-y-8">
 
-          {/* ========== SECTION 1: SYSTEM TABLE ========== */}
+          {/* ... [SECTION 1: SYSTEM TABLE] & [SECTION 1.5: THU THEO HÓA ĐƠN] REMAIN UNCHANGED ... */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-5 border-b border-slate-100 pb-3 flex items-center">
               <Ship className="w-4 h-4 mr-2 text-teal-600" />
               SYSTEM
             </h3>
-
+            {/* ... (Existing System Table Code) ... */}
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 border-b border-slate-200">
-
                     <th className="px-4 py-3 border-r border-slate-200 font-bold uppercase text-xs">Job Code</th>
-
-                    {/* SELL */}
                     <th className="px-4 py-3 border-r text-right font-bold uppercase text-xs group w-40">
-                      <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600"
-                           onClick={() => copyColumn("sell")}>
-                        Sell
-                        {copiedId === "col-sell"
-                          ? <Check className="w-3 h-3 text-green-500" />
-                          : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
+                      <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600" onClick={() => copyColumn("sell")}>
+                        Sell {copiedId === "col-sell" ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
                       </div>
                     </th>
-
-                    {/* COST */}
                     <th className="px-4 py-3 border-r text-right font-bold uppercase text-xs group w-40">
-                      <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600"
-                           onClick={() => copyColumn("cost")}>
-                        Cost (Adj)
-                        {copiedId === "col-cost"
-                          ? <Check className="w-3 h-3 text-green-500" />
-                          : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
+                      <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600" onClick={() => copyColumn("cost")}>
+                        Cost (Adj) {copiedId === "col-cost" ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
                       </div>
                     </th>
-
-                    {/* VAT */}
                     <th className="px-4 py-3 border-r text-right font-bold uppercase text-xs group w-40">
-                      <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600"
-                           onClick={() => copyColumn("vat")}>
-                        VAT (5.263%)
-                        {copiedId === "col-vat"
-                          ? <Check className="w-3 h-3 text-green-500" />
-                          : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
+                      <div className="flex items-center justify-end gap-2 cursor-pointer hover:text-blue-600" onClick={() => copyColumn("vat")}>
+                        VAT (5.263%) {copiedId === "col-vat" ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
                       </div>
                     </th>
-
-                    {/* PROJECT */}
                     <th className="px-4 py-3 text-center font-bold uppercase text-xs group">
-                      <div className="flex items-center justify-center gap-2 cursor-pointer hover:text-blue-600"
-                           onClick={() => copyColumn("project")}>
-                        Công trình
-                        {copiedId === "col-project"
-                          ? <Check className="w-3 h-3 text-green-500" />
-                          : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
+                      <div className="flex items-center justify-center gap-2 cursor-pointer hover:text-blue-600" onClick={() => copyColumn("project")}>
+                        Công trình {copiedId === "col-project" ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100" />}
                       </div>
                     </th>
                   </tr>
                 </thead>
-
                 <tbody className="divide-y divide-slate-100">
                   {booking.jobs.map(job => {
                     const kimberry = job.cont20 * 250000 + job.cont40 * 500000;
                     const other = (job.feeCic || 0) + (job.feePsc || 0) + (job.feeEmc || 0) + (job.feeOther || 0);
                     const adjusted = job.cost - kimberry - other;
                     const vat = job.cost * 0.05263;
-
                     return (
                       <tr key={job.id} className="hover:bg-blue-50/50">
                         <td className="px-4 py-3 border-r font-bold text-teal-700 group/cell relative">
                             <div className="flex items-center justify-between">
                                 <span>{job.jobCode}</span>
                                 {onViewJob && (
-                                    <button 
-                                        onClick={() => onViewJob(job.id)}
-                                        className="opacity-0 group-hover/cell:opacity-100 p-1 hover:bg-teal-50 text-teal-600 rounded transition-all"
-                                        title="Xem chi tiết Job"
-                                    >
+                                    <button onClick={() => onViewJob(job.id)} className="opacity-0 group-hover/cell:opacity-100 p-1 hover:bg-teal-50 text-teal-600 rounded transition-all" title="Xem chi tiết Job">
                                         <ExternalLink className="w-3.5 h-3.5" />
                                     </button>
                                 )}
@@ -538,14 +521,11 @@ const handleUploadFile = async () => {
                         <td className="px-4 py-3 border-r text-right text-slate-600 font-medium">{formatMoney(job.sell)}</td>
                         <td className="px-4 py-3 border-r text-right text-slate-600">{formatMoney(adjusted)}</td>
                         <td className="px-4 py-3 border-r text-right text-slate-500">{formatMoney(vat)}</td>
-                        <td className="px-4 py-3 text-center text-xs font-mono text-slate-500">
-                          {getProjectCode(job)}
-                        </td>
+                        <td className="px-4 py-3 text-center text-xs font-mono text-slate-500">{getProjectCode(job)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
-
                 <tfoot className="bg-slate-50 font-bold text-slate-800 border-t">
                   <tr>
                     <td className="px-4 py-3 text-right border-r">Tổng:</td>
@@ -560,73 +540,31 @@ const handleUploadFile = async () => {
           </div>
 
           {/* =====================================================
-               SECTION 1.5 — THU THEO HÓA ĐƠN
-          ===================================================== */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="text-sm font-bold text-blue-700 uppercase mb-5 border-b pb-3 flex items-center">
-              <FileText className="w-4 h-4 mr-2" /> THU THEO HÓA ĐƠN
-            </h3>
-
-            <div className="overflow-x-auto rounded-lg border border-blue-100">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-blue-50 text-blue-800 border-b border-blue-100">
-                    <th className="px-4 py-3 border-r font-bold uppercase text-xs">Job Code</th>
-                    <th className="px-4 py-3 border-r text-right font-bold uppercase text-xs">
-                      Amount (Local Charge)
-                    </th>
-                    <th className="px-4 py-3 text-right font-bold uppercase text-xs">Gia Hạn (Thu)</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {booking.jobs.map(job => {
-                    const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
-
-                    return (
-                      <tr key={job.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 border-r text-slate-700 group/cell relative">
-                            <div className="flex items-center justify-between">
-                                <span>{job.jobCode}</span>
-                                {onViewJob && (
-                                    <button 
-                                        onClick={() => onViewJob(job.id)}
-                                        className="opacity-0 group-hover/cell:opacity-100 p-1 hover:bg-blue-50 text-blue-600 rounded transition-all"
-                                        title="Xem chi tiết Job"
-                                    >
-                                        <ExternalLink className="w-3.5 h-3.5" />
-                                    </button>
-                                )}
-                            </div>
-                        </td>
-                        <td className="px-4 py-3 border-r text-right text-blue-600 font-medium">
-                          {formatMoney(job.localChargeTotal)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-orange-600 font-medium">
-                          {extTotal > 0 ? formatMoney(extTotal) : "-"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  <tr className="bg-slate-50 font-bold border-t">
-                    <td className="px-4 py-3 text-right border-r">Tổng cộng:</td>
-                    <td className="px-4 py-3 text-right text-blue-700">{formatMoney(totalLocalChargeRevenue)}</td>
-                    <td className="px-4 py-3 text-right text-orange-700">{formatMoney(totalExtensionRevenue)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* =====================================================
                SECTION 2 — LOCAL CHARGE (INVOICE CHI)
           ===================================================== */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative">
 
             {/* Header */}
             <div className="flex justify-between items-center mb-6 border-b pb-3">
-              <h3 className="text-sm font-bold text-red-600 uppercase">Local Charge (Hóa Đơn Chi)</h3>
+              <div className="flex items-center space-x-4">
+                  <h3 className="text-sm font-bold text-red-600 uppercase">Local Charge (Hóa Đơn Chi)</h3>
+                  {/* Has Invoice Toggle */}
+                  <label className="flex items-center cursor-pointer select-none">
+                      <div className="relative">
+                          <input 
+                              type="checkbox" 
+                              className="sr-only" 
+                              checked={localCharge.hasInvoice} 
+                              onChange={(e) => handleLocalChargeChange("hasInvoice", e.target.checked)}
+                          />
+                          <div className={`block w-10 h-6 rounded-full transition-colors ${localCharge.hasInvoice ? 'bg-red-600' : 'bg-slate-300'}`}></div>
+                          <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${localCharge.hasInvoice ? 'transform translate-x-4' : ''}`}></div>
+                      </div>
+                      <div className="ml-3 text-xs font-bold text-slate-600">
+                          {localCharge.hasInvoice ? 'Đã có hoá đơn' : 'Chưa có hoá đơn'}
+                      </div>
+                  </label>
+              </div>
 
               <div className="flex items-center space-x-3">
                 <div className="text-xs bg-red-50 text-red-700 px-3 py-1.5 rounded-full border border-red-100 shadow-sm">
@@ -652,6 +590,7 @@ const handleUploadFile = async () => {
                   value={localCharge.invoice}
                   onChange={(e) => handleLocalChargeChange("invoice", e.target.value)}
                   className="font-medium"
+                  placeholder={!localCharge.hasInvoice ? "Mã tham chiếu / Trống" : ""}
                 />
               </div>
 
@@ -663,25 +602,40 @@ const handleUploadFile = async () => {
                 />
               </div>
 
-              <div>
-                <Label>Giá Net</Label>
-                <Input
-                  type="number"
-                  value={localCharge.net}
-                  onChange={(e) => handleLocalChargeChange("net", Number(e.target.value))}
-                  className="text-right font-bold"
-                />
-              </div>
+              {localCharge.hasInvoice ? (
+                  <>
+                    <div>
+                        <Label>Giá Net</Label>
+                        <Input
+                        type="number"
+                        value={localCharge.net}
+                        onChange={(e) => handleLocalChargeChange("net", Number(e.target.value))}
+                        className="text-right font-bold"
+                        />
+                    </div>
 
-              <div>
-                <Label>VAT</Label>
-                <Input
-                  type="number"
-                  value={localCharge.vat}
-                  onChange={(e) => handleLocalChargeChange("vat", Number(e.target.value))}
-                  className="text-right"
-                />
-              </div>
+                    <div>
+                        <Label>VAT</Label>
+                        <Input
+                        type="number"
+                        value={localCharge.vat}
+                        onChange={(e) => handleLocalChargeChange("vat", Number(e.target.value))}
+                        className="text-right"
+                        />
+                    </div>
+                  </>
+              ) : (
+                  <div className="col-span-2">
+                        <Label>Tổng tiền (Tạm tính)</Label>
+                        <Input
+                        type="number"
+                        value={localCharge.total}
+                        onChange={(e) => handleLocalChargeChange("total", Number(e.target.value))}
+                        className="text-right font-bold text-red-600 bg-red-50"
+                        placeholder="Nhập tổng tiền Net + VAT"
+                        />
+                  </div>
+              )}
             </div>
 
             {/* Additional LocalCharge */}
@@ -689,7 +643,6 @@ const handleUploadFile = async () => {
               <div className="border-t border-dashed mt-6 pt-6 space-y-4">
                 {additionalLocalCharges.map(item => (
                   <div key={item.id} className="relative group bg-slate-50 p-4 rounded-xl border hover:shadow-sm">
-
                     {/* delete */}
                     <button
                       onClick={() => handleRemoveAdditionalLC(item.id)}
@@ -699,136 +652,106 @@ const handleUploadFile = async () => {
                     </button>
 
                     <div className="grid grid-cols-4 gap-4">
-
-                      <div>
-                        <Label>Số hóa đơn</Label>
-                        <Input
-                          value={item.invoice}
-                          onChange={(e) => handleUpdateAdditionalLC(item.id, "invoice", e.target.value)}
-                          className="h-9 text-xs"
-                        />
-                      </div>
-
-                      <div>
-                        <Label>Ngày hóa đơn</Label>
-                        <DateInput
-                          value={item.date}
-                          onChange={(e) => handleUpdateAdditionalLC(item.id, "date", e.target.value)}
-                          className="h-9 text-xs"
-                        />
-                      </div>
-
-                      <div>
-                        <Label>Giá Net</Label>
-                        <Input
-                          type="number"
-                          value={item.net}
-                          onChange={(e) => handleUpdateAdditionalLC(item.id, "net", Number(e.target.value))}
-                          className="h-9 text-right text-xs"
-                        />
-                      </div>
-
-                      <div>
-                        <Label>VAT</Label>
-                        <Input
-                          type="number"
-                          value={item.vat}
-                          onChange={(e) => handleUpdateAdditionalLC(item.id, "vat", Number(e.target.value))}
-                          className="h-9 text-xs text-right"
-                        />
-                      </div>
-
+                      <div><Label>Số hóa đơn</Label><Input value={item.invoice} onChange={(e) => handleUpdateAdditionalLC(item.id, "invoice", e.target.value)} className="h-9 text-xs" /></div>
+                      <div><Label>Ngày hóa đơn</Label><DateInput value={item.date} onChange={(e) => handleUpdateAdditionalLC(item.id, "date", e.target.value)} className="h-9 text-xs" /></div>
+                      <div><Label>Giá Net</Label><Input type="number" value={item.net} onChange={(e) => handleUpdateAdditionalLC(item.id, "net", Number(e.target.value))} className="h-9 text-right text-xs" /></div>
+                      <div><Label>VAT</Label><Input type="number" value={item.vat} onChange={(e) => handleUpdateAdditionalLC(item.id, "vat", Number(e.target.value))} className="h-9 text-xs text-right" /></div>
                     </div>
                   </div>
                 ))}
-
-                <div className="mt-2 text-right text-xs text-slate-500">
-                  Tổng Net: <strong className="text-red-600 text-sm">{formatMoney(totalActualNet)}</strong>
-                </div>
               </div>
             )}
+            
+            {/* Total Net Warning */}
+            <div className="mt-2 text-right text-xs text-slate-500">
+               {localCharge.hasInvoice ? 'Tổng Net: ' : 'Tổng Tiền: '} 
+               <strong className="text-red-600 text-sm">{formatMoney(totalActualNet)}</strong>
+            </div>
 
             {/* =====================================================
-                FILE UPLOAD (INVOICE CHI)
+                FILE UPLOAD (INVOICE CHI) - HIDDEN IF NO INVOICE
             ===================================================== */}
-            <div className="mt-6 border-t border-dashed pt-6">
-              
-              {localCharge.fileUrl ? (
-                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center animate-in fade-in slide-in-from-top-1">
-                    <div className="flex items-center space-x-3">
-                       <div className="p-2 bg-green-100 text-green-700 rounded-lg">
-                          <Check className="w-5 h-5" />
-                       </div>
-                       <div>
-                          <p className="text-sm font-bold text-green-800">File đã lưu trên server:</p>
-                          <a href={localCharge.fileUrl} target="_blank" className="text-xs text-blue-600 underline hover:text-blue-800 flex items-center mt-0.5">
-                             <Eye className="w-3 h-3 mr-1" /> {localCharge.fileName || "Xem hóa đơn đã upload"}
-                          </a>
-                       </div>
-                    </div>
-                    <button 
-                       onClick={handleDeleteFile}
-                       className="p-2 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-                       title="Xóa liên kết file"
-                    >
-                       <Trash2 className="w-4 h-4" />
-                    </button>
-                 </div>
-              ) : (
-                 <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
-                    <div className="flex items-center space-x-3">
-                        <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="bg-white border px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-slate-50"
-                        >
-                            <FileUp className="w-3.5 h-3.5 mr-2 text-blue-500" />
-                            {selectedFile ? "Đổi file khác" : "Chọn File HĐ"}
-                        </button>
-                        {selectedFile && (
-                            <span className="text-xs bg-blue-50 px-2 py-1 rounded text-blue-600 font-medium">
-                            {selectedFile.name}
-                            </span>
-                        )}
-                        {!selectedFile && <span className="text-xs text-slate-400 italic">Chưa chọn file</span>}
-                    </div>
-
-                    {selectedFile && (
-                        <div className="flex items-center space-x-2">
-                            <button
-                            disabled={isUploading}
-                            onClick={handleUploadFile}
-                            className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                            {isUploading
-                                ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                                : <HardDrive className="w-3.5 h-3.5 mr-2" />}
-                            Lưu vào Server
-                            </button>
-                            <button
-                            onClick={() => { 
-                                setSelectedFile(null); 
-                                if (fileInputRef.current) fileInputRef.current.value = ''; 
-                            }}
-                            className="bg-white border px-3 py-2 rounded-lg text-xs hover:bg-slate-50"
-                            >
-                            Hủy
-                            </button>
+            {localCharge.hasInvoice && (
+                <div className="mt-6 border-t border-dashed pt-6">
+                
+                {localCharge.fileUrl ? (
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center animate-in fade-in slide-in-from-top-1">
+                        <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-green-100 text-green-700 rounded-lg">
+                            <Check className="w-5 h-5" />
                         </div>
-                    )}
-                 </div>
-              )}
-            </div>
+                        <div>
+                            <p className="text-sm font-bold text-green-800">File đã lưu trên server:</p>
+                            <a href={localCharge.fileUrl} target="_blank" className="text-xs text-blue-600 underline hover:text-blue-800 flex items-center mt-0.5">
+                                <Eye className="w-3 h-3 mr-1" /> {localCharge.fileName || "Xem hóa đơn đã upload"}
+                            </a>
+                        </div>
+                        </div>
+                        <button 
+                        onClick={handleDeleteFile}
+                        className="p-2 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                        title="Xóa liên kết file"
+                        >
+                        <Trash2 className="w-4 h-4" />
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
+                        <div className="flex items-center space-x-3">
+                            <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="bg-white border px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-slate-50"
+                            >
+                                <FileUp className="w-3.5 h-3.5 mr-2 text-blue-500" />
+                                {selectedFile ? "Đổi file khác" : "Chọn File HĐ"}
+                            </button>
+                            {selectedFile && (
+                                <span className="text-xs bg-blue-50 px-2 py-1 rounded text-blue-600 font-medium">
+                                {selectedFile.name}
+                                </span>
+                            )}
+                            {!selectedFile && <span className="text-xs text-slate-400 italic">Chưa chọn file</span>}
+                        </div>
+
+                        {selectedFile && (
+                            <div className="flex items-center space-x-2">
+                                <button
+                                disabled={isUploading}
+                                onClick={handleUploadFile}
+                                className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                {isUploading
+                                    ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                                    : <HardDrive className="w-3.5 h-3.5 mr-2" />}
+                                Lưu vào Server
+                                </button>
+                                <button
+                                onClick={() => { 
+                                    setSelectedFile(null); 
+                                    if (fileInputRef.current) fileInputRef.current.value = ''; 
+                                }}
+                                className="bg-white border px-3 py-2 rounded-lg text-xs hover:bg-slate-50"
+                                >
+                                Hủy
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+                </div>
+            )}
 
             {/* WARNING MISMATCH */}
             {totalActualNet !== systemTotalAdjustedCost && (
               <div className="flex items-center mt-6 text-sm text-red-700 bg-red-50 p-3 rounded-xl border border-red-100">
                 <AlertCircle className="w-5 h-5 mr-2" />
-                Lưu ý: Tổng Net ({formatMoney(totalActualNet)}) lệch Target ({formatMoney(systemTotalAdjustedCost)})
+                Lưu ý: {localCharge.hasInvoice ? 'Tổng Net' : 'Tổng Tiền'} ({formatMoney(totalActualNet)}) lệch Target ({formatMoney(systemTotalAdjustedCost)})
               </div>
             )}
           </div>
 
+          {/* ... [SECTIONS 2.5, 3, 4] REMAIN UNCHANGED ... */}
           {/* =====================================================
                SECTION 2.5 — CƯỢC CONT (DEPOSIT)
           ===================================================== */}

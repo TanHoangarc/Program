@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -128,21 +129,47 @@ export const BookingList: React.FC<BookingListProps> = ({
 
   const handleMenuAction = (booking: BookingSummary, action: string) => {
     setActiveMenuId(null);
+    
     if (action === 'view' || action === 'edit') {
         setSelectedBooking(booking);
-    } else if (action === 'payment-lc') {
+    } 
+    else if (action === 'payment-lc') {
         setTargetBookingForPayment(booking);
         setPaymentType('local');
         setPaymentModalOpen(true);
-    } else if (action === 'payment-deposit') {
+    } 
+    else if (action === 'payment-deposit') {
+        // Validation: Check if deposits exist
+        const hasDeposits = booking.costDetails.deposits && booking.costDetails.deposits.length > 0;
+        
+        if (!hasDeposits) {
+            if (window.confirm("Booking này chưa có thông tin Cược (Deposit). Bạn có muốn mở chi tiết Booking để cập nhật không?")) {
+                setSelectedBooking(booking);
+            }
+            return;
+        }
+
         setTargetBookingForPayment(booking);
         setPaymentType('deposit');
         setPaymentModalOpen(true);
-    } else if (action === 'payment-ext') {
+    } 
+    else if (action === 'payment-ext') {
+        // Validation: Check if extension costs exist and total > 0
+        const extensionCosts = booking.costDetails.extensionCosts || [];
+        const totalExtAmount = extensionCosts.reduce((sum, item) => sum + item.total, 0);
+        
+        if (extensionCosts.length === 0 || totalExtAmount === 0) {
+            if (window.confirm("Booking này chưa có thông tin Gia Hạn (hoặc tổng tiền = 0). Bạn có muốn mở chi tiết Booking để cập nhật không?")) {
+                setSelectedBooking(booking);
+            }
+            return;
+        }
+
         setTargetBookingForPayment(booking);
         setPaymentType('extension');
         setPaymentModalOpen(true);
-    } else if (action === 'purchase') {
+    } 
+    else if (action === 'purchase') {
         setTargetBookingForPurchase(booking);
         setPurchaseModalOpen(true);
     }

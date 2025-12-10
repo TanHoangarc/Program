@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, User, Banknote, CheckCircle } from 'lucide-react';
@@ -134,14 +135,24 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
            
            if (booking) {
                const lc = booking.costDetails.localCharge;
-               const mainTotal = (lc.net || 0) + (lc.vat || 0);
+               // Check hasInvoice: if false use total, else use net + vat
+               const mainTotal = (lc.hasInvoice === false) 
+                   ? (lc.total || 0) 
+                   : (lc.net || 0) + (lc.vat || 0);
+
                const additionalTotal = (booking.costDetails.additionalLocalCharges || []).reduce((sum, item) => {
-                   return sum + (item.net || 0) + (item.vat || 0);
+                   const itemTotal = (item.hasInvoice === false) 
+                       ? (item.total || 0) 
+                       : (item.net || 0) + (item.vat || 0);
+                   return sum + itemTotal;
                }, 0);
+               
                amount = mainTotal + additionalTotal;
            } else if (job && job.bookingCostDetails) {
                const lc = job.bookingCostDetails.localCharge;
-               amount = (lc.net || 0) + (lc.vat || 0);
+               amount = (lc.hasInvoice === false) 
+                   ? (lc.total || 0) 
+                   : (lc.net || 0) + (lc.vat || 0);
            } else {
                amount = 0;
            }
