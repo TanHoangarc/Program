@@ -207,14 +207,21 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       const total = relevant.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
       
       if (total > 0) {
-          handleLocalChargeChange('total', total);
-          alert(`Đã đồng bộ ${new Intl.NumberFormat('en-US').format(total)} VND từ Payment Requests (Local Charge).`);
+          // Set total and force hasInvoice to false (Tạm tính)
+          setLocalCharge(prev => ({
+              ...prev,
+              total: total,
+              hasInvoice: false,
+              net: 0,
+              vat: 0
+          }));
+          alert(`Đã đồng bộ ${new Intl.NumberFormat('en-US').format(total)} VND từ Payment Requests. Chuyển sang chế độ "Chưa HĐ".`);
       } else {
           alert("Không tìm thấy yêu cầu thanh toán Local Charge nào cho Booking này.");
       }
   };
 
-  // VIEW INVOICE FROM PAYMENT REQUEST (REPLACED "LINK" FUNCTIONALITY)
+  // VIEW INVOICE FROM PAYMENT REQUEST
   const handleViewPaymentInvoice = () => {
       const reqs = getPaymentRequests();
       // Find latest relevant request with a file
@@ -237,7 +244,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   // SYNC FROM PAYMENT REQUEST (DEPOSIT)
   const handleSyncDeposit = () => {
       const reqs = getPaymentRequests();
-      // Look for Deposit (or Demurrage if strictly following typo, but Deposit is logical)
+      // Look for Deposit
       const relevant = reqs.filter((r: any) => r.booking === booking.bookingId && r.type === 'Deposit');
       const total = relevant.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
 
@@ -336,10 +343,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                 <tr>
                                     <th className="px-3 py-2 border-r">Job Code</th>
                                     <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('sell')}>Sell {copiedId === 'col-sell' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
-                                    {/* New Revenue Columns */}
                                     <th className="px-3 py-2 text-right border-r">Thu LC (Inv)</th>
                                     <th className="px-3 py-2 text-right border-r">Thu Ext (Inv)</th>
-                                    {/* End New Revenue Columns */}
                                     <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('cost')}>Cost (Adj) {copiedId === 'col-cost' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
                                     <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('vat')}>VAT {copiedId === 'col-vat' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
                                     <th className="px-3 py-2 text-center w-28 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('project')}>Project {copiedId === 'col-project' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
@@ -350,7 +355,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                     const kimberry = job.cont20 * 250000 + job.cont40 * 500000;
                                     const other = (job.feeCic||0) + (job.feePsc||0) + (job.feeEmc||0) + (job.feeOther||0);
                                     
-                                    // Calc Revenue Details
                                     const lcTotal = job.localChargeTotal || 0;
                                     const lcInv = job.localChargeInvoice || '';
                                     const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
@@ -363,8 +367,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                                 {onViewJob && <button onClick={() => onViewJob(job.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-600"><ExternalLink className="w-3 h-3" /></button>}
                                             </td>
                                             <td className="px-3 py-1.5 text-right border-r text-slate-600">{formatMoney(job.sell)}</td>
-                                            
-                                            {/* Revenue Detail Cells */}
                                             <td className="px-3 py-1.5 text-right border-r text-blue-600">
                                                 <div>{formatMoney(lcTotal)}</div>
                                                 {lcInv && <div className="text-[9px] text-slate-400 truncate max-w-[80px] ml-auto">{lcInv}</div>}
@@ -373,8 +375,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                                 <div>{formatMoney(extTotal)}</div>
                                                 {extInv && <div className="text-[9px] text-slate-400 truncate max-w-[80px] ml-auto">{extInv}</div>}
                                             </td>
-                                            {/* End Revenue Detail Cells */}
-
                                             <td className="px-3 py-1.5 text-right border-r text-slate-600">{formatMoney(job.cost - kimberry - other)}</td>
                                             <td className="px-3 py-1.5 text-right border-r text-slate-400">{formatMoney(job.cost * 0.05263)}</td>
                                             <td className="px-3 py-1.5 text-center text-[10px] font-mono text-slate-400">K..{job.jobCode.slice(-4)}</td>
@@ -386,16 +386,12 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                 <tr>
                                     <td className="px-3 py-2 text-right border-r">Tổng:</td>
                                     <td className="px-3 py-2 text-right text-green-600 border-r">{formatMoney(systemTotalSell)}</td>
-                                    
-                                    {/* Footer Totals */}
                                     <td className="px-3 py-2 text-right text-blue-600 border-r">
                                         {formatMoney(booking.jobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0))}
                                     </td>
                                     <td className="px-3 py-2 text-right text-orange-600 border-r">
                                         {formatMoney(booking.jobs.reduce((s, j) => s + (j.extensions || []).reduce((sum, e) => sum + e.total, 0), 0))}
                                     </td>
-                                    {/* End Footer Totals */}
-
                                     <td className="px-3 py-2 text-right text-red-600 border-r">{formatMoney(systemTotalAdjustedCost)}</td>
                                     <td className="px-3 py-2 text-right border-r text-slate-500">{formatMoney(systemTotalVat)}</td>
                                     <td></td>
@@ -413,24 +409,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-red-600" 
                         rightContent={
                             <div className="flex items-center gap-3">
-                                {/* SYNC BUTTON: Now syncs from PAYMENT REQUESTS if available */}
+                                {/* SYNC BUTTON (TEAL SQUARE) */}
                                 {!localCharge.hasInvoice && (
                                     <button 
                                         onClick={handleSyncLocalCharge}
-                                        className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 border border-teal-200 transition-colors"
+                                        className="text-teal-600 p-1.5 bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100 transition-colors"
                                         title="Đồng bộ số tiền từ Payment Requests"
                                     >
-                                        <RefreshCw className="w-3.5 h-3.5" />
+                                        <RefreshCw className="w-4 h-4" />
                                     </button>
                                 )}
-                                {/* VIEW BUTTON: Views invoice from PAYMENT REQUESTS (Replaces Link) */}
+                                {/* VIEW BUTTON (BLUE SQUARE) */}
                                 {localCharge.hasInvoice && (
                                     <button 
                                         onClick={handleViewPaymentInvoice}
-                                        className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition-colors"
+                                        className="text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"
                                         title="Xem hóa đơn chi từ Payment"
                                     >
-                                        <Eye className="w-3.5 h-3.5" />
+                                        <Eye className="w-4 h-4" />
                                     </button>
                                 )}
 
@@ -528,13 +524,13 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-indigo-600" 
                         rightContent={
                             <div className="flex items-center gap-2">
-                                {/* SYNC BUTTON: Syncs from Payment Requests (Type: Deposit) */}
+                                {/* SYNC BUTTON (PURPLE SQUARE) */}
                                 <button 
                                     onClick={handleSyncDeposit}
-                                    className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+                                    className="text-indigo-600 p-1.5 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
                                     title="Đồng bộ tiền Cược từ Payment Requests"
                                 >
-                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    <RefreshCw className="w-4 h-4" />
                                 </button>
                                 <button onClick={handleAddDeposit} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded border border-indigo-100 hover:bg-indigo-100 flex items-center"><Plus className="w-3 h-3 mr-1"/>Thêm</button>
                             </div>
