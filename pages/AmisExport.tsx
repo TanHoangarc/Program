@@ -166,49 +166,63 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
       setTimeout(() => setCopiedId(null), 1000);
   };
 
+  // Helper function to check if a date string falls in the filtered month
+  const checkMonth = (dateStr?: string | null) => {
+      if (!filterMonth) return true; // No filter selected, show all
+      if (!dateStr) return false; // Filter active but no date -> hide
+      
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return false; // Invalid date
+      
+      const month = (date.getMonth() + 1).toString();
+      return month === filterMonth;
+  };
+
   const exportData = useMemo(() => {
-    let filteredJobs = jobs;
-    if (filterMonth) {
-      filteredJobs = jobs.filter(j => j.month === filterMonth);
-    }
+    // DO NOT filter jobs by job.month here. We filter by transaction date below.
+    // let filteredJobs = jobs; 
 
     if (mode === 'thu') {
       const rows: any[] = [];
       
       // 1. Thu Cược (Deposit)
-      filteredJobs.filter(j => j.thuCuoc > 0 && j.amisDepositDocNo).forEach(j => {
-         const docNo = j.amisDepositDocNo;
-         const desc = j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`;
-         const custCode = getCustomerCode(j.maKhCuocId);
-         
-         rows.push({
-             jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
-             date: j.ngayThuCuoc, docNo, objCode: custCode, objName: getCustomerName(j.maKhCuocId),
-             desc, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
-             col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: custCode, col5: getCustomerName(j.maKhCuocId),
-             col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '1388', col17: j.thuCuoc, col19: custCode,
-         });
+      jobs.forEach(j => {
+         if (j.thuCuoc > 0 && j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
+             const docNo = j.amisDepositDocNo;
+             const desc = j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`;
+             const custCode = getCustomerCode(j.maKhCuocId);
+             
+             rows.push({
+                 jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
+                 date: j.ngayThuCuoc, docNo, objCode: custCode, objName: getCustomerName(j.maKhCuocId),
+                 desc, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
+                 col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: custCode, col5: getCustomerName(j.maKhCuocId),
+                 col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '1388', col17: j.thuCuoc, col19: custCode,
+             });
+         }
       });
 
       // 2. Thu Local Charge
-      filteredJobs.filter(j => j.localChargeTotal > 0 && j.amisLcDocNo).forEach(j => {
-          const docNo = j.amisLcDocNo;
-          const desc = j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`;
-          const custCode = getCustomerCode(j.customerId);
+      jobs.forEach(j => {
+          if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
+              const docNo = j.amisLcDocNo;
+              const desc = j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`;
+              const custCode = getCustomerCode(j.customerId);
 
-           rows.push({
-               jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
-               date: j.localChargeDate, docNo, objCode: custCode, objName: getCustomerName(j.customerId),
-               desc, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
-               col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: custCode, col5: getCustomerName(j.customerId),
-               col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: j.localChargeTotal, col19: custCode,
-           });
+               rows.push({
+                   jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
+                   date: j.localChargeDate, docNo, objCode: custCode, objName: getCustomerName(j.customerId),
+                   desc, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
+                   col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: custCode, col5: getCustomerName(j.customerId),
+                   col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: j.localChargeTotal, col19: custCode,
+               });
+          }
       });
 
       // 3. Thu Extension
-      filteredJobs.forEach(j => {
+      jobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
-              if (ext.total > 0 && ext.amisDocNo) {
+              if (ext.total > 0 && ext.amisDocNo && checkMonth(ext.invoiceDate)) {
                   const docNo = ext.amisDocNo;
                   const desc = ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`;
                   const custId = ext.customerId || j.customerId;
@@ -226,12 +240,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
       });
 
       // 4. Custom Receipts (Thu Khác - Ngoài Job)
-      // Filter by Month if needed
       customReceipts.forEach(r => {
-          const d = new Date(r.date);
-          const m = (d.getMonth() + 1).toString();
-          
-          if (!filterMonth || m === filterMonth) {
+          if (checkMonth(r.date)) {
               rows.push({
                   ...r,
                   type: 'external', rowId: `custom-${r.id}`,
@@ -248,8 +258,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         const processedDocNos = new Set<string>();
 
         // 1. Chi Payment (General/Local Charge)
-        filteredJobs.forEach(j => {
-             if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo)) {
+        jobs.forEach(j => {
+             // Default to today if empty, but for filtering we need to check if it matches filterMonth
+             const date = j.amisPaymentDate || new Date().toISOString().split('T')[0];
+             
+             if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo) && checkMonth(date)) {
                  processedDocNos.add(j.amisPaymentDocNo);
                  
                  let amount = 0;
@@ -268,7 +281,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
                  rows.push({
                      jobId: j.id, type: 'payment_chi', rowId: `pay-${j.id}`,
-                     date: j.amisPaymentDate || new Date().toISOString().split('T')[0],
+                     date: date,
                      docNo: j.amisPaymentDocNo,
                      objCode: j.line, 
                      objName: '', 
@@ -284,8 +297,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         });
 
         // 2. Chi Cược (Deposit Out)
-        filteredJobs.forEach(j => {
-             if (j.amisDepositOutDocNo && !processedDocNos.has(j.amisDepositOutDocNo)) {
+        jobs.forEach(j => {
+             const date = j.amisDepositOutDate || new Date().toISOString().split('T')[0];
+             if (j.amisDepositOutDocNo && !processedDocNos.has(j.amisDepositOutDocNo) && checkMonth(date)) {
                  processedDocNos.add(j.amisDepositOutDocNo);
                  
                  let depositAmt = 0;
@@ -298,7 +312,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
                  rows.push({
                      jobId: j.id, type: 'deposit_chi', rowId: `depchi-${j.id}`,
-                     date: j.amisDepositOutDate || new Date().toISOString().split('T')[0],
+                     date: date,
                      docNo: j.amisDepositOutDocNo,
                      objCode: j.line, 
                      objName: '', 
@@ -314,15 +328,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         });
 
         // 3. Chi Hoàn Cược Khách Hàng (Deposit Refund)
-        filteredJobs.forEach(j => {
-             if (j.amisDepositRefundDocNo && !processedDocNos.has(j.amisDepositRefundDocNo)) {
+        jobs.forEach(j => {
+             const date = j.amisDepositRefundDate || j.ngayThuHoan || new Date().toISOString().split('T')[0];
+             if (j.amisDepositRefundDocNo && !processedDocNos.has(j.amisDepositRefundDocNo) && checkMonth(date)) {
                  processedDocNos.add(j.amisDepositRefundDocNo);
                  const custCode = getCustomerCode(j.maKhCuocId || j.customerId);
                  const custName = getCustomerName(j.maKhCuocId || j.customerId);
 
                  rows.push({
                      jobId: j.id, type: 'deposit_refund', rowId: `depref-${j.id}`,
-                     date: j.amisDepositRefundDate || j.ngayThuHoan || new Date().toISOString().split('T')[0],
+                     date: date,
                      docNo: j.amisDepositRefundDocNo,
                      objCode: custCode, 
                      objName: custName, 
@@ -338,8 +353,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         });
 
         // 4. Chi Gia Hạn (Extension Payment)
-        filteredJobs.forEach(j => {
-             if (j.amisExtensionPaymentDocNo && !processedDocNos.has(j.amisExtensionPaymentDocNo)) {
+        jobs.forEach(j => {
+             const date = j.amisExtensionPaymentDate || new Date().toISOString().split('T')[0];
+             if (j.amisExtensionPaymentDocNo && !processedDocNos.has(j.amisExtensionPaymentDocNo) && checkMonth(date)) {
                  processedDocNos.add(j.amisExtensionPaymentDocNo);
                  
                  // Get total extension cost
@@ -353,7 +369,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
                  rows.push({
                      jobId: j.id, type: 'extension_chi', rowId: `extchi-${j.id}`,
-                     date: j.amisExtensionPaymentDate || new Date().toISOString().split('T')[0],
+                     date: date,
                      docNo: j.amisExtensionPaymentDocNo,
                      objCode: j.line, 
                      objName: '', 
@@ -372,81 +388,94 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     }
     else if (mode === 'ban') {
         const rows: any[] = [];
-        filteredJobs.filter(j => j.sell > 0).forEach(j => {
-            const date = new Date().toISOString().split('T')[0];
-            const docNo = `PBH-${j.jobCode}`;
-            const year = new Date().getFullYear().toString().slice(-2);
-            const month = (j.month || '01').padStart(2, '0');
-            const defaultProjectCode = `K${year}${month}${j.jobCode}`;
-            const desc = `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''} (không xuất hóa đơn)`;
-            rows.push({
-                originalJob: j, rowId: `ban-${j.id}`,
-                date,
-                docDate: date,
-                docNo,
-                customerCode: 'LONGHOANGKIMBERRY',
-                desc,
-                amount: j.sell, 
-                salesType: 'Bán hàng hóa trong nước',
-                paymentMethod: 'Chưa thu tiền',
-                isDeliveryVoucher: 'Không',
-                isInvoiceIncluded: 'Không',
-                currency: 'VND',
-                itemCode: 'AGENT FEE',
-                isNote: 'Không',
-                tkNo: '13112',
-                tkCo: '51111',
-                quantity: 1,
-                vatRate: '0%',
-                tkVat: '33311',
-                projectCode: defaultProjectCode,
-            });
+        jobs.forEach(j => {
+            if (j.sell > 0) {
+                // Use Local Charge Date as Invoice Date, otherwise default to today
+                const date = j.localChargeDate || new Date().toISOString().split('T')[0];
+                
+                if (checkMonth(date)) {
+                    const docNo = `PBH-${j.jobCode}`;
+                    const year = new Date().getFullYear().toString().slice(-2);
+                    const month = (j.month || '01').padStart(2, '0');
+                    const defaultProjectCode = `K${year}${month}${j.jobCode}`;
+                    const desc = `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''} (không xuất hóa đơn)`;
+                    rows.push({
+                        originalJob: j, rowId: `ban-${j.id}`,
+                        date,
+                        docDate: date,
+                        docNo,
+                        customerCode: 'LONGHOANGKIMBERRY',
+                        desc,
+                        amount: j.sell, 
+                        salesType: 'Bán hàng hóa trong nước',
+                        paymentMethod: 'Chưa thu tiền',
+                        isDeliveryVoucher: 'Không',
+                        isInvoiceIncluded: 'Không',
+                        currency: 'VND',
+                        itemCode: 'AGENT FEE',
+                        isNote: 'Không',
+                        tkNo: '13112',
+                        tkCo: '51111',
+                        quantity: 1,
+                        vatRate: '0%',
+                        tkVat: '33311',
+                        projectCode: defaultProjectCode,
+                    });
+                }
+            }
         });
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
     else if (mode === 'mua') {
-        const bookingIds = Array.from(new Set(filteredJobs.map(j => j.booking).filter(b => !!b)));
+        // Collect unique booking IDs that have jobs passing filter (actually we need to check booking details date)
+        const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter(b => !!b)));
         const rows: any[] = [];
 
         bookingIds.forEach(bid => {
-            const summary = calculateBookingSummary(filteredJobs, bid);
+            // Find ALL jobs for this booking to calculate summary
+            const bookingJobs = jobs.filter(j => j.booking === bid);
+            const summary = calculateBookingSummary(bookingJobs, bid);
             if (!summary) return;
 
             const lcDetails = summary.costDetails.localCharge;
             const additional = summary.costDetails.additionalLocalCharges || [];
             
-            const totalNet = (lcDetails.net || 0) + additional.reduce((s,i) => s + (i.net || 0), 0);
-            
-            if (totalNet > 0) {
-                const docNo = `PMH-${summary.bookingId}`;
-                const date = lcDetails.date || new Date().toISOString().split('T')[0];
-                const supplierName = summary.line; 
-                const desc = `Mua hàng của ${supplierName} BILL ${summary.bookingId}`;
+            // Determine date: use LC Date, fallback to today
+            const date = lcDetails.date || new Date().toISOString().split('T')[0];
+
+            if (checkMonth(date)) {
+                const totalNet = (lcDetails.net || 0) + additional.reduce((s,i) => s + (i.net || 0), 0);
                 
-                rows.push({
-                    originalBooking: summary, rowId: `mua-${summary.bookingId}`,
-                    date, 
-                    docNo,
-                    invoiceNo: lcDetails.invoice || '',
-                    supplierCode: summary.line,
-                    supplierName,
-                    desc,
-                    itemName: 'Phí Local Charge',
-                    amount: totalNet,
-                    purchaseType: 'Mua hàng trong nước không qua kho',
-                    paymentMethod: 'Chưa thanh toán',
-                    invoiceIncluded: 'Nhận kèm hóa đơn',
-                    importSlipNo: '1',
-                    currency: 'VND',
-                    itemCode: 'LCC',
-                    isNote: 'Không',
-                    tkCost: '63211',
-                    tkPayable: '3311',
-                    quantity: 1,
-                    vatRate: '5%',
-                    vatAmount: (lcDetails.vat || 0) + additional.reduce((s,i) => s + (i.vat || 0), 0),
-                    tkVat: '1331',
-                });
+                if (totalNet > 0) {
+                    const docNo = `PMH-${summary.bookingId}`;
+                    const supplierName = summary.line; 
+                    const desc = `Mua hàng của ${supplierName} BILL ${summary.bookingId}`;
+                    
+                    rows.push({
+                        originalBooking: summary, rowId: `mua-${summary.bookingId}`,
+                        date, 
+                        docNo,
+                        invoiceNo: lcDetails.invoice || '',
+                        supplierCode: summary.line,
+                        supplierName,
+                        desc,
+                        itemName: 'Phí Local Charge',
+                        amount: totalNet,
+                        purchaseType: 'Mua hàng trong nước không qua kho',
+                        paymentMethod: 'Chưa thanh toán',
+                        invoiceIncluded: 'Nhận kèm hóa đơn',
+                        importSlipNo: '1',
+                        currency: 'VND',
+                        itemCode: 'LCC',
+                        isNote: 'Không',
+                        tkCost: '63211',
+                        tkPayable: '3311',
+                        quantity: 1,
+                        vatRate: '5%',
+                        vatAmount: (lcDetails.vat || 0) + additional.reduce((s,i) => s + (i.vat || 0), 0),
+                        tkVat: '1331',
+                    });
+                }
             }
         });
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
