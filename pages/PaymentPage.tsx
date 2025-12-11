@@ -125,15 +125,18 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       invoiceBlobUrl: invoiceFile ? URL.createObjectURL(invoiceFile) : ""
     };
 
-    onUpdateRequests([newReq, ...requests]);
+    const updatedRequests = [newReq, ...requests];
+    onUpdateRequests(updatedRequests);
 
     // --- AUTO SYNC FOR DOCS ---
+    // Critical Fix: Send the ENTIRE updated list to ensure backup.json matches
     if (currentUser?.role === 'Docs' && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),
-            autoApprove: true, // Signal backend to auto-approve
-            paymentRequests: [newReq], // Send ONLY this new request
+            autoApprove: true, // Signal backend/admin logic to accept immediately
+            paymentRequests: updatedRequests, // Send FULL LIST to force sync
+            // Empty other fields to avoid overwriting unrelated data
             jobs: [],
             customers: [],
             lines: []
@@ -159,7 +162,20 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
   const handleDelete = (id: string) => {
     if (!window.confirm("Bạn chắc chắn muốn xóa?")) return;
-    onUpdateRequests(requests.filter(r => r.id !== id));
+    const updatedRequests = requests.filter(r => r.id !== id);
+    onUpdateRequests(updatedRequests);
+    
+    // Auto sync deletion for Docs
+    if (currentUser?.role === 'Docs' && onSendPending) {
+        const payload = {
+            user: currentUser.username,
+            timestamp: new Date().toISOString(),
+            autoApprove: true,
+            paymentRequests: updatedRequests,
+            jobs: [], customers: [], lines: []
+        };
+        onSendPending(payload).catch(err => console.error("Delete sync failed", err));
+    }
   };
 
   // ============================================================
@@ -206,6 +222,19 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     );
 
     onUpdateRequests(updated);
+    
+    // Auto sync completion for Docs
+    if (currentUser?.role === 'Docs' && onSendPending) {
+        const payload = {
+            user: currentUser.username,
+            timestamp: new Date().toISOString(),
+            autoApprove: true,
+            paymentRequests: updated,
+            jobs: [], customers: [], lines: []
+        };
+        onSendPending(payload).catch(err => console.error("Complete sync failed", err));
+    }
+
     setCompletingId(null);
     setIsUploading(false);
   };
