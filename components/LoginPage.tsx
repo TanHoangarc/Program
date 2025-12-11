@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Ship, Lock, User, Eye, EyeOff, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 
 interface LoginPageProps {
-  onLogin: (username: string, pass: string) => void;
+  onLogin: (username: string, pass: string, remember: boolean) => void;
   error?: string;
 }
 
@@ -11,6 +11,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, error }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false); // State cho ghi nhớ
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -20,7 +21,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, error }) => {
     setIsLoading(true);
     // Simulate network delay for "High Security" feel
     setTimeout(() => {
-        onLogin(username, password);
+        onLogin(username, password, rememberMe);
         setIsLoading(false);
     }, 800);
   };
@@ -89,6 +90,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, error }) => {
                  </div>
               </div>
 
+              {/* Remember Me Checkbox */}
+              <div className="flex items-center ml-1">
+                <label className="flex items-center space-x-2 cursor-pointer group">
+                  <div className="relative">
+                    <input 
+                      type="checkbox" 
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div className={`w-5 h-5 border-2 rounded-md transition-all flex items-center justify-center ${rememberMe ? 'bg-blue-600 border-blue-600' : 'bg-white/50 border-slate-400 group-hover:border-blue-500'}`}>
+                      {rememberMe && <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
+                    </div>
+                  </div>
+                  <span className={`text-xs font-semibold transition-colors ${rememberMe ? 'text-blue-700' : 'text-slate-600 group-hover:text-blue-600'}`}>
+                    Ghi nhớ đăng nhập
+                  </span>
+                </label>
+              </div>
+
               {error && (
                 <div className="bg-red-50/80 backdrop-blur-sm border border-red-100 text-red-600 text-sm p-4 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 shadow-sm">
                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -99,7 +120,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, error }) => {
               <button 
                 type="submit" 
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-900 to-slate-900 hover:from-blue-800 hover:to-slate-800 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-blue-900/30 transform hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
+                className="w-full bg-gradient-to-r from-blue-900 to-slate-900 hover:from-blue-800 hover:to-slate-800 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-blue-900/30 transform hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
               >
                 {isLoading ? (
                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

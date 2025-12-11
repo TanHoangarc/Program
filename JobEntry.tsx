@@ -541,6 +541,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onViewBookingDetails={handleViewBookingDetails} 
           isViewMode={isViewMode} 
           onSwitchToEdit={() => setIsViewMode(false)} 
+          onAddCustomer={onAddCustomer}
         />
       )}
       

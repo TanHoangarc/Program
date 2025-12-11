@@ -418,6 +418,7 @@ export const BookingList: React.FC<BookingListProps> = ({
             onAddLine={onAddLine}
             onViewBookingDetails={() => {}} // No need to re-open booking from here
             existingJobs={jobs}
+            onAddCustomer={onAddCustomer} // Added
         />
       )}
     </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -41,9 +42,11 @@ const App: React.FC = () => {
 
   // --- APP STATE ---
   // Fix: Check role immediately on initialization to set correct default page
+  // Check localStorage (Remember Me) then sessionStorage
   const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc'>(() => {
       try {
-          const savedUser = sessionStorage.getItem('kb_user');
+          // Check LocalStorage first, then SessionStorage
+          const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
               const user = JSON.parse(savedUser);
               if (user.role === 'Docs') return 'lookup';
@@ -222,22 +225,35 @@ const App: React.FC = () => {
 
   // --- API FUNCTIONS ---
 
-  const sendPendingToServer = async () => {
+  const sendPendingToServer = async (directPayload?: any) => {
     if (!currentUser || !currentUser.username) {
         alert("Lỗi: Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.");
         return;
     }
     
-    // FILTER MODIFIED DATA
-    const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
-    const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
+    let payload = directPayload;
 
-    // Allow sending if there are customer changes (even if no job changes)
-    const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0;
-    
-    if (!hasChanges) {
-        alert("Không có thay đổi nào mới (Job hoặc Thanh toán) để gửi đi.");
-        return;
+    if (!payload) {
+        // FILTER MODIFIED DATA FOR NORMAL SYNC
+        const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
+        const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
+
+        // Allow sending if there are customer changes (even if no job changes)
+        const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0;
+        
+        if (!hasChanges) {
+            alert("Không có thay đổi nào mới (Job hoặc Thanh toán) để gửi đi.");
+            return;
+        }
+
+        payload = {
+            user: currentUser.username, 
+            timestamp: new Date().toISOString(),
+            jobs: jobsToSend, 
+            paymentRequests: paymentsToSend, // Include Payments
+            customers: [...customers],
+            lines: [...lines]
+        };
     }
     
     if (!isServerAvailable) {
@@ -246,15 +262,6 @@ const App: React.FC = () => {
     }
 
     try {
-      const payload = {
-        user: currentUser.username, 
-        timestamp: new Date().toISOString(),
-        jobs: jobsToSend, 
-        paymentRequests: paymentsToSend, // Include Payments
-        customers: [...customers],
-        lines: [...lines]
-      };
-
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
@@ -267,22 +274,28 @@ const App: React.FC = () => {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-          const msgParts = [];
-          if (jobsToSend.length > 0) msgParts.push(`${jobsToSend.length} Job`);
-          if (paymentsToSend.length > 0) msgParts.push(`${paymentsToSend.length} Thanh toán`);
-          
-          alert(`Đã gửi thành công: ${msgParts.join(', ')}!`);
-          
-          // RESET TRACKING on success
-          setModifiedJobIds(new Set());
-          setModifiedPaymentIds(new Set());
+          if (!directPayload) {
+              const msgParts = [];
+              if (payload.jobs?.length > 0) msgParts.push(`${payload.jobs.length} Job`);
+              if (payload.paymentRequests?.length > 0) msgParts.push(`${payload.paymentRequests.length} Thanh toán`);
+              
+              alert(`Đã gửi thành công: ${msgParts.join(', ')}!`);
+              
+              // RESET TRACKING on success manual sync
+              setModifiedJobIds(new Set());
+              setModifiedPaymentIds(new Set());
+          } else {
+              console.log("Auto-sync success");
+          }
       } else {
           throw new Error(`Server returned ${response.status}`);
       }
 
     } catch (err) {
       console.error("Gửi pending thất bại:", err);
-      alert("Gửi thất bại: Có lỗi khi kết nối đến máy chủ.");
+      if (!directPayload) {
+          alert("Gửi thất bại: Có lỗi khi kết nối đến máy chủ.");
+      }
     }
   };
 
@@ -397,7 +410,8 @@ const App: React.FC = () => {
 
   // --- AUTH LOGIC ---
   useEffect(() => {
-    const savedUser = sessionStorage.getItem('kb_user');
+    // Check LocalStorage first, then SessionStorage
+    const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
     if (savedUser) {
       const user = JSON.parse(savedUser);
       setIsAuthenticated(true);
@@ -423,7 +437,7 @@ const App: React.FC = () => {
     return () => channel.close();
   }, [isAuthenticated, currentUser]);
 
-  const handleLogin = (username: string, pass: string) => {
+  const handleLogin = (username: string, pass: string, remember: boolean) => {
     setLoginError('');
     const user = users.find(u => u.username === username && u.pass === pass);
 
@@ -432,8 +446,15 @@ const App: React.FC = () => {
       setIsAuthenticated(true);
       setCurrentUser(userData);
       setSessionError('');
-      sessionStorage.setItem('kb_user', JSON.stringify(userData));
       
+      // Store in LocalStorage if Remember is checked, else SessionStorage
+      const storage = remember ? localStorage : sessionStorage;
+      storage.setItem('kb_user', JSON.stringify(userData));
+      
+      // If logging in with Remember Me, clear any existing session storage to avoid conflicts
+      if (remember) sessionStorage.removeItem('kb_user');
+      else localStorage.removeItem('kb_user'); // Vice versa
+
       if (user.role === 'Docs') {
           setCurrentPage('lookup');
       } else {
@@ -447,7 +468,10 @@ const App: React.FC = () => {
   const handleLogout = useCallback((forced = false) => {
     setIsAuthenticated(false);
     setCurrentUser(null);
+    // Clear both storages on logout
     sessionStorage.removeItem('kb_user');
+    localStorage.removeItem('kb_user');
+    
     setSessionError(forced ? "Tài khoản đã được đăng nhập nơi khác." : "");
   }, []);
 
@@ -510,7 +534,7 @@ const App: React.FC = () => {
         onNavigate={setCurrentPage}
         currentUser={currentUser}
         onLogout={() => handleLogout(false)}
-        onSendPending={sendPendingToServer}
+        onSendPending={() => sendPendingToServer()}
       />
 
       <div className="flex-1 ml-[280px] p-4 h-full flex flex-col">
@@ -622,13 +646,16 @@ const App: React.FC = () => {
               <LookupPage jobs={jobs} />
             )}
             
-            {/* UPDATED PaymentPage: Pass props instead of local state */}
+            {/* UPDATED PaymentPage: Pass props including jobs for sync */}
             {currentPage === 'payment' && (
               <PaymentPage 
                 lines={lines} 
                 requests={paymentRequests}
                 onUpdateRequests={handleUpdatePaymentRequests}
                 currentUser={currentUser}
+                onSendPending={sendPendingToServer} 
+                jobs={jobs} 
+                onUpdateJob={handleEditJob} 
               />
             )}
 

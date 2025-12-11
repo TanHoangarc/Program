@@ -469,6 +469,7 @@ export const DepositList: React.FC<DepositListProps> = ({
           lines={lines} 
           onAddLine={onAddLine} 
           onViewBookingDetails={handleViewBookingFromJob}
+          onAddCustomer={onAddCustomer} // Added
         />
       )}
       

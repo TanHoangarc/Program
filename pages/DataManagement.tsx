@@ -4,6 +4,7 @@ import { Customer, ShippingLine } from '../types';
 import { Plus, Edit2, Trash2, Search, Save, X, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getPaginationRange } from '../utils';
+import { CustomerModal } from '../components/CustomerModal';
 
 interface DataManagementProps {
   mode: 'customers' | 'lines';
@@ -22,7 +23,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Form State
+  // Form State for Lines
   const [formData, setFormData] = useState({
     code: '',
     name: '',
@@ -56,7 +57,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  // Handler for Line Modal
+  const handleSaveLine = (e: React.FormEvent) => {
     e.preventDefault();
     const newItem = {
       id: editingItem ? editingItem.id : Date.now().toString(),
@@ -69,6 +71,17 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
       onAdd(newItem);
     }
     setIsModalOpen(false);
+  };
+
+  // Handler for Customer Modal
+  const handleSaveCustomer = (customer: Customer) => {
+      // If editing, preserve original ID
+      if (editingItem) {
+          onEdit({ ...customer, id: editingItem.id });
+      } else {
+          onAdd(customer);
+      }
+      setIsModalOpen(false);
   };
 
   // --- EXPORT EXCEL ---
@@ -322,15 +335,24 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
         )}
       </div>
 
-      {/* Add/Edit Modal */}
-      {isModalOpen && (
+      {/* Modals */}
+      {isModalOpen && mode === 'customers' && (
+          <CustomerModal 
+              isOpen={isModalOpen}
+              onClose={() => setIsModalOpen(false)}
+              onSave={handleSaveCustomer}
+              initialData={editingItem as Customer}
+          />
+      )}
+
+      {isModalOpen && mode === 'lines' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-150 border border-white/50">
             <div className="px-6 py-4 border-b border-slate-200/50 flex justify-between items-center">
               <h3 className="text-lg font-bold text-slate-800">{editingItem ? 'Cập Nhật' : 'Thêm Mới'} {title}</h3>
               <button onClick={() => setIsModalOpen(false)}><X className="w-5 h-5 text-slate-400 hover:text-red-500 transition-colors" /></button>
             </div>
-            <form onSubmit={handleSave} className="p-6 space-y-5">
+            <form onSubmit={handleSaveLine} className="p-6 space-y-5">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{labelCode} (*)</label>
                 <input 
@@ -361,19 +383,17 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
                 />
               </div>
               
-              {mode === 'lines' && (
-                 <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tên Hàng Mặc Định</label>
-                    <input 
-                      type="text" 
-                      value={formData.itemName} 
-                      onChange={(e) => setFormData({...formData, itemName: e.target.value})} 
-                      className="glass-input w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none" 
-                      placeholder="VD: Phí Local Charge"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1.5 italic">Dùng để tự động điền khi tạo phiếu mua hàng</p>
-                 </div>
-              )}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tên Hàng Mặc Định</label>
+                <input 
+                    type="text" 
+                    value={formData.itemName} 
+                    onChange={(e) => setFormData({...formData, itemName: e.target.value})} 
+                    className="glass-input w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none" 
+                    placeholder="VD: Phí Local Charge"
+                />
+                <p className="text-[10px] text-slate-400 mt-1.5 italic">Dùng để tự động điền khi tạo phiếu mua hàng</p>
+              </div>
 
               <div className="pt-4 flex justify-end space-x-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">Hủy</button>

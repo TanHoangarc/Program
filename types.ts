@@ -216,6 +216,7 @@ export interface PaymentRequest {
   pod?: "HCM" | "HPH";         // Chỉ dùng cho MSC
   booking: string;             // Số booking
   amount: number;              // Số tiền
+  type?: 'Local Charge' | 'Deposit' | 'Demurrage'; // Loại chi
 
   // ------------------------------------------
   // INVOICE (HÓA ĐƠN)

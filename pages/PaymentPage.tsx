@@ -1,12 +1,13 @@
+
 // ============================================================
 // PAYMENT PAGE – FINAL FULL VERSION (FIX UNKNOWN + NEW PATHS)
 // ============================================================
 
 import React, { useState, useRef } from 'react';
-import { ShippingLine, PaymentRequest } from '../types';
+import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy 
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -15,6 +16,9 @@ interface PaymentPageProps {
   requests: PaymentRequest[];
   onUpdateRequests: (reqs: PaymentRequest[]) => void;
   currentUser: { username: string, role: string } | null;
+  onSendPending?: (payload?: any) => Promise<void>; 
+  jobs?: JobData[];
+  onUpdateJob?: (job: JobData) => void;
 }
 
 // BACKEND API (Cloudflare Tunnel)
@@ -24,7 +28,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   lines,
   requests,
   onUpdateRequests,
-  currentUser
+  currentUser,
+  onSendPending,
+  jobs,
+  onUpdateJob
 }) => {
 
   // ----------------- STATES -----------------
@@ -32,6 +39,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const [pod, setPod] = useState<'HCM' | 'HPH'>("HCM");
   const [booking, setBooking] = useState("");
   const [amount, setAmount] = useState<number>(0);
+  const [type, setType] = useState<'Local Charge' | 'Deposit' | 'Demurrage'>('Local Charge');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -107,6 +115,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       pod: line === "MSC" ? pod : undefined,
       booking,
       amount,
+      type, // Selected Type
       createdAt: new Date().toISOString(),
       status: "pending",
 
@@ -118,10 +127,26 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     onUpdateRequests([newReq, ...requests]);
 
+    // --- AUTO SYNC FOR DOCS ---
+    if (currentUser?.role === 'Docs' && onSendPending) {
+        const payload = {
+            user: currentUser.username,
+            timestamp: new Date().toISOString(),
+            autoApprove: true, // Signal backend to auto-approve
+            paymentRequests: [newReq], // Send ONLY this new request
+            jobs: [],
+            customers: [],
+            lines: []
+        };
+        // Trigger background sync without blocking UI
+        onSendPending(payload).catch(err => console.error("Auto-sync failed", err));
+    }
+
     // Reset Form
     setLine("");
     setBooking("");
     setAmount(0);
+    setType('Local Charge'); // Reset to default
     setInvoiceFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
@@ -183,6 +208,76 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     onUpdateRequests(updated);
     setCompletingId(null);
     setIsUploading(false);
+  };
+
+  // ============================================================
+  // SYNC PAYMENT TO BOOKING (ADMIN ONLY)
+  // ============================================================
+  
+  const handleSyncPayment = (req: PaymentRequest) => {
+      if (!jobs || !onUpdateJob) {
+          alert("Dữ liệu Job chưa được tải.");
+          return;
+      }
+
+      // Find jobs associated with this booking
+      const associatedJobs = jobs.filter(j => j.booking === req.booking);
+      
+      if (associatedJobs.length === 0) {
+          alert(`Không tìm thấy Job nào có số Booking: ${req.booking}`);
+          return;
+      }
+
+      const syncType = req.type || 'Local Charge';
+      const confirmMsg = `Bạn có muốn đồng bộ số tiền ${formatCurrency(req.amount)} (${syncType}) vào ${associatedJobs.length} Job của Booking ${req.booking}?`;
+      
+      if (!window.confirm(confirmMsg)) return;
+
+      // Update logic
+      associatedJobs.forEach(job => {
+          const updatedJob = JSON.parse(JSON.stringify(job)); // Deep copy
+          
+          if (!updatedJob.bookingCostDetails) {
+              updatedJob.bookingCostDetails = {
+                  localCharge: { invoice: '', date: '', net: 0, vat: 0, total: 0, hasInvoice: false },
+                  additionalLocalCharges: [],
+                  extensionCosts: [],
+                  deposits: []
+              };
+          }
+
+          if (syncType === 'Local Charge') {
+              // Set total amount for Local Charge. 
+              // Assuming "Tạm tính" logic (hasInvoice = false) or update existing total
+              updatedJob.bookingCostDetails.localCharge.total = req.amount;
+              updatedJob.bookingCostDetails.localCharge.hasInvoice = false; // Mark as temporary calculation until invoice details are filled
+          } 
+          else if (syncType === 'Deposit') {
+              // Add a new deposit entry
+              updatedJob.bookingCostDetails.deposits.push({
+                  id: `dep-${Date.now()}`,
+                  amount: req.amount,
+                  dateOut: req.completedAt ? new Date(req.completedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                  dateIn: ''
+              });
+          }
+          else if (syncType === 'Demurrage') {
+              // Add as Additional Local Charge
+              updatedJob.bookingCostDetails.additionalLocalCharges.push({
+                  id: `dem-${Date.now()}`,
+                  invoice: '',
+                  date: req.completedAt ? new Date(req.completedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                  net: req.amount,
+                  vat: 0,
+                  total: req.amount,
+                  hasInvoice: false // Tạm tính
+              });
+          }
+
+          onUpdateJob(updatedJob);
+      });
+
+      alert("Đã đồng bộ thành công!");
   };
 
   // ============================================================
@@ -252,22 +347,41 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       <span className="font-bold">{req.lineCode}</span>
     );
 
+  const getTypeBadge = (type?: string) => {
+      switch(type) {
+          case 'Deposit': return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold border border-purple-200">Deposit</span>;
+          case 'Demurrage': return <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-200">Demurrage</span>;
+          default: return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-200">Local Charge</span>;
+      }
+  };
+
   // ============================================================
   // RENDER
   // ============================================================
 
   // Dynamic grid configuration based on selected Line
-  const gridConfig = line === "MSC" ? "md:grid-cols-5" : "md:grid-cols-4";
+  const gridConfig = line === "MSC" ? "md:grid-cols-6" : "md:grid-cols-5";
 
   return (
     <div className="p-8 w-full h-full flex flex-col overflow-hidden">
 
       {/* HEADER */}
-      <div className="flex items-center mb-6 space-x-3">
-        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
-          <CreditCard className="w-6 h-6" />
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-3">
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+            <CreditCard className="w-6 h-6" />
+            </div>
+            <h1 className="text-3xl font-bold text-slate-800">Thanh Toán MBL</h1>
         </div>
-        <h1 className="text-3xl font-bold text-slate-800">Thanh Toán MBL</h1>
+        {/* Only show Manual Sync for NON-Docs AND NON-Admin users. Docs sync automatically. Admin doesn't sync upwards. */}
+        {currentUser?.role !== 'Docs' && currentUser?.role !== 'Admin' && onSendPending && (
+             <button 
+                onClick={() => onSendPending()} 
+                className="bg-amber-100 text-amber-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-amber-200 transition-colors flex items-center"
+             >
+                 <Send className="w-4 h-4 mr-2" /> Đồng bộ Admin
+             </button>
+        )}
       </div>
 
       {/* CONTENT */}
@@ -282,14 +396,21 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             </div>
           )}
 
-          <h2 className="text-sm font-bold text-slate-700 mb-4 flex items-center">
-            <Plus className="w-4 h-4 mr-2 text-emerald-600" />
-            Tạo yêu cầu thanh toán
-          </h2>
+          <div className="flex justify-between items-center mb-4">
+             <h2 className="text-sm font-bold text-slate-700 flex items-center">
+                <Plus className="w-4 h-4 mr-2 text-emerald-600" />
+                Tạo yêu cầu thanh toán
+             </h2>
+             <div className="flex space-x-2">
+                 <button onClick={() => setType('Local Charge')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${type === 'Local Charge' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'}`}>Local Charge</button>
+                 <button onClick={() => setType('Deposit')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${type === 'Deposit' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'}`}>Deposit</button>
+                 <button onClick={() => setType('Demurrage')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${type === 'Demurrage' ? 'bg-orange-600 text-white border-orange-600 shadow-md' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'}`}>Demurrage</button>
+             </div>
+          </div>
 
           <form onSubmit={handleCreateRequest} className={`grid grid-cols-1 ${gridConfig} gap-4 items-end`}>
 
-            {/* Line - Column 1 */}
+            {/* Line */}
             <div className="w-full">
               <label className="block text-[10px] font-bold mb-1.5 text-slate-600">Mã Line</label>
               <select
@@ -304,7 +425,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               </select>
             </div>
 
-            {/* MSC POD - Column 2 (Conditional) */}
+            {/* MSC POD - Conditional */}
             {line === "MSC" && (
               <div className="w-full animate-in fade-in zoom-in-95 duration-200">
                 <label className="block text-[10px] font-bold mb-1.5 text-blue-600">POD (MSC)</label>
@@ -331,7 +452,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               </div>
             )}
 
-            {/* Booking - Column 2 or 3 */}
+            {/* Booking */}
             <div className="w-full">
               <label className="block text-[10px] font-bold mb-1.5 text-slate-600">Booking</label>
               <input
@@ -342,7 +463,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               />
             </div>
 
-            {/* Amount - Column 3 or 4 */}
+            {/* Amount */}
             <div className="w-full">
               <label className="block text-[10px] font-bold mb-1.5 text-slate-600">Số tiền</label>
               <input
@@ -355,8 +476,19 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                 placeholder="0"
               />
             </div>
+            
+            {/* Type Display (Readonly visual) */}
+            <div className="w-full hidden md:block">
+                <label className="block text-[10px] font-bold mb-1.5 text-slate-600">Loại chi</label>
+                <div className="flex items-center h-11 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600">
+                    {type === 'Local Charge' && <Banknote className="w-4 h-4 mr-2 text-blue-500" />}
+                    {type === 'Deposit' && <Anchor className="w-4 h-4 mr-2 text-purple-500" />}
+                    {type === 'Demurrage' && <Container className="w-4 h-4 mr-2 text-orange-500" />}
+                    {type}
+                </div>
+            </div>
 
-            {/* Buttons - Column 4 or 5 */}
+            {/* Buttons */}
             <div className="flex items-center space-x-2 h-11">
               <input
                 type="file"
@@ -420,6 +552,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                 <th className="px-6 py-3">Mã Line</th>
                 <th className="px-6 py-3">Booking</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
+                <th className="px-6 py-3 text-center">Loại chi</th>
                 <th className="px-6 py-3 text-center">File</th>
                 <th className="px-6 py-3 text-center">Chức năng</th>
               </tr>
@@ -458,6 +591,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                             </button>
                         )}
                     </div>
+                  </td>
+                  
+                  <td className="px-6 py-4 text-center">
+                      {getTypeBadge(req.type)}
                   </td>
 
                   <td className="px-6 py-4 text-center">
@@ -519,6 +656,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                 <th className="px-6 py-3">Mã Line</th>
                 <th className="px-6 py-3">Booking</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
+                <th className="px-6 py-3 text-center">Loại chi</th>
                 <th className="px-6 py-3 text-center">UNC File</th>
                 <th className="px-6 py-3 text-center">Chức năng</th>
               </tr>
@@ -532,6 +670,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                   <td className="px-6 py-4">{getLineDisplay(req)}</td>
                   <td className="px-6 py-4">{req.booking}</td>
                   <td className="px-6 py-4 text-right">{formatCurrency(req.amount)}</td>
+                  
+                  <td className="px-6 py-4 text-center">
+                      {getTypeBadge(req.type)}
+                  </td>
 
                   <td className="px-6 py-4 text-center">
                     <div
@@ -549,6 +691,15 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
                   <td className="px-6 py-4 text-center">
                     <div className="flex justify-center space-x-2">
+                        
+                      {/* Sync Button */}
+                      <button
+                        onClick={() => handleSyncPayment(req)}
+                        className="text-teal-600 p-2 bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100 transition-colors"
+                        title="Đồng bộ vào Booking"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
 
                       <button
                         onClick={() => openFile(req, "invoice")}

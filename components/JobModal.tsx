@@ -5,6 +5,7 @@ import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Cop
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
 import { formatDateVN, parseDateVN } from '../utils';
+import { CustomerModal } from './CustomerModal';
 
 interface JobModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface JobModalProps {
   isViewMode?: boolean;
   onSwitchToEdit?: () => void;
   existingJobs?: JobData[];
+  onAddCustomer: (customer: Customer) => void;
 }
 
 // Compact Styled Components
@@ -44,7 +46,8 @@ const CustomerInput = ({
   placeholder,
   className,
   onFocus,
-  onBlur
+  onBlur,
+  onAddClick
 }: { 
   value: string; 
   onChange: (val: string) => void; 
@@ -54,6 +57,7 @@ const CustomerInput = ({
   className?: string;
   onFocus?: () => void;
   onBlur?: () => void;
+  onAddClick?: () => void;
 }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [internalValue, setInternalValue] = useState('');
@@ -104,15 +108,28 @@ const CustomerInput = ({
 
   return (
     <div className={`relative group w-full ${className || ''}`}>
-      <Input 
-        value={internalValue}
-        onChange={handleChange}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        readOnly={readOnly}
-        placeholder={placeholder}
-        autoComplete="off"
-      />
+      <div className="flex gap-1">
+        <Input 
+            value={internalValue}
+            onChange={handleChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            readOnly={readOnly}
+            placeholder={placeholder}
+            autoComplete="off"
+            className="flex-1"
+        />
+        {!readOnly && onAddClick && (
+            <button 
+                type="button" 
+                onClick={onAddClick}
+                className="w-9 h-9 flex items-center justify-center bg-blue-50 border border-blue-100 rounded-lg text-blue-600 hover:bg-blue-100 transition-colors shrink-0"
+                title="Thêm khách hàng mới"
+            >
+                <Plus className="w-4 h-4" />
+            </button>
+        )}
+      </div>
       
       {!readOnly && showSuggestions && internalValue && filtered.length > 0 && (
         <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto mt-1 left-0 py-1">
@@ -307,7 +324,7 @@ const MoneyInput: React.FC<{
 
 export const JobModal: React.FC<JobModalProps> = ({ 
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
-  isViewMode = false, onSwitchToEdit, existingJobs
+  isViewMode = false, onSwitchToEdit, existingJobs, onAddCustomer
 }) => {
   const [formData, setFormData] = useState<JobData>(() => {
     if (initialData) {
@@ -343,12 +360,13 @@ export const JobModal: React.FC<JobModalProps> = ({
     return '';
   });
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ mst: '', name: '', code: '' });
   const [isAddingLine, setIsAddingLine] = useState(false);
   const [newLine, setNewLine] = useState('');
   
   const [isJobCodeCopied, setIsJobCodeCopied] = useState(false);
+  
+  // Quick Add Customer State
+  const [quickAddTarget, setQuickAddTarget] = useState<{ type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string } | null>(null);
   
   const jobInputRef = useRef<HTMLInputElement>(null);
 
@@ -377,20 +395,19 @@ export const JobModal: React.FC<JobModalProps> = ({
     });
   }, [formData.cont20, formData.cont40, isViewMode]);
 
-  // LOGIC FOR LONG HOANG: SYNC SELL -> LC AMOUNT, HIDE INVOICE, SET BANK
   useEffect(() => {
     if (isViewMode) return;
 
     const selectedCustomer = (customers || []).find(c => c?.id === formData.customerId);
     const displayCustName = selectedCustomer?.name || formData.customerName || '';
     const nameLower = displayCustName.toLowerCase();
-    const codeLower = (selectedCustomer?.code || '').toLowerCase(); // Add code check too
+    const codeLower = (selectedCustomer?.code || '').toLowerCase();
 
     const isLongHoang = nameLower.includes('long hoàng') || 
                         nameLower.includes('long hoang') || 
                         nameLower.includes('lhk') || 
                         nameLower.includes('longhoang') ||
-                        codeLower.includes('longhoang') || // Added code check
+                        codeLower.includes('longhoang') || 
                         codeLower.includes('lhk');
 
     if (isLongHoang) {
@@ -398,13 +415,11 @@ export const JobModal: React.FC<JobModalProps> = ({
             const updates: Partial<JobData> = {};
             let changed = false;
             
-            // Auto sync Sell to LC Amount
             if (prev.localChargeTotal !== prev.sell) {
                 updates.localChargeTotal = prev.sell;
                 changed = true;
             }
             
-            // Default Bank to MB Bank
             if (prev.bank !== 'MB Bank') {
                 updates.bank = 'MB Bank';
                 changed = true;
@@ -460,58 +475,25 @@ export const JobModal: React.FC<JobModalProps> = ({
     setCustCodeInput(val);
     setShowSuggestions(true);
 
-    // 1. Try finding by ID (Select case)
     let match = (customers || []).find(c => c.id === val);
 
-    // 2. If not found, try finding by Code (Typing case)
     if (!match) {
         match = (customers || []).find(c => c?.code && String(c.code).toLowerCase() === val.toLowerCase().trim());
     }
     
-    // 3. Optional: Try finding by Name (Typing case fallback)
     if (!match) {
          match = (customers || []).find(c => c?.name && String(c.name).toLowerCase() === val.toLowerCase().trim());
     }
     
     if (match) {
-        setIsAddingCustomer(false);
-        setNewCustomer({ mst: '', name: '', code: '' });
         setFormData(prev => ({ 
             ...prev, 
             customerId: match.id,
             customerName: match.name
         }));
     } else {
-        setIsAddingCustomer(true);
         setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-        setNewCustomer(prev => ({ ...prev, code: val }));
     }
-  };
-
-  const handleSelectSuggestion = (customer: Customer) => {
-    setCustCodeInput(customer.code);
-    setIsAddingCustomer(false);
-    setNewCustomer({ mst: '', name: '', code: '' });
-    setFormData(prev => ({ 
-        ...prev, 
-        customerId: customer.id,
-        customerName: customer.name
-    }));
-    setShowSuggestions(false);
-  };
-
-  const saveNewCustomer = () => {
-    if (!newCustomer.name || !newCustomer.code) return;
-    const newCustObj: Customer = {
-      id: Date.now().toString(),
-      ...newCustomer
-    };
-    setFormData(prev => ({
-      ...prev,
-      customerId: newCustObj.id,
-      customerName: newCustObj.name
-    }));
-    return newCustObj;
   };
 
   const handleExtensionChange = (id: string, field: keyof ExtensionData, value: any) => {
@@ -586,23 +568,7 @@ export const JobModal: React.FC<JobModalProps> = ({
       }
     }
 
-    let createdCustomer: Customer | undefined;
-    if (isAddingCustomer) {
-      createdCustomer = saveNewCustomer();
-      if (!createdCustomer) {
-         alert("Vui lòng nhập thông tin khách hàng mới");
-         return;
-      }
-    }
-    
-    const finalJob = { ...formData };
-    if (createdCustomer) {
-        finalJob.customerId = createdCustomer.id;
-        finalJob.customerName = createdCustomer.name;
-    }
-
-    onSave(finalJob, createdCustomer);
-    setIsAddingCustomer(false);
+    onSave(formData);
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
@@ -620,18 +586,41 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  // Re-calculate isLongHoang for rendering logic
-  const selectedCustomer = (customers || []).find(c => c?.id === formData.customerId);
-  const displayCustName = selectedCustomer?.name || formData.customerName || '';
-  const nameLower = displayCustName.toLowerCase();
-  const codeLower = (selectedCustomer?.code || '').toLowerCase(); // Add code check too
+  // --- QUICK ADD CUSTOMER HANDLERS ---
+  const handleOpenQuickAdd = (type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string) => {
+      setQuickAddTarget({ type, extId });
+  };
 
-  const isLongHoang = nameLower.includes('long hoàng') || 
-                      nameLower.includes('long hoang') || 
-                      nameLower.includes('lhk') || 
-                      nameLower.includes('longhoang') ||
-                      codeLower.includes('longhoang') ||
-                      codeLower.includes('lhk');
+  const handleSaveQuickCustomer = (newCustomer: Customer) => {
+      onAddCustomer(newCustomer);
+      
+      if (quickAddTarget?.type === 'MAIN') {
+          setCustCodeInput(newCustomer.code);
+          setFormData(prev => ({ 
+              ...prev, 
+              customerId: newCustomer.id,
+              customerName: newCustomer.name
+          }));
+      } else if (quickAddTarget?.type === 'DEPOSIT') {
+          setFormData(prev => ({ ...prev, maKhCuocId: newCustomer.id }));
+      } else if (quickAddTarget?.type === 'EXTENSION' && quickAddTarget.extId) {
+          handleExtensionChange(quickAddTarget.extId, 'customerId', newCustomer.id);
+      }
+      
+      setQuickAddTarget(null);
+  };
+
+  const selectedCust = (customers || []).find(c => c?.id === formData.customerId);
+  const displayCustNameLongHoang = selectedCust?.name || formData.customerName || '';
+  const nameLowerLongHoang = displayCustNameLongHoang.toLowerCase();
+  const codeLowerLongHoang = (selectedCust?.code || '').toLowerCase(); 
+
+  const isLongHoang = nameLowerLongHoang.includes('long hoàng') || 
+                      nameLowerLongHoang.includes('long hoang') || 
+                      nameLowerLongHoang.includes('lhk') || 
+                      nameLowerLongHoang.includes('longhoang') ||
+                      codeLowerLongHoang.includes('longhoang') ||
+                      codeLowerLongHoang.includes('lhk');
 
   if (!isOpen) return null;
 
@@ -685,14 +674,16 @@ export const JobModal: React.FC<JobModalProps> = ({
                     </div>
                     <div className="md:col-span-4">
                         <Label>Khách hàng (Mã KH)</Label>
-                        <div className="relative group">
-                            <CustomerInput value={custCodeInput} onChange={handleCustomerInputChange} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} readOnly={isViewMode} placeholder={isViewMode ? "" : "Tìm KH..."} className={isAddingCustomer ? "border-blue-500 ring-2 ring-blue-100" : ""} customers={customers} />
-                            {!isViewMode && showSuggestions && custCodeInput && (
-                                <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto mt-1 left-0 py-1">
-                                    {/* ... suggestions ... */}
-                                </ul>
-                            )}
-                        </div>
+                        <CustomerInput 
+                            value={custCodeInput} 
+                            onChange={handleCustomerInputChange} 
+                            onFocus={() => setShowSuggestions(true)} 
+                            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} 
+                            readOnly={isViewMode} 
+                            placeholder={isViewMode ? "" : "Tìm KH..."} 
+                            customers={customers} 
+                            onAddClick={() => handleOpenQuickAdd('MAIN')}
+                        />
                     </div>
 
                     {/* Logistics Info */}
@@ -762,7 +753,6 @@ export const JobModal: React.FC<JobModalProps> = ({
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 relative">
                             <div className="absolute top-2 right-2 text-[10px] font-bold text-slate-400 uppercase">Local Charge</div>
                             <div className="grid grid-cols-2 gap-3 mt-1">
-                                {/* Hide Invoice if Long Hoang */}
                                 {!isLongHoang && <div className="col-span-2"><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} placeholder="Số hóa đơn..." /></div>}
                                 
                                 <div><MoneyInput label="Amount" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode || isLongHoang} className="text-blue-700" /></div>
@@ -780,7 +770,18 @@ export const JobModal: React.FC<JobModalProps> = ({
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 relative">
                             <div className="absolute top-2 right-2 text-[10px] font-bold text-slate-400 uppercase">Deposit (Cược)</div>
                             <div className="grid grid-cols-2 gap-3 mt-1">
-                                <div className="col-span-2"><Label>KH Cược</Label><CustomerInput value={formData.maKhCuocId} onChange={(val) => setFormData(prev => ({ ...prev, maKhCuocId: val }))} customers={customers} readOnly={isViewMode} placeholder="Mã KH..." className="h-9" /></div>
+                                <div className="col-span-2">
+                                    <Label>KH Cược</Label>
+                                    <CustomerInput 
+                                        value={formData.maKhCuocId} 
+                                        onChange={(val) => setFormData(prev => ({ ...prev, maKhCuocId: val }))} 
+                                        customers={customers} 
+                                        readOnly={isViewMode} 
+                                        placeholder="Mã KH..." 
+                                        className="h-9" 
+                                        onAddClick={() => handleOpenQuickAdd('DEPOSIT')}
+                                    />
+                                </div>
                                 <div><MoneyInput label="Tiền Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} className="text-orange-700" /></div>
                                 <div className="grid grid-cols-2 gap-1">
                                     <div><Label>Ngày Cược</Label><DateInput name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} /></div>
@@ -801,7 +802,18 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <div className="space-y-2">
                     {(formData.extensions || []).map((ext) => (
                         <div key={ext.id} className="grid grid-cols-12 gap-2 items-end bg-slate-50 p-2 rounded border border-slate-200">
-                            <div className="col-span-5"><Label>Khách hàng</Label><CustomerInput value={ext.customerId} onChange={(val) => handleExtensionChange(ext.id, 'customerId', val)} customers={customers} readOnly={isViewMode} placeholder="Mã KH" className="h-8 text-xs" /></div>
+                            <div className="col-span-5">
+                                <Label>Khách hàng</Label>
+                                <CustomerInput 
+                                    value={ext.customerId} 
+                                    onChange={(val) => handleExtensionChange(ext.id, 'customerId', val)} 
+                                    customers={customers} 
+                                    readOnly={isViewMode} 
+                                    placeholder="Mã KH" 
+                                    className="h-8 text-xs" 
+                                    onAddClick={() => handleOpenQuickAdd('EXTENSION', ext.id)}
+                                />
+                            </div>
                             <div className="col-span-3"><Label>Invoice</Label><Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode} className="h-8 text-xs" /></div>
                             <div className="col-span-3"><Label>Amount</Label><input type="text" value={new Intl.NumberFormat('en-US').format(ext.total)} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val); }} readOnly={isViewMode} className="w-full px-2 py-1 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-orange-500 text-right font-bold text-orange-700 h-8" placeholder="0" /></div>
                             <div className="col-span-1 flex justify-center">{!isViewMode && <button type="button" onClick={() => removeExtension(ext.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</div>
@@ -824,6 +836,13 @@ export const JobModal: React.FC<JobModalProps> = ({
           </form>
         </div>
       </div>
+
+      {/* CUSTOMER MODAL FOR QUICK ADD */}
+      <CustomerModal 
+          isOpen={!!quickAddTarget} 
+          onClose={() => setQuickAddTarget(null)} 
+          onSave={handleSaveQuickCustomer} 
+      />
     </div>,
     document.body
   );
