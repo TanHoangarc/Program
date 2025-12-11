@@ -90,6 +90,9 @@ const App: React.FC = () => {
       }
   });
 
+  // --- LOCKED IDs STATE (Global Sync) ---
+  const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
+
   // Persist tracking states
   useEffect(() => {
       localStorage.setItem('kb_deleted_reqs', JSON.stringify(Array.from(localDeletedIds)));
@@ -299,6 +302,28 @@ const App: React.FC = () => {
     }
   };
 
+  // --- HANDLE TOGGLE LOCK (SYNCED) ---
+  const handleToggleLock = (docNo: string) => {
+      const newSet = new Set(lockedIds);
+      if (newSet.has(docNo)) newSet.delete(docNo);
+      else newSet.add(docNo);
+      setLockedIds(newSet);
+
+      // Auto-sync lock status to server immediately
+      if (currentUser && isServerAvailable) {
+          const payload = {
+              user: currentUser.username,
+              timestamp: new Date().toISOString(),
+              lockedIds: Array.from(newSet),
+              autoApprove: true, // Bypass admin approval for locks
+              // Empty arrays for others to avoid overwriting
+              jobs: [], paymentRequests: [], customers: [], lines: []
+          };
+          
+          sendPendingToServer(payload).catch(e => console.error("Sync lock failed", e));
+      }
+  };
+
   // --- ADMIN: FETCH PENDING REQUESTS ---
   const fetchPendingRequests = async () => {
     if (!currentUser || currentUser.role !== "Admin" || !isServerAvailable) return;
@@ -359,6 +384,12 @@ const App: React.FC = () => {
       const incPayments = Array.isArray(incomingData.paymentRequests) ? incomingData.paymentRequests : (incomingData.data?.paymentRequests || incomingData.payload?.paymentRequests || []);
       const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
+      
+      // Merge Locks if present
+      const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
+      if (incLocks.length > 0) {
+          setLockedIds(new Set(incLocks));
+      }
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
@@ -396,6 +427,11 @@ const App: React.FC = () => {
         if (data.paymentRequests && Array.isArray(data.paymentRequests)) setPaymentRequests(data.paymentRequests);
         if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
         if (data.lines && Array.isArray(data.lines)) setLines(data.lines);
+        
+        // Load Locked IDs
+        if (data.lockedIds && Array.isArray(data.lockedIds)) {
+            setLockedIds(new Set(data.lockedIds));
+        }
 
         setIsServerAvailable(true);
 
@@ -487,7 +523,8 @@ const App: React.FC = () => {
         jobs,
         paymentRequests, // Include Payments in backup
         customers,
-        lines
+        lines,
+        lockedIds: Array.from(lockedIds) // Include locks
       };
 
       const controller = new AbortController();
@@ -508,7 +545,7 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     if (isServerAvailable) autoBackup(); 
-  }, [jobs, paymentRequests, customers, lines, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, isServerAvailable]);
 
   // SAVE TO LOCAL STORAGE
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
@@ -598,10 +635,11 @@ const App: React.FC = () => {
             )}
             
             {currentPage === 'lhk' && <LhkList jobs={jobs} />}
-            {currentPage === 'amis-thu' && <AmisExport jobs={jobs} customers={customers} mode="thu" onUpdateJob={handleEditJob} />}
-            {currentPage === 'amis-chi' && <AmisExport jobs={jobs} customers={customers} mode="chi" onUpdateJob={handleEditJob} />}
-            {currentPage === 'amis-ban' && <AmisExport jobs={jobs} customers={customers} mode="ban" onUpdateJob={handleEditJob} />}
-            {currentPage === 'amis-mua' && <AmisExport jobs={jobs} customers={customers} mode="mua" onUpdateJob={handleEditJob} />}
+            {/* AMIS EXPORT PAGES WITH SYNCED LOCKS */}
+            {currentPage === 'amis-thu' && <AmisExport jobs={jobs} customers={customers} mode="thu" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
+            {currentPage === 'amis-chi' && <AmisExport jobs={jobs} customers={customers} mode="chi" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
+            {currentPage === 'amis-ban' && <AmisExport jobs={jobs} customers={customers} mode="ban" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
+            {currentPage === 'amis-mua' && <AmisExport jobs={jobs} customers={customers} mode="mua" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
 
             {currentPage === 'profit' && (
               <ProfitReport jobs={jobs} onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} />
