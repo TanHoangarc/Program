@@ -269,6 +269,11 @@ const App: React.FC = () => {
             customReceipts: [...customReceipts], // Include Custom Receipts in standard sync
             lockedIds: Array.from(lockedIds) // Include Locked IDs in standard sync
         };
+    } else {
+        // If directPayload is provided, ensure lockedIds are included if not present
+        if (!payload.lockedIds) {
+            payload.lockedIds = Array.from(lockedIds);
+        }
     }
     
     if (!isServerAvailable) {
@@ -537,7 +542,8 @@ const App: React.FC = () => {
 
   // === AUTO BACKUP TO SERVER ===
   const autoBackup = async () => {
-    if (!currentUser || currentUser.role !== "Admin") return;
+    // Allow Admin, Manager, and Docs to backup data (especially Payment Requests created by Docs)
+    if (!currentUser || !["Admin", "Manager", "Docs"].includes(currentUser.role)) return;
     if (!isServerAvailable) return; 
 
     try {
