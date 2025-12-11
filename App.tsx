@@ -568,8 +568,15 @@ const App: React.FC = () => {
     }
   };
 
+  // Debounced Auto Backup for Stability
   useEffect(() => { 
-    if (isServerAvailable) autoBackup(); 
+    if (!isServerAvailable) return;
+    
+    const timeoutId = setTimeout(() => {
+        autoBackup();
+    }, 2000); // 2 second debounce
+
+    return () => clearTimeout(timeoutId);
   }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, isServerAvailable]);
 
   // SAVE TO LOCAL STORAGE
