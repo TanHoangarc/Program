@@ -220,13 +220,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
           if (targetExt) {
              setInternalTargetId(targetExt.id);
+             
+             // Generate Description: If Invoice exists, no BL Job. Else BL Job.
+             const extInv = targetExt.invoice;
+             const defaultDesc = extInv 
+                ? `Thu tiền của KH theo hoá đơn GH ${extInv} (KIM)`
+                : `Thu tiền của KH theo hoá đơn GH XXX BL ${deepCopyJob.jobCode} (KIM)`;
+
              setNewExtension({ 
                 customerId: targetExt.customerId || deepCopyJob.customerId || '', 
                 invoice: targetExt.invoice || '', 
                 date: targetExt.invoiceDate || new Date().toISOString().split('T')[0],
                 total: targetExt.total || 0,
                 amisDocNo: targetExt.amisDocNo || `NTTK${generateRandomStr()}`,
-                amisDesc: targetExt.amisDesc || `Thu tiền của KH theo hoá đơn GH ${targetExt.invoice || 'XXX'} (KIM)`
+                amisDesc: targetExt.amisDesc || defaultDesc
              });
           } else {
              setInternalTargetId(null);
@@ -341,10 +348,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
       }
       else if (mode === 'extension') {
+          // If invoice is provided, remove BL Job. Else keep BL Job.
+          const desc = val 
+            ? `Thu tiền của KH theo hoá đơn GH ${val} (KIM)`
+            : `Thu tiền của KH theo hoá đơn GH XXX BL ${jobCode} (KIM)`;
+
           setNewExtension(prev => ({ 
               ...prev, 
               invoice: val,
-              amisDesc: `Thu tiền của KH theo hoá đơn GH ${invPlaceholder} BL ${jobCode} (KIM)`
+              amisDesc: desc
           }));
       }
   };
@@ -408,13 +420,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const target = formData.extensions?.find(e => e.id === extId);
       if (target) {
           setInternalTargetId(target.id);
+          
+          const inv = target.invoice;
+          const desc = target.amisDesc || (inv
+            ? `Thu tiền của KH theo hoá đơn GH ${inv} (KIM)`
+            : `Thu tiền của KH theo hoá đơn GH XXX BL ${formData.jobCode} (KIM)`);
+
           setNewExtension({
               customerId: target.customerId || formData.customerId,
               invoice: target.invoice,
               date: target.invoiceDate || new Date().toISOString().split('T')[0],
               total: target.total,
               amisDocNo: target.amisDocNo || `NTTK${generateRandomStr()}`,
-              amisDesc: target.amisDesc || `Thu tiền của KH theo hoá đơn GH ${target.invoice || 'XXX'} BL ${formData.jobCode} (KIM)`
+              amisDesc: desc
           });
           
           // Update customer input to extension customer
