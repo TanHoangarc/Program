@@ -226,7 +226,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 date: targetExt.invoiceDate || new Date().toISOString().split('T')[0],
                 total: targetExt.total || 0,
                 amisDocNo: targetExt.amisDocNo || `NTTK${generateRandomStr()}`,
-                amisDesc: targetExt.amisDesc || `Thu tiền của KH theo hoá đơn GH ${targetExt.invoice || 'XXX'} BL ${deepCopyJob.jobCode} (KIM)`
+                amisDesc: targetExt.amisDesc || `Thu tiền của KH theo hoá đơn GH ${targetExt.invoice || 'XXX'} (KIM)`
              });
           } else {
              setInternalTargetId(null);
