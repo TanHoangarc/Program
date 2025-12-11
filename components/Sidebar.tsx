@@ -4,13 +4,12 @@ import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2,
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc';
   onNavigate: (page: any) => void;
-  onResetData: () => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
   onSendPending: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onResetData, currentUser, onLogout, onSendPending }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, currentUser, onLogout, onSendPending }) => {
   
   const role = currentUser?.role || 'Guest';
   const isAdminOrManager = role === 'Admin' || role === 'Manager';
@@ -117,7 +116,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
         {/* OVERVIEW SECTION (Admin/Manager Only) */}
         {canViewOverview && (
           <>
-            <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tổng quan</div>
             <MenuItem 
               active={currentPage === 'reports'}
               onClick={() => onNavigate('reports')}
@@ -142,7 +140,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
         {/* OPERATIONS SECTION (Admin/Manager/Staff) */}
         {canViewOperations && (
           <>
-            <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-4 mb-1">Nghiệp vụ</div>
             <MenuItem 
               active={currentPage === 'entry'}
               onClick={() => onNavigate('entry')}
@@ -199,7 +196,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
         {/* DATA AND PAYMENT SECTION (Admin/Manager/Docs) */}
         {canViewDataPayment && (
           <>
-            <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-4 mb-1">Dữ liệu và thanh toán</div>
             <MenuItem 
               active={currentPage === 'lookup'}
               onClick={() => onNavigate('lookup')}
@@ -224,7 +220,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
         {/* ACCOUNTING SECTION (Admin/Manager Only) */}
         {canViewAccounting && (
           <>
-            <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-4 mb-1">Kế Toán</div>
             <div>
               <MenuItem 
                 active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)}
@@ -264,11 +259,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
               )}
             </div>
           </>
-        )}
-
-        {/* CONFIG SECTION (Mixed Access) */}
-        {(canViewRecon || canViewData || canViewSystem) && (
-           <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-4 mb-1">Cấu hình</div>
         )}
 
         {canViewRecon && (
@@ -347,16 +337,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, onRes
                 <LogOut className="w-4 h-4" />
              </button>
           </div>
-        )}
-
-        {isAdminOrManager && role === 'Admin' && (
-          <button 
-            onClick={(e) => { e.preventDefault(); onResetData(); }}
-            className="w-full flex items-center justify-center space-x-2 text-red-400/70 hover:bg-red-500/10 hover:text-red-300 px-3 py-2 rounded-lg text-[10px] transition-all duration-200 group border border-dashed border-red-900/30"
-          >
-            <RotateCcw className="w-3 h-3 group-hover:rotate-180 transition-transform duration-500" />
-            <span>Reset Data Local</span>
-          </button>
         )}
       </div>
     </div>

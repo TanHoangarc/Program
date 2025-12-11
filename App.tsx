@@ -508,7 +508,6 @@ const App: React.FC = () => {
       <Sidebar
         currentPage={currentPage}
         onNavigate={setCurrentPage}
-        onResetData={() => window.location.reload()}
         currentUser={currentUser}
         onLogout={() => handleLogout(false)}
         onSendPending={sendPendingToServer}

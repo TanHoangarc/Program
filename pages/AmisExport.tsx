@@ -756,7 +756,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               desc: updatedJob.amisLcDesc || '',
               amount: updatedJob.localChargeTotal || 0,
               tkNo: '1121', 
-              tkCo: '13111',
+              tkCo: '711',
               
               // AMIS Columns mapping
               col1: updatedJob.localChargeDate,
@@ -769,7 +769,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               col12: 'VND',
               col14: updatedJob.amisLcDesc,
               col15: '1121',
-              col16: '13111', 
+              col16: '711', 
               col17: updatedJob.localChargeTotal,
               col19: objCode
           };
