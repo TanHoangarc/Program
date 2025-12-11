@@ -165,8 +165,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const updatedRequests = requests.filter(r => r.id !== id);
     onUpdateRequests(updatedRequests);
     
-    // Auto sync deletion for Docs
-    if (currentUser?.role === 'Docs' && onSendPending) {
+    // Auto sync deletion for Docs, Admin, and Manager to ensure persistence
+    if (['Docs', 'Admin', 'Manager'].includes(currentUser?.role || '') && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),
@@ -223,8 +223,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     onUpdateRequests(updated);
     
-    // Auto sync completion for Docs
-    if (currentUser?.role === 'Docs' && onSendPending) {
+    // Auto sync completion for Docs, Admin, and Manager
+    if (['Docs', 'Admin', 'Manager'].includes(currentUser?.role || '') && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),
@@ -648,15 +648,14 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                         <CheckCircle className="w-4 h-4" />
                       </button>
 
-                      {currentUser?.role !== 'Docs' && (
-                        <button
-                          onClick={() => handleDelete(req.id)}
-                          className="bg-red-50 text-red-600 p-2 rounded-lg border hover:bg-red-100 transition-colors"
-                          title="Xóa yêu cầu"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      {/* Updated: Delete enabled for Docs, Admin, Manager with sync */}
+                      <button
+                        onClick={() => handleDelete(req.id)}
+                        className="bg-red-50 text-red-600 p-2 rounded-lg border hover:bg-red-100 transition-colors"
+                        title="Xóa yêu cầu"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </td>
 
@@ -746,15 +745,14 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                         <Download className="w-4 h-4" />
                       </button>
 
-                      {currentUser?.role !== 'Docs' && (
-                        <button
-                          onClick={() => handleDelete(req.id)}
-                          className="text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Xóa"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      {/* Updated: Delete enabled for Docs, Admin, Manager with sync */}
+                      <button
+                        onClick={() => handleDelete(req.id)}
+                        className="text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Xóa"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
 
                     </div>
                   </td>
