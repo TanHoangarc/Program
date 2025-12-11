@@ -19,6 +19,9 @@ interface AmisExportProps {
   // New props for global lock syncing
   lockedIds: Set<string>;
   onToggleLock: (docNo: string) => void;
+  // New props for custom receipts syncing
+  customReceipts?: any[];
+  onUpdateCustomReceipts?: (receipts: any[]) => void;
 }
 
 // Cấu hình đường dẫn Server
@@ -33,7 +36,7 @@ const TEMPLATE_MAP: Record<string, string> = {
   mua: "Mua_hang_Mau.xlsx"
 };
 
-export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob, lockedIds, onToggleLock }) => {
+export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
@@ -48,15 +51,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   
-  // Custom Receipts State (For "Thu Khác" external items)
-  const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
-      try {
-          const saved = localStorage.getItem('amis_custom_receipts');
-          return saved ? JSON.parse(saved) : [];
-      } catch {
-          return [];
-      }
-  });
+  // Custom Receipts State (For "Thu Khác" external items) -> Now handled via Props
+  // Removed local state definition
   
   // Quick Receive Modal State
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
@@ -73,9 +69,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
   const currentTemplateFileName = TEMPLATE_MAP[mode] || "AmisTemplate.xlsx";
 
-  useEffect(() => {
-      localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts));
-  }, [customReceipts]);
+  // Removed localstorage effect for customReceipts as it is now handled in App.tsx
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -546,7 +540,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
       if (!window.confirm("Bạn có chắc chắn muốn xóa phiếu này?")) return;
 
       if (row.type === 'external') {
-          setCustomReceipts(prev => prev.filter(r => r.id !== row.id));
+          if (onUpdateCustomReceipts) {
+              const updatedReceipts = customReceipts.filter(r => r.id !== row.id);
+              onUpdateCustomReceipts(updatedReceipts);
+          }
       } else {
           // Standard Job deletion logic: Clear AMIS fields
           if (!onUpdateJob) return;
@@ -779,16 +776,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               col19: objCode
           };
 
-          if (existingIndex >= 0) {
-              // Update existing
-              setCustomReceipts(prev => {
-                  const newArr = [...prev];
+          if (onUpdateCustomReceipts) {
+              if (existingIndex >= 0) {
+                  // Update existing
+                  const newArr = [...customReceipts];
                   newArr[existingIndex] = receiptData;
-                  return newArr;
-              });
-          } else {
-              // Add new
-              setCustomReceipts(prev => [...prev, receiptData]);
+                  onUpdateCustomReceipts(newArr);
+              } else {
+                  // Add new
+                  onUpdateCustomReceipts([...customReceipts, receiptData]);
+              }
           }
       } 
       // 2. Handle Real Job Receipt Update
