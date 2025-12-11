@@ -266,7 +266,8 @@ const App: React.FC = () => {
             paymentRequests: paymentsToSend, // Include Payments
             customers: [...customers],
             lines: [...lines],
-            customReceipts: [...customReceipts] // Include Custom Receipts in standard sync
+            customReceipts: [...customReceipts], // Include Custom Receipts in standard sync
+            lockedIds: Array.from(lockedIds) // Include Locked IDs in standard sync
         };
     }
     
@@ -397,10 +398,14 @@ const App: React.FC = () => {
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
 
-      // Merge Locks if present
+      // Merge Locks if present using UNION logic
       const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
       if (incLocks.length > 0) {
-          setLockedIds(new Set(incLocks));
+          setLockedIds(prev => {
+              const newSet = new Set(prev);
+              incLocks.forEach((id: string) => newSet.add(id));
+              return newSet;
+          });
       }
 
       const newJobs = mergeArrays(jobs, incJobs);
