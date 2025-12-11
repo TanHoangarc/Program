@@ -149,6 +149,16 @@ const App: React.FC = () => {
     }
   });
 
+  // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
+  const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
+      try {
+          const saved = localStorage.getItem('amis_custom_receipts');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
   const [users, setUsers] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('logistics_users_v1');
     if (saved) {
@@ -255,7 +265,8 @@ const App: React.FC = () => {
             jobs: jobsToSend, 
             paymentRequests: paymentsToSend, // Include Payments
             customers: [...customers],
-            lines: [...lines]
+            lines: [...lines],
+            customReceipts: [...customReceipts] // Include Custom Receipts in standard sync
         };
     }
     
@@ -384,7 +395,8 @@ const App: React.FC = () => {
       const incPayments = Array.isArray(incomingData.paymentRequests) ? incomingData.paymentRequests : (incomingData.data?.paymentRequests || incomingData.payload?.paymentRequests || []);
       const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
-      
+      const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
+
       // Merge Locks if present
       const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
       if (incLocks.length > 0) {
@@ -395,11 +407,13 @@ const App: React.FC = () => {
       const newPayments = mergeArrays(paymentRequests, incPayments);
       const newCustomers = mergeArrays(customers, incCustomers);
       const newLines = mergeArrays(lines, incLines);
+      const newReceipts = mergeArrays(customReceipts, incReceipts);
 
       setJobs(newJobs);
       setPaymentRequests(newPayments);
       setCustomers(newCustomers);
       setLines(newLines);
+      setCustomReceipts(newReceipts);
 
       await handleRejectRequest(requestId);
       alert("Đã duyệt và cập nhật dữ liệu thành công!");
@@ -431,6 +445,11 @@ const App: React.FC = () => {
         // Load Locked IDs
         if (data.lockedIds && Array.isArray(data.lockedIds)) {
             setLockedIds(new Set(data.lockedIds));
+        }
+        
+        // Load Custom Receipts
+        if (data.customReceipts && Array.isArray(data.customReceipts)) {
+            setCustomReceipts(data.customReceipts);
         }
 
         setIsServerAvailable(true);
@@ -519,12 +538,13 @@ const App: React.FC = () => {
     try {
       const data = {
         timestamp: new Date().toISOString(),
-        version: "2.2",
+        version: "2.3",
         jobs,
         paymentRequests, // Include Payments in backup
         customers,
         lines,
-        lockedIds: Array.from(lockedIds) // Include locks
+        lockedIds: Array.from(lockedIds), // Include locks
+        customReceipts // Include Custom Receipts
       };
 
       const controller = new AbortController();
@@ -545,7 +565,7 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     if (isServerAvailable) autoBackup(); 
-  }, [jobs, paymentRequests, customers, lines, lockedIds, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, isServerAvailable]);
 
   // SAVE TO LOCAL STORAGE
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
@@ -553,6 +573,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_customers_v1", JSON.stringify(customers)); }, [customers]);
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
+  useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
 
   // Auto fetch pending when Admin goes to System page
   useEffect(() => {
@@ -635,11 +656,56 @@ const App: React.FC = () => {
             )}
             
             {currentPage === 'lhk' && <LhkList jobs={jobs} />}
-            {/* AMIS EXPORT PAGES WITH SYNCED LOCKS */}
-            {currentPage === 'amis-thu' && <AmisExport jobs={jobs} customers={customers} mode="thu" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
-            {currentPage === 'amis-chi' && <AmisExport jobs={jobs} customers={customers} mode="chi" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
-            {currentPage === 'amis-ban' && <AmisExport jobs={jobs} customers={customers} mode="ban" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
-            {currentPage === 'amis-mua' && <AmisExport jobs={jobs} customers={customers} mode="mua" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} />}
+            
+            {/* AMIS EXPORT PAGES WITH SYNCED LOCKS & CUSTOM RECEIPTS */}
+            {currentPage === 'amis-thu' && (
+                <AmisExport 
+                    jobs={jobs} 
+                    customers={customers} 
+                    mode="thu" 
+                    onUpdateJob={handleEditJob} 
+                    lockedIds={lockedIds} 
+                    onToggleLock={handleToggleLock} 
+                    customReceipts={customReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                />
+            )}
+            {currentPage === 'amis-chi' && (
+                <AmisExport 
+                    jobs={jobs} 
+                    customers={customers} 
+                    mode="chi" 
+                    onUpdateJob={handleEditJob} 
+                    lockedIds={lockedIds} 
+                    onToggleLock={handleToggleLock}
+                    customReceipts={customReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                />
+            )}
+            {currentPage === 'amis-ban' && (
+                <AmisExport 
+                    jobs={jobs} 
+                    customers={customers} 
+                    mode="ban" 
+                    onUpdateJob={handleEditJob} 
+                    lockedIds={lockedIds} 
+                    onToggleLock={handleToggleLock}
+                    customReceipts={customReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                />
+            )}
+            {currentPage === 'amis-mua' && (
+                <AmisExport 
+                    jobs={jobs} 
+                    customers={customers} 
+                    mode="mua" 
+                    onUpdateJob={handleEditJob} 
+                    lockedIds={lockedIds} 
+                    onToggleLock={handleToggleLock}
+                    customReceipts={customReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                />
+            )}
 
             {currentPage === 'profit' && (
               <ProfitReport jobs={jobs} onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} />
