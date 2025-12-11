@@ -247,13 +247,53 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  processedDocNos.add(j.amisPaymentDocNo);
                  
                  let amount = 0;
+
+                 // PRIORITY 1: Calculate from Actual Invoice Details (Net + VAT)
                  if (j.booking) {
-                     const bookingJobs = jobs.filter(x => x.booking === j.booking);
-                     amount = bookingJobs.reduce((sum, x) => sum + (x.chiPayment || 0), 0);
-                 } else {
-                     amount = j.chiPayment || 0;
+                     const summary = calculateBookingSummary(jobs, j.booking);
+                     if (summary && summary.costDetails) {
+                         const lc = summary.costDetails.localCharge;
+                         // Logic: If "Chưa HĐ" (hasInvoice === false) -> Use Total. If "Có HĐ" -> Use Net + VAT.
+                         const mainAmount = (lc.hasInvoice === false) 
+                             ? (lc.total || 0) 
+                             : ((lc.net || 0) + (lc.vat || 0));
+                         
+                         const additionalAmount = (summary.costDetails.additionalLocalCharges || []).reduce((sum, item) => {
+                             const itemAmount = (item.hasInvoice === false) 
+                                 ? (item.total || 0) 
+                                 : ((item.net || 0) + (item.vat || 0));
+                             return sum + itemAmount;
+                         }, 0);
+
+                         amount = mainAmount + additionalAmount;
+                     }
+                 } else if (j.bookingCostDetails) {
+                     const lc = j.bookingCostDetails.localCharge;
+                     const mainAmount = (lc.hasInvoice === false) 
+                         ? (lc.total || 0) 
+                         : ((lc.net || 0) + (lc.vat || 0));
+                     
+                     const additionalAmount = (j.bookingCostDetails.additionalLocalCharges || []).reduce((sum, item) => {
+                         const itemAmount = (item.hasInvoice === false) 
+                             ? (item.total || 0) 
+                             : ((item.net || 0) + (item.vat || 0));
+                         return sum + itemAmount;
+                     }, 0);
+                     
+                     amount = mainAmount + additionalAmount;
+                 }
+
+                 // PRIORITY 2: Manual "Chi Payment" field (Legacy support)
+                 if (amount === 0) {
+                     if (j.booking) {
+                         const bookingJobs = jobs.filter(x => x.booking === j.booking);
+                         amount = bookingJobs.reduce((sum, x) => sum + (x.chiPayment || 0), 0);
+                     } else {
+                         amount = j.chiPayment || 0;
+                     }
                  }
                  
+                 // PRIORITY 3: System Target Cost (Fallback)
                  if (amount === 0) {
                      const summary = calculateBookingSummary(jobs, j.booking);
                      amount = summary ? summary.totalCost : j.cost;
