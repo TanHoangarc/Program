@@ -147,6 +147,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => sum + (job.extensions || []).reduce((s, x) => s + x.total, 0), 0);
   const totalLocalChargeRevenue = booking.jobs.reduce((s, j) => s + j.localChargeTotal, 0);
   const totalAdditionalLocalChargeNet = additionalLocalCharges.reduce((s, i) => s + (i.net || 0), 0);
+  
+  // Calculate Total Amount (Net + VAT) for additional charges
+  const totalAdditionalLocalChargeTotalAmount = additionalLocalCharges.reduce((s, i) => s + (i.net || 0) + (i.vat || 0), 0);
+
   const totalExtensionCost = extensionCosts.reduce((s, i) => s + i.total, 0);
   const totalExtensionNetCost = extensionCosts.reduce((s, i) => s + (i.net || 0), 0);
   const totalDepositCost = deposits.reduce((s, d) => s + d.amount, 0);
@@ -172,9 +176,16 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const summaryExtensionExpense = vatMode === 'post' ? totalExtensionCost : totalExtensionNetCost;
   const summaryGrandTotalExpense = summaryAmountExpense + summaryExtensionExpense + totalDepositCost;
   const summaryProfit = summaryGrandTotalRevenue - summaryGrandTotalExpense;
+  
+  // totalActualNet used for target comparison (Net vs Net)
   const totalActualNet = localCharge.hasInvoice
       ? (localCharge.net || 0) + totalAdditionalLocalChargeNet
       : (localCharge.total || 0) + totalAdditionalLocalChargeNet;
+
+  // totalActualTotal used for display (Net + VAT)
+  const totalActualTotal = localCharge.hasInvoice
+      ? (localCharge.net || 0) + (localCharge.vat || 0) + totalAdditionalLocalChargeTotalAmount
+      : (localCharge.total || 0) + totalAdditionalLocalChargeTotalAmount;
 
   // -----------------------------
   // HELPER: GET PAYMENT REQUESTS FROM LOCALSTORAGE
@@ -506,7 +517,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                     {selectedFile && <button onClick={handleUploadFile} disabled={isUploading} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">{isUploading ? "..." : "Upload"}</button>}
                                 </div>
                             )}
-                            <div className="text-[10px] text-slate-400">Total Net: <strong className={totalActualNet !== systemTotalAdjustedCost ? "text-red-600" : "text-green-600"}>{formatMoney(totalActualNet)}</strong> / Target: {formatMoney(systemTotalAdjustedCost)}</div>
+                            <div className="text-[10px] text-slate-400">Total Invoice: <strong className={totalActualNet !== systemTotalAdjustedCost ? "text-red-600" : "text-green-600"}>{formatMoney(totalActualTotal)}</strong> / Target: {formatMoney(systemTotalAdjustedCost)}</div>
                         </div>
                     )}
                 </div>
