@@ -16,6 +16,9 @@ interface AmisExportProps {
   customers: Customer[];
   mode: 'thu' | 'chi' | 'ban' | 'mua';
   onUpdateJob?: (job: JobData) => void;
+  // New props for global lock syncing
+  lockedIds: Set<string>;
+  onToggleLock: (docNo: string) => void;
 }
 
 // Cấu hình đường dẫn Server
@@ -30,21 +33,14 @@ const TEMPLATE_MAP: Record<string, string> = {
   mua: "Mua_hang_Mau.xlsx"
 };
 
-export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob }) => {
+export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob, lockedIds, onToggleLock }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
   const [selectedBookingForModal, setSelectedBookingForModal] = useState<any | null>(null);
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
-    try {
-        const saved = localStorage.getItem(`amis_locked_${mode}_v1`);
-        return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch {
-        return new Set();
-    }
-  });
+  // Removed local lockedIds state
 
   // Template State
   const [templateWb, setTemplateWb] = useState<XLSX.WorkBook | null>(null);
@@ -76,10 +72,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const mockLines: ShippingLine[] = [];
 
   const currentTemplateFileName = TEMPLATE_MAP[mode] || "AmisTemplate.xlsx";
-
-  useEffect(() => {
-    localStorage.setItem(`amis_locked_${mode}_v1`, JSON.stringify(Array.from(lockedIds)));
-  }, [lockedIds, mode]);
 
   useEffect(() => {
       localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts));
@@ -179,9 +171,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   };
 
   const exportData = useMemo(() => {
-    // DO NOT filter jobs by job.month here. We filter by transaction date below.
-    // let filteredJobs = jobs; 
-
     if (mode === 'thu') {
       const rows: any[] = [];
       
@@ -259,15 +248,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
         // 1. Chi Payment (General/Local Charge)
         jobs.forEach(j => {
-             // Default to today if empty, but for filtering we need to check if it matches filterMonth
              const date = j.amisPaymentDate || new Date().toISOString().split('T')[0];
-             
              if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo) && checkMonth(date)) {
                  processedDocNos.add(j.amisPaymentDocNo);
                  
                  let amount = 0;
                  if (j.booking) {
-                     // Sum all jobs in this booking
                      const bookingJobs = jobs.filter(x => x.booking === j.booking);
                      amount = bookingJobs.reduce((sum, x) => sum + (x.chiPayment || 0), 0);
                  } else {
@@ -390,9 +376,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         const rows: any[] = [];
         jobs.forEach(j => {
             if (j.sell > 0) {
-                // Use Local Charge Date as Invoice Date, otherwise default to today
                 const date = j.localChargeDate || new Date().toISOString().split('T')[0];
-                
                 if (checkMonth(date)) {
                     const docNo = `PBH-${j.jobCode}`;
                     const year = new Date().getFullYear().toString().slice(-2);
@@ -427,12 +411,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
     else if (mode === 'mua') {
-        // Collect unique booking IDs that have jobs passing filter (actually we need to check booking details date)
         const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter(b => !!b)));
         const rows: any[] = [];
 
         bookingIds.forEach(bid => {
-            // Find ALL jobs for this booking to calculate summary
             const bookingJobs = jobs.filter(j => j.booking === bid);
             const summary = calculateBookingSummary(bookingJobs, bid);
             if (!summary) return;
@@ -440,7 +422,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
             const lcDetails = summary.costDetails.localCharge;
             const additional = summary.costDetails.additionalLocalCharges || [];
             
-            // Determine date: use LC Date, fallback to today
             const date = lcDetails.date || new Date().toISOString().split('T')[0];
 
             if (checkMonth(date)) {
@@ -504,15 +485,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   };
 
   const toggleLock = (docNo: string) => {
-    const newLocks = new Set(lockedIds);
-    if (newLocks.has(docNo)) newLocks.delete(docNo);
-    else {
-        newLocks.add(docNo);
-        const newSelection = new Set(selectedIds);
-        newSelection.delete(docNo);
-        setSelectedIds(newSelection);
-    }
-    setLockedIds(newLocks);
+    // Call props function which syncs to App.tsx and Server
+    onToggleLock(docNo);
+    // Remove from selection if it was selected
+    const newSelection = new Set(selectedIds);
+    newSelection.delete(docNo);
+    setSelectedIds(newSelection);
   };
 
   const handleEditClick = (row: any) => {
@@ -675,9 +653,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
     XLSX.writeFile(wb, `amis_export_${mode}_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-    const newLocked = new Set(lockedIds);
-    rowsToExport.forEach((r: any) => newLocked.add(r.docNo));
-    setLockedIds(newLocked);
+    // We no longer locally lock, we let the user manually lock if they want
     setSelectedIds(new Set());
   };
 
@@ -872,12 +848,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                   <div className="flex items-center text-xs text-blue-500 px-2 animate-pulse">
                       <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Đang tải mẫu...
                   </div>
-              )}
-
-              {isInteractiveMode && lockedIds.size > 0 && (
-                  <button onClick={() => setLockedIds(new Set())} className="bg-white/50 hover:bg-white/80 text-slate-600 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-                      <RefreshCw className="w-4 h-4" /> <span>Mở khóa tất cả</span>
-                  </button>
               )}
 
               {/* THU KHÁC BUTTON */}
