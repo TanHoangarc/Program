@@ -185,6 +185,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       } catch { return []; }
   };
 
+  // Safe string comparison
+  const normalize = (str: any) => String(str || '').trim().toLowerCase();
+
   // -----------------------------
   // UPDATE HANDLERS
   // -----------------------------
@@ -203,7 +206,15 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   // SYNC FROM PAYMENT REQUEST (LOCAL CHARGE)
   const handleSyncLocalCharge = () => {
       const reqs = getPaymentRequests();
-      const relevant = reqs.filter((r: any) => r.booking === booking.bookingId && r.type === 'Local Charge');
+      const targetBk = normalize(booking.bookingId);
+
+      // Filter: Match Booking ID (normalized) AND (Type is Local Charge OR Type is missing)
+      const relevant = reqs.filter((r: any) => {
+          const rBk = normalize(r.booking);
+          const rType = r.type || 'Local Charge';
+          return rBk === targetBk && rType === 'Local Charge';
+      });
+
       const total = relevant.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
       
       if (total > 0) {
@@ -217,16 +228,22 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           }));
           alert(`Đã đồng bộ ${new Intl.NumberFormat('en-US').format(total)} VND từ Payment Requests. Chuyển sang chế độ "Chưa HĐ".`);
       } else {
-          alert("Không tìm thấy yêu cầu thanh toán Local Charge nào cho Booking này.");
+          alert(`Không tìm thấy yêu cầu thanh toán Local Charge nào cho Booking "${booking.bookingId}".`);
       }
   };
 
   // VIEW INVOICE FROM PAYMENT REQUEST
   const handleViewPaymentInvoice = () => {
       const reqs = getPaymentRequests();
+      const targetBk = normalize(booking.bookingId);
+
       // Find latest relevant request with a file
       const relevant = reqs
-          .filter((r: any) => r.booking === booking.bookingId && r.type === 'Local Charge' && r.invoiceUrl)
+          .filter((r: any) => {
+              const rBk = normalize(r.booking);
+              const rType = r.type || 'Local Charge';
+              return rBk === targetBk && rType === 'Local Charge' && r.invoiceUrl;
+          })
           .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       if (relevant.length > 0) {
@@ -237,15 +254,21 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
               alert("Tìm thấy yêu cầu thanh toán nhưng không có đường dẫn file.");
           }
       } else {
-          alert("Không tìm thấy file hóa đơn trong các yêu cầu thanh toán của Booking này.");
+          alert(`Không tìm thấy file hóa đơn trong các yêu cầu thanh toán của Booking "${booking.bookingId}".`);
       }
   };
 
   // SYNC FROM PAYMENT REQUEST (DEPOSIT)
   const handleSyncDeposit = () => {
       const reqs = getPaymentRequests();
+      const targetBk = normalize(booking.bookingId);
+
       // Look for Deposit
-      const relevant = reqs.filter((r: any) => r.booking === booking.bookingId && r.type === 'Deposit');
+      const relevant = reqs.filter((r: any) => {
+          const rBk = normalize(r.booking);
+          return rBk === targetBk && r.type === 'Deposit';
+      });
+
       const total = relevant.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
 
       if (total > 0) {
