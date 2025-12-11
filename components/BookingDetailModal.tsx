@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, HardDrive, Eye, ExternalLink, Calculator } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, AlertCircle, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, HardDrive, Eye, ExternalLink, Calculator, RefreshCw } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 
 interface BookingDetailModalProps {
@@ -139,7 +139,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   // FILE UPLOAD
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [folderName, setFolderName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // -----------------------------
@@ -152,11 +151,16 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalExtensionNetCost = extensionCosts.reduce((s, i) => s + (i.net || 0), 0);
   const totalDepositCost = deposits.reduce((s, d) => s + d.amount, 0);
   const systemTotalSell = booking.jobs.reduce((s, j) => s + j.sell, 0);
+  
+  // Calculate Target (System Cost)
   const systemTotalAdjustedCost = booking.jobs.reduce((s, j) => {
     const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
     const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
     return s + (j.cost - kimberry - otherFees);
   }, 0);
+  
+  const totalJobDeposit = booking.jobs.reduce((s, j) => s + (j.chiCuoc || 0), 0);
+
   const systemTotalVat = booking.jobs.reduce((s, j) => s + (j.cost * 0.05263), 0);
 
   const getRevenue = (v: number) => vatMode === 'post' ? v : Math.round(v / 1.08);
@@ -173,6 +177,15 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       : (localCharge.total || 0) + totalAdditionalLocalChargeNet;
 
   // -----------------------------
+  // HELPER: GET PAYMENT REQUESTS FROM LOCALSTORAGE
+  // -----------------------------
+  const getPaymentRequests = () => {
+      try {
+          return JSON.parse(localStorage.getItem("payment_requests_v1") || "[]");
+      } catch { return []; }
+  };
+
+  // -----------------------------
   // UPDATE HANDLERS
   // -----------------------------
   const handleLocalChargeChange = (field: keyof typeof localCharge, val: any) => {
@@ -185,6 +198,59 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       }
       return up;
     });
+  };
+
+  // SYNC FROM PAYMENT REQUEST (LOCAL CHARGE)
+  const handleSyncLocalCharge = () => {
+      const reqs = getPaymentRequests();
+      const relevant = reqs.filter((r: any) => r.booking === booking.bookingId && r.type === 'Local Charge');
+      const total = relevant.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+      
+      if (total > 0) {
+          handleLocalChargeChange('total', total);
+          alert(`Đã đồng bộ ${new Intl.NumberFormat('en-US').format(total)} VND từ Payment Requests (Local Charge).`);
+      } else {
+          alert("Không tìm thấy yêu cầu thanh toán Local Charge nào cho Booking này.");
+      }
+  };
+
+  // VIEW INVOICE FROM PAYMENT REQUEST (REPLACED "LINK" FUNCTIONALITY)
+  const handleViewPaymentInvoice = () => {
+      const reqs = getPaymentRequests();
+      // Find latest relevant request with a file
+      const relevant = reqs
+          .filter((r: any) => r.booking === booking.bookingId && r.type === 'Local Charge' && r.invoiceUrl)
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      if (relevant.length > 0) {
+          const match = relevant[0];
+          if (match.invoiceUrl) {
+              window.open(match.invoiceUrl, '_blank');
+          } else {
+              alert("Tìm thấy yêu cầu thanh toán nhưng không có đường dẫn file.");
+          }
+      } else {
+          alert("Không tìm thấy file hóa đơn trong các yêu cầu thanh toán của Booking này.");
+      }
+  };
+
+  // SYNC FROM PAYMENT REQUEST (DEPOSIT)
+  const handleSyncDeposit = () => {
+      const reqs = getPaymentRequests();
+      // Look for Deposit (or Demurrage if strictly following typo, but Deposit is logical)
+      const relevant = reqs.filter((r: any) => r.booking === booking.bookingId && r.type === 'Deposit');
+      const total = relevant.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+
+      if (total > 0) {
+           if (deposits.length > 0) {
+              handleUpdateDeposit(deposits[0].id, 'amount', total);
+           } else {
+              setDeposits([{ id: Date.now().toString(), amount: total, dateOut: '', dateIn: '' }]);
+           }
+           alert(`Đã cập nhật số tiền Cược: ${new Intl.NumberFormat('en-US').format(total)} VND từ Payment.`);
+      } else {
+           alert("Không tìm thấy yêu cầu thanh toán Deposit nào cho Booking này.");
+      }
   };
 
   // ... (Other handlers unchanged logically, just compacted)
@@ -202,11 +268,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   // --- FILE UPLOAD (Condensed) ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); };
-  const handleUploadFile = async () => { /* ... keep existing logic ... */ 
+  const handleUploadFile = async () => {
       // Simplified for brevity in this view, logic assumed identical
       if (!selectedFile || !localCharge.invoice) { alert("Thiếu file hoặc số HĐ"); return; }
       setIsUploading(true);
-      // Mock upload success
+      // Mock upload success for demonstration
       setTimeout(() => {
           setIsUploading(false);
           alert("Upload success (Mock)");
@@ -347,6 +413,27 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-red-600" 
                         rightContent={
                             <div className="flex items-center gap-3">
+                                {/* SYNC BUTTON: Now syncs from PAYMENT REQUESTS if available */}
+                                {!localCharge.hasInvoice && (
+                                    <button 
+                                        onClick={handleSyncLocalCharge}
+                                        className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 border border-teal-200 transition-colors"
+                                        title="Đồng bộ số tiền từ Payment Requests"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                                {/* VIEW BUTTON: Views invoice from PAYMENT REQUESTS (Replaces Link) */}
+                                {localCharge.hasInvoice && (
+                                    <button 
+                                        onClick={handleViewPaymentInvoice}
+                                        className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition-colors"
+                                        title="Xem hóa đơn chi từ Payment"
+                                    >
+                                        <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+
                                 <label className="flex items-center cursor-pointer select-none">
                                     <div className="relative">
                                         <input type="checkbox" className="sr-only" checked={localCharge.hasInvoice} onChange={(e) => handleLocalChargeChange("hasInvoice", e.target.checked)} />
@@ -439,7 +526,19 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         icon={Anchor} 
                         title="Cược (Deposit)" 
                         color="text-indigo-600" 
-                        rightContent={<button onClick={handleAddDeposit} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded border border-indigo-100 hover:bg-indigo-100 flex items-center"><Plus className="w-3 h-3 mr-1"/>Thêm</button>}
+                        rightContent={
+                            <div className="flex items-center gap-2">
+                                {/* SYNC BUTTON: Syncs from Payment Requests (Type: Deposit) */}
+                                <button 
+                                    onClick={handleSyncDeposit}
+                                    className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+                                    title="Đồng bộ tiền Cược từ Payment Requests"
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={handleAddDeposit} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded border border-indigo-100 hover:bg-indigo-100 flex items-center"><Plus className="w-3 h-3 mr-1"/>Thêm</button>
+                            </div>
+                        }
                     />
                     <div className="space-y-2">
                         {deposits.map(d => (
