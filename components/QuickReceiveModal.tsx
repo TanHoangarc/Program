@@ -94,6 +94,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
 
+  // State to track internal target ID for extension editing
+  const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
+
   // Suggestions state for "Mã Đối Tượng"
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [custInputVal, setCustInputVal] = useState('');
@@ -150,28 +153,29 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const deepCopyJob = JSON.parse(JSON.stringify(job));
       
       if (mode === 'other') {
-          // If editing an existing 'other' receipt, these fields might be populated from the dummy job passed in.
-          // If creating new, they might be empty.
-          // We rely on what's passed in `job`.
           if (!deepCopyJob.localChargeDate) deepCopyJob.localChargeDate = new Date().toISOString().split('T')[0];
       }
 
       setFormData(deepCopyJob);
       setAddedJobs([]); 
+      setInternalTargetId(null);
 
       // Initialize Customer Input Value
       let initialCustId = '';
       if (mode === 'local' || mode === 'other') initialCustId = deepCopyJob.customerId;
       else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
       else if (mode === 'extension') {
-          // If editing a specific extension, use its customer ID
-          if (targetExtensionId && deepCopyJob.extensions) {
-              const target = deepCopyJob.extensions.find((e: any) => e.id === targetExtensionId);
-              initialCustId = target ? target.customerId : deepCopyJob.customerId;
-          } else {
-              // Default to job customer
-              initialCustId = deepCopyJob.customerId;
+          const exts = deepCopyJob.extensions || [];
+          let target = null;
+          
+          if (targetExtensionId) {
+              target = exts.find((e: any) => e.id === targetExtensionId);
+          } else if (exts.length > 0) {
+              // Auto-select first extension if available
+              target = exts[0];
           }
+          
+          initialCustId = target ? (target.customerId || deepCopyJob.customerId) : deepCopyJob.customerId;
       }
 
       const foundCust = customers.find(c => c.id === initialCustId);
@@ -192,7 +196,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'other') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || `NTTK${generateRandomStr()}`);
           const inv = deepCopyJob.localChargeInvoice || 'XXX';
-          // Use existing desc if present, else generate default
           setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
       }
       else if (mode === 'deposit') {
@@ -210,13 +213,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
           if (targetExtensionId) {
               targetExt = exts.find((e: any) => e.id === targetExtensionId);
-          } else {
-              // If no target ID provided, check if we should default to last one or new
-              // Standard behavior for "Add New" is to not pre-fill
-              targetExt = null;
+          } else if (exts.length > 0) {
+              // Auto-select first extension to edit if available
+              targetExt = exts[0];
           }
 
           if (targetExt) {
+             setInternalTargetId(targetExt.id);
              setNewExtension({ 
                 customerId: targetExt.customerId || deepCopyJob.customerId || '', 
                 invoice: targetExt.invoice || '', 
@@ -226,6 +229,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 amisDesc: targetExt.amisDesc || `Thu tiền của KH theo hoá đơn GH ${targetExt.invoice || 'XXX'} BL ${deepCopyJob.jobCode} (KIM)`
              });
           } else {
+             setInternalTargetId(null);
              // New Extension
              setNewExtension({ 
                customerId: deepCopyJob.customerId || '', 
@@ -387,10 +391,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     
     if (mode === 'extension') {
       let updatedExtensions;
-      // Use passed prop targetExtensionId to determine update logic
-      if (targetExtensionId) {
+      // If we have an internalTargetId, we update that extension. Otherwise create new.
+      if (internalTargetId) {
           updatedExtensions = (formData.extensions || []).map(ext => {
-              if (ext.id === targetExtensionId) {
+              if (ext.id === internalTargetId) {
                   return {
                       ...ext,
                       customerId: newExtension.customerId,
