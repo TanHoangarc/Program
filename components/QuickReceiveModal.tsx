@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2 } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown } from 'lucide-react';
 import { JobData, Customer } from '../types';
 import { formatDateVN, parseDateVN } from '../utils';
 
@@ -386,6 +386,44 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
   };
 
+  // --- EXTENSION SELECTION HANDLER ---
+  const handleSelectExtensionToPay = (extId: string) => {
+      if (!extId) {
+          // Create New Mode
+          setInternalTargetId(null);
+          setNewExtension({
+              customerId: formData.customerId,
+              invoice: '',
+              date: new Date().toISOString().split('T')[0],
+              total: 0,
+              amisDocNo: `NTTK${generateRandomStr()}`,
+              amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${formData.jobCode} (KIM)`
+          });
+          // Update customer input to main job customer
+          const mainCust = customers.find(c => c.id === formData.customerId);
+          setCustInputVal(mainCust ? mainCust.code : '');
+          return;
+      }
+
+      const target = formData.extensions?.find(e => e.id === extId);
+      if (target) {
+          setInternalTargetId(target.id);
+          setNewExtension({
+              customerId: target.customerId || formData.customerId,
+              invoice: target.invoice,
+              date: target.invoiceDate || new Date().toISOString().split('T')[0],
+              total: target.total,
+              amisDocNo: target.amisDocNo || `NTTK${generateRandomStr()}`,
+              amisDesc: target.amisDesc || `Thu tiền của KH theo hoá đơn GH ${target.invoice || 'XXX'} BL ${formData.jobCode} (KIM)`
+          });
+          
+          // Update customer input to extension customer
+          const extCustId = target.customerId || formData.customerId;
+          const extCust = customers.find(c => c.id === extCustId);
+          setCustInputVal(extCust ? extCust.code : '');
+      }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -502,6 +540,28 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
             <form onSubmit={handleSubmit} className="space-y-5">
             
+            {/* EXTENSION SELECTOR */}
+            {mode === 'extension' && (formData.extensions?.length || 0) > 0 && (
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm mb-4">
+                    <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
+                        <ChevronDown className="w-4 h-4" />
+                        Chọn dòng gia hạn để thu tiền
+                    </div>
+                    <select
+                        className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
+                        value={internalTargetId || ''}
+                        onChange={(e) => handleSelectExtensionToPay(e.target.value)}
+                    >
+                        <option value="">+ Tạo mới dòng gia hạn</option>
+                        {formData.extensions?.map(ext => (
+                            <option key={ext.id} value={ext.id}>
+                                [HĐ: {ext.invoice || 'N/A'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center">
                     <Calendar className={`w-4 h-4 mr-2 ${mode === 'deposit_refund' ? 'text-red-600' : 'text-blue-600'}`} />
