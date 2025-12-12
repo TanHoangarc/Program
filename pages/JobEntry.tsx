@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // Import createPortal
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw, AlertCircle } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine, INITIAL_JOB } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -436,12 +436,19 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Sell</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Profit</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Cont</th>
+                <th className="px-2 py-4 w-12"></th>
                 <th className="px-6 py-4 w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/40">
               {paginatedJobs.length > 0 ? (
-                paginatedJobs.map((job) => (
+                paginatedJobs.map((job) => {
+                  const custName = (job.customerName || '').toLowerCase();
+                  const isLongHoang = custName.includes('long hoàng') || custName.includes('long hoang') || custName.includes('lhk') || custName.includes('longhoang');
+                  const missingInvoice = !job.localChargeInvoice && !isLongHoang;
+                  const missingBank = !job.bank;
+
+                  return (
                   <tr key={job.id} className="hover:bg-white/40 cursor-pointer group transition-colors" onClick={(e) => handleRowClick(job, e)}>
                     <td className="px-6 py-4 text-slate-500">T{job.month}</td>
                     <td className="px-6 py-4 font-bold text-teal-700">{job.jobCode}</td>
@@ -459,6 +466,20 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                         {job.cont20 > 0 && <span className="px-2 py-0.5 bg-blue-100/50 text-blue-700 text-[10px] font-bold rounded-full border border-blue-200/50">{job.cont20} x 20'</span>}
                         {job.cont40 > 0 && <span className="px-2 py-0.5 bg-purple-100/50 text-purple-700 text-[10px] font-bold rounded-full border border-purple-200/50">{job.cont40} x 40'</span>}
                       </div>
+                    </td>
+                    <td className="px-2 py-4 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                            {missingInvoice && (
+                                <div title="Thiếu số hóa đơn (Invoice)">
+                                    <AlertCircle className="w-4 h-4 text-orange-500" />
+                                </div>
+                            )}
+                            {missingBank && (
+                                <div title="Chưa chọn ngân hàng">
+                                    <AlertCircle className="w-4 h-4 text-pink-500" />
+                                </div>
+                            )}
+                        </div>
                     </td>
                     <td className="px-6 py-4 text-center action-menu-container">
                        <button 
@@ -489,9 +510,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                        )}
                     </td>
                   </tr>
-                ))
+                )})
               ) : (
-                <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu phù hợp</td></tr>
+                <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu phù hợp</td></tr>
               )}
             </tbody>
             {/* Footer Totals */}
@@ -502,7 +523,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                   <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                   <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
-                  <td colSpan={2}></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             )}
