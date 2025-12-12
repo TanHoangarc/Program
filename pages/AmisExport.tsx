@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check } from 'lucide-react';
@@ -179,8 +178,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                  jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
                  date: j.ngayThuCuoc, docNo, objCode: custCode, objName: getCustomerName(j.maKhCuocId),
                  desc, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
-                 col1: j.ngayThuCuoc, col2: j.ngayThuCuoc, col3: docNo, col4: custCode, col5: getCustomerName(j.maKhCuocId),
-                 col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '1388', col17: j.thuCuoc, col19: custCode,
              });
          }
       });
@@ -196,8 +193,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                    jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
                    date: j.localChargeDate, docNo, objCode: custCode, objName: getCustomerName(j.customerId),
                    desc, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
-                   col1: j.localChargeDate, col2: j.localChargeDate, col3: docNo, col4: custCode, col5: getCustomerName(j.customerId),
-                   col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: j.localChargeTotal, col19: custCode,
                });
           }
       });
@@ -215,8 +210,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                       jobId: j.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                       date: ext.invoiceDate, docNo, objCode: custCode, objName: getCustomerName(custId),
                       desc, amount: ext.total, tkNo: '1121', tkCo: '13111',
-                      col1: ext.invoiceDate, col2: ext.invoiceDate, col3: docNo, col4: custCode, col5: getCustomerName(custId),
-                      col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: desc, col12: 'VND', col14: desc, col15: '1121', col16: '13111', col17: ext.total, col19: custCode,
                   });
               }
           });
@@ -228,8 +221,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               rows.push({
                   ...r,
                   type: 'external', rowId: `custom-${r.id}`,
-                  col1: r.date, col2: r.date, col3: r.docNo, col4: r.objCode, col5: r.objName,
-                  col7: '345673979999', col8: 'Ngân hàng TMCP Quân đội', col9: 'Thu khác', col10: r.desc, col12: 'VND', col14: r.desc, col15: r.tkNo, col16: r.tkCo, col17: r.amount, col19: r.objCode,
               });
           }
       });
@@ -636,8 +627,25 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     let csvRows: any[][] = [];
     if (mode === 'thu') {
       csvRows = rowsToExport.map((d: any) => [
-        d.col1, d.col2, d.col3, d.col4, d.col5, d.col6, d.col7, d.col8, d.col9, d.col10, d.col11, d.col12,
-        d.col13, d.col14, d.col15, d.col16, d.col17, d.col18, d.col19, d.col20
+        formatDateVN(d.date),           // A: Ngày CT
+        formatDateVN(d.date),           // B: Ngày CT
+        d.docNo,                        // C: Số CT (AMIS)
+        d.objCode,                      // D: Mã Đối Tượng
+        d.objName,                      // E: Tên Đối Tượng
+        '',                             // F
+        "345673979999",                 // G: Số TK
+        "Ngân hàng TMCP Quân đội (MB)", // H: Tên NH
+        "Thu khác",                     // I: Lý do
+        d.desc,                         // J: Diễn giải
+        '',                             // K
+        "VND",                          // L: Loại tiền
+        '',                             // M
+        d.desc,                         // N: Diễn giải
+        d.tkNo,                         // O: TK Nợ
+        d.tkCo,                         // P: TK Có
+        d.amount,                       // Q: Số Tiền
+        '',                             // R
+        d.objCode                       // S: Mã Đối Tượng
       ]);
     } else if (mode === 'chi') {
         csvRows = rowsToExport.map((d: any) => [
@@ -675,7 +683,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     } else {
       let headers: string[] = [];
       if (mode === 'thu') {
-         headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Mã đối tượng', 'Tên đối tượng', 'Địa chỉ', 'Nộp vào TK', 'Mở tại NH', 'Lý do thu', 'Diễn giải lý do', 'NV thu', 'Loại tiền', 'Tỷ giá', 'Diễn giải HT', 'TK Nợ', 'TK Có', 'Số tiền', 'Quy đổi', 'Mã ĐT HT', 'Khế ước'];
+         // Create basic headers if template missing
+         headers = ['Ngày chứng từ', 'Ngày chứng từ', 'Số chứng từ', 'Mã đối tượng', 'Tên đối tượng', '', 'Số tài khoản', 'Tên ngân hàng', 'Lý do thu', 'Diễn giải', '', 'Loại tiền', '', 'Diễn giải', 'TK Nợ', 'TK Có', 'Số tiền', '', 'Mã đối tượng'];
       } else if (mode === 'chi') {
          headers = ['Ngày hạch toán', 'Ngày chứng từ', 'Số chứng từ', 'Lý do chi', 'Nội dung TT', 'Số TK chi', 'Tên NH chi', 'Mã đối tượng', 'Tên đối tượng', 'Địa chỉ', 'Số TK nhận', 'Tên NH nhận', 'Người lĩnh', 'CMND', 'Ngày cấp', 'Nơi cấp', 'Mã NV', 'Loại tiền', 'Tỷ giá', 'Diễn giải HT', 'TK Nợ', 'TK Có', 'Số tiền', 'Quy đổi', 'Mã ĐT HT', 'Khế ước'];
       } else if (mode === 'ban') {
@@ -798,7 +807,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               desc: updatedJob.amisLcDesc || '',
               amount: updatedJob.localChargeTotal || 0,
               tkNo: '1121', 
-              tkCo: '13111',
+              tkCo: '711',
               
               // AMIS Columns mapping
               col1: updatedJob.localChargeDate,
@@ -811,7 +820,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               col12: 'VND',
               col14: updatedJob.amisLcDesc,
               col15: '1121',
-              col16: '13111', 
+              col16: '711', 
               col17: updatedJob.localChargeTotal,
               col19: objCode
           };
