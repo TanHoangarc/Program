@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { JobData } from '../types';
-import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw } from 'lucide-react';
+import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText } from 'lucide-react';
 import { formatDateVN } from '../utils';
 
 interface LookupPageProps {
@@ -27,8 +26,29 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
+  // Helper to extract just the Job Codes from the AMIS Description
+  // Pattern usually: "Thu tiền ... BL Job1+Job2 (KIM)" -> Result: "Job1+Job2"
+  const extractJobCodes = (desc?: string) => {
+      if (!desc) return '';
+      if (desc.includes('BL ')) {
+          // Split by "BL ", take the part after it
+          let parts = desc.split('BL ');
+          if (parts.length > 1) {
+              // Remove "(KIM)" suffix if exists and trim
+              return parts[1].replace(/\(KIM\)/i, '').trim();
+          }
+      }
+      return desc; // Fallback if pattern doesn't match
+  };
+
   const extensionTotal = result ? (result.extensions || []).reduce((sum, ext) => sum + ext.total, 0) : 0;
-  const isPaid = result && (result.bank === 'TCB Bank' || result.bank === 'MB Bank');
+  
+  // Logic check thanh toán
+  const isLcPaid = result && result.bank && result.localChargeDate;
+  
+  // Tìm extension đã được thanh toán (có số chứng từ AMIS)
+  const paidExtension = result?.extensions?.find(e => e.amisDocNo);
+  const isExtPaid = !!paidExtension;
 
   return (
     <div className="p-8 max-w-full h-full flex flex-col">
@@ -93,7 +113,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                 <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
                                     <div className="flex items-center text-slate-500 mb-2 font-medium text-xs uppercase tracking-wide">
                                         <DollarSign className="w-4 h-4 mr-2 text-blue-500" />
-                                        Local Charge
+                                        Local Charge (Job)
                                     </div>
                                     <div className="text-2xl font-bold text-slate-800">
                                         {formatCurrency(result.localChargeTotal)}
@@ -103,7 +123,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                 <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
                                     <div className="flex items-center text-slate-500 mb-2 font-medium text-xs uppercase tracking-wide">
                                         <RefreshCw className="w-4 h-4 mr-2 text-orange-500" />
-                                        Tiền Gia Hạn
+                                        Tiền Gia Hạn (Job)
                                     </div>
                                     <div className={`text-2xl font-bold ${extensionTotal > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
                                         {formatCurrency(extensionTotal)}
@@ -124,12 +144,25 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                             {/* Payment Status Logic */}
                             <div className="space-y-4">
                                 {/* Local Charge Status */}
-                                <div className="p-5 rounded-2xl border-l-4 border-l-green-500 bg-green-50/50 border-t border-r border-b border-green-100">
-                                    <h3 className="text-xs font-bold text-green-800 uppercase mb-2">Trạng thái thanh toán Local Charge</h3>
-                                    {isPaid ? (
-                                        <div className="flex items-center text-green-700 font-bold text-lg">
-                                            <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-                                            Đã nhận thanh toán local charge từ khách hàng
+                                <div className={`p-5 rounded-2xl border-l-4 border-t border-r border-b ${isLcPaid ? 'border-l-green-500 bg-green-50/50 border-green-100' : 'border-l-slate-300 bg-slate-50 border-slate-100'}`}>
+                                    <h3 className={`text-xs font-bold uppercase mb-2 ${isLcPaid ? 'text-green-800' : 'text-slate-500'}`}>Trạng thái thanh toán Local Charge</h3>
+                                    {isLcPaid ? (
+                                        <div>
+                                            <div className="flex items-center text-green-700 font-bold text-lg mb-2">
+                                                <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                                                Đã nhận thanh toán local charge từ khách hàng ngày {formatDateVN(result.localChargeDate)}
+                                            </div>
+                                            {/* Merged Payment Info */}
+                                            <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-bold text-green-800">Số tiền gộp:</span> 
+                                                    <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(result.localChargeTotal)}</span>
+                                                </div>
+                                                <div className="flex items-start gap-2">
+                                                    <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
+                                                    <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(result.amisLcDesc)}</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="flex items-center text-slate-500 font-medium">
@@ -139,14 +172,27 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                     )}
                                 </div>
 
-                                {/* Extension Payment Status - Only show if extension exists */}
+                                {/* Extension Payment Status */}
                                 {extensionTotal > 0 && (
-                                    <div className={`p-5 rounded-2xl border-l-4 border-t border-r border-b ${isPaid ? 'border-l-green-500 bg-green-50/50 border-green-100' : 'border-l-orange-500 bg-orange-50/50 border-orange-100'}`}>
-                                        <h3 className={`text-xs font-bold uppercase mb-2 ${isPaid ? 'text-green-800' : 'text-orange-800'}`}>Trạng thái thanh toán Gia Hạn</h3>
-                                        {isPaid ? (
-                                            <div className="flex items-center text-green-700 font-bold text-lg">
-                                                <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-                                                Đã nhận thanh toán gia hạn
+                                    <div className={`p-5 rounded-2xl border-l-4 border-t border-r border-b ${isExtPaid ? 'border-l-green-500 bg-green-50/50 border-green-100' : 'border-l-orange-500 bg-orange-50/50 border-orange-100'}`}>
+                                        <h3 className={`text-xs font-bold uppercase mb-2 ${isExtPaid ? 'text-green-800' : 'text-orange-800'}`}>Trạng thái thanh toán Gia Hạn</h3>
+                                        {isExtPaid ? (
+                                            <div>
+                                                <div className="flex items-center text-green-700 font-bold text-lg mb-2">
+                                                    <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                                                    Đã nhận thanh toán gia hạn ngày {formatDateVN(paidExtension?.invoiceDate)}
+                                                </div>
+                                                {/* Merged Payment Info for Extension */}
+                                                <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="font-bold text-green-800">Số tiền gộp:</span> 
+                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(paidExtension?.total || 0)}</span>
+                                                    </div>
+                                                    <div className="flex items-start gap-2">
+                                                        <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
+                                                        <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(paidExtension?.amisDesc)}</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         ) : (
                                             <div className="flex items-center text-orange-700 font-medium">
