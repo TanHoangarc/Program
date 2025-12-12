@@ -261,7 +261,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentCustomer = formData.customerId || '';
       } else if (mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
-          tkCo = '711';
+          tkCo = '13111';
           currentDate = formData.localChargeDate || '';
           currentAmount = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
