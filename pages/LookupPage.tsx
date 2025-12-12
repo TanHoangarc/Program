@@ -66,7 +66,6 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
       });
 
       // It is merged if the total for this DocNo is greater than the current line item's amount
-      // (Floating point safety check usually not needed for integers but good practice)
       const isMerged = total > currentAmount;
 
       return { isMerged, total, desc: firstDesc };
@@ -76,7 +75,9 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
   const extensionTotal = result ? (result.extensions || []).reduce((sum, ext) => sum + ext.total, 0) : 0;
   
   // Logic check thanh toán Local Charge
-  const isLcPaid = result && result.bank && result.localChargeDate;
+  // Is Paid if: (Has Bank AND Date) OR (Has Bank and is TCB)
+  const isTCB = result?.bank?.includes('TCB');
+  const isLcPaid = (result && result.bank && result.localChargeDate) || (result && isTCB);
   
   // Find ALL paid extensions
   const paidExtensions = useMemo(() => {
@@ -188,14 +189,21 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                         <div>
                                             <div className="flex items-center text-green-700 font-bold text-lg mb-2">
                                                 <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-                                                Đã nhận thanh toán local charge từ khách hàng ngày {formatDateVN(result.localChargeDate)}
+                                                {isTCB ? (
+                                                    // TCB CASE: Just show paid status, no date
+                                                    <span>Đã nhận thanh toán local charge từ khách hàng</span>
+                                                ) : (
+                                                    // STANDARD CASE: Show date
+                                                    <span>Đã nhận thanh toán local charge từ khách hàng ngày {formatDateVN(result.localChargeDate)}</span>
+                                                )}
                                             </div>
-                                            {/* Merged Payment Info */}
-                                            {/* Only show merged info if mergedTotal > localChargeTotal (meaning it was grouped) */}
-                                            {mergedLcTotal > result.localChargeTotal && (
+                                            
+                                            {/* Merged Payment Info - ONLY SHOW IF NOT TCB */}
+                                            {/* (TCB payments are usually direct and don't have merged AMIS slips in this logic) */}
+                                            {!isTCB && mergedLcTotal > result.localChargeTotal && (
                                                 <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
                                                     <div className="flex items-center gap-2 mb-1">
-                                                        <span className="font-bold text-green-800">Số tiền nhận:</span> 
+                                                        <span className="font-bold text-green-800">Số tiền gộp:</span> 
                                                         <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedLcTotal)}</span>
                                                     </div>
                                                     <div className="flex items-start gap-2">
@@ -236,7 +244,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                                             {mergeInfo.isMerged && (
                                                                 <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm mt-2 ml-7">
                                                                     <div className="flex items-center gap-2 mb-1">
-                                                                        <span className="font-bold text-green-800">Số tiền nhận:</span> 
+                                                                        <span className="font-bold text-green-800">Số tiền gộp:</span> 
                                                                         <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergeInfo.total)}</span>
                                                                     </div>
                                                                     <div className="flex items-start gap-2">
