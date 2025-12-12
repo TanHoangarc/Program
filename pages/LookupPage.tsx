@@ -182,12 +182,12 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                             {/* Merged Payment Info */}
                                             <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
                                                 <div className="flex items-center gap-2 mb-1">
-                                                    <span className="font-bold text-green-800">Số tiền gộp:</span> 
+                                                    <span className="font-bold text-green-800">Số tiền nhận:</span> 
                                                     {/* Display MERGED TOTAL here */}
                                                     <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedLcTotal)}</span>
                                                 </div>
                                                 <div className="flex items-start gap-2">
-                                                    <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
+                                                    <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">KH thanh toán các lô:</span> 
                                                     <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(result.amisLcDesc)}</span>
                                                 </div>
                                             </div>
