@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { JobData, BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
@@ -370,18 +369,18 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
             <div className="w-full md:w-[65%] flex flex-col overflow-y-auto p-4 space-y-4 custom-scrollbar border-r border-slate-200">
                 
                 {/* 1. SYSTEM TABLE (Source Data) */}
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left">
-                            <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                    <div className="overflow-auto max-h-[400px] custom-scrollbar relative">
+                        <table className="w-full text-xs text-left border-collapse">
+                            <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <th className="px-3 py-2 border-r">Job Code</th>
-                                    <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('sell')}>Sell {copiedId === 'col-sell' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
-                                    <th className="px-3 py-2 text-right border-r">Thu LC (Inv)</th>
-                                    <th className="px-3 py-2 text-right border-r">Thu Ext (Inv)</th>
-                                    <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('cost')}>Cost (Adj) {copiedId === 'col-cost' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
-                                    <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('vat')}>VAT {copiedId === 'col-vat' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
-                                    <th className="px-3 py-2 text-center w-28 cursor-pointer hover:text-blue-600" onClick={() => copyColumn('project')}>Project {copiedId === 'col-project' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
+                                    <th className="px-3 py-2 border-r bg-slate-50">Job Code</th>
+                                    <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600 bg-slate-50" onClick={() => copyColumn('sell')}>Sell {copiedId === 'col-sell' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
+                                    <th className="px-3 py-2 text-right border-r bg-slate-50">Thu LC (Inv)</th>
+                                    <th className="px-3 py-2 text-right border-r bg-slate-50">Thu Ext (Inv)</th>
+                                    <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600 bg-slate-50" onClick={() => copyColumn('cost')}>Cost (Adj) {copiedId === 'col-cost' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
+                                    <th className="px-3 py-2 text-right border-r w-24 cursor-pointer hover:text-blue-600 bg-slate-50" onClick={() => copyColumn('vat')}>VAT {copiedId === 'col-vat' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
+                                    <th className="px-3 py-2 text-center w-28 cursor-pointer hover:text-blue-600 bg-slate-50" onClick={() => copyColumn('project')}>Project {copiedId === 'col-project' && <Check className="inline w-3 h-3 text-green-500"/>}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -416,19 +415,19 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                     );
                                 })}
                             </tbody>
-                            <tfoot className="bg-slate-50 font-bold text-slate-700 border-t">
+                            <tfoot className="bg-slate-50 font-bold text-slate-700 border-t sticky bottom-0 z-10 shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
                                 <tr>
-                                    <td className="px-3 py-2 text-right border-r">Tổng:</td>
-                                    <td className="px-3 py-2 text-right text-green-600 border-r">{formatMoney(systemTotalSell)}</td>
-                                    <td className="px-3 py-2 text-right text-blue-600 border-r">
+                                    <td className="px-3 py-2 text-right border-r bg-slate-50">Tổng:</td>
+                                    <td className="px-3 py-2 text-right text-green-600 border-r bg-slate-50">{formatMoney(systemTotalSell)}</td>
+                                    <td className="px-3 py-2 text-right text-blue-600 border-r bg-slate-50">
                                         {formatMoney(booking.jobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0))}
                                     </td>
-                                    <td className="px-3 py-2 text-right text-orange-600 border-r">
+                                    <td className="px-3 py-2 text-right text-orange-600 border-r bg-slate-50">
                                         {formatMoney(booking.jobs.reduce((s, j) => s + (j.extensions || []).reduce((sum, e) => sum + e.total, 0), 0))}
                                     </td>
-                                    <td className="px-3 py-2 text-right text-red-600 border-r">{formatMoney(systemTotalAdjustedCost)}</td>
-                                    <td className="px-3 py-2 text-right border-r text-slate-500">{formatMoney(systemTotalVat)}</td>
-                                    <td></td>
+                                    <td className="px-3 py-2 text-right text-red-600 border-r bg-slate-50">{formatMoney(systemTotalAdjustedCost)}</td>
+                                    <td className="px-3 py-2 text-right border-r text-slate-500 bg-slate-50">{formatMoney(systemTotalVat)}</td>
+                                    <td className="bg-slate-50"></td>
                                 </tr>
                             </tfoot>
                         </table>
