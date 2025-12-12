@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown } from 'lucide-react';
@@ -15,7 +14,7 @@ interface QuickReceiveModalProps {
   mode: ReceiveMode;
   customers: Customer[];
   allJobs?: JobData[];
-  targetExtensionId?: string | null; // NEW PROP
+  targetExtensionId?: string | null;
 }
 
 // Reusable DateInput Component
@@ -77,10 +76,8 @@ const DateInput = ({
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId
 }) => {
-  // Main form data is the job itself
   const [formData, setFormData] = useState<JobData>(job);
   
-  // Specific state for Extension creation/editing
   const [newExtension, setNewExtension] = useState({
     customerId: '',
     invoice: '',
@@ -90,26 +87,22 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     amisDesc: ''
   });
   
-  // State for "Manual" Amis fields
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
 
-  // State to track internal target ID for extension editing
   const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
 
-  // Suggestions state for "Mã Đối Tượng"
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [custInputVal, setCustInputVal] = useState('');
 
-  // --- MERGE JOB STATE (LOCAL CHARGE) ---
+  // --- MERGE JOB STATE ---
   const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
   const [searchJobCode, setSearchJobCode] = useState('');
 
-  // Generate random number string
   const generateRandomStr = () => Math.floor(10000 + Math.random() * 90000).toString();
 
   // Helper to generate Description Logic for Merged Jobs
-  const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[]) => {
+  const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean = false) => {
       const invoices: string[] = [];
       const missingJobCodes: string[] = [];
 
@@ -120,20 +113,24 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
 
       extraJobs.forEach(j => {
-          if (j.localChargeInvoice && j.localChargeInvoice.trim()) {
-              invoices.push(j.localChargeInvoice.trim());
+          let inv = isExtension 
+            ? (j.extensions || []).map(e => e.invoice).filter(Boolean).join('+')
+            : j.localChargeInvoice;
+            
+          if (inv && inv.trim()) {
+              invoices.push(inv.trim());
           } else {
               missingJobCodes.push(j.jobCode);
           }
       });
 
-      let desc = "Thu tiền của KH theo hoá đơn ";
+      let desc = isExtension ? "Thu tiền của KH theo hoá đơn GH " : "Thu tiền của KH theo hoá đơn ";
       
       const invPart = invoices.join('+');
       desc += invPart;
 
       if (missingJobCodes.length > 0) {
-          if (invPart.length > 0) desc += "+"; // Connector if invoices exist
+          if (invPart.length > 0) desc += "+"; 
           desc += "XXX BL " + missingJobCodes.join('+');
       }
 
@@ -141,15 +138,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       return desc;
   };
 
-  // Recalculate Total Amount and Description
   const recalculateMerge = (currentMainInvoice: string, extraJobs: JobData[]) => {
-      const newDesc = generateMergedDescription(currentMainInvoice, extraJobs);
-      setAmisDesc(newDesc);
+      const isExtension = mode === 'extension';
+      const newDesc = generateMergedDescription(currentMainInvoice, extraJobs, isExtension);
+      
+      if (isExtension) {
+          setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
+      } else {
+          setAmisDesc(newDesc);
+      }
   };
 
   useEffect(() => {
     if (isOpen) {
-      // 1. Reset Job Data
       const deepCopyJob = JSON.parse(JSON.stringify(job));
       
       if (mode === 'other') {
@@ -160,7 +161,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setAddedJobs([]); 
       setInternalTargetId(null);
 
-      // Initialize Customer Input Value
       let initialCustId = '';
       if (mode === 'local' || mode === 'other') initialCustId = deepCopyJob.customerId;
       else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
@@ -171,7 +171,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           if (targetExtensionId) {
               target = exts.find((e: any) => e.id === targetExtensionId);
           } else if (exts.length > 0) {
-              // Auto-select first extension if available
               target = exts[0];
           }
           
@@ -181,7 +180,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const foundCust = customers.find(c => c.id === initialCustId);
       setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
-      // 2. Setup Amis Fields based on mode
       if (mode === 'local') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || `NTTK${generateRandomStr()}`);
           
@@ -207,21 +205,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
       }
       else if (mode === 'extension') {
-          // Extension Logic Update
           const exts = deepCopyJob.extensions || [];
           let targetExt = null;
 
           if (targetExtensionId) {
               targetExt = exts.find((e: any) => e.id === targetExtensionId);
           } else if (exts.length > 0) {
-              // Auto-select first extension to edit if available
               targetExt = exts[0];
           }
 
           if (targetExt) {
              setInternalTargetId(targetExt.id);
              
-             // Generate Description: If Invoice exists, no BL Job. Else BL Job.
              const extInv = targetExt.invoice;
              const defaultDesc = extInv 
                 ? `Thu tiền của KH theo hoá đơn GH ${extInv} (KIM)`
@@ -237,7 +232,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
              });
           } else {
              setInternalTargetId(null);
-             // New Extension
              setNewExtension({ 
                customerId: deepCopyJob.customerId || '', 
                invoice: '', 
@@ -251,7 +245,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     }
   }, [isOpen, job, mode, customers, targetExtensionId]);
 
-  // Derived Values for Display
   const getDisplayValues = () => {
       let tkNo = '1121';
       let tkCo = '';
@@ -268,7 +261,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentCustomer = formData.customerId || '';
       } else if (mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
-          tkCo = '711'; // Thu Khác uses 711
+          tkCo = '711';
           currentDate = formData.localChargeDate || '';
           currentAmount = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
@@ -299,8 +292,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const display = getDisplayValues();
-
-  // --- Handlers ---
 
   const handleAmountChange = (val: number) => {
       if (mode === 'local' || mode === 'other') setFormData(prev => ({ ...prev, localChargeTotal: val }));
@@ -348,16 +339,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
       }
       else if (mode === 'extension') {
-          // If invoice is provided, remove BL Job. Else keep BL Job.
-          const desc = val 
-            ? `Thu tiền của KH theo hoá đơn GH ${val} (KIM)`
-            : `Thu tiền của KH theo hoá đơn GH XXX BL ${jobCode} (KIM)`;
-
           setNewExtension(prev => ({ 
               ...prev, 
-              invoice: val,
-              amisDesc: desc
+              invoice: val
           }));
+          recalculateMerge(val, addedJobs);
       }
   };
 
@@ -378,11 +364,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setAddedJobs(newAddedJobs);
       setSearchJobCode('');
 
-      recalculateMerge(formData.localChargeInvoice, newAddedJobs);
-
-      const currentAmt = formData.localChargeTotal || 0;
-      const addedAmt = found.localChargeTotal || 0; 
-      setFormData(prev => ({ ...prev, localChargeTotal: currentAmt + addedAmt }));
+      if (mode === 'extension') {
+          // For extension, sum up all extensions total from the added job
+          const extTotal = (found.extensions || []).reduce((sum, e) => sum + e.total, 0);
+          const currentAmt = newExtension.total || 0;
+          setNewExtension(prev => ({ ...prev, total: currentAmt + extTotal }));
+          recalculateMerge(newExtension.invoice, newAddedJobs);
+      } else {
+          // For local charge
+          const currentAmt = formData.localChargeTotal || 0;
+          const addedAmt = found.localChargeTotal || 0; 
+          setFormData(prev => ({ ...prev, localChargeTotal: currentAmt + addedAmt }));
+          recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+      }
   };
 
   const handleRemoveAddedJob = (id: string) => {
@@ -390,15 +384,21 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const newAddedJobs = addedJobs.filter(j => j.id !== id);
       setAddedJobs(newAddedJobs);
 
-      recalculateMerge(formData.localChargeInvoice, newAddedJobs);
-
-      if (jobToRemove) {
-          const currentAmt = formData.localChargeTotal || 0;
-          setFormData(prev => ({ ...prev, localChargeTotal: Math.max(0, currentAmt - (jobToRemove.localChargeTotal || 0)) }));
+      if (mode === 'extension') {
+          recalculateMerge(newExtension.invoice, newAddedJobs);
+          if (jobToRemove) {
+              const extTotal = (jobToRemove.extensions || []).reduce((sum, e) => sum + e.total, 0);
+              setNewExtension(prev => ({ ...prev, total: Math.max(0, (prev.total || 0) - extTotal) }));
+          }
+      } else {
+          recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+          if (jobToRemove) {
+              const currentAmt = formData.localChargeTotal || 0;
+              setFormData(prev => ({ ...prev, localChargeTotal: Math.max(0, currentAmt - (jobToRemove.localChargeTotal || 0)) }));
+          }
       }
   };
 
-  // --- EXTENSION SELECTION HANDLER ---
   const handleSelectExtensionToPay = (extId: string) => {
       if (!extId) {
           // Create New Mode
@@ -411,7 +411,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               amisDocNo: `NTTK${generateRandomStr()}`,
               amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${formData.jobCode} (KIM)`
           });
-          // Update customer input to main job customer
           const mainCust = customers.find(c => c.id === formData.customerId);
           setCustInputVal(mainCust ? mainCust.code : '');
           return;
@@ -435,7 +434,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               amisDesc: desc
           });
           
-          // Update customer input to extension customer
           const extCustId = target.customerId || formData.customerId;
           const extCust = customers.find(c => c.id === extCustId);
           setCustInputVal(extCust ? extCust.code : '');
@@ -445,9 +443,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // 1. SAVE MAIN JOB
     if (mode === 'extension') {
       let updatedExtensions;
-      // If we have an internalTargetId, we update that extension. Otherwise create new.
       if (internalTargetId) {
           updatedExtensions = (formData.extensions || []).map(ext => {
               if (ext.id === internalTargetId) {
@@ -456,7 +454,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                       customerId: newExtension.customerId,
                       invoice: newExtension.invoice,
                       invoiceDate: newExtension.date,
-                      total: newExtension.total,
+                      total: newExtension.total, // Note: This might include merged amount if user didn't separate
                       amisDocNo: newExtension.amisDocNo,
                       amisDesc: newExtension.amisDesc
                   };
@@ -480,6 +478,22 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           ];
       }
       onSave({ ...formData, extensions: updatedExtensions });
+
+      // 2. SAVE ADDED JOBS (EXTENSION MERGE)
+      if (addedJobs.length > 0) {
+          addedJobs.forEach(addedJob => {
+              // Update all extensions of the added job to have the same Payment DocNo/Desc
+              // Ideally we should only update the ones that contributed to the sum, but we assume "Full Payment"
+              const updatedAddedJobExtensions = (addedJob.extensions || []).map(ext => ({
+                  ...ext,
+                  amisDocNo: newExtension.amisDocNo,
+                  amisDesc: newExtension.amisDesc
+              }));
+              
+              onSave({ ...addedJob, extensions: updatedAddedJobExtensions });
+          });
+      }
+
     } 
     else if (mode === 'local' || mode === 'other') {
         onSave({ 
@@ -487,6 +501,17 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             amisLcDocNo: amisDocNo, 
             amisLcDesc: amisDesc 
         });
+
+        // 2. SAVE ADDED JOBS (LOCAL CHARGE MERGE)
+        if (addedJobs.length > 0) {
+            addedJobs.forEach(addedJob => {
+                onSave({
+                    ...addedJob,
+                    amisLcDocNo: amisDocNo,
+                    amisLcDesc: amisDesc
+                });
+            });
+        }
     }
     else if (mode === 'deposit') {
         onSave({ 
@@ -622,10 +647,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 )}
             </div>
 
-            {/* --- ADD JOBS SECTION (ONLY FOR LOCAL CHARGE) --- */}
-            {mode === 'local' && (
-                <div className="bg-orange-50 p-5 rounded-xl border border-orange-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-orange-800 mb-3 flex items-center">
+            {/* --- ADD JOBS SECTION (LOCAL & EXTENSION) --- */}
+            {(mode === 'local' || mode === 'extension') && (
+                <div className={`p-5 rounded-xl border shadow-sm ${mode === 'local' ? 'bg-orange-50 border-orange-200' : 'bg-orange-50 border-orange-200'}`}>
+                    <h3 className={`text-sm font-bold mb-3 flex items-center ${mode === 'local' ? 'text-orange-800' : 'text-orange-800'}`}>
                         <Plus className="w-4 h-4 mr-2" /> Gộp Job (Thu nhiều lô)
                     </h3>
                     <div className="flex gap-2 mb-3">
@@ -633,25 +658,33 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             type="text" 
                             value={searchJobCode}
                             onChange={(e) => setSearchJobCode(e.target.value)}
-                            className="flex-1 px-3 py-2 bg-white border border-orange-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            className={`flex-1 px-3 py-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 ${mode === 'local' ? 'border-orange-300 focus:ring-orange-500' : 'border-orange-300 focus:ring-orange-500'}`}
                             placeholder="Nhập Job Code để thêm..."
                         />
                         <button 
                             type="button" 
                             onClick={handleAddJob}
-                            className="bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 flex items-center"
+                            className={`text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center ${mode === 'local' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-orange-600 hover:bg-orange-700'}`}
                         >
                             <Search className="w-4 h-4 mr-1" /> Thêm
                         </button>
                     </div>
                     {addedJobs.length > 0 && (
                         <div className="space-y-2">
-                            {addedJobs.map((j) => (
+                            {addedJobs.map((j) => {
+                                const amountDisplay = mode === 'extension' 
+                                    ? (j.extensions || []).reduce((s, e) => s + e.total, 0)
+                                    : j.localChargeTotal;
+                                const invDisplay = mode === 'extension'
+                                    ? (j.extensions || []).map(e => e.invoice).filter(Boolean).join(', ')
+                                    : j.localChargeInvoice;
+
+                                return (
                                 <div key={j.id} className="flex justify-between items-center bg-white p-2 rounded-lg border border-orange-100 text-sm">
                                     <div>
                                         <span className="font-bold text-slate-700">{j.jobCode}</span>
                                         <span className="text-slate-500 ml-2 text-xs">
-                                            (Inv: {j.localChargeInvoice || 'Trống'}, Amt: {new Intl.NumberFormat('en-US').format(j.localChargeTotal)})
+                                            (Inv: {invDisplay || 'Trống'}, Amt: {new Intl.NumberFormat('en-US').format(amountDisplay || 0)})
                                         </span>
                                     </div>
                                     <button 
@@ -662,7 +695,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     )}
                 </div>
