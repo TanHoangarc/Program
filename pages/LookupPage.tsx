@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { JobData } from '../types';
 import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText } from 'lucide-react';
 import { formatDateVN } from '../utils';
@@ -27,27 +27,54 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
   // Helper to extract just the Job Codes from the AMIS Description
-  // Pattern usually: "Thu tiền ... BL Job1+Job2 (KIM)" -> Result: "Job1+Job2"
   const extractJobCodes = (desc?: string) => {
       if (!desc) return '';
       if (desc.includes('BL ')) {
-          // Split by "BL ", take the part after it
           let parts = desc.split('BL ');
           if (parts.length > 1) {
-              // Remove "(KIM)" suffix if exists and trim
               return parts[1].replace(/\(KIM\)/i, '').trim();
           }
       }
-      return desc; // Fallback if pattern doesn't match
+      return desc; 
   };
 
+  // --- MERGED TOTAL CALCULATIONS ---
+  
+  // 1. Calculate Merged Local Charge Total based on AMIS Doc No
+  const mergedLcTotal = useMemo(() => {
+      if (!result || !result.amisLcDocNo) return 0;
+      const docNo = result.amisLcDocNo;
+      
+      // Sum all jobs sharing the same Payment DocNo
+      return jobs
+        .filter(j => j.amisLcDocNo === docNo)
+        .reduce((sum, j) => sum + j.localChargeTotal, 0);
+  }, [jobs, result]);
+
+  // 2. Calculate Merged Extension Total based on AMIS Doc No
+  const paidExtension = result?.extensions?.find(e => e.amisDocNo);
+  const mergedExtTotal = useMemo(() => {
+      if (!paidExtension || !paidExtension.amisDocNo) return 0;
+      const docNo = paidExtension.amisDocNo;
+
+      // Sum all extensions in all jobs sharing the same Payment DocNo
+      let total = 0;
+      jobs.forEach(job => {
+          (job.extensions || []).forEach(ext => {
+              if (ext.amisDocNo === docNo) {
+                  total += ext.total;
+              }
+          });
+      });
+      return total;
+  }, [jobs, paidExtension]);
+
+
+  // Job-specific Extension Total (Top Card)
   const extensionTotal = result ? (result.extensions || []).reduce((sum, ext) => sum + ext.total, 0) : 0;
   
   // Logic check thanh toán
   const isLcPaid = result && result.bank && result.localChargeDate;
-  
-  // Tìm extension đã được thanh toán (có số chứng từ AMIS)
-  const paidExtension = result?.extensions?.find(e => e.amisDocNo);
   const isExtPaid = !!paidExtension;
 
   return (
@@ -72,7 +99,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                     value={searchCode}
                     onChange={(e) => {
                         setSearchCode(e.target.value);
-                        if (hasSearched) setHasSearched(false); // Reset state on typing
+                        if (hasSearched) setHasSearched(false); 
                     }}
                     placeholder="Nhập số Job (VD: JOB-23-001)..." 
                     className="w-full pl-6 pr-32 py-4 text-lg bg-white/80 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 placeholder-slate-400 font-medium"
@@ -108,7 +135,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                         </div>
 
                         <div className="p-8 grid gap-8">
-                            {/* Financials Row */}
+                            {/* Financials Row (Job Specific) */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
                                     <div className="flex items-center text-slate-500 mb-2 font-medium text-xs uppercase tracking-wide">
@@ -156,7 +183,8 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                             <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="font-bold text-green-800">Số tiền gộp:</span> 
-                                                    <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(result.localChargeTotal)}</span>
+                                                    {/* Display MERGED TOTAL here */}
+                                                    <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedLcTotal)}</span>
                                                 </div>
                                                 <div className="flex items-start gap-2">
                                                     <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
@@ -186,7 +214,8 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                                 <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="font-bold text-green-800">Số tiền gộp:</span> 
-                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(paidExtension?.total || 0)}</span>
+                                                        {/* Display MERGED TOTAL here */}
+                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedExtTotal)}</span>
                                                     </div>
                                                     <div className="flex items-start gap-2">
                                                         <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
