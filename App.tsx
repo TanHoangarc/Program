@@ -320,10 +320,19 @@ const App: React.FC = () => {
   };
 
   // --- HANDLE TOGGLE LOCK (SYNCED) ---
-  const handleToggleLock = (docNo: string) => {
+  // Support both single toggle (string) and batch lock (array)
+  const handleToggleLock = (docNo: string | string[]) => {
       const newSet = new Set(lockedIds);
-      if (newSet.has(docNo)) newSet.delete(docNo);
-      else newSet.add(docNo);
+      
+      if (Array.isArray(docNo)) {
+          // Batch Lock: Always ADD items to locked set (do not toggle off)
+          docNo.forEach(id => newSet.add(id));
+      } else {
+          // Single Toggle: Flip state
+          if (newSet.has(docNo)) newSet.delete(docNo);
+          else newSet.add(docNo);
+      }
+      
       setLockedIds(newSet);
 
       // Auto-sync lock status to server immediately
