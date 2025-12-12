@@ -44,38 +44,49 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
   const mergedLcTotal = useMemo(() => {
       if (!result || !result.amisLcDocNo) return 0;
       const docNo = result.amisLcDocNo;
-      
-      // Sum all jobs sharing the same Payment DocNo
       return jobs
         .filter(j => j.amisLcDocNo === docNo)
         .reduce((sum, j) => sum + j.localChargeTotal, 0);
   }, [jobs, result]);
 
-  // 2. Calculate Merged Extension Total based on AMIS Doc No
-  const paidExtension = result?.extensions?.find(e => e.amisDocNo);
-  const mergedExtTotal = useMemo(() => {
-      if (!paidExtension || !paidExtension.amisDocNo) return 0;
-      const docNo = paidExtension.amisDocNo;
+  // 2. Helper to get Merge Info for a specific Extension Payment DocNo
+  const getMergeInfo = (docNo: string, currentAmount: number) => {
+      if (!docNo) return { isMerged: false, total: 0, desc: '' };
 
-      // Sum all extensions in all jobs sharing the same Payment DocNo
       let total = 0;
+      let firstDesc = '';
+      
       jobs.forEach(job => {
           (job.extensions || []).forEach(ext => {
               if (ext.amisDocNo === docNo) {
                   total += ext.total;
+                  if (!firstDesc) firstDesc = ext.amisDesc || '';
               }
           });
       });
-      return total;
-  }, [jobs, paidExtension]);
 
+      // It is merged if the total for this DocNo is greater than the current line item's amount
+      // (Floating point safety check usually not needed for integers but good practice)
+      const isMerged = total > currentAmount;
+
+      return { isMerged, total, desc: firstDesc };
+  };
 
   // Job-specific Extension Total (Top Card)
   const extensionTotal = result ? (result.extensions || []).reduce((sum, ext) => sum + ext.total, 0) : 0;
   
-  // Logic check thanh toán
+  // Logic check thanh toán Local Charge
   const isLcPaid = result && result.bank && result.localChargeDate;
-  const isExtPaid = !!paidExtension;
+  
+  // Find ALL paid extensions
+  const paidExtensions = useMemo(() => {
+      if (!result || !result.extensions) return [];
+      return result.extensions
+        .filter(e => e.amisDocNo) // Has Doc No means Paid
+        .sort((a, b) => new Date(a.invoiceDate).getTime() - new Date(b.invoiceDate).getTime());
+  }, [result]);
+
+  const isExtPaid = paidExtensions.length > 0;
 
   return (
     <div className="p-8 max-w-full h-full flex flex-col">
@@ -180,17 +191,19 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                                 Đã nhận thanh toán local charge từ khách hàng ngày {formatDateVN(result.localChargeDate)}
                                             </div>
                                             {/* Merged Payment Info */}
-                                            <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="font-bold text-green-800">Số tiền nhận:</span> 
-                                                    {/* Display MERGED TOTAL here */}
-                                                    <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedLcTotal)}</span>
+                                            {/* Only show merged info if mergedTotal > localChargeTotal (meaning it was grouped) */}
+                                            {mergedLcTotal > result.localChargeTotal && (
+                                                <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="font-bold text-green-800">Số tiền nhận:</span> 
+                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedLcTotal)}</span>
+                                                    </div>
+                                                    <div className="flex items-start gap-2">
+                                                        <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
+                                                        <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(result.amisLcDesc)}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-start gap-2">
-                                                    <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">KH thanh toán các lô:</span> 
-                                                    <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(result.amisLcDesc)}</span>
-                                                </div>
-                                            </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="flex items-center text-slate-500 font-medium">
@@ -205,23 +218,36 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                     <div className={`p-5 rounded-2xl border-l-4 border-t border-r border-b ${isExtPaid ? 'border-l-green-500 bg-green-50/50 border-green-100' : 'border-l-orange-500 bg-orange-50/50 border-orange-100'}`}>
                                         <h3 className={`text-xs font-bold uppercase mb-2 ${isExtPaid ? 'text-green-800' : 'text-orange-800'}`}>Trạng thái thanh toán Gia Hạn</h3>
                                         {isExtPaid ? (
-                                            <div>
-                                                <div className="flex items-center text-green-700 font-bold text-lg mb-2">
-                                                    <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-                                                    Đã nhận thanh toán gia hạn ngày {formatDateVN(paidExtension?.invoiceDate)}
-                                                </div>
-                                                {/* Merged Payment Info for Extension */}
-                                                <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="font-bold text-green-800">Số tiền nhận:</span> 
-                                                        {/* Display MERGED TOTAL here */}
-                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedExtTotal)}</span>
-                                                    </div>
-                                                    <div className="flex items-start gap-2">
-                                                        <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">KH thanh toán các lô:</span> 
-                                                        <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(paidExtension?.amisDesc)}</span>
-                                                    </div>
-                                                </div>
+                                            <div className="space-y-4">
+                                                {paidExtensions.map((ext, idx) => {
+                                                    const mergeInfo = getMergeInfo(ext.amisDocNo || '', ext.total);
+                                                    return (
+                                                        <div key={idx} className={`${idx > 0 ? 'border-t border-green-200/50 pt-3' : ''}`}>
+                                                            <div className="flex items-center text-green-700 font-bold text-lg mb-1">
+                                                                <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                                                                {paidExtensions.length > 1 ? `Thu lần ${idx + 1}: ` : 'Đã nhận thanh toán: '}
+                                                                <span className="text-slate-800 mx-2">{formatCurrency(ext.total)}</span>
+                                                                <span className="text-sm font-medium text-slate-500 bg-white/50 px-2 py-0.5 rounded border border-slate-200">
+                                                                    Ngày {formatDateVN(ext.invoiceDate)}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            {/* Merged Info Block (Only if this specific payment was merged) */}
+                                                            {mergeInfo.isMerged && (
+                                                                <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm mt-2 ml-7">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <span className="font-bold text-green-800">Số tiền nhận:</span> 
+                                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergeInfo.total)}</span>
+                                                                    </div>
+                                                                    <div className="flex items-start gap-2">
+                                                                        <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
+                                                                        <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(mergeInfo.desc)}</span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         ) : (
                                             <div className="flex items-center text-orange-700 font-medium">
