@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
-import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag, Search, AlertCircle } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
@@ -294,6 +294,7 @@ export const BookingList: React.FC<BookingListProps> = ({
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Chênh lệch</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-right">Profit</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Cont</th>
+                <th className="px-2 py-4 w-12"></th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center w-16">Chức năng</th>
               </tr>
             </thead>
@@ -308,6 +309,8 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const addNet = (booking.costDetails.additionalLocalCharges || []).reduce((s, e) => s + (e.net || 0), 0);
                 const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
                 const diff = actualNet - target;
+                
+                const missingInvoiceInfo = !booking.costDetails.localCharge.invoice || !booking.costDetails.localCharge.date;
 
                 return (
                   <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
@@ -325,6 +328,13 @@ export const BookingList: React.FC<BookingListProps> = ({
                           {booking.totalCont40 > 0 && <span className="px-1.5 py-0.5 bg-purple-100/50 text-purple-700 rounded border border-purple-200/50">{booking.totalCont40} x 40'</span>}
                           {booking.totalCont20 === 0 && booking.totalCont40 === 0 && <span>-</span>}
                        </div>
+                    </td>
+                    <td className="px-2 py-4 text-center">
+                        {missingInvoiceInfo && (
+                            <div title="Thiếu thông tin hóa đơn đầu vào" className="flex justify-center">
+                                <AlertCircle className="w-4 h-4 text-purple-600" />
+                            </div>
+                        )}
                     </td>
                     <td className="px-6 py-4 text-center relative action-menu-container">
                        <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === booking.bookingId ? null : booking.bookingId); }} className={`p-1.5 rounded-full hover:bg-white/50 transition-all ${activeMenuId === booking.bookingId ? 'bg-white shadow-md text-teal-600' : 'text-slate-400 hover:text-slate-600'}`}>
@@ -355,7 +365,7 @@ export const BookingList: React.FC<BookingListProps> = ({
                   <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                   <td className={`px-6 py-4 text-right ${totals.diff !== 0 ? 'text-orange-600' : 'text-slate-400'}`}>{formatCurrency(totals.diff)}</td>
                   <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>
-                  <td colSpan={2}></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             )}
