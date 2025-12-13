@@ -1,5 +1,4 @@
 
-
 import { JobData, BookingSummary } from './types';
 
 export const formatDateVN = (dateStr: any) => {
@@ -106,4 +105,37 @@ export const getPaginationRange = (currentPage: number, totalPages: number) => {
   }
 
   return rangeWithDots;
+};
+
+// --- AUTO INCREMENT DOCUMENT NUMBER HELPER ---
+export const generateNextDocNo = (jobs: JobData[], prefix: string, padding: number = 5): string => {
+  let max = 0;
+  // Regex to match prefix followed by digits (case insensitive)
+  const regex = new RegExp(`^${prefix}(\\d+)$`, 'i');
+
+  const checkValue = (val?: string) => {
+    if (!val) return;
+    const match = val.match(regex);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > max) max = num;
+    }
+  };
+
+  jobs.forEach(j => {
+    checkValue(j.amisLcDocNo);
+    checkValue(j.amisDepositDocNo);
+    checkValue(j.amisDepositRefundDocNo);
+    checkValue(j.amisPaymentDocNo);
+    checkValue(j.amisDepositOutDocNo);
+    checkValue(j.amisExtensionPaymentDocNo);
+
+    if (j.extensions) {
+      j.extensions.forEach(ext => checkValue(ext.amisDocNo));
+    }
+  });
+
+  // Return next number with padding (e.g. UNC00001)
+  const nextNum = max + 1;
+  return `${prefix}${String(nextNum).padStart(padding, '0')}`;
 };

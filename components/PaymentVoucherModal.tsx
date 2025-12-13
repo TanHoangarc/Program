@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, User, Banknote, CheckCircle } from 'lucide-react';
 import { JobData, BookingSummary } from '../types';
-import { formatDateVN, parseDateVN } from '../utils';
+import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
 interface PaymentVoucherModalProps {
   isOpen: boolean;
@@ -13,6 +13,7 @@ interface PaymentVoucherModalProps {
   job?: JobData;
   booking?: BookingSummary;
   type?: 'local' | 'deposit' | 'extension';
+  allJobs?: JobData[];
 }
 
 const DateInput = ({ 
@@ -70,12 +71,12 @@ const DateInput = ({
   );
 };
 
-const Label = ({ children }: { children: React.ReactNode }) => (
+const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
 );
 
 export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
-  isOpen, onClose, onSave, initialData, job, booking, type
+  isOpen, onClose, onSave, initialData, job, booking, type, allJobs
 }) => {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0], 
@@ -97,12 +98,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     loanContract: ''
   });
 
-  // Generate random UNC number
-  const generateUNC = () => {
-      const random = Math.floor(10000 + Math.random() * 90000);
-      return `UNC${random}`;
-  };
-
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
@@ -123,13 +118,15 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
             : (job?.jobCode || '');
         const bookingNo = booking ? booking.bookingId : (job?.booking || '');
 
+        const jobsForCalc = allJobs || [];
+
         if (type === 'local') {
            // Check if already created
            if (firstJob?.amisPaymentDocNo) {
                docNo = firstJob.amisPaymentDocNo;
                content = firstJob.amisPaymentDesc || '';
            } else {
-               docNo = generateUNC();
+               docNo = generateNextDocNo(jobsForCalc, 'UNC');
                content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo} (kimberry)`;
            }
            
@@ -162,19 +159,18 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                docNo = firstJob.amisDepositOutDocNo;
                content = firstJob.amisDepositOutDesc || '';
            } else {
-               docNo = generateUNC();
+               docNo = generateNextDocNo(jobsForCalc, 'UNC');
                content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo} (kimberry)`;
            }
            const depositAmt = booking?.costDetails.deposits.reduce((s,d) => s + d.amount, 0) || job?.chiCuoc || 0;
            amount = depositAmt;
 
         } else if (type === 'extension') {
-           docNo = generateUNC();
-           
            if (firstJob?.amisExtensionPaymentDocNo) {
                 docNo = firstJob.amisExtensionPaymentDocNo;
                 content = firstJob.amisExtensionPaymentDesc || '';
            } else {
+                docNo = generateNextDocNo(jobsForCalc, 'UNC');
                 let jobsWithExtension: string[] = [];
                 if (booking) {
                     booking.jobs.forEach(j => {
@@ -217,7 +213,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         }));
       }
     }
-  }, [isOpen, initialData, job, booking, type]);
+  }, [isOpen, initialData, job, booking, type, allJobs]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;

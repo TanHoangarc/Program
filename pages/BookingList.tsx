@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -403,6 +404,7 @@ export const BookingList: React.FC<BookingListProps> = ({
              booking={targetBookingForPayment}
              type={paymentType}
              onSave={handleSavePayment}
+             allJobs={jobs}
           />
       )}
 

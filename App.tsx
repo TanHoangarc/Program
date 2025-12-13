@@ -15,6 +15,7 @@ import { ProfitReport } from './pages/ProfitReport';
 import { LookupPage } from './pages/LookupPage'; 
 import { PaymentPage } from './pages/PaymentPage'; 
 import { LoginPage } from './components/LoginPage';
+import { Menu, Ship } from 'lucide-react';
 
 import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
@@ -41,11 +42,8 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  // Fix: Check role immediately on initialization to set correct default page
-  // Check localStorage (Remember Me) then sessionStorage
   const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc'>(() => {
       try {
-          // Check LocalStorage first, then SessionStorage
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
               const user = JSON.parse(savedUser);
@@ -54,6 +52,8 @@ const App: React.FC = () => {
       } catch {}
       return 'entry';
   });
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [targetJobId, setTargetJobId] = useState<string | null>(null);
@@ -196,20 +196,16 @@ const App: React.FC = () => {
 
   // --- PAYMENT HANDLERS WITH TRACKING ---
   const handleUpdatePaymentRequests = (newRequests: PaymentRequest[]) => {
-      // Find which items are new or changed compared to current state
       const currentMap = new Map(paymentRequests.map(r => [r.id, r]));
-      
       const changedIds = new Set<string>();
       
       newRequests.forEach(req => {
           const current = currentMap.get(req.id);
-          // If new or strictly different, mark as modified
           if (!current || JSON.stringify(current) !== JSON.stringify(req)) {
               changedIds.add(req.id);
           }
       });
 
-      // Also detect deletions if we want to sync deletions, but for now we sync the full list of "active" items
       setPaymentRequests(newRequests);
       
       setModifiedPaymentIds(prev => {
@@ -247,11 +243,9 @@ const App: React.FC = () => {
     let payload = directPayload;
 
     if (!payload) {
-        // FILTER MODIFIED DATA FOR NORMAL SYNC
         const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
         const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
 
-        // Allow sending if there are customer changes (even if no job changes)
         const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0;
         
         if (!hasChanges) {
@@ -263,14 +257,13 @@ const App: React.FC = () => {
             user: currentUser.username, 
             timestamp: new Date().toISOString(),
             jobs: jobsToSend, 
-            paymentRequests: paymentsToSend, // Include Payments
+            paymentRequests: paymentsToSend,
             customers: [...customers],
             lines: [...lines],
-            customReceipts: [...customReceipts], // Include Custom Receipts in standard sync
-            lockedIds: Array.from(lockedIds) // Include Locked IDs in standard sync
+            customReceipts: [...customReceipts],
+            lockedIds: Array.from(lockedIds)
         };
     } else {
-        // If directPayload is provided, ensure lockedIds are included if not present
         if (!payload.lockedIds) {
             payload.lockedIds = Array.from(lockedIds);
         }
@@ -301,7 +294,6 @@ const App: React.FC = () => {
               
               alert(`Đã gửi thành công: ${msgParts.join(', ')}!`);
               
-              // RESET TRACKING on success manual sync
               setModifiedJobIds(new Set());
               setModifiedPaymentIds(new Set());
           } else {
@@ -319,30 +311,24 @@ const App: React.FC = () => {
     }
   };
 
-  // --- HANDLE TOGGLE LOCK (SYNCED) ---
-  // Support both single toggle (string) and batch lock (array)
   const handleToggleLock = (docNo: string | string[]) => {
       const newSet = new Set(lockedIds);
       
       if (Array.isArray(docNo)) {
-          // Batch Lock: Always ADD items to locked set (do not toggle off)
           docNo.forEach(id => newSet.add(id));
       } else {
-          // Single Toggle: Flip state
           if (newSet.has(docNo)) newSet.delete(docNo);
           else newSet.add(docNo);
       }
       
       setLockedIds(newSet);
 
-      // Auto-sync lock status to server immediately
       if (currentUser && isServerAvailable) {
           const payload = {
               user: currentUser.username,
               timestamp: new Date().toISOString(),
               lockedIds: Array.from(newSet),
-              autoApprove: true, // Bypass admin approval for locks
-              // Empty arrays for others to avoid overwriting
+              autoApprove: true,
               jobs: [], paymentRequests: [], customers: [], lines: []
           };
           
@@ -350,7 +336,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- ADMIN: FETCH PENDING REQUESTS ---
   const fetchPendingRequests = async () => {
     if (!currentUser || currentUser.role !== "Admin" || !isServerAvailable) return;
     try {
@@ -379,7 +364,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- ADMIN: REJECT/DELETE REQUEST ---
   const handleRejectRequest = async (requestId: string) => {
       setPendingRequests(prev => prev.filter(r => r.id !== requestId));
       setLocalDeletedIds(prev => new Set(prev).add(requestId));
@@ -397,7 +381,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- ADMIN: APPROVE REQUEST ---
   const handleApproveRequest = async (requestId: string, incomingData: any) => {
       const mergeArrays = (current: any[], incoming: any[]) => {
           if (!incoming) return current;
@@ -412,7 +395,6 @@ const App: React.FC = () => {
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
 
-      // Merge Locks if present using UNION logic
       const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
       if (incLocks.length > 0) {
           setLockedIds(prev => {
@@ -438,7 +420,6 @@ const App: React.FC = () => {
       alert("Đã duyệt và cập nhật dữ liệu thành công!");
   };
 
-  // --- LOAD DATA FROM SERVER WHEN APP START ---
   useEffect(() => {
     const fetchServerData = async () => {
       try {
@@ -461,12 +442,18 @@ const App: React.FC = () => {
         if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
         if (data.lines && Array.isArray(data.lines)) setLines(data.lines);
         
-        // Load Locked IDs
         if (data.lockedIds && Array.isArray(data.lockedIds)) {
             setLockedIds(new Set(data.lockedIds));
         }
         
-        // Load Custom Receipts
+        if (data.processedRequestIds && Array.isArray(data.processedRequestIds)) {
+            setLocalDeletedIds(prev => {
+                const next = new Set(prev);
+                data.processedRequestIds.forEach((id: string) => next.add(id));
+                return next;
+            });
+        }
+        
         if (data.customReceipts && Array.isArray(data.customReceipts)) {
             setCustomReceipts(data.customReceipts);
         }
@@ -482,16 +469,13 @@ const App: React.FC = () => {
     fetchServerData();
   }, []);
 
-  // --- AUTH LOGIC ---
   useEffect(() => {
-    // Check LocalStorage first, then SessionStorage
     const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
     if (savedUser) {
       const user = JSON.parse(savedUser);
       setIsAuthenticated(true);
       setCurrentUser(user);
       
-      // Fix: Ensure correct page is set if role is Docs
       if (user.role === 'Docs') {
           setCurrentPage('lookup');
       }
@@ -521,13 +505,11 @@ const App: React.FC = () => {
       setCurrentUser(userData);
       setSessionError('');
       
-      // Store in LocalStorage if Remember is checked, else SessionStorage
       const storage = remember ? localStorage : sessionStorage;
       storage.setItem('kb_user', JSON.stringify(userData));
       
-      // If logging in with Remember Me, clear any existing session storage to avoid conflicts
       if (remember) sessionStorage.removeItem('kb_user');
-      else localStorage.removeItem('kb_user'); // Vice versa
+      else localStorage.removeItem('kb_user');
 
       if (user.role === 'Docs') {
           setCurrentPage('lookup');
@@ -542,16 +524,13 @@ const App: React.FC = () => {
   const handleLogout = useCallback((forced = false) => {
     setIsAuthenticated(false);
     setCurrentUser(null);
-    // Clear both storages on logout
     sessionStorage.removeItem('kb_user');
     localStorage.removeItem('kb_user');
     
     setSessionError(forced ? "Tài khoản đã được đăng nhập nơi khác." : "");
   }, []);
 
-  // === AUTO BACKUP TO SERVER ===
   const autoBackup = async () => {
-    // Allow Admin, Manager, and Docs to backup data (especially Payment Requests created by Docs)
     if (!currentUser || !["Admin", "Manager", "Docs"].includes(currentUser.role)) return;
     if (!isServerAvailable) return; 
 
@@ -560,11 +539,12 @@ const App: React.FC = () => {
         timestamp: new Date().toISOString(),
         version: "2.3",
         jobs,
-        paymentRequests, // Include Payments in backup
+        paymentRequests,
         customers,
         lines,
-        lockedIds: Array.from(lockedIds), // Include locks
-        customReceipts // Include Custom Receipts
+        lockedIds: Array.from(lockedIds),
+        processedRequestIds: Array.from(localDeletedIds),
+        customReceipts
       };
 
       const controller = new AbortController();
@@ -583,18 +563,16 @@ const App: React.FC = () => {
     }
   };
 
-  // Debounced Auto Backup for Stability
   useEffect(() => { 
     if (!isServerAvailable) return;
     
     const timeoutId = setTimeout(() => {
         autoBackup();
-    }, 2000); // 2 second debounce
+    }, 2000);
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, isServerAvailable]);
 
-  // SAVE TO LOCAL STORAGE
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
   useEffect(() => { localStorage.setItem("logistics_customers_v1", JSON.stringify(customers)); }, [customers]);
@@ -602,7 +580,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
 
-  // Auto fetch pending when Admin goes to System page
   useEffect(() => {
       if (currentPage === 'system' && currentUser?.role === 'Admin') {
           fetchPendingRequests();
@@ -613,17 +590,33 @@ const App: React.FC = () => {
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
 
   return (
-    <div className="flex w-full h-screen overflow-hidden relative">
+    <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-slate-50">
+      
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200 z-30 shrink-0 sticky top-0">
+         <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-gradient-to-tr from-teal-400 to-blue-500 rounded-lg shadow-sm">
+                <Ship className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-lg text-slate-800 tracking-tight">KIMBERRY</span>
+         </div>
+         <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+            <Menu className="w-6 h-6" />
+         </button>
+      </div>
+
       <Sidebar
         currentPage={currentPage}
         onNavigate={setCurrentPage}
         currentUser={currentUser}
         onLogout={() => handleLogout(false)}
         onSendPending={() => sendPendingToServer()}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
       />
 
-      <div className="flex-1 ml-[280px] p-4 h-full flex flex-col">
-        <main className="flex-1 rounded-3xl overflow-hidden relative shadow-inner">
+      <div className="flex-1 md:ml-[280px] p-2 md:p-4 h-full flex flex-col overflow-hidden relative">
+        <main className="flex-1 rounded-2xl md:rounded-3xl overflow-hidden relative shadow-inner h-full flex flex-col bg-white/40 backdrop-blur-3xl border border-white/40">
           <div className="absolute inset-0 bg-white/40 backdrop-blur-3xl border border-white/40 rounded-3xl z-0"></div>
 
           <div className="relative z-10 h-full overflow-y-auto custom-scrollbar p-2">
@@ -777,7 +770,6 @@ const App: React.FC = () => {
               <LookupPage jobs={jobs} />
             )}
             
-            {/* UPDATED PaymentPage: Pass props including jobs for sync */}
             {currentPage === 'payment' && (
               <PaymentPage 
                 lines={lines} 

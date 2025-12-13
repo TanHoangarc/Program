@@ -69,6 +69,10 @@ const DateInput = ({
   );
 };
 
+const Label = ({ children }: { children?: React.ReactNode }) => (
+  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
+);
+
 export const SalesInvoiceModal: React.FC<SalesInvoiceModalProps> = ({
   isOpen, onClose, onSave, job, initialData
 }) => {
@@ -135,10 +139,6 @@ export const SalesInvoiceModal: React.FC<SalesInvoiceModalProps> = ({
     onSave(formData);
     onClose();
   };
-
-  const Label = ({ children }: { children: React.ReactNode }) => (
-    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
-  );
 
   if (!isOpen) return null;
 

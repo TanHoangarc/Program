@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown } from 'lucide-react';
 import { JobData, Customer } from '../types';
-import { formatDateVN, parseDateVN } from '../utils';
+import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
 export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'extension' | 'other';
 
@@ -73,6 +74,10 @@ const DateInput = ({
   );
 };
 
+const Label = ({ children }: { children?: React.ReactNode }) => (
+  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
+);
+
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId
 }) => {
@@ -98,8 +103,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   // --- MERGE JOB STATE ---
   const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
   const [searchJobCode, setSearchJobCode] = useState('');
-
-  const generateRandomStr = () => Math.floor(10000 + Math.random() * 90000).toString();
 
   // Helper to generate Description Logic for Merged Jobs
   const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean = false) => {
@@ -180,8 +183,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const foundCust = customers.find(c => c.id === initialCustId);
       setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
+      // AUTO INCREMENT DOC NO
+      const jobsForCalc = allJobs || [];
+
       if (mode === 'local') {
-          setAmisDocNo(deepCopyJob.amisLcDocNo || `NTTK${generateRandomStr()}`);
+          setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK'));
           
           if (deepCopyJob.amisLcDesc) {
              setAmisDesc(deepCopyJob.amisLcDesc);
@@ -192,16 +198,16 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
       } 
       else if (mode === 'other') {
-          setAmisDocNo(deepCopyJob.amisLcDocNo || `NTTK${generateRandomStr()}`);
+          setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK'));
           const inv = deepCopyJob.localChargeInvoice || 'XXX';
           setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
       }
       else if (mode === 'deposit') {
-          setAmisDocNo(deepCopyJob.amisDepositDocNo || `NTTK${generateRandomStr()}`);
+          setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNextDocNo(jobsForCalc, 'NTTK'));
           setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
       } 
       else if (mode === 'deposit_refund') {
-          setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || `UNC${generateRandomStr()}`);
+          setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC'));
           setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
       }
       else if (mode === 'extension') {
@@ -227,7 +233,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 invoice: targetExt.invoice || '', 
                 date: targetExt.invoiceDate || new Date().toISOString().split('T')[0],
                 total: targetExt.total || 0,
-                amisDocNo: targetExt.amisDocNo || `NTTK${generateRandomStr()}`,
+                amisDocNo: targetExt.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK'),
                 amisDesc: targetExt.amisDesc || defaultDesc
              });
           } else {
@@ -237,13 +243,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                invoice: '', 
                date: new Date().toISOString().split('T')[0],
                total: 0,
-               amisDocNo: `NTTK${generateRandomStr()}`,
+               amisDocNo: generateNextDocNo(jobsForCalc, 'NTTK'),
                amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${deepCopyJob.jobCode} (KIM)`
              });
           }
       }
     }
-  }, [isOpen, job, mode, customers, targetExtensionId]);
+  }, [isOpen, job, mode, customers, targetExtensionId, allJobs]);
 
   const getDisplayValues = () => {
       let tkNo = '1121';
@@ -400,6 +406,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const handleSelectExtensionToPay = (extId: string) => {
+      const jobsForCalc = allJobs || [];
       if (!extId) {
           // Create New Mode
           setInternalTargetId(null);
@@ -408,7 +415,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               invoice: '',
               date: new Date().toISOString().split('T')[0],
               total: 0,
-              amisDocNo: `NTTK${generateRandomStr()}`,
+              amisDocNo: generateNextDocNo(jobsForCalc, 'NTTK'),
               amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${formData.jobCode} (KIM)`
           });
           const mainCust = customers.find(c => c.id === formData.customerId);
@@ -430,7 +437,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               invoice: target.invoice,
               date: target.invoiceDate || new Date().toISOString().split('T')[0],
               total: target.total,
-              amisDocNo: target.amisDocNo || `NTTK${generateRandomStr()}`,
+              amisDocNo: target.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK'),
               amisDesc: desc
           });
           
@@ -556,10 +563,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const getLabelDesc = () => {
       return mode === 'deposit_refund' ? 'Diễn giải lý do hoàn' : 'Diễn giải lý do thu';
   };
-
-  const Label = ({ children }: { children: React.ReactNode }) => (
-    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
-  );
 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
