@@ -3,18 +3,22 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check } from 'lucide-react';
 import { MONTHS } from '../constants';
-import * as XLSX from 'xlsx'; // Keep for reading uploads if needed, or misc utils
-import ExcelJS from 'exceljs'; // NEW: For exporting with styles
+import * as XLSX from 'xlsx'; 
+import ExcelJS from 'exceljs'; 
 import { formatDateVN, calculateBookingSummary, parseDateVN, generateNextDocNo } from '../utils';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
+import { JobModal } from '../components/JobModal'; // Added Import
 import axios from 'axios';
 
 interface AmisExportProps {
   jobs: JobData[];
   customers: Customer[];
+  lines?: ShippingLine[]; // Added
+  onAddLine?: (line: string) => void; // Added
+  onAddCustomer?: (customer: Customer) => void; // Added
   mode: 'thu' | 'chi' | 'ban' | 'mua';
   onUpdateJob?: (job: JobData) => void;
   lockedIds: Set<string>;
@@ -36,7 +40,10 @@ const TEMPLATE_MAP: Record<string, string> = {
 // GLOBAL CACHE: Persists as long as the app session is active (even if component unmounts)
 const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string }> = {};
 
-export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts }) => {
+export const AmisExport: React.FC<AmisExportProps> = ({ 
+    jobs, customers, lines = [], onAddLine, onAddCustomer,
+    mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts 
+}) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -56,6 +63,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
 
+  // Job Modal for "Ban" Mode Editing
+  const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState<JobData | null>(null);
+
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,32 +76,23 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     setSelectedIds(new Set());
   }, [mode, filterMonth]);
 
-  // --- AUTO LOAD TEMPLATE FROM CACHE OR SERVER ---
   useEffect(() => {
     const loadTemplate = async () => {
-        // 1. Check Global Cache First
         if (GLOBAL_TEMPLATE_CACHE[mode]) {
             setTemplateBuffer(GLOBAL_TEMPLATE_CACHE[mode].buffer);
             setTemplateName(GLOBAL_TEMPLATE_CACHE[mode].name);
             return;
         }
-
-        // 2. Fetch from Server if not in cache
         setIsLoadingTemplate(true);
         setTemplateBuffer(null); 
         setTemplateName('');
-        
         try {
             const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}?v=${Date.now()}`;
             const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
-            
             if (response.status === 200 && response.data) {
                 const buffer = response.data;
                 const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
-                
-                // Save to Cache
                 GLOBAL_TEMPLATE_CACHE[mode] = { buffer, name: `${displayName} (Server)` };
-                
                 setTemplateBuffer(buffer);
                 setTemplateName(`${displayName} (Server)`);
             }
@@ -100,7 +102,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
             setIsLoadingTemplate(false);
         }
     };
-
     loadTemplate();
   }, [mode, currentTemplateFileName]);
 
@@ -110,32 +111,24 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const getCustomerCode = (id: string) => customers.find(c => c.id === id)?.code || id;
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || '';
 
-  // --- UPLOAD TEMPLATE ---
   const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsUploadingTemplate(true);
-
     const reader = new FileReader();
     reader.onload = async (evt) => {
       if (evt.target?.result) {
           const buffer = evt.target.result as ArrayBuffer;
           const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
           const statusName = `${displayName} (Mới cập nhật)`;
-
-          // 1. Update State & Cache immediately for UI responsiveness
           setTemplateBuffer(buffer);
           setTemplateName(statusName);
           GLOBAL_TEMPLATE_CACHE[mode] = { buffer, name: statusName };
-
-          // 2. Upload to Server
           try {
               const formData = new FormData();
               formData.append("folderPath", TEMPLATE_FOLDER);
               formData.append("fileName", currentTemplateFileName);
               formData.append("file", file);
-
               await axios.post(`${BACKEND_URL}/upload-file`, formData);
               alert(`Đã lưu mẫu "${displayName}" cho phần ${mode.toUpperCase()} thành công!`);
           } catch (err) {
@@ -278,19 +271,30 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     else if (mode === 'ban') {
         const rows: any[] = [];
         
-        // 1. Filter jobs valid for Sales Export
-        let validJobs = jobs.filter(j => j.sell > 0);
+        // 1. Filter jobs: Valid Sell > 0 AND must be LHK Customer (Matching LhkList Logic)
+        let validJobs = jobs.filter(j => {
+            const hasSell = j.sell > 0;
+            // Check LHK Logic
+            const name = (j.customerName || '').toLowerCase();
+            const isLhk = name.includes('long hoàng') || name.includes('lhk') || name.includes('long hoang') || name.includes('longhoang');
+            
+            return hasSell && isLhk;
+        });
+
         if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
 
-        // 2. Sort by Booking to group them together
+        // 2. Sort EXACTLY like LhkList: Month Desc -> Booking Asc
         validJobs.sort((a, b) => {
+            // 1. Month Descending
+            const monthDiff = Number(b.month) - Number(a.month);
+            if (monthDiff !== 0) return monthDiff;
+
+            // 2. Booking Ascending
             const bookingA = String(a.booking || '').trim().toLowerCase();
             const bookingB = String(b.booking || '').trim().toLowerCase();
             return bookingA.localeCompare(bookingB);
         });
 
-        // 3. Logic: Same Booking = Same DocNo. Increment DocNo only when booking changes.
-        // We'll generate a temporary DocNo sequence starting from 1 for this export view.
         const bookingToDocNoMap = new Map<string, string>();
         let currentDocNum = 1;
 
@@ -299,29 +303,24 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
             let docNo = '';
 
             if (bookingKey && bookingToDocNoMap.has(bookingKey)) {
-                // Reuse existing DocNo for this booking
                 docNo = bookingToDocNoMap.get(bookingKey)!;
             } else {
-                // Generate new DocNo
                 docNo = `BH${String(currentDocNum).padStart(5, '0')}`;
                 if (bookingKey) {
                     bookingToDocNoMap.set(bookingKey, docNo);
                 }
-                // Only increment if it's a new booking (or if booking is empty, treat as unique)
                 currentDocNum++;
             }
 
-            // Calculate Project Code: K{YY}{MM}{JobCode}
             const yy = new Date().getFullYear().toString().slice(-2);
             const mm = (j.month || '01').padStart(2, '0');
             const projectCode = `K${yy}${mm}${j.jobCode}`;
             
-            // Current Date default
             const today = new Date().toISOString().split('T')[0];
 
             rows.push({
                 jobId: j.id, type: 'ban', rowId: `ban-${j.id}`,
-                date: today, // Ngày hạch toán / chứng từ
+                date: today,
                 docNo: docNo,
                 objCode: getCustomerCode(j.customerId),
                 objName: getCustomerName(j.customerId),
@@ -349,7 +348,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
                    id: row.id, 
                    jobCode: 'THU-KHAC', 
                    localChargeDate: row.date, 
-                   amisLcDocNo: row.docNo,
+                   amisLcDocNo: row.docNo, 
                    amisLcDesc: row.desc,
                    localChargeTotal: row.amount,
                    customerId: row.objCode,
@@ -377,6 +376,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
           else setPaymentType('local');
           setIsPaymentModalOpen(true);
       }
+      // MODE BAN (SALES) - NEW
+      else if (mode === 'ban' && job) {
+          setEditingJob(JSON.parse(JSON.stringify(job))); // Deep copy
+          setIsJobModalOpen(true);
+      }
+  };
+
+  const handleSaveJobEdit = (updatedJob: JobData, newCustomer?: Customer) => {
+      if (onUpdateJob) onUpdateJob(updatedJob);
+      if (newCustomer && onAddCustomer) onAddCustomer(newCustomer);
+      setIsJobModalOpen(false);
   };
 
   const handleDelete = (row: any) => {
@@ -441,8 +451,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
       }
   };
 
-  // --- EXPORT WITH EXCELJS (PRESERVES STYLES) ---
+  // --- EXPORT WITH EXCELJS ---
   const handleExport = async () => {
+    // ... (Existing export logic remains unchanged) ...
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) {
         alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.");
@@ -655,7 +666,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               {mode === 'thu' && (
                   <button 
                     onClick={() => {
-                        // Generate a proper sequential NTTK number for the dummy job
                         const nextDocNo = generateNextDocNo(jobs, 'NTTK');
                         const dummyJob = { 
                             ...INITIAL_JOB, 
@@ -787,6 +797,23 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
               job={selectedJobForModal}
               type={paymentType}
               allJobs={jobs}
+          />
+      )}
+
+      {/* JOB MODAL FOR BAN EDIT */}
+      {isJobModalOpen && editingJob && (
+          <JobModal 
+              isOpen={isJobModalOpen}
+              onClose={() => setIsJobModalOpen(false)}
+              onSave={handleSaveJobEdit}
+              initialData={editingJob}
+              customers={customers}
+              lines={lines}
+              onAddLine={onAddLine || (() => {})}
+              onAddCustomer={onAddCustomer || (() => {})}
+              onViewBookingDetails={() => {}}
+              isViewMode={false}
+              existingJobs={jobs}
           />
       )}
 
