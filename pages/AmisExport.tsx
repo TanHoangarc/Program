@@ -63,9 +63,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
 
-  // Job Modal for "Ban" Mode Editing
+  // Job Modal for "Ban" Mode Editing (Legacy - Keeping state but changing usage)
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
+
+  // Sales Invoice Modal State (New)
+  const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
+  const [salesJob, setSalesJob] = useState<JobData | null>(null);
+  const [salesInitialData, setSalesInitialData] = useState<any>(null);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
@@ -292,9 +297,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
 
-        // 2. Sort: Month Desc -> Booking Asc
+        // 2. Sort: Month ASCENDING (1 -> 12) -> Booking Asc
+        // FIX: Start BH00001 from Month 1
         validJobs.sort((a, b) => {
-            const monthDiff = Number(b.month) - Number(a.month);
+            const monthDiff = Number(a.month) - Number(b.month); // Ascending
             if (monthDiff !== 0) return monthDiff;
             const bookingA = String(a.booking || '').trim().toLowerCase();
             const bookingB = String(b.booking || '').trim().toLowerCase();
@@ -346,13 +352,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     
     // --- MODE MUA (Example logic to handle purchase) ---
     else if (mode === 'mua') {
-        // Simple implementation for purchase invoices
         const rows: any[] = [];
         jobs.forEach(j => {
             if (checkMonth(j.month) && j.cost > 0) {
-                // Approximate logic: 
-                // In reality, this should be grouped by Payment Requests or Booking Cost Details similar to "Chi"
-                // For now, we list jobs with cost
                 rows.push({
                     jobId: j.id, type: 'mua', rowId: `mua-${j.id}`,
                     date: new Date().toISOString().split('T')[0],
@@ -412,10 +414,19 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           else setPaymentType('local');
           setIsPaymentModalOpen(true);
       }
-      // MODE BAN (SALES)
+      // MODE BAN (SALES) - FIX: Open SalesInvoiceModal instead of JobModal
       else if (mode === 'ban' && job) {
-          setEditingJob(JSON.parse(JSON.stringify(job)));
-          setIsJobModalOpen(true);
+          setSalesJob(job);
+          // Pre-populate with calculated row data (especially DocNo and Date)
+          setSalesInitialData({
+              docNo: row.docNo,
+              date: row.date,
+              docDate: row.date,
+              amount: row.amount,
+              description: row.desc,
+              projectCode: row.projectCode
+          });
+          setIsSalesModalOpen(true);
       }
   };
 
@@ -423,6 +434,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       if (onUpdateJob) onUpdateJob(updatedJob);
       if (newCustomer && onAddCustomer) onAddCustomer(newCustomer);
       setIsJobModalOpen(false);
+  };
+
+  const handleSaveSales = (data: any) => {
+      // For now, AmisExport 'ban' mode dynamically generates the export data.
+      // Saving here just updates local state to close the modal.
+      // If we wanted to persist manual overrides to the job, we would update the job here.
+      setIsSalesModalOpen(false);
   };
 
   const handleDelete = (row: any) => {
@@ -845,7 +863,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           />
       )}
 
-      {/* JOB MODAL FOR BAN EDIT */}
+      {/* JOB MODAL FOR LEGACY EDIT */}
       {isJobModalOpen && editingJob && (
           <JobModal 
               isOpen={isJobModalOpen}
@@ -859,6 +877,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               onViewBookingDetails={() => {}}
               isViewMode={false}
               existingJobs={jobs}
+          />
+      )}
+
+      {/* SALES INVOICE MODAL FOR BAN EDIT */}
+      {isSalesModalOpen && salesJob && (
+          <SalesInvoiceModal 
+              isOpen={isSalesModalOpen}
+              onClose={() => setIsSalesModalOpen(false)}
+              onSave={handleSaveSales}
+              job={salesJob}
+              initialData={salesInitialData}
           />
       )}
 
