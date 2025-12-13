@@ -10,15 +10,15 @@ import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
-import { JobModal } from '../components/JobModal'; // Added Import
+import { JobModal } from '../components/JobModal';
 import axios from 'axios';
 
 interface AmisExportProps {
   jobs: JobData[];
   customers: Customer[];
-  lines?: ShippingLine[]; // Added
-  onAddLine?: (line: string) => void; // Added
-  onAddCustomer?: (customer: Customer) => void; // Added
+  lines?: ShippingLine[]; 
+  onAddLine?: (line: string) => void;
+  onAddCustomer?: (customer: Customer) => void;
   mode: 'thu' | 'chi' | 'ban' | 'mua';
   onUpdateJob?: (job: JobData) => void;
   lockedIds: Set<string>;
@@ -37,7 +37,7 @@ const TEMPLATE_MAP: Record<string, string> = {
   mua: "Mua_hang_Mau.xlsx"
 };
 
-// GLOBAL CACHE: Persists as long as the app session is active (even if component unmounts)
+// GLOBAL CACHE
 const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string }> = {};
 
 export const AmisExport: React.FC<AmisExportProps> = ({ 
@@ -47,7 +47,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Template State (Now storing ArrayBuffer for ExcelJS)
+  // Template State
   const [templateBuffer, setTemplateBuffer] = useState<ArrayBuffer | null>(null);
   const [templateName, setTemplateName] = useState<string>('');
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
@@ -152,8 +152,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   };
 
   const exportData = useMemo(() => {
+    // --- MODE THU ---
     if (mode === 'thu') {
       const rows: any[] = [];
+      // 1. Thu Cược
       jobs.forEach(j => {
          if (j.thuCuoc > 0 && j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
              rows.push({
@@ -164,6 +166,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
              });
          }
       });
+      // 2. Thu Local Charge
       jobs.forEach(j => {
           if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
                rows.push({
@@ -174,6 +177,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                });
           }
       });
+      // 3. Thu Extension
       jobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
               if (ext.total > 0 && ext.amisDocNo && checkMonth(ext.invoiceDate)) {
@@ -186,16 +190,20 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               }
           });
       });
+      // 4. Thu Khác (External)
       customReceipts.forEach(r => {
           if (checkMonth(r.date)) rows.push({ ...r, type: 'external', rowId: `custom-${r.id}` });
       });
       return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     } 
+    
+    // --- MODE CHI ---
     else if (mode === 'chi') {
         const rows: any[] = [];
         const processedDocNos = new Set<string>();
         const todayStr = new Date().toISOString().split('T')[0];
 
+        // 1. Chi Payment (Local Charge Out)
         jobs.forEach(j => {
              const date = j.amisPaymentDate || todayStr;
              if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo) && checkMonth(date)) {
@@ -223,7 +231,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
              }
         });
         
-        // Deposit Out Logic
+        // 2. Chi Cược (Deposit Out)
         const processedDepositOut = new Set<string>();
         jobs.forEach(j => {
             if (j.amisDepositOutDocNo && !processedDepositOut.has(j.amisDepositOutDocNo) && checkMonth(j.amisDepositOutDate)) {
@@ -245,7 +253,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         });
 
-        // Extension Payment Logic
+        // 3. Chi Gia Hạn (Extension Out)
         const processedExtOut = new Set<string>();
         jobs.forEach(j => {
             if (j.amisExtensionPaymentDocNo && !processedExtOut.has(j.amisExtensionPaymentDocNo) && checkMonth(j.amisExtensionPaymentDate)) {
@@ -268,28 +276,26 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
+    
+    // --- MODE BAN (Specific Logic for Sales) ---
     else if (mode === 'ban') {
         const rows: any[] = [];
         
-        // 1. Filter jobs: Valid Sell > 0 AND must be LHK Customer (Matching LhkList Logic)
+        // 1. Filter jobs: Valid Sell > 0 AND must be LHK Customer
         let validJobs = jobs.filter(j => {
             const hasSell = j.sell > 0;
             // Check LHK Logic
             const name = (j.customerName || '').toLowerCase();
             const isLhk = name.includes('long hoàng') || name.includes('lhk') || name.includes('long hoang') || name.includes('longhoang');
-            
             return hasSell && isLhk;
         });
 
         if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
 
-        // 2. Sort EXACTLY like LhkList: Month Desc -> Booking Asc
+        // 2. Sort: Month Desc -> Booking Asc
         validJobs.sort((a, b) => {
-            // 1. Month Descending
             const monthDiff = Number(b.month) - Number(a.month);
             if (monthDiff !== 0) return monthDiff;
-
-            // 2. Booking Ascending
             const bookingA = String(a.booking || '').trim().toLowerCase();
             const bookingB = String(b.booking || '').trim().toLowerCase();
             return bookingA.localeCompare(bookingB);
@@ -297,6 +303,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         const bookingToDocNoMap = new Map<string, string>();
         let currentDocNum = 1;
+        const currentYear = new Date().getFullYear();
 
         validJobs.forEach(j => {
             const bookingKey = String(j.booking || '').trim();
@@ -312,15 +319,19 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 currentDocNum++;
             }
 
-            const yy = new Date().getFullYear().toString().slice(-2);
+            const yy = currentYear.toString().slice(-2);
             const mm = (j.month || '01').padStart(2, '0');
             const projectCode = `K${yy}${mm}${j.jobCode}`;
             
-            const today = new Date().toISOString().split('T')[0];
+            // Date Logic: 30th of the month, or last day if month has < 30 days
+            const monthInt = parseInt(j.month || '1', 10);
+            const daysInMonth = new Date(currentYear, monthInt, 0).getDate(); 
+            const targetDay = Math.min(30, daysInMonth);
+            const dateStr = `${currentYear}-${String(monthInt).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 
             rows.push({
                 jobId: j.id, type: 'ban', rowId: `ban-${j.id}`,
-                date: today,
+                date: dateStr,
                 docNo: docNo,
                 objCode: getCustomerCode(j.customerId),
                 objName: getCustomerName(j.customerId),
@@ -332,6 +343,31 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         return rows;
     }
+    
+    // --- MODE MUA (Example logic to handle purchase) ---
+    else if (mode === 'mua') {
+        // Simple implementation for purchase invoices
+        const rows: any[] = [];
+        jobs.forEach(j => {
+            if (checkMonth(j.month) && j.cost > 0) {
+                // Approximate logic: 
+                // In reality, this should be grouped by Payment Requests or Booking Cost Details similar to "Chi"
+                // For now, we list jobs with cost
+                rows.push({
+                    jobId: j.id, type: 'mua', rowId: `mua-${j.id}`,
+                    date: new Date().toISOString().split('T')[0],
+                    docNo: `PMH-${j.booking || j.jobCode}`,
+                    objCode: j.line,
+                    objName: '', // Line name
+                    desc: `Mua hàng theo Booking ${j.booking}`,
+                    amount: j.cost,
+                    tkNo: '632', tkCo: '331'
+                });
+            }
+        });
+        return rows;
+    }
+
     return [];
   }, [jobs, mode, filterMonth, customers, customReceipts]); 
 
@@ -376,9 +412,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           else setPaymentType('local');
           setIsPaymentModalOpen(true);
       }
-      // MODE BAN (SALES) - NEW
+      // MODE BAN (SALES)
       else if (mode === 'ban' && job) {
-          setEditingJob(JSON.parse(JSON.stringify(job))); // Deep copy
+          setEditingJob(JSON.parse(JSON.stringify(job)));
           setIsJobModalOpen(true);
       }
   };
@@ -453,7 +489,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   // --- EXPORT WITH EXCELJS ---
   const handleExport = async () => {
-    // ... (Existing export logic remains unchanged) ...
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) {
         alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.");
@@ -544,6 +579,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             row.getCell(51).value = "0%"; // AY - Thuế GTGT
             row.getCell(55).value = "33311"; // BC - TK Thuế
             row.getCell(61).value = data.projectCode; // BI - Mã công trình
+        } else if (mode === 'mua') {
+            // Mua Hàng Logic (Placeholder mapped to sample columns)
+            row.getCell(1).value = "Mua hàng trong nước không qua kho";
+            row.getCell(2).value = "Chưa thanh toán";
+            row.getCell(6).value = formatDateVN(data.date);
+            row.getCell(7).value = formatDateVN(data.date);
+            row.getCell(8).value = data.docNo;
+            row.getCell(14).value = data.objCode;
+            row.getCell(22).value = data.desc;
+            row.getCell(37).value = data.amount;
         }
         
         row.commit();
@@ -575,7 +620,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         }
 
     } catch (err) {
-        console.warn("Không thể lưu trực tiếp vào Server (Offline hoặc chưa cấu hình API). Đang tải xuống máy...", err);
+        console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
         const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         const url = window.URL.createObjectURL(blob);
         const anchor = document.createElement("a");
