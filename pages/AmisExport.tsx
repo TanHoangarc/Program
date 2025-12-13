@@ -35,6 +35,9 @@ const TEMPLATE_MAP: Record<string, string> = {
 
 export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts }) => {
   const [filterMonth, setFilterMonth] = useState('');
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
+  const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
+  const [selectedBookingForModal, setSelectedBookingForModal] = useState<any | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Template State (Now storing ArrayBuffer for ExcelJS)
@@ -42,9 +45,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   const [templateName, setTemplateName] = useState<string>('');
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
-  
-  // Cache mechanism to store templates per mode in memory
-  const templateCache = useRef<Record<string, { buffer: ArrayBuffer, name: string }>>({});
   
   // Modal States
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
@@ -54,7 +54,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
   
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
-  const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
@@ -65,33 +64,25 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
     setSelectedIds(new Set());
   }, [mode, filterMonth]);
 
-  // --- AUTO LOAD TEMPLATE FROM CACHE OR SERVER ---
+  // --- AUTO LOAD TEMPLATE FROM SERVER ---
   useEffect(() => {
-    const loadTemplate = async () => {
-        // 1. Check Cache First
-        if (templateCache.current[mode]) {
-            setTemplateBuffer(templateCache.current[mode].buffer);
-            setTemplateName(templateCache.current[mode].name);
-            return;
-        }
-
-        // 2. Fetch from Server if not in cache
+    const fetchServerTemplate = async () => {
         setIsLoadingTemplate(true);
         setTemplateBuffer(null); 
         setTemplateName('');
         
         try {
+            // Timestamp prevents caching old 404s or old file versions
+            const fileUrl = `${BACKEND_URL}/amis/template/${currentTemplateFileName.replace(/_/g, '-').replace('.xlsx', '').toLowerCase()}?v=${Date.now()}`;
+            // Correct API mapping logic for template fetching if needed, or rely on specific endpoints provided previously
+            // Fallback to static path if the dynamic one is complex
             const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}?v=${Date.now()}`;
+            
             const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
             
             if (response.status === 200 && response.data) {
-                const buffer = response.data;
+                setTemplateBuffer(response.data);
                 const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
-                
-                // Save to Cache
-                templateCache.current[mode] = { buffer, name: `${displayName} (Server)` };
-                
-                setTemplateBuffer(buffer);
                 setTemplateName(`${displayName} (Server)`);
             }
         } catch (error) {
@@ -101,7 +92,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         }
     };
 
-    loadTemplate();
+    fetchServerTemplate();
   }, [mode, currentTemplateFileName]);
 
   const formatCurrency = (val: number) => 
@@ -117,37 +108,34 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
     setIsUploadingTemplate(true);
 
+    // Read immediately into buffer for local use
     const reader = new FileReader();
-    reader.onload = async (evt) => {
+    reader.onload = (evt) => {
       if (evt.target?.result) {
-          const buffer = evt.target.result as ArrayBuffer;
-          const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
-          const statusName = `${displayName} (Mới cập nhật)`;
-
-          // 1. Update State & Cache immediately for UI responsiveness
-          setTemplateBuffer(buffer);
-          setTemplateName(statusName);
-          templateCache.current[mode] = { buffer, name: statusName };
-
-          // 2. Upload to Server
-          try {
-              const formData = new FormData();
-              formData.append("folderPath", TEMPLATE_FOLDER);
-              formData.append("fileName", currentTemplateFileName);
-              formData.append("file", file);
-
-              await axios.post(`${BACKEND_URL}/upload-file`, formData);
-              alert(`Đã lưu mẫu "${displayName}" cho phần ${mode.toUpperCase()} thành công!`);
-          } catch (err) {
-              console.error("Lỗi upload mẫu:", err);
-              alert("Lưu mẫu lên server thất bại, nhưng sẽ dùng mẫu này tạm thời.");
-          } finally {
-              setIsUploadingTemplate(false);
-              if (fileInputRef.current) fileInputRef.current.value = '';
-          }
+          setTemplateBuffer(evt.target.result as ArrayBuffer);
+          setTemplateName(file.name);
       }
     };
     reader.readAsArrayBuffer(file);
+
+    try {
+        const formData = new FormData();
+        formData.append("folderPath", TEMPLATE_FOLDER);
+        formData.append("fileName", currentTemplateFileName);
+        formData.append("file", file);
+
+        await axios.post(`${BACKEND_URL}/upload-file`, formData);
+        
+        const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
+        alert(`Đã lưu mẫu "${displayName}" lên Server thành công!`);
+        setTemplateName(`${displayName} (Mới cập nhật)`);
+    } catch (err) {
+        console.error("Lỗi upload mẫu:", err);
+        alert("Lưu mẫu thất bại. Mẫu chỉ có hiệu lực tạm thời trong phiên này.");
+    } finally {
+        setIsUploadingTemplate(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const checkMonth = (dateStr?: string | null) => {
