@@ -389,6 +389,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         netAmount: lcNet,
                         vatAmount: lcVat,
                         amount: lcTotal,
+                        costType: 'Local charge',
                         sortDate: new Date(lc.date || '1970-01-01').getTime()
                     });
                 }
@@ -419,6 +420,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                                 netAmount: aNet,
                                 vatAmount: aVat,
                                 amount: aTotal,
+                                costType: 'Local charge',
                                 sortDate: new Date(add.date || '1970-01-01').getTime()
                             });
                         }
@@ -442,6 +444,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                                 netAmount: eNet,
                                 vatAmount: eVat,
                                 amount: ext.total,
+                                costType: 'Demurrage',
                                 sortDate: new Date(ext.date || '1970-01-01').getTime()
                             });
                         }
@@ -470,6 +473,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         netAmount: net,
                         vatAmount: vat,
                         amount: total,
+                        costType: 'Local charge',
                         sortDate: Date.now() // Place at end if no date
                     });
                 }
@@ -923,6 +927,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 <th className="px-6 py-3">Mã Đối Tượng</th>
                 <th className="px-6 py-3">Diễn giải</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
+                {mode === 'mua' && <th className="px-6 py-3"></th>}
                 <th className="px-6 py-3 text-center w-28">Chức năng</th>
               </tr>
             </thead>
@@ -964,6 +969,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                               </button>
                           </div>
                       </td>
+                      
+                      {mode === 'mua' && (
+                          <td className="px-6 py-3 text-slate-500 text-xs italic">
+                              {row.costType}
+                          </td>
+                      )}
                       
                       <td className="px-6 py-3 text-center">
                           {!isLocked && (
