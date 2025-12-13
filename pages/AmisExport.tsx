@@ -33,6 +33,9 @@ const TEMPLATE_MAP: Record<string, string> = {
   mua: "Mua_hang_Mau.xlsx"
 };
 
+// GLOBAL CACHE: Persists as long as the app session is active (even if component unmounts)
+const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string }> = {};
+
 export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -64,32 +67,42 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
   // --- AUTO LOAD TEMPLATE FROM CACHE OR SERVER ---
   useEffect(() => {
-    const loadTemplateFromServer = async () => {
-      setIsLoadingTemplate(true);
-      setTemplateBuffer(null);
-      setTemplateName('');
-  
-      try {
-        const fileName = TEMPLATE_MAP[mode];
-        const url = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${fileName}?v=${Date.now()}`;
-  
-        const response = await axios.get(url, {
-          responseType: 'arraybuffer',
-        });
-  
-        if (response.status === 200 && response.data) {
-          setTemplateBuffer(response.data);
-          setTemplateName(fileName);
+    const loadTemplate = async () => {
+        // 1. Check Global Cache First
+        if (GLOBAL_TEMPLATE_CACHE[mode]) {
+            setTemplateBuffer(GLOBAL_TEMPLATE_CACHE[mode].buffer);
+            setTemplateName(GLOBAL_TEMPLATE_CACHE[mode].name);
+            return;
         }
-      } catch (error) {
-        console.warn(`Không tìm thấy file mẫu ${TEMPLATE_MAP[mode]} trên server`);
-      } finally {
-        setIsLoadingTemplate(false);
-      }
+
+        // 2. Fetch from Server if not in cache
+        setIsLoadingTemplate(true);
+        setTemplateBuffer(null); 
+        setTemplateName('');
+        
+        try {
+            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}?v=${Date.now()}`;
+            const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
+            
+            if (response.status === 200 && response.data) {
+                const buffer = response.data;
+                const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
+                
+                // Save to Cache
+                GLOBAL_TEMPLATE_CACHE[mode] = { buffer, name: `${displayName} (Server)` };
+                
+                setTemplateBuffer(buffer);
+                setTemplateName(`${displayName} (Server)`);
+            }
+        } catch (error) {
+            console.log(`Chưa có file mẫu ${currentTemplateFileName} trên server.`);
+        } finally {
+            setIsLoadingTemplate(false);
+        }
     };
-  
-    loadTemplateFromServer();
-  }, [mode]);
+
+    loadTemplate();
+  }, [mode, currentTemplateFileName]);
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
@@ -261,6 +274,64 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
         });
 
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+    else if (mode === 'ban') {
+        const rows: any[] = [];
+        
+        // 1. Filter jobs valid for Sales Export
+        let validJobs = jobs.filter(j => j.sell > 0);
+        if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
+
+        // 2. Sort by Booking to group them together
+        validJobs.sort((a, b) => {
+            const bookingA = String(a.booking || '').trim().toLowerCase();
+            const bookingB = String(b.booking || '').trim().toLowerCase();
+            return bookingA.localeCompare(bookingB);
+        });
+
+        // 3. Logic: Same Booking = Same DocNo. Increment DocNo only when booking changes.
+        // We'll generate a temporary DocNo sequence starting from 1 for this export view.
+        const bookingToDocNoMap = new Map<string, string>();
+        let currentDocNum = 1;
+
+        validJobs.forEach(j => {
+            const bookingKey = String(j.booking || '').trim();
+            let docNo = '';
+
+            if (bookingKey && bookingToDocNoMap.has(bookingKey)) {
+                // Reuse existing DocNo for this booking
+                docNo = bookingToDocNoMap.get(bookingKey)!;
+            } else {
+                // Generate new DocNo
+                docNo = `BH${String(currentDocNum).padStart(5, '0')}`;
+                if (bookingKey) {
+                    bookingToDocNoMap.set(bookingKey, docNo);
+                }
+                // Only increment if it's a new booking (or if booking is empty, treat as unique)
+                currentDocNum++;
+            }
+
+            // Calculate Project Code: K{YY}{MM}{JobCode}
+            const yy = new Date().getFullYear().toString().slice(-2);
+            const mm = (j.month || '01').padStart(2, '0');
+            const projectCode = `K${yy}${mm}${j.jobCode}`;
+            
+            // Current Date default
+            const today = new Date().toISOString().split('T')[0];
+
+            rows.push({
+                jobId: j.id, type: 'ban', rowId: `ban-${j.id}`,
+                date: today, // Ngày hạch toán / chứng từ
+                docNo: docNo,
+                objCode: getCustomerCode(j.customerId),
+                objName: getCustomerName(j.customerId),
+                desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''}`,
+                amount: j.sell,
+                projectCode: projectCode
+            });
+        });
+
+        return rows;
     }
     return [];
   }, [jobs, mode, filterMonth, customers, customReceipts]); 
@@ -442,6 +513,26 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
             row.getCell(23).value = data.tkCo;
             row.getCell(24).value = data.amount;
             row.getCell(26).value = data.objCode;
+        } else if (mode === 'ban') {
+            row.getCell(1).value = "Bán hàng hóa trong nước"; // A
+            row.getCell(2).value = "Chưa thu tiền"; // B
+            row.getCell(3).value = "Không"; // C
+            row.getCell(4).value = "Không"; // D
+            row.getCell(6).value = formatDateVN(data.date); // F - Ngày hạch toán
+            row.getCell(7).value = formatDateVN(data.date); // G - Ngày chứng từ
+            row.getCell(8).value = data.docNo; // H - Số chứng từ
+            row.getCell(14).value = data.objCode; // N - Mã khách hàng
+            row.getCell(22).value = data.desc; // V - Diễn giải
+            row.getCell(28).value = "VND"; // AB
+            row.getCell(30).value = "AGENT FEE"; // AD
+            row.getCell(33).value = "Không"; // AG
+            row.getCell(36).value = "13112"; // AJ
+            row.getCell(37).value = "51111"; // AK
+            row.getCell(39).value = 1; // AM - SL
+            row.getCell(40).value = data.amount; // AN - Đơn giá (Sell)
+            row.getCell(51).value = "0%"; // AY - Thuế GTGT
+            row.getCell(55).value = "33311"; // BC - TK Thuế
+            row.getCell(61).value = data.projectCode; // BI - Mã công trình
         }
         
         row.commit();
