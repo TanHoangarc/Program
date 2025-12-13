@@ -33,9 +33,6 @@ const TEMPLATE_MAP: Record<string, string> = {
   mua: "Mua_hang_Mau.xlsx"
 };
 
-// GLOBAL CACHE: Persists as long as the app session is active (even if component unmounts)
-const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string }> = {};
-
 export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts }) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -67,42 +64,32 @@ export const AmisExport: React.FC<AmisExportProps> = ({ jobs, customers, mode, o
 
   // --- AUTO LOAD TEMPLATE FROM CACHE OR SERVER ---
   useEffect(() => {
-    const loadTemplate = async () => {
-        // 1. Check Global Cache First
-        if (GLOBAL_TEMPLATE_CACHE[mode]) {
-            setTemplateBuffer(GLOBAL_TEMPLATE_CACHE[mode].buffer);
-            setTemplateName(GLOBAL_TEMPLATE_CACHE[mode].name);
-            return;
+    const loadTemplateFromServer = async () => {
+      setIsLoadingTemplate(true);
+      setTemplateBuffer(null);
+      setTemplateName('');
+  
+      try {
+        const fileName = TEMPLATE_MAP[mode];
+        const url = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${fileName}?v=${Date.now()}`;
+  
+        const response = await axios.get(url, {
+          responseType: 'arraybuffer',
+        });
+  
+        if (response.status === 200 && response.data) {
+          setTemplateBuffer(response.data);
+          setTemplateName(fileName);
         }
-
-        // 2. Fetch from Server if not in cache
-        setIsLoadingTemplate(true);
-        setTemplateBuffer(null); 
-        setTemplateName('');
-        
-        try {
-            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}?v=${Date.now()}`;
-            const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
-            
-            if (response.status === 200 && response.data) {
-                const buffer = response.data;
-                const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
-                
-                // Save to Cache
-                GLOBAL_TEMPLATE_CACHE[mode] = { buffer, name: `${displayName} (Server)` };
-                
-                setTemplateBuffer(buffer);
-                setTemplateName(`${displayName} (Server)`);
-            }
-        } catch (error) {
-            console.log(`Chưa có file mẫu ${currentTemplateFileName} trên server.`);
-        } finally {
-            setIsLoadingTemplate(false);
-        }
+      } catch (error) {
+        console.warn(`Không tìm thấy file mẫu ${TEMPLATE_MAP[mode]} trên server`);
+      } finally {
+        setIsLoadingTemplate(false);
+      }
     };
-
-    loadTemplate();
-  }, [mode, currentTemplateFileName]);
+  
+    loadTemplateFromServer();
+  }, [mode]);
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
