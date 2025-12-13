@@ -63,7 +63,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
 
-  // Job Modal for "Ban" Mode Editing (Legacy - Keeping state but changing usage)
+  // Job Modal for Legacy Editing
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
 
@@ -298,7 +298,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
 
         // 2. Sort: Month ASCENDING (1 -> 12) -> Booking Asc
-        // FIX: Start BH00001 from Month 1
+        // FIX: Start BH00001 from Month 1 (Ascending)
         validJobs.sort((a, b) => {
             const monthDiff = Number(a.month) - Number(b.month); // Ascending
             if (monthDiff !== 0) return monthDiff;
@@ -347,7 +347,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             });
         });
 
-        return rows;
+        // 3. Final Sort: Re-sort rows by Month Descending (by using DocNo descending)
+        // This ensures BH... appears descending (e.g. BH00100 at top, BH00001 at bottom)
+        return rows.sort((a, b) => b.docNo.localeCompare(a.docNo));
     }
     
     // --- MODE MUA (Example logic to handle purchase) ---
@@ -439,7 +441,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const handleSaveSales = (data: any) => {
       // For now, AmisExport 'ban' mode dynamically generates the export data.
       // Saving here just updates local state to close the modal.
-      // If we wanted to persist manual overrides to the job, we would update the job here.
       setIsSalesModalOpen(false);
   };
 
