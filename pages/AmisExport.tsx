@@ -282,7 +282,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
     
-    // --- MODE BAN (Specific Logic for Sales) ---
+    // --- MODE BAN ---
     else if (mode === 'ban') {
         const rows: any[] = [];
         let validJobs = jobs.filter(j => {
@@ -341,65 +341,120 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         return rows.sort((a, b) => b.docNo.localeCompare(a.docNo));
     }
     
-    // --- MODE MUA (Purchase Logic) ---
+    // --- MODE MUA (Purchase Logic - Revised) ---
     else if (mode === 'mua') {
-        const rows: any[] = [];
+        const rawItems: any[] = [];
         
-        // 1. Filter jobs with cost > 0
-        let validJobs = jobs.filter(j => j.cost > 0);
-        if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
+        // 1. Gather all Cost items (Local Charge + Extensions) from jobs
+        jobs.forEach(j => {
+            // Check filters
+            if (filterMonth && j.month !== filterMonth) return;
+            if (j.cost <= 0) return;
 
-        // 2. Sort: Month ASCENDING (1 -> 12) -> Booking/Job Asc
-        validJobs.sort((a, b) => {
-            const monthDiff = Number(a.month) - Number(b.month); 
-            if (monthDiff !== 0) return monthDiff;
-            const bkA = String(a.booking || a.jobCode).trim().toLowerCase();
-            const bkB = String(b.booking || b.jobCode).trim().toLowerCase();
-            return bkA.localeCompare(bkB);
-        });
-
-        const currentYear = new Date().getFullYear();
-        let currentDocNum = 1;
-
-        // 3. Generate Data with DocNo Ascending
-        validJobs.forEach(j => {
-            const monthInt = parseInt(j.month || '1', 10);
-            const daysInMonth = new Date(currentYear, monthInt, 0).getDate(); 
-            const targetDay = Math.min(30, daysInMonth);
-            const dateStr = `${currentYear}-${String(monthInt).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
-            
-            const docNo = `MH${String(currentDocNum).padStart(5, '0')}`;
-            currentDocNum++;
-
-            // Calculate Net & VAT (Assume Cost is Total, VAT 5%)
-            // Net = Cost / 1.05
-            const totalCost = j.cost;
-            const netAmount = Math.round(totalCost / 1.05);
-            const vatAmount = totalCost - netAmount;
-
-            // Get Supplier Name (Line Name)
             const lineObj = lines.find(l => l.code === j.line);
             const supplierName = lineObj ? lineObj.name : j.line;
-            const itemName = lineObj?.itemName || 'Phí Local Charge';
-            const invoiceNo = j.bookingCostDetails?.localCharge?.invoice || '';
+            const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
 
-            rows.push({
-                jobId: j.id, type: 'mua', rowId: `mua-${j.id}`,
-                date: dateStr,
-                docNo: docNo,
-                invoiceNo: invoiceNo,
-                objCode: j.line,
-                objName: supplierName,
-                itemName: itemName,
-                desc: `Mua hàng của ${supplierName || j.line} BILL ${j.booking || j.jobCode}`,
-                amount: totalCost, // Display total
-                netAmount: netAmount,
-                vatAmount: vatAmount
-            });
+            // A. Local Charge Cost
+            const lcDetails = j.bookingCostDetails?.localCharge;
+            if (lcDetails) {
+                // Determine Amount: if hasInvoice use net+vat, else use total
+                const lcAmount = (lcDetails.hasInvoice === false) ? lcDetails.total : ((lcDetails.net || 0) + (lcDetails.vat || 0));
+                
+                if (lcAmount > 0) {
+                    rawItems.push({
+                        type: 'LC',
+                        jobId: j.id,
+                        date: lcDetails.date || new Date().toISOString().split('T')[0],
+                        invoice: lcDetails.invoice || '', // Key for grouping
+                        amount: lcAmount,
+                        desc: `Mua hàng của ${supplierName} BILL ${j.booking || j.jobCode}`,
+                        supplierCode: j.line,
+                        supplierName: supplierName,
+                        itemName: defaultItemName,
+                        sortDate: new Date(lcDetails.date || new Date().toISOString()).getTime()
+                    });
+                }
+            } else if (j.cost > 0) {
+                // Fallback for legacy data (if bookingCostDetails is missing but cost exists)
+                rawItems.push({
+                    type: 'LEGACY',
+                    jobId: j.id,
+                    date: new Date().toISOString().split('T')[0],
+                    invoice: '',
+                    amount: j.cost,
+                    desc: `Mua hàng của ${supplierName} BILL ${j.booking || j.jobCode}`,
+                    supplierCode: j.line,
+                    supplierName: supplierName,
+                    itemName: defaultItemName,
+                    sortDate: Date.now()
+                });
+            }
+
+            // B. Extension Costs
+            if (j.bookingCostDetails?.extensionCosts) {
+                j.bookingCostDetails.extensionCosts.forEach(ext => {
+                    if (ext.total > 0) {
+                        rawItems.push({
+                            type: 'EXT',
+                            jobId: j.id,
+                            date: ext.date || new Date().toISOString().split('T')[0],
+                            invoice: ext.invoice || '', // Key for grouping
+                            amount: ext.total,
+                            desc: `Chi phí phát sinh của ${supplierName} BILL ${j.booking || j.jobCode}`,
+                            supplierCode: j.line,
+                            supplierName: supplierName,
+                            itemName: 'Phí phát sinh',
+                            sortDate: new Date(ext.date || new Date().toISOString()).getTime()
+                        });
+                    }
+                });
+            }
         });
 
-        // 4. Sort Descending for Display (MH... Desc)
-        return rows.sort((a, b) => b.docNo.localeCompare(a.docNo));
+        // 2. Sort Items by Date Ascending (for sequential numbering)
+        rawItems.sort((a, b) => a.sortDate - b.sortDate);
+
+        // 3. Assign Document Numbers (Group by Invoice Number)
+        const invoiceToDocMap = new Map<string, string>();
+        let currentDocNum = 1;
+        
+        const finalRows = rawItems.map(item => {
+            // Group Key: Use Invoice No. If empty, use unique ID to prevent grouping
+            const groupKey = item.invoice ? item.invoice.trim().toUpperCase() : `NO_INV_${item.jobId}_${Math.random()}`;
+            
+            let docNo = '';
+            if (invoiceToDocMap.has(groupKey)) {
+                docNo = invoiceToDocMap.get(groupKey)!;
+            } else {
+                docNo = `MH${String(currentDocNum).padStart(5, '0')}`;
+                invoiceToDocMap.set(groupKey, docNo);
+                currentDocNum++;
+            }
+
+            // Calculate Net & VAT (Assume 5% VAT included in total)
+            const netAmount = Math.round(item.amount / 1.05);
+            const vatAmount = item.amount - netAmount;
+
+            return {
+                jobId: item.jobId,
+                type: 'mua',
+                rowId: `mua-${item.jobId}-${item.type}-${Math.random()}`, // Unique Row ID
+                date: item.date,
+                docNo: docNo,
+                invoiceNo: item.invoice,
+                objCode: item.supplierCode,
+                objName: item.supplierName,
+                itemName: item.itemName,
+                desc: item.desc,
+                amount: item.amount,
+                netAmount: netAmount,
+                vatAmount: vatAmount
+            };
+        });
+
+        // 4. Sort Display by DocNo Descending (Newest first)
+        return finalRows.sort((a, b) => b.docNo.localeCompare(a.docNo));
     }
 
     return [];
