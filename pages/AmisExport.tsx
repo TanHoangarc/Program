@@ -344,71 +344,135 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     // --- MODE MUA (Purchase Logic - Revised) ---
     else if (mode === 'mua') {
         const rawItems: any[] = [];
+        const processedBookings = new Set<string>();
         
-        // 1. Gather all Cost items (Local Charge + Extensions) from jobs
         jobs.forEach(j => {
-            // Check filters
+            // Filter by Job Month
             if (filterMonth && j.month !== filterMonth) return;
-            if (j.cost <= 0) return;
 
-            const lineObj = lines.find(l => l.code === j.line);
-            const supplierName = lineObj ? lineObj.name : j.line;
-            const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
+            // Scenario 1: Grouped by Booking
+            if (j.booking) {
+                if (processedBookings.has(j.booking)) return; // Avoid duplicate processing of Booking details
+                processedBookings.add(j.booking);
 
-            // A. Local Charge Cost
-            const lcDetails = j.bookingCostDetails?.localCharge;
-            if (lcDetails) {
-                // Determine Amount: if hasInvoice use net+vat, else use total
-                const lcAmount = (lcDetails.hasInvoice === false) ? lcDetails.total : ((lcDetails.net || 0) + (lcDetails.vat || 0));
-                
-                if (lcAmount > 0) {
+                const details = j.bookingCostDetails;
+                if (!details) return;
+
+                const lineObj = lines.find(l => l.code === j.line);
+                const supplierName = lineObj ? lineObj.name : j.line;
+                const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
+
+                // 1. Local Charge (Main Invoice)
+                const lc = details.localCharge;
+                let lcNet = 0, lcVat = 0, lcTotal = 0;
+
+                if (lc.hasInvoice === false) {
+                    lcTotal = lc.total || 0;
+                    // Auto calc 5% assumption if no invoice details provided (for export column logic)
+                    lcNet = Math.round(lcTotal / 1.05);
+                    lcVat = lcTotal - lcNet;
+                } else {
+                    lcNet = lc.net || 0;
+                    lcVat = lc.vat || 0;
+                    lcTotal = lcNet + lcVat;
+                }
+
+                if (lcTotal > 0) {
                     rawItems.push({
-                        type: 'LC',
                         jobId: j.id,
-                        date: lcDetails.date || new Date().toISOString().split('T')[0],
-                        invoice: lcDetails.invoice || '', // Key for grouping
-                        amount: lcAmount,
-                        desc: `Mua hàng của ${supplierName} BILL ${j.booking || j.jobCode}`,
+                        date: lc.date || new Date().toISOString().split('T')[0],
+                        invoice: lc.invoice || '',
+                        desc: `Mua hàng của ${supplierName} BILL ${j.booking}`,
                         supplierCode: j.line,
                         supplierName: supplierName,
                         itemName: defaultItemName,
-                        sortDate: new Date(lcDetails.date || new Date().toISOString()).getTime()
+                        netAmount: lcNet,
+                        vatAmount: lcVat,
+                        amount: lcTotal,
+                        sortDate: new Date(lc.date || '1970-01-01').getTime()
                     });
                 }
-            } else if (j.cost > 0) {
-                // Fallback for legacy data (if bookingCostDetails is missing but cost exists)
-                rawItems.push({
-                    type: 'LEGACY',
-                    jobId: j.id,
-                    date: new Date().toISOString().split('T')[0],
-                    invoice: '',
-                    amount: j.cost,
-                    desc: `Mua hàng của ${supplierName} BILL ${j.booking || j.jobCode}`,
-                    supplierCode: j.line,
-                    supplierName: supplierName,
-                    itemName: defaultItemName,
-                    sortDate: Date.now()
-                });
-            }
 
-            // B. Extension Costs
-            if (j.bookingCostDetails?.extensionCosts) {
-                j.bookingCostDetails.extensionCosts.forEach(ext => {
-                    if (ext.total > 0) {
-                        rawItems.push({
-                            type: 'EXT',
-                            jobId: j.id,
-                            date: ext.date || new Date().toISOString().split('T')[0],
-                            invoice: ext.invoice || '', // Key for grouping
-                            amount: ext.total,
-                            desc: `Chi phí phát sinh của ${supplierName} BILL ${j.booking || j.jobCode}`,
-                            supplierCode: j.line,
-                            supplierName: supplierName,
-                            itemName: 'Phí phát sinh',
-                            sortDate: new Date(ext.date || new Date().toISOString()).getTime()
-                        });
-                    }
-                });
+                // 2. Additional Local Charges
+                if (details.additionalLocalCharges) {
+                    details.additionalLocalCharges.forEach(add => {
+                        let aNet = 0, aVat = 0, aTotal = 0;
+                        if (add.hasInvoice === false) {
+                            aTotal = add.total || 0;
+                            aNet = Math.round(aTotal / 1.05);
+                            aVat = aTotal - aNet;
+                        } else {
+                            aNet = add.net || 0;
+                            aVat = add.vat || 0;
+                            aTotal = aNet + aVat;
+                        }
+
+                        if (aTotal > 0) {
+                            rawItems.push({
+                                jobId: j.id,
+                                date: add.date || new Date().toISOString().split('T')[0],
+                                invoice: add.invoice || '',
+                                desc: `Chi phí khác của ${supplierName} BILL ${j.booking}`,
+                                supplierCode: j.line,
+                                supplierName: supplierName,
+                                itemName: defaultItemName,
+                                netAmount: aNet,
+                                vatAmount: aVat,
+                                amount: aTotal,
+                                sortDate: new Date(add.date || '1970-01-01').getTime()
+                            });
+                        }
+                    });
+                }
+
+                // 3. Extension Costs
+                if (details.extensionCosts) {
+                    details.extensionCosts.forEach(ext => {
+                        if (ext.total > 0) {
+                            const eNet = ext.net || Math.round(ext.total / 1.05);
+                            const eVat = ext.vat || (ext.total - eNet);
+                            rawItems.push({
+                                jobId: j.id,
+                                date: ext.date || new Date().toISOString().split('T')[0],
+                                invoice: ext.invoice || '',
+                                desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`,
+                                supplierCode: j.line,
+                                supplierName: supplierName,
+                                itemName: 'Phí phát sinh',
+                                netAmount: eNet,
+                                vatAmount: eVat,
+                                amount: ext.total,
+                                sortDate: new Date(ext.date || '1970-01-01').getTime()
+                            });
+                        }
+                    });
+                }
+
+            } else {
+                // Scenario 2: Standalone Job / Legacy Cost
+                if (j.cost > 0) {
+                    const lineObj = lines.find(l => l.code === j.line);
+                    const supplierName = lineObj ? lineObj.name : j.line;
+                    const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
+                    
+                    const total = j.cost;
+                    const net = Math.round(total / 1.05);
+                    const vat = total - net;
+
+                    rawItems.push({
+                        jobId: j.id,
+                        date: new Date().toISOString().split('T')[0],
+                        invoice: '',
+                        desc: `Mua hàng của ${supplierName} Job ${j.jobCode}`,
+                        supplierCode: j.line,
+                        supplierName: supplierName,
+                        itemName: defaultItemName,
+                        netAmount: net,
+                        vatAmount: vat,
+                        amount: total,
+                        sortDate: Date.now() // Place at end if no date
+                    });
+                }
             }
         });
 
@@ -424,32 +488,22 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             const groupKey = item.invoice ? item.invoice.trim().toUpperCase() : `NO_INV_${item.jobId}_${Math.random()}`;
             
             let docNo = '';
-            if (invoiceToDocMap.has(groupKey)) {
+            if (item.invoice && invoiceToDocMap.has(groupKey)) {
                 docNo = invoiceToDocMap.get(groupKey)!;
             } else {
                 docNo = `MH${String(currentDocNum).padStart(5, '0')}`;
-                invoiceToDocMap.set(groupKey, docNo);
+                if (item.invoice) invoiceToDocMap.set(groupKey, docNo);
                 currentDocNum++;
             }
 
-            // Calculate Net & VAT (Assume 5% VAT included in total)
-            const netAmount = Math.round(item.amount / 1.05);
-            const vatAmount = item.amount - netAmount;
-
             return {
-                jobId: item.jobId,
+                ...item,
                 type: 'mua',
-                rowId: `mua-${item.jobId}-${item.type}-${Math.random()}`, // Unique Row ID
-                date: item.date,
-                docNo: docNo,
+                rowId: `mua-${item.jobId}-${docNo}-${Math.random()}`,
+                docNo,
                 invoiceNo: item.invoice,
                 objCode: item.supplierCode,
-                objName: item.supplierName,
-                itemName: item.itemName,
-                desc: item.desc,
-                amount: item.amount,
-                netAmount: netAmount,
-                vatAmount: vatAmount
+                objName: item.supplierName
             };
         });
 
