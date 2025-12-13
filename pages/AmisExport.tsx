@@ -285,11 +285,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     // --- MODE BAN (Specific Logic for Sales) ---
     else if (mode === 'ban') {
         const rows: any[] = [];
-        
-        // 1. Filter jobs: Valid Sell > 0 AND must be LHK Customer
         let validJobs = jobs.filter(j => {
             const hasSell = j.sell > 0;
-            // Check LHK Logic
             const name = (j.customerName || '').toLowerCase();
             const isLhk = name.includes('long hoàng') || name.includes('lhk') || name.includes('long hoang') || name.includes('longhoang');
             return hasSell && isLhk;
@@ -297,10 +294,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
 
-        // 2. Sort: Month ASCENDING (1 -> 12) -> Booking Asc
-        // FIX: Start BH00001 from Month 1 (Ascending)
         validJobs.sort((a, b) => {
-            const monthDiff = Number(a.month) - Number(b.month); // Ascending
+            const monthDiff = Number(a.month) - Number(b.month); 
             if (monthDiff !== 0) return monthDiff;
             const bookingA = String(a.booking || '').trim().toLowerCase();
             const bookingB = String(b.booking || '').trim().toLowerCase();
@@ -329,7 +324,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             const mm = (j.month || '01').padStart(2, '0');
             const projectCode = `K${yy}${mm}${j.jobCode}`;
             
-            // Date Logic: 30th of the month, or last day if month has < 30 days
             const monthInt = parseInt(j.month || '1', 10);
             const daysInMonth = new Date(currentYear, monthInt, 0).getDate(); 
             const targetDay = Math.min(30, daysInMonth);
@@ -337,43 +331,79 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
             rows.push({
                 jobId: j.id, type: 'ban', rowId: `ban-${j.id}`,
-                date: dateStr,
-                docNo: docNo,
-                objCode: getCustomerCode(j.customerId),
-                objName: getCustomerName(j.customerId),
+                date: dateStr, docNo: docNo, objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
                 desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''}`,
-                amount: j.sell,
-                projectCode: projectCode
+                amount: j.sell, projectCode: projectCode
             });
         });
 
-        // 3. Final Sort: Re-sort rows by Month Descending (by using DocNo descending)
-        // This ensures BH... appears descending (e.g. BH00100 at top, BH00001 at bottom)
+        // Re-sort desc for display
         return rows.sort((a, b) => b.docNo.localeCompare(a.docNo));
     }
     
-    // --- MODE MUA (Example logic to handle purchase) ---
+    // --- MODE MUA (Purchase Logic) ---
     else if (mode === 'mua') {
         const rows: any[] = [];
-        jobs.forEach(j => {
-            if (checkMonth(j.month) && j.cost > 0) {
-                rows.push({
-                    jobId: j.id, type: 'mua', rowId: `mua-${j.id}`,
-                    date: new Date().toISOString().split('T')[0],
-                    docNo: `PMH-${j.booking || j.jobCode}`,
-                    objCode: j.line,
-                    objName: '', // Line name
-                    desc: `Mua hàng theo Booking ${j.booking}`,
-                    amount: j.cost,
-                    tkNo: '632', tkCo: '331'
-                });
-            }
+        
+        // 1. Filter jobs with cost > 0
+        let validJobs = jobs.filter(j => j.cost > 0);
+        if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
+
+        // 2. Sort: Month ASCENDING (1 -> 12) -> Booking/Job Asc
+        validJobs.sort((a, b) => {
+            const monthDiff = Number(a.month) - Number(b.month); 
+            if (monthDiff !== 0) return monthDiff;
+            const bkA = String(a.booking || a.jobCode).trim().toLowerCase();
+            const bkB = String(b.booking || b.jobCode).trim().toLowerCase();
+            return bkA.localeCompare(bkB);
         });
-        return rows;
+
+        const currentYear = new Date().getFullYear();
+        let currentDocNum = 1;
+
+        // 3. Generate Data with DocNo Ascending
+        validJobs.forEach(j => {
+            const monthInt = parseInt(j.month || '1', 10);
+            const daysInMonth = new Date(currentYear, monthInt, 0).getDate(); 
+            const targetDay = Math.min(30, daysInMonth);
+            const dateStr = `${currentYear}-${String(monthInt).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+            
+            const docNo = `MH${String(currentDocNum).padStart(5, '0')}`;
+            currentDocNum++;
+
+            // Calculate Net & VAT (Assume Cost is Total, VAT 5%)
+            // Net = Cost / 1.05
+            const totalCost = j.cost;
+            const netAmount = Math.round(totalCost / 1.05);
+            const vatAmount = totalCost - netAmount;
+
+            // Get Supplier Name (Line Name)
+            const lineObj = lines.find(l => l.code === j.line);
+            const supplierName = lineObj ? lineObj.name : j.line;
+            const itemName = lineObj?.itemName || 'Phí Local Charge';
+            const invoiceNo = j.bookingCostDetails?.localCharge?.invoice || '';
+
+            rows.push({
+                jobId: j.id, type: 'mua', rowId: `mua-${j.id}`,
+                date: dateStr,
+                docNo: docNo,
+                invoiceNo: invoiceNo,
+                objCode: j.line,
+                objName: supplierName,
+                itemName: itemName,
+                desc: `Mua hàng của ${supplierName || j.line} BILL ${j.booking || j.jobCode}`,
+                amount: totalCost, // Display total
+                netAmount: netAmount,
+                vatAmount: vatAmount
+            });
+        });
+
+        // 4. Sort Descending for Display (MH... Desc)
+        return rows.sort((a, b) => b.docNo.localeCompare(a.docNo));
     }
 
     return [];
-  }, [jobs, mode, filterMonth, customers, customReceipts]); 
+  }, [jobs, mode, filterMonth, customers, customReceipts, lines]); 
 
   // --- HANDLERS FOR EDIT & DELETE ---
   const handleEdit = (row: any) => {
@@ -416,19 +446,21 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           else setPaymentType('local');
           setIsPaymentModalOpen(true);
       }
-      // MODE BAN (SALES) - FIX: Open SalesInvoiceModal instead of JobModal
+      // MODE BAN
       else if (mode === 'ban' && job) {
           setSalesJob(job);
-          // Pre-populate with calculated row data (especially DocNo and Date)
           setSalesInitialData({
-              docNo: row.docNo,
-              date: row.date,
-              docDate: row.date,
-              amount: row.amount,
-              description: row.desc,
-              projectCode: row.projectCode
+              docNo: row.docNo, date: row.date, docDate: row.date, amount: row.amount, description: row.desc, projectCode: row.projectCode
           });
           setIsSalesModalOpen(true);
+      }
+      // MODE MUA (Open Purchase Invoice)
+      else if (mode === 'mua' && job) {
+          // Placeholder for edit (currently just uses JobModal or simple alert, 
+          // ideally would open PurchaseInvoiceModal populated with row data)
+          // For now, let's open JobModal to edit basic info
+          setEditingJob(job);
+          setIsJobModalOpen(true);
       }
   };
 
@@ -439,8 +471,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   };
 
   const handleSaveSales = (data: any) => {
-      // For now, AmisExport 'ban' mode dynamically generates the export data.
-      // Saving here just updates local state to close the modal.
       setIsSalesModalOpen(false);
   };
 
@@ -599,15 +629,29 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             row.getCell(55).value = "33311"; // BC - TK Thuế
             row.getCell(61).value = data.projectCode; // BI - Mã công trình
         } else if (mode === 'mua') {
-            // Mua Hàng Logic (Placeholder mapped to sample columns)
-            row.getCell(1).value = "Mua hàng trong nước không qua kho";
-            row.getCell(2).value = "Chưa thanh toán";
-            row.getCell(6).value = formatDateVN(data.date);
-            row.getCell(7).value = formatDateVN(data.date);
-            row.getCell(8).value = data.docNo;
-            row.getCell(14).value = data.objCode;
-            row.getCell(22).value = data.desc;
-            row.getCell(37).value = data.amount;
+            // Updated Mapping for Purchase (Mua Hàng)
+            row.getCell(1).value = "Mua hàng trong nước không qua kho"; // A
+            row.getCell(2).value = "Chưa thanh toán"; // B
+            row.getCell(3).value = "Nhận kèm hóa đơn"; // C
+            row.getCell(4).value = formatDateVN(data.date); // D
+            row.getCell(5).value = formatDateVN(data.date); // E
+            row.getCell(6).value = "1"; // F
+            row.getCell(7).value = data.docNo; // G
+            row.getCell(10).value = data.invoiceNo; // J
+            row.getCell(11).value = formatDateVN(data.date); // K
+            row.getCell(14).value = data.objCode; // N
+            row.getCell(19).value = data.desc; // S
+            row.getCell(26).value = "VND"; // Z
+            row.getCell(28).value = "LCC"; // AB
+            row.getCell(29).value = data.itemName; // AC
+            row.getCell(30).value = "Không"; // AD
+            row.getCell(33).value = "63211"; // AG
+            row.getCell(34).value = "3311"; // AH
+            row.getCell(35).value = "Lô"; // AI
+            row.getCell(36).value = "1"; // AJ
+            row.getCell(37).value = data.netAmount; // AK (Net)
+            row.getCell(43).value = "5%"; // AQ
+            row.getCell(45).value = data.vatAmount; // AS (VAT)
         }
         
         row.commit();
