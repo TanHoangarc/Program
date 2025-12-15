@@ -634,6 +634,7 @@ const App: React.FC = () => {
                 onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
                 initialJobId={targetJobId}
                 onClearTargetJob={() => setTargetJobId(null)}
+                customReceipts={customReceipts}
               />
             )}
 

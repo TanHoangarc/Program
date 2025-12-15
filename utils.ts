@@ -108,7 +108,7 @@ export const getPaginationRange = (currentPage: number, totalPages: number) => {
 };
 
 // --- AUTO INCREMENT DOCUMENT NUMBER HELPER ---
-export const generateNextDocNo = (jobs: JobData[], prefix: string, padding: number = 5): string => {
+export const generateNextDocNo = (jobs: JobData[], prefix: string, padding: number = 5, extraDocs: string[] = []): string => {
   let max = 0;
   // Regex to match prefix followed by digits (case insensitive)
   const regex = new RegExp(`^${prefix}(\\d+)$`, 'i');
@@ -134,6 +134,11 @@ export const generateNextDocNo = (jobs: JobData[], prefix: string, padding: numb
       j.extensions.forEach(ext => checkValue(ext.amisDocNo));
     }
   });
+
+  // Check extra docs (e.g. Thu Khác, Custom Receipts)
+  if (extraDocs && extraDocs.length > 0) {
+      extraDocs.forEach(doc => checkValue(doc));
+  }
 
   // Return next number with padding (e.g. UNC00001)
   const nextNum = max + 1;

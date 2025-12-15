@@ -21,11 +21,12 @@ interface JobEntryProps {
   onAddLine: (line: string) => void;
   initialJobId?: string | null;
   onClearTargetJob?: () => void;
+  customReceipts?: any[]; // ADDED
 }
 
 export const JobEntry: React.FC<JobEntryProps> = ({ 
   jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine,
-  initialJobId, onClearTargetJob
+  initialJobId, onClearTargetJob, customReceipts
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
@@ -51,6 +52,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
+
+  // COLLECT CUSTOM DOC NOS
+  const customDocNos = useMemo(() => {
+      return (customReceipts || []).map((r: any) => r.docNo).filter(Boolean);
+  }, [customReceipts]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -548,8 +554,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
       {isModalOpen && <JobModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingJob} customers={customers} lines={lines} onAddLine={onAddLine} onViewBookingDetails={handleViewBookingDetails} isViewMode={isViewMode} onSwitchToEdit={() => setIsViewMode(false)} existingJobs={jobs} onAddCustomer={onAddCustomer} />}
       {viewingBooking && <BookingDetailModal booking={viewingBooking} onClose={() => setViewingBooking(null)} onSave={handleSaveBookingDetails} zIndex="z-[60]" />}
-      {/* PASS ALL JOBS TO MODAL */}
-      {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={handleSaveQuickReceive} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} allJobs={jobs} />}
+      {/* PASS ALL JOBS AND USED DOC NOS TO MODAL */}
+      {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={handleSaveQuickReceive} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} allJobs={jobs} usedDocNos={customDocNos} />}
     </div>
   );
 };

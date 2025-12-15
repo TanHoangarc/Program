@@ -77,6 +77,28 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentTemplateFileName = TEMPLATE_MAP[mode] || "AmisTemplate.xlsx";
 
+  // COLLECT ALL USED DOC NOS from Custom Receipts AND Additional Receipts
+  const customDocNos = useMemo(() => {
+      const customs = customReceipts.map(r => r.docNo).filter(Boolean);
+      const additionals: string[] = [];
+      
+      // Collect from Jobs
+      jobs.forEach(j => {
+          if (j.additionalReceipts) {
+              j.additionalReceipts.forEach(r => { if(r.docNo) additionals.push(r.docNo); });
+          }
+      });
+      
+      // Collect from Custom Receipts (Thu Khac)
+      customReceipts.forEach(r => {
+          if (r.additionalReceipts) {
+              r.additionalReceipts.forEach((ar: any) => { if(ar.docNo) additionals.push(ar.docNo); });
+          }
+      });
+
+      return [...customs, ...additionals];
+  }, [customReceipts, jobs]);
+
   useEffect(() => {
     setSelectedIds(new Set());
   }, [mode, filterMonth]);
@@ -162,26 +184,56 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       const rows: any[] = [];
       // 1. Thu Cược
       jobs.forEach(j => {
+         // Main Receipt
          if (j.thuCuoc > 0 && j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
              rows.push({
                  jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
                  date: j.ngayThuCuoc, docNo: j.amisDepositDocNo, 
                  objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
-                 desc: j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`, amount: j.thuCuoc, tkNo: '1121', tkCo: '1388', 
+                 desc: j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`, 
+                 amount: j.amisDepositAmount || j.thuCuoc, // Use override amount if set
+                 tkNo: '1121', tkCo: '1388', 
              });
          }
+         // Additional Receipts (Multi-payment)
+         (j.additionalReceipts || []).forEach(r => {
+             if (r.type === 'deposit' && checkMonth(r.date)) {
+                 rows.push({
+                     jobId: j.id, type: 'deposit_thu', rowId: `dep-add-${r.id}`,
+                     date: r.date, docNo: r.docNo,
+                     objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
+                     desc: r.desc, amount: r.amount, tkNo: '1121', tkCo: '1388'
+                 });
+             }
+         });
       });
+
       // 2. Thu Local Charge
       jobs.forEach(j => {
+          // Main Receipt
           if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
                rows.push({
                    jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
                    date: j.localChargeDate, docNo: j.amisLcDocNo, 
                    objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
-                   desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, amount: j.localChargeTotal, tkNo: '1121', tkCo: '13111',
+                   desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
+                   amount: j.amisLcAmount || j.localChargeTotal, // Use override amount if set
+                   tkNo: '1121', tkCo: '13111',
                });
           }
+          // Additional Receipts (Multi-payment)
+          (j.additionalReceipts || []).forEach(r => {
+             if (r.type === 'local' && checkMonth(r.date)) {
+                 rows.push({
+                     jobId: j.id, type: 'lc_thu', rowId: `lc-add-${r.id}`,
+                     date: r.date, docNo: r.docNo,
+                     objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
+                     desc: r.desc, amount: r.amount, tkNo: '1121', tkCo: '13111'
+                 });
+             }
+         });
       });
+
       // 3. Thu Extension
       jobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
@@ -190,19 +242,69 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                       jobId: j.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                       date: ext.invoiceDate, docNo: ext.amisDocNo, 
                       objCode: getCustomerCode(ext.customerId || j.customerId), objName: getCustomerName(ext.customerId || j.customerId),
-                      desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, amount: ext.total, tkNo: '1121', tkCo: '13111',
+                      desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
+                      amount: ext.amisAmount || ext.total, 
+                      tkNo: '1121', tkCo: '13111',
                   });
               }
           });
+          // Additional Receipts for Extension (Multi-payment)
+          (j.additionalReceipts || []).forEach(r => {
+             if (r.type === 'extension' && checkMonth(r.date)) {
+                 const extTarget = (j.extensions || []).find(e => e.id === r.extensionId);
+                 const custId = extTarget ? (extTarget.customerId || j.customerId) : j.customerId;
+                 rows.push({
+                     jobId: j.id, type: 'ext_thu', extensionId: r.extensionId, rowId: `ext-add-${r.id}`,
+                     date: r.date, docNo: r.docNo,
+                     objCode: getCustomerCode(custId), objName: getCustomerName(custId),
+                     desc: r.desc, amount: r.amount, tkNo: '1121', tkCo: '13111'
+                 });
+             }
+         });
       });
-      // 4. Thu Khác (External)
+
+      // 4. Thu Khác (External + Multi-Payment of type 'other')
       customReceipts.forEach(r => {
-          if (checkMonth(r.date)) rows.push({ ...r, type: 'external', rowId: `custom-${r.id}` });
+          if (checkMonth(r.date)) {
+              // Logic to determine TK Co for External receipts
+              const isDeposit = r.desc && r.desc.includes('CƯỢC CONT BL');
+              const tkCo = isDeposit ? '1388' : '13111';
+              
+              // Main row
+              rows.push({ ...r, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
+
+              // Additional rows for custom receipts
+              if (r.additionalReceipts && Array.isArray(r.additionalReceipts)) {
+                  r.additionalReceipts.forEach((ar: any) => {
+                      if (checkMonth(ar.date)) {
+                          // Inherit deposit logic based on desc or type
+                          const arIsDeposit = ar.type === 'deposit' || (ar.desc && ar.desc.includes('CƯỢC CONT BL'));
+                          const arTkCo = arIsDeposit ? '1388' : '13111';
+                          
+                          rows.push({
+                              jobId: r.id,
+                              type: 'external',
+                              rowId: `custom-add-${ar.id}`,
+                              date: ar.date,
+                              docNo: ar.docNo,
+                              objCode: r.objCode,
+                              objName: r.objName,
+                              desc: ar.desc,
+                              amount: ar.amount,
+                              tkNo: '1121',
+                              tkCo: arTkCo
+                          });
+                      }
+                  });
+              }
+          }
       });
+
       // Sort Descending by Document Number
       return rows.sort((a, b) => (b.docNo || '').localeCompare(a.docNo || ''));
     } 
     
+    // ... (Keep existing code for 'chi', 'ban', 'mua' modes) ...
     // --- MODE CHI ---
     else if (mode === 'chi') {
         const rows: any[] = [];
@@ -312,11 +414,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         });
 
-        // Sort Descending by Document Number
         return rows.sort((a, b) => (b.docNo || '').localeCompare(a.docNo || ''));
     }
-    
-    // --- MODE BAN ---
     else if (mode === 'ban') {
         const rows: any[] = [];
         let validJobs = jobs.filter(j => {
@@ -371,22 +470,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             });
         });
 
-        // Re-sort desc for display
         return rows.sort((a, b) => b.docNo.localeCompare(a.docNo));
     }
-    
-    // --- MODE MUA (Purchase Logic - Revised) ---
     else if (mode === 'mua') {
         const rawItems: any[] = [];
         const processedBookings = new Set<string>();
         
         jobs.forEach(j => {
-            // Filter by Job Month
             if (filterMonth && j.month !== filterMonth) return;
 
-            // Scenario 1: Grouped by Booking
             if (j.booking) {
-                if (processedBookings.has(j.booking)) return; // Avoid duplicate processing of Booking details
+                if (processedBookings.has(j.booking)) return;
                 processedBookings.add(j.booking);
 
                 const details = j.bookingCostDetails;
@@ -396,13 +490,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 const supplierName = lineObj ? lineObj.name : j.line;
                 const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
 
-                // 1. Local Charge (Main Invoice)
                 const lc = details.localCharge;
                 let lcNet = 0, lcVat = 0, lcTotal = 0;
 
                 if (lc.hasInvoice === false) {
                     lcTotal = lc.total || 0;
-                    // Auto calc 5% assumption if no invoice details provided (for export column logic)
                     lcNet = Math.round(lcTotal / 1.05);
                     lcVat = lcTotal - lcNet;
                 } else {
@@ -428,7 +520,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                     });
                 }
 
-                // 2. Additional Local Charges
                 if (details.additionalLocalCharges) {
                     details.additionalLocalCharges.forEach(add => {
                         let aNet = 0, aVat = 0, aTotal = 0;
@@ -461,7 +552,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                     });
                 }
 
-                // 3. Extension Costs
                 if (details.extensionCosts) {
                     details.extensionCosts.forEach(ext => {
                         if (ext.total > 0) {
@@ -486,7 +576,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 }
 
             } else {
-                // Scenario 2: Standalone Job / Legacy Cost
                 if (j.cost > 0) {
                     const lineObj = lines.find(l => l.code === j.line);
                     const supplierName = lineObj ? lineObj.name : j.line;
@@ -508,21 +597,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         vatAmount: vat,
                         amount: total,
                         costType: 'Local charge',
-                        sortDate: Date.now() // Place at end if no date
+                        sortDate: Date.now() 
                     });
                 }
             }
         });
 
-        // 2. Sort Items by Date Ascending (for sequential numbering)
         rawItems.sort((a, b) => a.sortDate - b.sortDate);
 
-        // 3. Assign Document Numbers (Group by Invoice Number)
         const invoiceToDocMap = new Map<string, string>();
         let currentDocNum = 1;
         
         const finalRows = rawItems.map(item => {
-            // Group Key: Use Invoice No. If empty, use unique ID to prevent grouping
             const groupKey = item.invoice ? item.invoice.trim().toUpperCase() : `NO_INV_${item.jobId}_${Math.random()}`;
             
             let docNo = '';
@@ -545,7 +631,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             };
         });
 
-        // 4. Sort Display by DocNo Descending (Newest first)
         return finalRows.sort((a, b) => b.docNo.localeCompare(a.docNo));
     }
 
@@ -560,6 +645,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // MODE THU
       if (mode === 'thu') {
           if (row.type === 'external') {
+               // Load FULL Receipt object from state to get additionalReceipts
+               const fullReceipt = customReceipts.find(r => r.id === row.jobId);
+               
                const dummyJob = { 
                    ...INITIAL_JOB, 
                    id: row.id, 
@@ -569,7 +657,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                    amisLcDesc: row.desc,
                    localChargeTotal: row.amount,
                    customerId: row.objCode,
-                   customerName: row.objName
+                   customerName: row.objName,
+                   additionalReceipts: fullReceipt?.additionalReceipts || [] // Load back additional receipts
                };
                setQuickReceiveJob(dummyJob);
                setQuickReceiveMode('other');
@@ -585,9 +674,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setIsQuickReceiveOpen(true);
           }
       } 
-      // MODE CHI
+      // ... (Rest of handleEdit unchanged) ...
       else if (mode === 'chi' && job) {
-          // If Refund, Open QuickReceiveModal in deposit_refund mode
           if (row.type === 'payment_refund') {
               setQuickReceiveJob(job);
               setQuickReceiveMode('deposit_refund');
@@ -600,7 +688,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setIsPaymentModalOpen(true);
           }
       }
-      // MODE BAN
       else if (mode === 'ban' && job) {
           setSalesJob(job);
           setSalesInitialData({
@@ -608,11 +695,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           });
           setIsSalesModalOpen(true);
       }
-      // MODE MUA (Open Purchase Invoice)
       else if (mode === 'mua' && job) {
-          // Placeholder for edit (currently just uses JobModal or simple alert, 
-          // ideally would open PurchaseInvoiceModal populated with row data)
-          // For now, let's open JobModal to edit basic info
           setEditingJob(job);
           setIsJobModalOpen(true);
       }
@@ -642,15 +725,29 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           const updatedJob = { ...job };
           
           if (row.type === 'deposit_thu') {
-              updatedJob.amisDepositDocNo = '';
-              updatedJob.amisDepositDesc = '';
+              if (row.rowId.includes('add')) {
+                  updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId);
+              } else {
+                  updatedJob.amisDepositDocNo = '';
+                  updatedJob.amisDepositDesc = '';
+                  updatedJob.amisDepositAmount = 0;
+              }
           } else if (row.type === 'lc_thu') {
-              updatedJob.amisLcDocNo = '';
-              updatedJob.amisLcDesc = '';
+              if (row.rowId.includes('add')) {
+                  updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId);
+              } else {
+                  updatedJob.amisLcDocNo = '';
+                  updatedJob.amisLcDesc = '';
+                  updatedJob.amisLcAmount = 0;
+              }
           } else if (row.type === 'ext_thu') {
-              updatedJob.extensions = (updatedJob.extensions || []).map(e => 
-                  e.id === row.extensionId ? { ...e, amisDocNo: '', amisDesc: '' } : e
-              );
+              if (row.rowId.includes('add')) {
+                  updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId);
+              } else {
+                  updatedJob.extensions = (updatedJob.extensions || []).map(e => 
+                      e.id === row.extensionId ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0 } : e
+                  );
+              }
           } else if (row.type === 'payment_chi') {
               updatedJob.amisPaymentDocNo = '';
               updatedJob.amisPaymentDesc = '';
@@ -675,7 +772,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   const handleSavePayment = (data: any) => {
       if (selectedJobForModal && onUpdateJob) {
-          // Determine fields based on current payment type
           let docField: keyof JobData = 'amisPaymentDocNo';
           let descField: keyof JobData = 'amisPaymentDesc';
           let dateField: keyof JobData = 'amisPaymentDate';
@@ -690,22 +786,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               dateField = 'amisExtensionPaymentDate';
           }
 
-          // Smart Update Logic:
-          // If we are editing an existing voucher (has oldDocNo), we update ALL jobs sharing that voucher
-          // to keep them grouped (DocNo & Date). 
-          // However, we ONLY update the description for the currently selected job to preserve individual details of others.
           const oldDocNo = selectedJobForModal[docField];
           
           const targetJobs = (oldDocNo && typeof oldDocNo === 'string')
-             ? jobs.filter(j => j[docField] === oldDocNo) // Find all jobs in this voucher group
-             : [selectedJobForModal]; // Just this job
+             ? jobs.filter(j => j[docField] === oldDocNo) 
+             : [selectedJobForModal]; 
 
           targetJobs.forEach(job => {
               const updatedJob = { ...job };
               (updatedJob as any)[docField] = data.docNo;
               (updatedJob as any)[dateField] = data.date;
               
-              // Only update description for the specific job being edited in the modal
               if (job.id === selectedJobForModal.id) {
                   (updatedJob as any)[descField] = data.paymentContent;
               }
@@ -810,7 +901,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             row.getCell(55).value = "33311"; // BC - TK Thuế
             row.getCell(61).value = data.projectCode; // BI - Mã công trình
         } else if (mode === 'mua') {
-            // Updated Mapping for Purchase (Mua Hàng)
             row.getCell(1).value = "Mua hàng trong nước không qua kho"; // A
             row.getCell(2).value = "Chưa thanh toán"; // B
             row.getCell(3).value = "Nhận kèm hóa đơn"; // C
@@ -955,7 +1045,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               {mode === 'thu' && (
                   <button 
                     onClick={() => {
-                        const nextDocNo = generateNextDocNo(jobs, 'NTTK');
+                        // Pass customDocNos to generateNextDocNo to avoid duplicates
+                        const nextDocNo = generateNextDocNo(jobs, 'NTTK', 5, customDocNos);
                         const dummyJob = { 
                             ...INITIAL_JOB, 
                             id: `EXT-${Date.now()}`, 
@@ -1081,7 +1172,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                           objCode: finalObjCode, 
                           objName: updatedJob.customerName, 
                           desc: updatedJob.amisLcDesc, 
-                          amount: updatedJob.localChargeTotal 
+                          amount: updatedJob.localChargeTotal,
+                          additionalReceipts: updatedJob.additionalReceipts // SAVE ADDITIONAL RECEIPTS
                       };
                       const exists = customReceipts.findIndex(r => r.id === updatedJob.id);
                       if (exists >= 0) { const updated = [...customReceipts]; updated[exists] = newReceipt; onUpdateCustomReceipts(updated); }
@@ -1094,6 +1186,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               customers={customers}
               targetExtensionId={targetExtensionId}
               allJobs={jobs}
+              usedDocNos={customDocNos} // Pass used numbers to modal
           />
       )}
 
@@ -1140,4 +1233,3 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     </div>
   );
 };
-

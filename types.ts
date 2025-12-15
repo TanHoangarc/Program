@@ -17,6 +17,7 @@ export interface ExtensionData {
   // AMIS Fields
   amisDocNo?: string;
   amisDesc?: string;
+  amisAmount?: number; // Actual collected amount for the main slip
 }
 
 // ============================================================
@@ -98,6 +99,23 @@ export interface BookingCostDetails {
 }
 
 // ============================================================
+// ADDITIONAL RECEIPT (THU THÊM/THU NHIỀU LẦN)
+// ============================================================
+export interface AdditionalReceipt {
+  id: string;
+  type: 'local' | 'deposit' | 'extension';
+  date: string;
+  docNo: string;
+  desc: string;
+  amount: number;
+  
+  // Optional links
+  extensionId?: string; // If type is extension
+  tkNo?: string;
+  tkCo?: string;
+}
+
+// ============================================================
 // JOB DATA – HOÀN CHỈNH
 // ============================================================
 
@@ -161,6 +179,7 @@ export interface JobData {
   // AMIS Fields for Local Charge (Thu)
   amisLcDocNo?: string;
   amisLcDesc?: string;
+  amisLcAmount?: number; // Actual collected amount for the main slip (Partial Payment 1)
 
   // Payment In (Deposit - Thu)
   maKhCuocId: string;
@@ -171,6 +190,7 @@ export interface JobData {
   // AMIS Fields for Deposit In (Thu Cược)
   amisDepositDocNo?: string;
   amisDepositDesc?: string;
+  amisDepositAmount?: number; // Actual collected amount for the main slip
 
   // NEW: AMIS Fields for Deposit Refund (Hoàn Cược - Chi cho khách)
   amisDepositRefundDocNo?: string;
@@ -182,6 +202,9 @@ export interface JobData {
 
   // Chi phí theo Booking (dùng chung)
   bookingCostDetails?: BookingCostDetails;
+
+  // Additional Receipts (Thu nhiều lần)
+  additionalReceipts?: AdditionalReceipt[];
 }
 
 // ============================================================
@@ -297,5 +320,6 @@ export const INITIAL_JOB: JobData = {
   ngayThuCuoc: '',
   ngayThuHoan: '',
 
-  extensions: []
+  extensions: [],
+  additionalReceipts: []
 };
