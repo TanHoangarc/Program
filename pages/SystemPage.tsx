@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertCircle, ArrowRight, User, AlertTriangle } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -27,7 +28,41 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Staff' });
   const [showPass, setShowPass] = useState(false);
 
-  const isAdmin = currentUser?.role === 'Admin';
+  // Helper to check if a user is Staff
+  const isStaffUser = (username?: string) => {
+      if (!username) return false;
+      const u = users.find(user => user.username === username);
+      return u?.role === 'Staff';
+  };
+
+  // --- AUTO REJECT EMPTY PACKETS ---
+  useEffect(() => {
+    if (pendingRequests.length > 0 && onRejectRequest) {
+      pendingRequests.forEach(req => {
+        const realData = req.data || req.payload || req;
+        const jobCount = (realData.jobs || []).length;
+        const custCount = (realData.customers || []).length;
+        const lineCount = (realData.lines || []).length;
+        const paymentCount = (realData.paymentRequests || []).length;
+        const lockCount = (realData.lockedIds || []).length;
+        const receiptCount = (realData.customReceipts || []).length;
+
+        // Logic: Staff doesn't have lock permission. 
+        // If sender is Staff, we ignore `lockCount` (treat it as noise/snapshot).
+        // If sender is Admin/Manager, `lockCount` > 0 contributes to content.
+        const isStaff = isStaffUser(req.user);
+        
+        // If Staff: Empty if everything else is 0 (ignore locks)
+        // If Not Staff: Empty if everything (including locks) is 0
+        const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isStaff ? true : lockCount === 0);
+
+        if (isEmpty) {
+           console.log("Auto-rejecting empty packet:", req.id);
+           onRejectRequest(req.id);
+        }
+      });
+    }
+  }, [pendingRequests, onRejectRequest, users]);
 
   // --- USER MANAGEMENT ---
   const handleAddUserClick = () => {
@@ -75,307 +110,222 @@ export const SystemPage: React.FC<SystemPageProps> = ({
 
   // --- APPROVE HANDLERS ---
   const handleApprove = (req: any, realData: any) => {
-      // Use the extracted realData which contains the actual arrays
       if (window.confirm(`Duyệt dữ liệu từ ${req.user || 'Staff'}?\n(Dữ liệu sẽ được gộp vào hệ thống)`)) {
           if (onApproveRequest) onApproveRequest(req.id, realData);
       }
   };
 
-  const handleReject = (id: string) => {
-      if (window.confirm("Bạn có chắc muốn từ chối và xóa yêu cầu này?")) {
-          if (onRejectRequest) onRejectRequest(id);
-      }
-  };
-
-  // Helper: Deep Compare Jobs
-  const getChangeStats = (currentJobs: JobData[], incomingJobs: JobData[]) => {
-      const currentMap = new Map(currentJobs.map(j => [j.id, j]));
-      const changedBookings = new Set<string>();
-      let newJobsCount = 0;
-      let modifiedJobsCount = 0;
-
-      incomingJobs.forEach(incJob => {
-          const currJob = currentMap.get(incJob.id);
-          if (!currJob) {
-              newJobsCount++;
-              if (incJob.booking) changedBookings.add(incJob.booking);
-          } else {
-              // Strict JSON comparison to catch ANY change (customer name, dates, etc.)
-              const strInc = JSON.stringify(incJob);
-              const strCurr = JSON.stringify(currJob);
-              
-              if (strInc !== strCurr) {
-                  modifiedJobsCount++;
-                  if (incJob.booking) changedBookings.add(incJob.booking);
-              }
-          }
-      });
-      return { 
-          bookings: Array.from(changedBookings), 
-          newCount: newJobsCount, 
-          modCount: modifiedJobsCount 
-      };
-  };
-
-  // Helper: Check Customer Changes
-  const checkCustomerChanges = (currentCustomers: Customer[], incomingCustomers: Customer[]) => {
-      if (!incomingCustomers || incomingCustomers.length === 0) return false;
-      const currentMap = new Map(currentCustomers.map(c => [c.id, c]));
-      for (const incCust of incomingCustomers) {
-          const currCust = currentMap.get(incCust.id);
-          if (!currCust) return true;
-          if (JSON.stringify(incCust) !== JSON.stringify(currCust)) return true;
-      }
-      return false;
-  };
-
   return (
     <div className="p-8 max-w-full">
+      {/* Header */}
       <div className="mb-8">
-         <div className="flex items-center space-x-3 text-slate-800 mb-2">
+        <div className="flex items-center space-x-3 text-slate-800 mb-2">
            <div className="p-2 bg-slate-200 text-slate-700 rounded-lg">
              <Settings className="w-6 h-6" />
            </div>
            <h1 className="text-3xl font-bold">Quản Trị Hệ Thống</h1>
-         </div>
-         <p className="text-slate-500 ml-11">Đồng bộ dữ liệu và quản lý tài khoản</p>
+        </div>
+        <p className="text-slate-500 ml-11">Quản lý người dùng và duyệt dữ liệu từ nhân viên</p>
       </div>
 
-      {/* PENDING REQUESTS SECTION - ADMIN ONLY */}
-      {isAdmin && (
-        <div className="glass-panel p-6 rounded-2xl mb-8 border border-white/40">
-            <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
-                        <FileInput className="w-5 h-5" />
+      {/* User Management Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* User List */}
+        <div className="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
+           <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-slate-700 flex items-center">
+                 <Users className="w-5 h-5 mr-2 text-blue-600" /> Danh Sách Tài Khoản
+              </h3>
+              <button onClick={handleAddUserClick} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 flex items-center shadow-md transition-all">
+                 <Plus className="w-4 h-4 mr-1" /> Thêm
+              </button>
+           </div>
+           
+           <div className="space-y-3">
+              {users.map((user, idx) => (
+                 <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-all group">
+                    <div className="flex items-center space-x-3">
+                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-sm ${user.role === 'Admin' ? 'bg-gradient-to-br from-purple-500 to-indigo-600' : 'bg-gradient-to-br from-blue-400 to-teal-500'}`}>
+                          {user.username.charAt(0).toUpperCase()}
+                       </div>
+                       <div>
+                          <p className="font-bold text-slate-800">{user.username}</p>
+                          <p className="text-xs text-slate-500 font-medium">{user.role}</p>
+                       </div>
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-800">Duyệt Dữ Liệu Từ Nhân Viên</h2>
-                        <p className="text-xs text-slate-500">Các yêu cầu gửi dữ liệu đang chờ duyệt</p>
+                    <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <button onClick={() => handleEditUserClick(user)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 className="w-4 h-4" /></button>
+                       <button onClick={() => handleDeleteUserClick(user.username)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
                     </div>
-                </div>
-                <div className="px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-bold border border-orange-200">
-                    {pendingRequests.length} Yêu cầu
-                </div>
-            </div>
-
-            {pendingRequests.length > 0 ? (
-                <div className="space-y-4">
-                    {pendingRequests.map((req, index) => {
-                        if (!req || typeof req !== 'object') return null;
-                        
-                        // Robust Data Extraction: Check for nested data structures
-                        const incJobs = Array.isArray(req.jobs) ? req.jobs : (req.data?.jobs || req.payload?.jobs || []);
-                        const incCustomers = Array.isArray(req.customers) ? req.customers : (req.data?.customers || req.payload?.customers || []);
-                        const incLines = Array.isArray(req.lines) ? req.lines : (req.data?.lines || req.payload?.lines || []);
-
-                        // Reconstruct a clean data object for approval
-                        const realData = { jobs: incJobs, customers: incCustomers, lines: incLines };
-
-                        const stats = getChangeStats(jobs, incJobs);
-                        const hasCustomerChanges = checkCustomerChanges(customers, incCustomers);
-                        
-                        const bookingDisplay = stats.bookings.length > 0 
-                            ? stats.bookings.slice(0, 4).join(', ') + (stats.bookings.length > 4 ? ` (+${stats.bookings.length - 4})` : '')
-                            : 'Không có thay đổi Booking';
-
-                        let username = req.user;
-                        if (!username || typeof username !== 'string' || username.trim() === '' || username === 'Unknown') {
-                            username = `Staff Update ${index + 1}`;
-                        }
-
-                        const totalIncoming = incJobs.length;
-                        const hasJobChanges = stats.newCount > 0 || stats.modCount > 0;
-                        const totalCustomers = incCustomers.length;
-                        
-                        // Empty Payload Check
-                        const isPayloadEmpty = totalIncoming === 0 && totalCustomers === 0;
-
-                        return (
-                        <div key={req.id || Math.random()} className="bg-white/60 p-4 rounded-xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:shadow-md">
-                            <div className="flex items-start space-x-4 w-full md:w-auto">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm flex-shrink-0">
-                                    {(username.charAt(0) || 'S').toUpperCase()}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="font-bold text-slate-800 flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
-                                        <span className="text-blue-700">Cập nhật từ: {username}</span>
-                                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-normal flex items-center w-fit">
-                                            <Clock className="w-3 h-3 mr-1" />
-                                            {req.timestamp ? new Date(req.timestamp).toLocaleString('vi-VN') : 'N/A'}
-                                        </span>
-                                    </div>
-                                    
-                                    {isPayloadEmpty ? (
-                                        <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 flex items-center">
-                                            <AlertTriangle className="w-4 h-4 mr-2" />
-                                            Gói tin rỗng (Không có dữ liệu Job/Khách). Có thể do lỗi gửi.
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col gap-1 mt-2">
-                                            {/* Job Changes */}
-                                            <div className={`text-xs flex items-center p-2 rounded-lg border ${hasJobChanges ? 'bg-yellow-50 border-yellow-100 text-slate-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                                                <FileText className={`w-3.5 h-3.5 mr-1.5 flex-shrink-0 ${hasJobChanges ? 'text-yellow-600' : 'text-slate-400'}`} />
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold mb-0.5">Booking: {bookingDisplay}</span>
-                                                    {hasJobChanges ? (
-                                                        <span className="text-[10px] text-green-600 font-bold flex items-center gap-2">
-                                                            <span className="flex items-center"><Plus className="w-3 h-3 mr-0.5" /> {stats.newCount} Mới</span>
-                                                            <span className="flex items-center"><Edit2 className="w-3 h-3 mr-0.5" /> {stats.modCount} Sửa</span>
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[10px] text-slate-400 italic">Không thay đổi Job</span>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Customer/Data Changes Alert */}
-                                            {hasCustomerChanges && (
-                                                <div className="text-xs flex items-center p-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 font-medium">
-                                                    <User className="w-3.5 h-3.5 mr-1.5" />
-                                                    Có thay đổi trong danh mục Khách hàng
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    <div className="text-[11px] text-slate-500 mt-2 flex gap-3 opacity-80 pl-1">
-                                        <span title="Số lượng bản ghi Job trong gói tin">
-                                            Jobs: <strong>{totalIncoming}</strong>
-                                        </span>
-                                        <span>|</span>
-                                        <span>Khách: <strong>{totalCustomers}</strong></span>
-                                        <span>|</span>
-                                        <span>Lines: <strong>{incLines.length}</strong></span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex space-x-3 w-full md:w-auto justify-end">
-                                <button 
-                                    onClick={() => req.id && handleReject(req.id)}
-                                    className="px-4 py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors flex items-center"
-                                >
-                                    <X className="w-3.5 h-3.5 mr-1.5" /> Từ chối
-                                </button>
-                                <button 
-                                    onClick={() => req.id && !isPayloadEmpty && handleApprove(req, realData)}
-                                    disabled={isPayloadEmpty}
-                                    className={`px-4 py-2 text-white text-xs font-bold rounded-lg shadow-md flex items-center transition-all ${isPayloadEmpty ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 hover:shadow-green-600/30'}`}
-                                >
-                                    <Check className="w-3.5 h-3.5 mr-1.5" /> Duyệt & Gộp
-                                </button>
-                            </div>
-                        </div>
-                    )})}
-                </div>
-            ) : (
-                <div className="text-center py-8 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                    <UserCheck className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Không có yêu cầu nào đang chờ duyệt</p>
-                </div>
-            )}
+                 </div>
+              ))}
+           </div>
         </div>
-      )}
 
-      {/* User Management Section - ADMIN ONLY */}
-      {isAdmin && (
-        <div className="glass-panel p-6 rounded-2xl mb-8 border border-white/40">
-            <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-purple-100 text-purple-700 rounded-lg">
-                        <Users className="w-5 h-5" />
-                    </div>
-                    <h2 className="text-xl font-bold text-slate-800">Quản Lý Tài Khoản</h2>
-                </div>
-                <button onClick={handleAddUserClick} className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg hover:bg-purple-700 transition-all">
-                    <Plus className="w-4 h-4" /> <span>Thêm Tài Khoản</span>
-                </button>
-            </div>
+        {/* Pending Data Section */}
+        <div className="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
+           <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-slate-700 flex items-center">
+                 <FileInput className="w-5 h-5 mr-2 text-orange-600" /> Duyệt Dữ Liệu Từ Nhân Viên
+              </h3>
+              <span className="text-xs font-medium text-slate-500">Các yêu cầu gửi dữ liệu đang chờ duyệt</span>
+           </div>
 
-            <div className="overflow-x-auto rounded-xl border border-white/30">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-white/40 text-slate-600 uppercase text-xs font-bold border-b border-white/30">
-                        <tr>
-                            <th className="px-6 py-3">Tên đăng nhập</th>
-                            <th className="px-6 py-3">Mật khẩu</th>
-                            <th className="px-6 py-3">Vai trò</th>
-                            <th className="px-6 py-3 text-center">Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/20">
-                        {users.map((u, idx) => (
-                            <tr key={idx} className="hover:bg-white/30 transition-colors">
-                                <td className="px-6 py-3 font-medium text-slate-800">{u.username}</td>
-                                <td className="px-6 py-3 text-slate-500 font-mono">******</td>
-                                <td className="px-6 py-3">
-                                    <span className={`px-2 py-1 rounded text-xs font-bold ${u.role === 'Admin' ? 'bg-red-100 text-red-700' : u.role === 'Manager' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                        {u.role}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-3 text-center flex justify-center space-x-2">
-                                    <button onClick={() => handleEditUserClick(u)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit2 className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDeleteUserClick(u.username)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 className="w-4 h-4" /></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+           <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+              {pendingRequests.length === 0 ? (
+                 <div className="text-center py-10 text-slate-400 flex flex-col items-center">
+                    <Check className="w-12 h-12 mb-2 opacity-20" />
+                    <p>Không có yêu cầu nào đang chờ.</p>
+                 </div>
+              ) : (
+                 pendingRequests.map((req, idx) => {
+                    const realData = req.data || req.payload || req;
+                    const jobCount = (realData.jobs || []).length;
+                    const custCount = (realData.customers || []).length;
+                    const lineCount = (realData.lines || []).length;
+                    const paymentCount = (realData.paymentRequests || []).length;
+                    const lockCount = (realData.lockedIds || []).length;
+                    const receiptCount = (realData.customReceipts || []).length;
+
+                    const isStaff = isStaffUser(req.user);
+                    
+                    // Empty check logic (ignoring locks for Staff)
+                    const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isStaff ? true : lockCount === 0);
+
+                    // Badge display logic: Only show lock count if NOT Staff
+                    const showLockBadge = lockCount > 0 && !isStaff;
+
+                    return (
+                       <div key={req.id || idx} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all">
+                          <div className="flex justify-between items-start mb-3">
+                             <div className="flex items-center space-x-2">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                   {(req.user || 'S').charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                   <p className="font-bold text-slate-800 text-sm">Cập nhật từ: <span className="text-blue-700">{req.user || 'Unknown'}</span></p>
+                                   <p className="text-[10px] text-slate-400 flex items-center">
+                                      <Clock className="w-3 h-3 mr-1" /> {new Date(req.timestamp).toLocaleString()}
+                                   </p>
+                                </div>
+                             </div>
+                          </div>
+
+                          {isEmpty ? (
+                             <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs flex items-center mb-3 border border-red-100">
+                                <AlertTriangle className="w-4 h-4 mr-2" /> Gói tin rỗng. Đang tự động xử lý...
+                             </div>
+                          ) : (
+                             <div className="grid grid-cols-2 gap-2 mb-3">
+                                 {jobCount > 0 && (
+                                     <div className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium border border-blue-100 flex items-center">
+                                         <FileText className="w-3 h-3 mr-1.5" /> {jobCount} Jobs
+                                     </div>
+                                 )}
+                                 {custCount > 0 && (
+                                     <div className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-xs font-medium border border-indigo-100 flex items-center">
+                                         <UserCheck className="w-3 h-3 mr-1.5" /> {custCount} Khách hàng
+                                     </div>
+                                 )}
+                                 {lineCount > 0 && (
+                                     <div className="bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs font-medium border border-slate-200 flex items-center">
+                                         <List className="w-3 h-3 mr-1.5" /> {lineCount} Lines
+                                     </div>
+                                 )}
+                                 {paymentCount > 0 && (
+                                     <div className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs font-medium border border-emerald-100 flex items-center">
+                                         <CreditCard className="w-3 h-3 mr-1.5" /> {paymentCount} Yêu cầu TT
+                                     </div>
+                                 )}
+                                 {showLockBadge && (
+                                     <div className="bg-orange-50 text-orange-700 px-2 py-1 rounded text-xs font-medium border border-orange-100 flex items-center">
+                                         <Lock className="w-3 h-3 mr-1.5" /> {lockCount} Khóa sổ
+                                     </div>
+                                 )}
+                                 {receiptCount > 0 && (
+                                     <div className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs font-medium border border-purple-100 flex items-center">
+                                         <Receipt className="w-3 h-3 mr-1.5" /> {receiptCount} Thu Khác
+                                     </div>
+                                 )}
+                             </div>
+                          )}
+
+                          <div className="flex space-x-2 justify-end">
+                             <button 
+                                onClick={() => onRejectRequest && onRejectRequest(req.id)}
+                                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-bold transition-colors"
+                             >
+                                Từ chối
+                             </button>
+                             <button 
+                                onClick={() => handleApprove(req, realData)}
+                                className="px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 text-xs font-bold shadow-sm transition-colors flex items-center"
+                             >
+                                <Check className="w-3 h-3 mr-1" /> Duyệt
+                             </button>
+                          </div>
+                       </div>
+                    );
+                 })
+              )}
+           </div>
         </div>
-      )}
+      </div>
 
       {/* User Modal */}
       {isUserModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-in zoom-in-95 duration-200 p-6 border border-white/50">
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-lg font-bold text-slate-800">{editingUser ? 'Sửa Tài Khoản' : 'Thêm Tài Khoản'}</h3>
-                      <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 hover:text-red-500"><X className="w-5 h-5" /></button>
-                  </div>
-                  <form onSubmit={handleSaveUser} className="space-y-4">
-                      <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tên đăng nhập</label>
-                          <input 
-                            type="text" 
-                            value={formUser.username} 
-                            onChange={e => setFormUser({...formUser, username: e.target.value})} 
-                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500"
-                            disabled={!!editingUser}
-                          />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mật khẩu</label>
-                          <div className="relative">
-                            <input 
-                                type={showPass ? "text" : "password"}
-                                value={formUser.pass} 
-                                onChange={e => setFormUser({...formUser, pass: e.target.value})} 
-                                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 pr-10"
-                            />
-                            <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                          </div>
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Vai trò</label>
-                          <select 
-                            value={formUser.role} 
-                            onChange={e => setFormUser({...formUser, role: e.target.value as any})}
-                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500"
-                          >
-                              <option value="Staff">Staff</option>
-                              <option value="Manager">Manager</option>
-                              <option value="Admin">Admin</option>
-                          </select>
-                      </div>
-                      <div className="pt-4 flex justify-end space-x-3">
-                          <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200">Hủy</button>
-                          <button type="submit" className="px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 shadow-lg">Lưu</button>
-                      </div>
-                  </form>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-in zoom-in-95 duration-200 border border-white/50">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                 <h3 className="text-lg font-bold text-slate-800">{editingUser ? 'Sửa Tài Khoản' : 'Thêm Tài Khoản'}</h3>
+                 <button onClick={() => setIsUserModalOpen(false)}><X className="w-5 h-5 text-slate-400 hover:text-red-500" /></button>
               </div>
-          </div>
+              <form onSubmit={handleSaveUser} className="p-6 space-y-4">
+                 <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tên đăng nhập</label>
+                    <input 
+                       type="text" 
+                       value={formUser.username} 
+                       onChange={(e) => setFormUser({...formUser, username: e.target.value})}
+                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                       disabled={!!editingUser}
+                    />
+                 </div>
+                 <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mật khẩu</label>
+                    <div className="relative">
+                       <input 
+                          type={showPass ? "text" : "password"} 
+                          value={formUser.pass} 
+                          onChange={(e) => setFormUser({...formUser, pass: e.target.value})}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                       />
+                       <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-2 top-2 text-slate-400 hover:text-blue-600">
+                          {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                       </button>
+                    </div>
+                 </div>
+                 <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Vai trò</label>
+                    <select 
+                       value={formUser.role} 
+                       onChange={(e) => setFormUser({...formUser, role: e.target.value as any})}
+                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                       <option value="Staff">Staff (Nhân viên)</option>
+                       <option value="Docs">Docs (Chứng từ)</option>
+                       <option value="Manager">Manager (Quản lý)</option>
+                       <option value="Admin">Admin (Quản trị)</option>
+                    </select>
+                 </div>
+                 <div className="pt-2 flex justify-end space-x-2">
+                    <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50">Hủy</button>
+                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Lưu</button>
+                 </div>
+              </form>
+           </div>
+        </div>
       )}
     </div>
   );
