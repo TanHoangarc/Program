@@ -14,7 +14,7 @@ interface SystemPageProps {
   onEditUser: (user: UserAccount, originalUsername: string) => void;
   onDeleteUser: (username: string) => void;
   pendingRequests?: any[];
-  onApproveRequest?: (requestId: string, data: any) => void;
+  onApproveRequest?: (requestId: string, data: any, silent?: boolean) => void;
   onRejectRequest?: (requestId: string) => void;
 }
 
@@ -35,11 +35,20 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       return u?.role === 'Staff';
   };
 
-  // --- AUTO REJECT EMPTY PACKETS ---
+  // --- AUTO PROCESS PACKETS (REJECT EMPTY or APPROVE AUTO) ---
   useEffect(() => {
-    if (pendingRequests.length > 0 && onRejectRequest) {
+    if (pendingRequests.length > 0 && onApproveRequest && onRejectRequest) {
       pendingRequests.forEach(req => {
         const realData = req.data || req.payload || req;
+        
+        // 1. Check for Auto Approve (Lock updates from Admin/Manager)
+        if (realData.autoApprove) {
+            // Silently approve
+            onApproveRequest(req.id, realData, true);
+            return;
+        }
+
+        // 2. Empty Check logic
         const jobCount = (realData.jobs || []).length;
         const custCount = (realData.customers || []).length;
         const lineCount = (realData.lines || []).length;
@@ -62,7 +71,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
         }
       });
     }
-  }, [pendingRequests, onRejectRequest, users]);
+  }, [pendingRequests, onRejectRequest, onApproveRequest, users]);
 
   // --- USER MANAGEMENT ---
   const handleAddUserClick = () => {
@@ -181,6 +190,10 @@ export const SystemPage: React.FC<SystemPageProps> = ({
               ) : (
                  pendingRequests.map((req, idx) => {
                     const realData = req.data || req.payload || req;
+                    
+                    // IF AUTO-APPROVED, DO NOT RENDER (IT WILL BE PROCESSED BY EFFECT)
+                    if (realData.autoApprove) return null;
+
                     const jobCount = (realData.jobs || []).length;
                     const custCount = (realData.customers || []).length;
                     const lineCount = (realData.lines || []).length;
@@ -330,3 +343,4 @@ export const SystemPage: React.FC<SystemPageProps> = ({
     </div>
   );
 };
+
