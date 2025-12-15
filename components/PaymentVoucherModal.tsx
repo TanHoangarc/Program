@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, User, FileText } from 'lucide-react';
@@ -99,74 +100,104 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         reason: 'Chi khác',
         paymentContent: '',
         amount: 0,
-        tkNo: '3311', // Default for payment (Must confirm correct default)
+        tkNo: '3311', 
         tkCo: '1121'
+      };
+
+      // Helper to generate the specific description format
+      const generateDescription = (prefix: string) => {
+          let jobCodes = '';
+          let bkNumber = '';
+
+          if (booking) {
+              jobCodes = booking.jobs.map(j => j.jobCode).filter(Boolean).join('+');
+              bkNumber = booking.bookingId;
+          } else if (job) {
+              bkNumber = job.booking;
+              // Attempt to find siblings to create the joined string if "allJobs" is available
+              if (allJobs && job.booking) {
+                  const siblings = allJobs.filter(j => j.booking === job.booking);
+                  if (siblings.length > 0) {
+                      jobCodes = siblings.map(j => j.jobCode).filter(Boolean).join('+');
+                  } else {
+                      jobCodes = job.jobCode;
+                  }
+              } else {
+                  jobCodes = job.jobCode;
+              }
+          }
+          
+          return `${prefix} ${jobCodes} BL ${bkNumber} (kimberry)`;
       };
 
       if (type === 'local') {
           // Local Charge Payment
-          // TK No: 3311 (Phải trả người bán), TK Co: 1121 (Tiền mặt/NH)
           initialData.tkNo = '3311'; 
           initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
           
           if (booking) {
              const summary = booking.costDetails.localCharge;
              initialData.amount = summary.hasInvoice ? (summary.net + summary.vat) : summary.total;
-             initialData.paymentContent = `Chi tiền Local Charge cho Booking ${booking.bookingId}`;
+             initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
              initialData.receiverName = booking.line;
           } else if (job) {
-             // For Payment (Chi), usually Chi Payment field
              initialData.amount = job.chiPayment || 0; 
-             initialData.paymentContent = `Chi tiền Local Charge cho Job ${job.jobCode}`;
              initialData.receiverName = job.line;
              
-             // If we have docNo already
-             if (job.amisPaymentDocNo) initialData.docNo = job.amisPaymentDocNo;
-             if (job.amisPaymentDesc) initialData.paymentContent = job.amisPaymentDesc;
-             if (job.amisPaymentDate) initialData.date = job.amisPaymentDate;
+             if (job.amisPaymentDocNo) {
+                 initialData.docNo = job.amisPaymentDocNo;
+                 initialData.paymentContent = job.amisPaymentDesc || '';
+                 initialData.date = job.amisPaymentDate || today;
+             } else {
+                 initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
+             }
           }
       } 
       else if (type === 'deposit') {
           // Chi Cược (Deposit Out)
-          // TK No: 1388 (Phải thu khác - Cược), TK Co: 1121
           initialData.tkNo = '1388';
           initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
           
           if (booking) {
               const depTotal = booking.costDetails.deposits.reduce((s,d) => s+d.amount, 0);
               initialData.amount = depTotal;
-              initialData.paymentContent = `Chi tiền Cược Cont cho Booking ${booking.bookingId}`;
+              initialData.paymentContent = generateDescription("Chi tiền cược lô");
               initialData.receiverName = booking.line;
           } else if (job) {
               initialData.amount = job.chiCuoc || 0;
-              initialData.paymentContent = `Chi tiền Cược Cont cho Job ${job.jobCode}`;
               initialData.receiverName = job.line;
               
-              if (job.amisDepositOutDocNo) initialData.docNo = job.amisDepositOutDocNo;
-              if (job.amisDepositOutDesc) initialData.paymentContent = job.amisDepositOutDesc;
-              if (job.amisDepositOutDate) initialData.date = job.amisDepositOutDate;
+              if (job.amisDepositOutDocNo) {
+                  initialData.docNo = job.amisDepositOutDocNo;
+                  initialData.paymentContent = job.amisDepositOutDesc || '';
+                  initialData.date = job.amisDepositOutDate || today;
+              } else {
+                  initialData.paymentContent = generateDescription("Chi tiền cược lô");
+              }
           }
       }
       else if (type === 'extension') {
           // Chi Gia Hạn (Extension Out)
-          // Based on AmisExport logic: tkNo: '13111', tkCo: '1121' for 'payment_ext' type.
           initialData.tkNo = '13111';
           initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
           
           if (booking) {
               const extTotal = booking.costDetails.extensionCosts.reduce((s,e) => s+e.total, 0);
               initialData.amount = extTotal;
-              initialData.paymentContent = `Chi tiền Gia Hạn cho Booking ${booking.bookingId}`;
+              initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
               initialData.receiverName = booking.line;
           } else if (job) {
               const extTotal = (job.bookingCostDetails?.extensionCosts || []).reduce((s,e) => s+e.total, 0);
               initialData.amount = extTotal;
-              initialData.paymentContent = `Chi tiền Gia Hạn cho Job ${job.jobCode}`;
               initialData.receiverName = job.line;
               
-              if (job.amisExtensionPaymentDocNo) initialData.docNo = job.amisExtensionPaymentDocNo;
-              if (job.amisExtensionPaymentDesc) initialData.paymentContent = job.amisExtensionPaymentDesc;
-              if (job.amisExtensionPaymentDate) initialData.date = job.amisExtensionPaymentDate;
+              if (job.amisExtensionPaymentDocNo) {
+                  initialData.docNo = job.amisExtensionPaymentDocNo;
+                  initialData.paymentContent = job.amisExtensionPaymentDesc || '';
+                  initialData.date = job.amisExtensionPaymentDate || today;
+              } else {
+                  initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
+              }
           }
       }
 
