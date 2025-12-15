@@ -199,7 +199,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       customReceipts.forEach(r => {
           if (checkMonth(r.date)) rows.push({ ...r, type: 'external', rowId: `custom-${r.id}` });
       });
-      return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      // Sort Descending by Document Number
+      return rows.sort((a, b) => (b.docNo || '').localeCompare(a.docNo || ''));
     } 
     
     // --- MODE CHI ---
@@ -279,7 +280,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         });
 
-        return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // Sort Descending by Document Number
+        return rows.sort((a, b) => (b.docNo || '').localeCompare(a.docNo || ''));
     }
     
     // --- MODE BAN ---
@@ -1001,7 +1003,20 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               onClose={() => setIsQuickReceiveOpen(false)}
               onSave={(updatedJob) => {
                   if (quickReceiveMode === 'other' && onUpdateCustomReceipts) {
-                      const newReceipt = { id: updatedJob.id, type: 'external', date: updatedJob.localChargeDate, docNo: updatedJob.amisLcDocNo, objCode: updatedJob.customerId, objName: updatedJob.customerName, desc: updatedJob.amisLcDesc, amount: updatedJob.localChargeTotal };
+                      // FIX: Look up customer code to ensure correct display
+                      const foundCust = customers.find(c => c.id === updatedJob.customerId);
+                      const finalObjCode = foundCust ? foundCust.code : updatedJob.customerId;
+
+                      const newReceipt = { 
+                          id: updatedJob.id, 
+                          type: 'external', 
+                          date: updatedJob.localChargeDate, 
+                          docNo: updatedJob.amisLcDocNo, 
+                          objCode: finalObjCode, 
+                          objName: updatedJob.customerName, 
+                          desc: updatedJob.amisLcDesc, 
+                          amount: updatedJob.localChargeTotal 
+                      };
                       const exists = customReceipts.findIndex(r => r.id === updatedJob.id);
                       if (exists >= 0) { const updated = [...customReceipts]; updated[exists] = newReceipt; onUpdateCustomReceipts(updated); }
                       else onUpdateCustomReceipts([...customReceipts, newReceipt]);
