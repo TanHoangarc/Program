@@ -418,7 +418,7 @@ const App: React.FC = () => {
       setCustomReceipts(newReceipts);
 
       await handleRejectRequest(requestId);
-      alert("Đã duyệt và cập nhật dữ liệu thành công!");
+
   };
 
   useEffect(() => {
