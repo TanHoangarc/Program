@@ -122,7 +122,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
              data.url = `/files/inv/${data.fileName}`;
           } else {
              // Default path for UNC
-             data.url = `/file/UNC/${data.fileName}`;
+             data.url = `/file/unc/${data.fileName}`;
           }
       } else if (!data.url.startsWith('/')) {
           data.url = `/${data.url}`;
@@ -448,7 +448,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         if (type === "invoice") {
             url = `${BACKEND_URL}/files/inv/${fileName}`;
         } else {
-            url = `${BACKEND_URL}/file/UNC/${fileName}`;
+            url = `${BACKEND_URL}/file/unc/${fileName}`;
         }
     }
 
@@ -462,7 +462,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     
     // Fix broken URL on the fly
     if (url && url.includes('undefined') && req.uncFileName) {
-        url = `${BACKEND_URL}/file/UNC/${req.uncFileName}`;
+        url = `${BACKEND_URL}/file/unc/${req.uncFileName}`;
     }
 
     if (!url) {
