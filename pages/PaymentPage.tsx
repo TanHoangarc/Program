@@ -118,11 +118,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       // FIX: Ensure URL is valid if backend forgets to send it
       if (!data.url) {
           if (type === "INVOICE") {
-             // Correct path for Invoices: E:\ServerData\INV maps to /uploads/INV
-             data.url = `/uploads/INV/${data.fileName}`;
+             // Correct path for Invoices: E:\ServerData\INV maps to /files/inv
+             data.url = `/files/inv/${data.fileName}`;
           } else {
-             // Correct path for UNC: E:\ServerData\UNC maps to /uploads/UNC
-             data.url = `/uploads/UNC/${data.fileName}`;
+             // Correct path for UNC: E:\ServerData\UNC maps to /files/unc
+             data.url = `/files/unc/${data.fileName}`;
           }
       } else if (!data.url.startsWith('/')) {
           data.url = `/${data.url}`;
@@ -440,11 +440,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     // Auto-fix broken URLs on the fly using updated paths
     if (url && (url.includes('undefined') || !url.includes('http')) && fileName) {
         if (type === "invoice") {
-            // Path: E:\ServerData\INV -> /uploads/INV
-            url = `${BACKEND_URL}/uploads/INV/${fileName}`;
+            // Path: E:\ServerData\INV -> /files/inv
+            url = `${BACKEND_URL}/files/inv/${fileName}`;
         } else {
-            // Path: E:\ServerData\UNC -> /uploads/UNC
-            url = `${BACKEND_URL}/uploads/UNC/${fileName}`;
+            // Path: E:\ServerData\UNC -> /files/unc
+            url = `${BACKEND_URL}/files/unc/${fileName}`;
         }
     }
 
@@ -456,9 +456,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const downloadUNC = async (req: PaymentRequest) => {
     let url = req.uncUrl;
     
-    // Fix broken URL on the fly using E:\ServerData\UNC -> /uploads/UNC
+    // Fix broken URL on the fly using E:\ServerData\UNC -> /files/unc
     if (url && url.includes('undefined') && req.uncFileName) {
-        url = `${BACKEND_URL}/uploads/UNC/${req.uncFileName}`;
+        url = `${BACKEND_URL}/files/unc/${req.uncFileName}`;
     }
 
     if (!url) {
