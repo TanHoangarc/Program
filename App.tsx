@@ -261,11 +261,12 @@ const App: React.FC = () => {
             customers: [...customers],
             lines: [...lines],
             customReceipts: [...customReceipts],
-            lockedIds: Array.from(lockedIds)
+            // Removed lockedIds from default payload to prevent snapshotting
         };
     } else {
         if (!payload.lockedIds) {
-            payload.lockedIds = Array.from(lockedIds);
+            // Only add lockedIds if it's a specific lock update payload
+            // payload.lockedIds = Array.from(lockedIds); 
         }
     }
     
@@ -327,7 +328,7 @@ const App: React.FC = () => {
           const payload = {
               user: currentUser.username,
               timestamp: new Date().toISOString(),
-              lockedIds: Array.from(newSet),
+              lockedIds: Array.from(newSet), // Send snapshot ONLY when locking
               autoApprove: true,
               jobs: [], paymentRequests: [], customers: [], lines: []
           };
@@ -820,3 +821,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
