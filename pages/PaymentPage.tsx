@@ -3,13 +3,15 @@
 // PAYMENT PAGE – FINAL FULL VERSION (FIX UNKNOWN + NEW PATHS)
 // ============================================================
 
-import React, { useState, useRef } from 'react';
-import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save
 } from 'lucide-react';
 import axios from 'axios';
+import { MONTHS, TRANSIT_PORTS } from '../constants';
 
 interface PaymentPageProps {
   lines: ShippingLine[];
@@ -19,10 +21,33 @@ interface PaymentPageProps {
   onSendPending?: (payload?: any) => Promise<void>; 
   jobs?: JobData[];
   onUpdateJob?: (job: JobData) => void;
+  onAddJob?: (job: JobData) => void; // New Prop
+  customers?: Customer[]; // Need customers for dropdown
 }
 
 // BACKEND API (Cloudflare Tunnel)
 const BACKEND_URL = "https://api.kimberry.id.vn";
+
+// Internal Interface for Convert Modal State
+interface ConvertJobData {
+    month: string;
+    booking: string;
+    line: string;
+    customerId: string;
+    customerName: string;
+    consol: string;
+    transit: string;
+    
+    // Dynamic List of Jobs
+    jobRows: {
+        id: string;
+        jobCode: string;
+        cont20: number;
+        cont40: number;
+        sell: number;
+        cost: number;
+    }[];
+}
 
 export const PaymentPage: React.FC<PaymentPageProps> = ({
   lines,
@@ -31,7 +56,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   currentUser,
   onSendPending,
   jobs,
-  onUpdateJob
+  onUpdateJob,
+  onAddJob,
+  customers = []
 }) => {
 
   // ----------------- STATES -----------------
@@ -48,6 +75,12 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   
   // State for copy feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // --- CONVERT MODAL STATE ---
+  const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
+  const [convertData, setConvertData] = useState<ConvertJobData>({
+      month: '1', booking: '', line: '', customerId: '', customerName: '', consol: '', transit: 'HCM', jobRows: []
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uncInputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +113,22 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     try {
       const res = await axios.post(`${BACKEND_URL}${endpoint}`, formData);
-      return res.data;
+      const data = res.data;
+
+      // FIX: Ensure URL is valid if backend forgets to send it
+      if (!data.url) {
+          if (type === "INVOICE") {
+             // Correct path for Invoices per user request
+             data.url = `/files/inv/${data.fileName}`;
+          } else {
+             // Default path for UNC
+             data.url = `/uploads/UNC/${data.fileName}`;
+          }
+      } else if (!data.url.startsWith('/')) {
+          data.url = `/${data.url}`;
+      }
+
+      return data;
     } catch (err) {
       alert("Không thể upload file. Kiểm tra server.");
       return null;
@@ -129,19 +177,16 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     onUpdateRequests(updatedRequests);
 
     // --- AUTO SYNC FOR DOCS ---
-    // Critical Fix: Send the ENTIRE updated list to ensure backup.json matches
     if (currentUser?.role === 'Docs' && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),
-            autoApprove: true, // Signal backend/admin logic to accept immediately
-            paymentRequests: updatedRequests, // Send FULL LIST to force sync
-            // Empty other fields to avoid overwriting unrelated data
+            autoApprove: true, 
+            paymentRequests: updatedRequests, 
             jobs: [],
             customers: [],
             lines: []
         };
-        // Trigger background sync without blocking UI
         onSendPending(payload).catch(err => console.error("Auto-sync failed", err));
     }
 
@@ -149,7 +194,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     setLine("");
     setBooking("");
     setAmount(0);
-    setType('Local Charge'); // Reset to default
+    setType('Local Charge'); 
     setInvoiceFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
@@ -276,13 +321,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           }
 
           if (syncType === 'Local Charge') {
-              // Set total amount for Local Charge. 
-              // Assuming "Tạm tính" logic (hasInvoice = false) or update existing total
               updatedJob.bookingCostDetails.localCharge.total = req.amount;
-              updatedJob.bookingCostDetails.localCharge.hasInvoice = false; // Mark as temporary calculation until invoice details are filled
+              updatedJob.bookingCostDetails.localCharge.hasInvoice = false; 
           } 
           else if (syncType === 'Deposit') {
-              // Add a new deposit entry
               updatedJob.bookingCostDetails.deposits.push({
                   id: `dep-${Date.now()}`,
                   amount: req.amount,
@@ -291,7 +333,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               });
           }
           else if (syncType === 'Demurrage') {
-              // Add as Additional Local Charge
               updatedJob.bookingCostDetails.additionalLocalCharges.push({
                   id: `dem-${Date.now()}`,
                   invoice: '',
@@ -299,7 +340,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                   net: req.amount,
                   vat: 0,
                   total: req.amount,
-                  hasInvoice: false // Tạm tính
+                  hasInvoice: false 
               });
           }
 
@@ -310,37 +351,140 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   };
 
   // ============================================================
+  // CONVERT TO JOB MODAL HANDLERS
+  // ============================================================
+
+  const handleOpenConvert = (req: PaymentRequest) => {
+      setConvertData({
+          month: new Date().getMonth() + 1 + '',
+          booking: req.booking || '',
+          line: req.lineCode || '',
+          customerId: '',
+          customerName: '',
+          consol: '',
+          transit: req.pod || 'HCM',
+          jobRows: [{ id: Date.now().toString(), jobCode: '', cont20: 0, cont40: 0, sell: 0, cost: 0 }]
+      });
+      setIsConvertModalOpen(true);
+  };
+
+  const handleAddJobRow = () => {
+      setConvertData(prev => ({
+          ...prev,
+          jobRows: [...prev.jobRows, { id: Date.now().toString(), jobCode: '', cont20: 0, cont40: 0, sell: 0, cost: 0 }]
+      }));
+  };
+
+  const handleRemoveJobRow = (id: string) => {
+      setConvertData(prev => ({
+          ...prev,
+          jobRows: prev.jobRows.filter(r => r.id !== id)
+      }));
+  };
+
+  const handleJobRowChange = (id: string, field: string, value: any) => {
+      setConvertData(prev => ({
+          ...prev,
+          jobRows: prev.jobRows.map(r => r.id === id ? { ...r, [field]: value } : r)
+      }));
+  };
+
+  const handleSaveConvert = () => {
+      if (!onAddJob) return;
+      if (!convertData.booking || !convertData.line || convertData.jobRows.length === 0) {
+          alert("Vui lòng nhập đầy đủ thông tin bắt buộc (Booking, Line, ít nhất 1 Job).");
+          return;
+      }
+
+      // Check Customer
+      let finalCustId = convertData.customerId;
+      let finalCustName = convertData.customerName;
+      if (!finalCustId) {
+          // Try to find matching customer
+          // Not mandatory, but warning good practice? Or just allow empty.
+      }
+
+      // Loop and Add Jobs
+      convertData.jobRows.forEach(row => {
+          if (!row.jobCode) return; // Skip empty rows
+
+          const newJob: JobData = {
+              ...INITIAL_JOB,
+              id: `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              month: convertData.month,
+              jobCode: row.jobCode,
+              booking: convertData.booking,
+              line: convertData.line,
+              customerId: finalCustId,
+              customerName: finalCustName,
+              consol: convertData.consol,
+              transit: convertData.transit,
+              cont20: row.cont20,
+              cont40: row.cont40,
+              sell: row.sell,
+              cost: row.cost,
+              profit: row.sell - row.cost,
+              // Pre-fill some fees? No, keep it simple.
+          };
+          
+          onAddJob(newJob);
+      });
+
+      setIsConvertModalOpen(false);
+      alert(`Đã nhập ${convertData.jobRows.filter(r => r.jobCode).length} Job vào hệ thống thành công!`);
+  };
+
+  // ============================================================
   // FILE VIEW + DOWNLOAD
   // ============================================================
 
   const openFile = (req: PaymentRequest, type: "invoice" | "unc") => {
-    const url = type === "invoice" ? req.invoiceUrl : req.uncUrl;
+    let url = type === "invoice" ? req.invoiceUrl : req.uncUrl;
+    const fileName = type === "invoice" ? req.invoiceFileName : req.uncFileName;
+    
+    // Auto-fix broken URLs on the fly (fixes existing bad data)
+    // Only apply the new path for Invoices
+    if (url && (url.includes('undefined') || !url.includes('http')) && fileName) {
+        if (type === "invoice") {
+            url = `${BACKEND_URL}/files/inv/${fileName}`;
+        } else {
+            url = `${BACKEND_URL}/uploads/UNC/${fileName}`;
+        }
+    }
+
     if (!url) return alert("Không tìm thấy file!");
     window.open(url, "_blank");
   };
 
   // Always force download UNC
   const downloadUNC = async (req: PaymentRequest) => {
-    if (!req.uncUrl) {
+    let url = req.uncUrl;
+    
+    // Fix broken URL on the fly
+    if (url && url.includes('undefined') && req.uncFileName) {
+        url = `${BACKEND_URL}/uploads/UNC/${req.uncFileName}`;
+    }
+
+    if (!url) {
       alert("Không tìm thấy file UNC!");
       return;
     }
 
     try {
-      const response = await axios.get(req.uncUrl, { responseType: "blob" });
+      const response = await axios.get(url, { responseType: "blob" });
 
-      const url = URL.createObjectURL(
+      const finalBlobUrl = URL.createObjectURL(
         new Blob([response.data], { type: "application/pdf" })
       );
 
       const link = document.createElement("a");
-      link.href = url;
+      link.href = finalBlobUrl;
       link.download = `UNC BL ${req.booking}.pdf`;
 
       document.body.appendChild(link);
       link.click();
 
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(finalBlobUrl);
       link.remove();
     } catch {
       alert("Không thể tải UNC. Kiểm tra Server hoặc Cloudflare.");
@@ -719,12 +863,21 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
                   <td className="px-6 py-4 text-center">
                     <div className="flex justify-center space-x-2">
-                        
+                      
+                      {/* Convert to Job Button */}
+                      <button
+                        onClick={() => handleOpenConvert(req)}
+                        className="text-orange-600 p-2 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors"
+                        title="Nhập vào Job"
+                      >
+                        <FileInput className="w-4 h-4" />
+                      </button>
+
                       {/* Sync Button */}
                       <button
                         onClick={() => handleSyncPayment(req)}
                         className="text-teal-600 p-2 bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100 transition-colors"
-                        title="Đồng bộ vào Booking"
+                        title="Đồng bộ vào Booking (Cũ)"
                       >
                         <RefreshCw className="w-4 h-4" />
                       </button>
@@ -745,7 +898,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                         <Download className="w-4 h-4" />
                       </button>
 
-                      {/* Updated: Delete enabled for Docs, Admin, Manager with sync */}
                       <button
                         onClick={() => handleDelete(req.id)}
                         className="text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
@@ -829,6 +981,214 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           </div>
 
         </div>
+      )}
+
+      {/* MODAL: CONVERT PAYMENT TO JOB */}
+      {isConvertModalOpen && createPortal(
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col border border-white/50 animate-in zoom-in-95">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-orange-50 rounded-t-2xl">
+                    <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-orange-100 text-orange-600 rounded-lg shadow-sm border border-orange-200">
+                            <Container className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-800">Nhập Job từ Thanh toán</h2>
+                            <p className="text-xs text-slate-500 font-medium">Tạo Job mới dựa trên thông tin Booking</p>
+                        </div>
+                    </div>
+                    <button onClick={() => setIsConvertModalOpen(false)} className="text-slate-400 hover:text-red-500 p-2 rounded-full hover:bg-white transition-all">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+                    
+                    {/* Common Info Section */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-5">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Thông tin chung (Booking)</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Tháng</label>
+                                <select 
+                                    className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                                    value={convertData.month}
+                                    onChange={(e) => setConvertData(prev => ({...prev, month: e.target.value}))}
+                                >
+                                    {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Booking</label>
+                                <input 
+                                    type="text" 
+                                    value={convertData.booking}
+                                    onChange={(e) => setConvertData(prev => ({...prev, booking: e.target.value}))}
+                                    className="w-full p-2 bg-slate-50 border rounded-lg text-sm font-bold text-blue-700 outline-none focus:ring-2 focus:ring-orange-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Line</label>
+                                <select
+                                    value={convertData.line}
+                                    onChange={e => setConvertData(prev => ({...prev, line: e.target.value}))}
+                                    className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                                >
+                                    <option value="">-- Chọn Line --</option>
+                                    {lines.map(l => (
+                                        <option key={l.id} value={l.code}>{l.code}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Transit</label>
+                                <select
+                                    value={convertData.transit}
+                                    onChange={e => setConvertData(prev => ({...prev, transit: e.target.value}))}
+                                    className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                                >
+                                    {TRANSIT_PORTS.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Khách hàng</label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Nhập mã KH hoặc tên..."
+                                        list="customer-list"
+                                        className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 font-medium"
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            const found = customers.find(c => c.code === val || c.name === val);
+                                            if (found) {
+                                                setConvertData(prev => ({...prev, customerId: found.id, customerName: found.name}));
+                                            } else {
+                                                // Allow partial input, but ID will be empty if not exact match.
+                                                // Ideally, we'd use a robust autocomplete here.
+                                                setConvertData(prev => ({...prev, customerId: '', customerName: val}));
+                                            }
+                                        }}
+                                        defaultValue={convertData.customerName} // Simple controlled input for now
+                                    />
+                                    <datalist id="customer-list">
+                                        {customers.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
+                                    </datalist>
+                                </div>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Consol</label>
+                                <input 
+                                    type="text" 
+                                    value={convertData.consol}
+                                    onChange={(e) => setConvertData(prev => ({...prev, consol: e.target.value}))}
+                                    className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Job List Section */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Chi tiết Job (Container)</h3>
+                            <button onClick={handleAddJobRow} className="text-xs bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg font-bold hover:bg-orange-200 transition-colors flex items-center">
+                                <Plus className="w-3 h-3 mr-1" /> Thêm dòng
+                            </button>
+                        </div>
+                        
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase text-[10px]">
+                                    <tr>
+                                        <th className="px-3 py-2 w-48">Job Code</th>
+                                        <th className="px-3 py-2 w-20 text-center">Cont 20</th>
+                                        <th className="px-3 py-2 w-20 text-center">Cont 40</th>
+                                        <th className="px-3 py-2 text-right">Sell (Doanh thu)</th>
+                                        <th className="px-3 py-2 text-right">Cost (Chi phí)</th>
+                                        <th className="px-3 py-2 w-10 text-center"></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {convertData.jobRows.map((row, idx) => (
+                                        <tr key={row.id}>
+                                            <td className="px-3 py-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={row.jobCode}
+                                                    onChange={(e) => handleJobRowChange(row.id, 'jobCode', e.target.value)}
+                                                    placeholder="Nhập Job Code"
+                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-bold text-slate-700"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <input 
+                                                    type="number" min="0"
+                                                    value={row.cont20}
+                                                    onChange={(e) => handleJobRowChange(row.id, 'cont20', Number(e.target.value))}
+                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-center text-sm"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <input 
+                                                    type="number" min="0"
+                                                    value={row.cont40}
+                                                    onChange={(e) => handleJobRowChange(row.id, 'cont40', Number(e.target.value))}
+                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-center text-sm"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={new Intl.NumberFormat('en-US').format(row.sell)}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value.replace(/,/g, ''));
+                                                        if(!isNaN(val)) handleJobRowChange(row.id, 'sell', val);
+                                                    }}
+                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-right text-sm font-medium text-blue-600"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={new Intl.NumberFormat('en-US').format(row.cost)}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value.replace(/,/g, ''));
+                                                        if(!isNaN(val)) handleJobRowChange(row.id, 'cost', val);
+                                                    }}
+                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-right text-sm font-medium text-red-600"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2 text-center">
+                                                {convertData.jobRows.length > 1 && (
+                                                    <button onClick={() => handleRemoveJobRow(row.id)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 bg-white border-t border-slate-200 rounded-b-2xl flex justify-end space-x-3">
+                    <button onClick={() => setIsConvertModalOpen(false)} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
+                        Hủy
+                    </button>
+                    <button onClick={handleSaveConvert} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100">
+                        <Save className="w-4 h-4 mr-2" /> Lưu / Nhập Job
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
       )}
 
     </div>

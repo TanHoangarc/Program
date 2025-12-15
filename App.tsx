@@ -780,7 +780,9 @@ const App: React.FC = () => {
                 currentUser={currentUser}
                 onSendPending={sendPendingToServer} 
                 jobs={jobs} 
-                onUpdateJob={handleEditJob} 
+                onUpdateJob={handleEditJob}
+                onAddJob={handleAddJob}
+                customers={customers} 
               />
             )}
 
