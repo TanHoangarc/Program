@@ -338,4 +338,3 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     document.body
   );
 };
-
