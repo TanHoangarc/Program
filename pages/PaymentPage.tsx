@@ -1,6 +1,6 @@
 
 // ============================================================
-// PAYMENT PAGE – FINAL FULL VERSION (FIX UNKNOWN + NEW PATHS)
+// PAYMENT PAGE – FULL VERSION (UPDATED PATHS FOR INV & UNC)
 // ============================================================
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -21,8 +21,8 @@ interface PaymentPageProps {
   onSendPending?: (payload?: any) => Promise<void>; 
   jobs?: JobData[];
   onUpdateJob?: (job: JobData) => void;
-  onAddJob?: (job: JobData) => void; // New Prop
-  customers?: Customer[]; // Need customers for dropdown
+  onAddJob?: (job: JobData) => void; 
+  customers?: Customer[];
 }
 
 // BACKEND API (Cloudflare Tunnel)
@@ -86,7 +86,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const uncInputRef = useRef<HTMLInputElement>(null);
 
   // ============================================================
-  // UPLOAD FUNCTION – FIXED (always uses bookingFromRequest)
+  // UPLOAD FUNCTION – UPDATED PATHS
   // ============================================================
 
   const uploadToServer = async (
@@ -118,11 +118,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       // FIX: Ensure URL is valid if backend forgets to send it
       if (!data.url) {
           if (type === "INVOICE") {
-             // Correct path for Invoices per user request
-             data.url = `/files/inv/${data.fileName}`;
+             // Correct path for Invoices: E:\ServerData\INV maps to /uploads/INV
+             data.url = `/uploads/INV/${data.fileName}`;
           } else {
-             // Default path for UNC
-             data.url = `/file/unc/${data.fileName}`;
+             // Correct path for UNC: E:\ServerData\UNC maps to /uploads/UNC
+             data.url = `/uploads/UNC/${data.fileName}`;
           }
       } else if (!data.url.startsWith('/')) {
           data.url = `/${data.url}`;
@@ -210,7 +210,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const updatedRequests = requests.filter(r => r.id !== id);
     onUpdateRequests(updatedRequests);
     
-    // Auto sync deletion for Docs, Admin, and Manager to ensure persistence
+    // Auto sync deletion for Docs, Admin, and Manager
     if (['Docs', 'Admin', 'Manager'].includes(currentUser?.role || '') && onSendPending) {
         const payload = {
             user: currentUser.username,
@@ -244,7 +244,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const uploaded = await uploadToServer(
       uncFile,
       "UNC",
-      req?.booking || "" // 🔥 FIX: always correct booking
+      req?.booking || "" 
     );
 
     if (!uploaded) {
@@ -399,10 +399,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       // Check Customer
       let finalCustId = convertData.customerId;
       let finalCustName = convertData.customerName;
-      if (!finalCustId) {
-          // Try to find matching customer
-          // Not mandatory, but warning good practice? Or just allow empty.
-      }
 
       // Loop and Add Jobs
       convertData.jobRows.forEach(row => {
@@ -424,7 +420,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               sell: row.sell,
               cost: row.cost,
               profit: row.sell - row.cost,
-              // Pre-fill some fees? No, keep it simple.
           };
           
           onAddJob(newJob);
@@ -435,20 +430,21 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   };
 
   // ============================================================
-  // FILE VIEW + DOWNLOAD
+  // FILE VIEW + DOWNLOAD - FIXED PATHS
   // ============================================================
 
   const openFile = (req: PaymentRequest, type: "invoice" | "unc") => {
     let url = type === "invoice" ? req.invoiceUrl : req.uncUrl;
     const fileName = type === "invoice" ? req.invoiceFileName : req.uncFileName;
     
-    // Auto-fix broken URLs on the fly (fixes existing bad data)
-    // Only apply the new path for Invoices
+    // Auto-fix broken URLs on the fly using updated paths
     if (url && (url.includes('undefined') || !url.includes('http')) && fileName) {
         if (type === "invoice") {
-            url = `${BACKEND_URL}/files/inv/${fileName}`;
+            // Path: E:\ServerData\INV -> /uploads/INV
+            url = `${BACKEND_URL}/uploads/INV/${fileName}`;
         } else {
-            url = `${BACKEND_URL}/file/unc/${fileName}`;
+            // Path: E:\ServerData\UNC -> /uploads/UNC
+            url = `${BACKEND_URL}/uploads/UNC/${fileName}`;
         }
     }
 
@@ -456,13 +452,13 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     window.open(url, "_blank");
   };
 
-  // Always force download UNC
+  // Always force download UNC with correct path
   const downloadUNC = async (req: PaymentRequest) => {
     let url = req.uncUrl;
     
-    // Fix broken URL on the fly
+    // Fix broken URL on the fly using E:\ServerData\UNC -> /uploads/UNC
     if (url && url.includes('undefined') && req.uncFileName) {
-        url = `${BACKEND_URL}/file/unc/${req.uncFileName}`;
+        url = `${BACKEND_URL}/uploads/UNC/${req.uncFileName}`;
     }
 
     if (!url) {
@@ -792,7 +788,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                         <CheckCircle className="w-4 h-4" />
                       </button>
 
-                      {/* Updated: Delete enabled for Docs, Admin, Manager with sync */}
                       <button
                         onClick={() => handleDelete(req.id)}
                         className="bg-red-50 text-red-600 p-2 rounded-lg border hover:bg-red-100 transition-colors"
@@ -957,7 +952,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                 {uncFile ? uncFile.name : "Chọn file UNC"}
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                File sẽ được lưu vào Server Storage
+                File sẽ được lưu vào Server Storage (E:\ServerData\UNC)
               </p>
             </div>
 
@@ -1067,11 +1062,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                 setConvertData(prev => ({...prev, customerId: found.id, customerName: found.name}));
                                             } else {
                                                 // Allow partial input, but ID will be empty if not exact match.
-                                                // Ideally, we'd use a robust autocomplete here.
                                                 setConvertData(prev => ({...prev, customerId: '', customerName: val}));
                                             }
                                         }}
-                                        defaultValue={convertData.customerName} // Simple controlled input for now
+                                        defaultValue={convertData.customerName}
                                     />
                                     <datalist id="customer-list">
                                         {customers.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
@@ -1194,3 +1188,4 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     </div>
   );
 };
+
