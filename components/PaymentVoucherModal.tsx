@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, User, Banknote, CheckCircle } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, User, FileText } from 'lucide-react';
 import { JobData, BookingSummary } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
@@ -9,10 +8,9 @@ interface PaymentVoucherModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: any) => void;
-  initialData?: any; 
   job?: JobData;
   booking?: BookingSummary;
-  type?: 'local' | 'deposit' | 'extension';
+  type: 'local' | 'deposit' | 'extension';
   allJobs?: JobData[];
 }
 
@@ -49,7 +47,7 @@ const DateInput = ({
   };
 
   return (
-    <div className={`relative w-full ${className}`}>
+    <div className={`relative w-full ${className || ''}`}>
       <input 
         type="text" 
         value={displayValue} 
@@ -76,154 +74,109 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
-  isOpen, onClose, onSave, initialData, job, booking, type, allJobs
+  isOpen, onClose, onSave, job, booking, type, allJobs
 }) => {
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0], 
+    date: new Date().toISOString().split('T')[0],
     docNo: '',
+    receiverName: '',
     reason: 'Chi khác',
     paymentContent: '',
-    paymentAccount: '345673979999',
-    paymentBank: 'Ngân hàng TMCP Quân đội',
-    objCode: '',
-    objName: '',
-    address: '',
-    currency: 'VND',
-    rate: '',
-    description: '',
-    tkNo: '3311',
-    tkCo: '1121',
     amount: 0,
-    objCodeAccounting: '',
-    loanContract: ''
+    tkNo: '3311',
+    tkCo: '1121'
   });
 
   useEffect(() => {
     if (isOpen) {
-      if (initialData) {
-        setFormData(prev => ({ ...prev, ...initialData }));
-      } else if (booking || job) {
-        let amount = 0;
-        let content = '';
-        let docNo = '';
-        
-        // Try to check if existing AMIS data is present in the first job of the booking
-        const firstJob = booking?.jobs[0] || job;
-        
-        const lineCode = booking ? booking.line : (job?.line || '');
-        const date = new Date().toISOString().split('T')[0];
-        
-        const jobListStr = booking 
-            ? booking.jobs.map(j => j.jobCode).join('+') 
-            : (job?.jobCode || '');
-        const bookingNo = booking ? booking.bookingId : (job?.booking || '');
+      const today = new Date().toISOString().split('T')[0];
+      const jobsForCalc = allJobs || [];
+      
+      let initialData = {
+        date: today,
+        docNo: '',
+        receiverName: '',
+        reason: 'Chi khác',
+        paymentContent: '',
+        amount: 0,
+        tkNo: '3311', // Default for payment (Must confirm correct default)
+        tkCo: '1121'
+      };
 
-        const jobsForCalc = allJobs || [];
-
-        if (type === 'local') {
-           // Check if already created
-           if (firstJob?.amisPaymentDocNo) {
-               docNo = firstJob.amisPaymentDocNo;
-               content = firstJob.amisPaymentDesc || '';
-           } else {
-               docNo = generateNextDocNo(jobsForCalc, 'UNC');
-               content = `Chi tiền cho ncc lô ${jobListStr} BL ${bookingNo} (kimberry)`;
-           }
-           
-           if (booking) {
-               const lc = booking.costDetails.localCharge;
-               // Check hasInvoice: if false use total, else use net + vat
-               const mainTotal = (lc.hasInvoice === false) 
-                   ? (lc.total || 0) 
-                   : (lc.net || 0) + (lc.vat || 0);
-
-               const additionalTotal = (booking.costDetails.additionalLocalCharges || []).reduce((sum, item) => {
-                   const itemTotal = (item.hasInvoice === false) 
-                       ? (item.total || 0) 
-                       : (item.net || 0) + (item.vat || 0);
-                   return sum + itemTotal;
-               }, 0);
-               
-               amount = mainTotal + additionalTotal;
-           } else if (job && job.bookingCostDetails) {
-               const lc = job.bookingCostDetails.localCharge;
-               amount = (lc.hasInvoice === false) 
-                   ? (lc.total || 0) 
-                   : (lc.net || 0) + (lc.vat || 0);
-           } else {
-               amount = 0;
-           }
-           
-        } else if (type === 'deposit') {
-           if (firstJob?.amisDepositOutDocNo) {
-               docNo = firstJob.amisDepositOutDocNo;
-               content = firstJob.amisDepositOutDesc || '';
-           } else {
-               docNo = generateNextDocNo(jobsForCalc, 'UNC');
-               content = `Chi tiền cho ncc CƯỢC lô ${jobListStr} BL ${bookingNo} (kimberry)`;
-           }
-           const depositAmt = booking?.costDetails.deposits.reduce((s,d) => s + d.amount, 0) || job?.chiCuoc || 0;
-           amount = depositAmt;
-
-        } else if (type === 'extension') {
-           if (firstJob?.amisExtensionPaymentDocNo) {
-                docNo = firstJob.amisExtensionPaymentDocNo;
-                content = firstJob.amisExtensionPaymentDesc || '';
-           } else {
-                docNo = generateNextDocNo(jobsForCalc, 'UNC');
-                let jobsWithExtension: string[] = [];
-                if (booking) {
-                    booking.jobs.forEach(j => {
-                        const extTotal = (j.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
-                        if (extTotal > 0) {
-                            jobsWithExtension.push(j.jobCode);
-                        }
-                    });
-                } else if (job) {
-                    const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
-                    if (extTotal > 0) {
-                        jobsWithExtension.push(job.jobCode);
-                    }
-                }
-
-                const extJobStr = jobsWithExtension.length > 0 ? jobsWithExtension.join(', ') : jobListStr;
-                content = `Chi tiền cho ncc GH lô ${extJobStr} BL ${bookingNo} (Kimberry) (GIA HẠN)`;
-           }
-           
-           // Calculate Amount from COST (Booking Extension Costs)
-           let totalExtCost = 0;
-           if (booking && booking.costDetails && booking.costDetails.extensionCosts) {
-                totalExtCost = booking.costDetails.extensionCosts.reduce((sum, item) => sum + item.total, 0);
-           } else if (job && job.bookingCostDetails && job.bookingCostDetails.extensionCosts) {
-                totalExtCost = job.bookingCostDetails.extensionCosts.reduce((sum, item) => sum + item.total, 0);
-           }
-           amount = totalExtCost;
-        }
-
-        setFormData(prev => ({
-            ...prev,
-            date,
-            docNo,
-            paymentContent: content,
-            description: content,
-            amount: amount,
-            objCode: lineCode,
-            objName: '',
-            objCodeAccounting: lineCode
-        }));
+      if (type === 'local') {
+          // Local Charge Payment
+          // TK No: 3311 (Phải trả người bán), TK Co: 1121 (Tiền mặt/NH)
+          initialData.tkNo = '3311'; 
+          initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
+          
+          if (booking) {
+             const summary = booking.costDetails.localCharge;
+             initialData.amount = summary.hasInvoice ? (summary.net + summary.vat) : summary.total;
+             initialData.paymentContent = `Chi tiền Local Charge cho Booking ${booking.bookingId}`;
+             initialData.receiverName = booking.line;
+          } else if (job) {
+             // For Payment (Chi), usually Chi Payment field
+             initialData.amount = job.chiPayment || 0; 
+             initialData.paymentContent = `Chi tiền Local Charge cho Job ${job.jobCode}`;
+             initialData.receiverName = job.line;
+             
+             // If we have docNo already
+             if (job.amisPaymentDocNo) initialData.docNo = job.amisPaymentDocNo;
+             if (job.amisPaymentDesc) initialData.paymentContent = job.amisPaymentDesc;
+             if (job.amisPaymentDate) initialData.date = job.amisPaymentDate;
+          }
+      } 
+      else if (type === 'deposit') {
+          // Chi Cược (Deposit Out)
+          // TK No: 1388 (Phải thu khác - Cược), TK Co: 1121
+          initialData.tkNo = '1388';
+          initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
+          
+          if (booking) {
+              const depTotal = booking.costDetails.deposits.reduce((s,d) => s+d.amount, 0);
+              initialData.amount = depTotal;
+              initialData.paymentContent = `Chi tiền Cược Cont cho Booking ${booking.bookingId}`;
+              initialData.receiverName = booking.line;
+          } else if (job) {
+              initialData.amount = job.chiCuoc || 0;
+              initialData.paymentContent = `Chi tiền Cược Cont cho Job ${job.jobCode}`;
+              initialData.receiverName = job.line;
+              
+              if (job.amisDepositOutDocNo) initialData.docNo = job.amisDepositOutDocNo;
+              if (job.amisDepositOutDesc) initialData.paymentContent = job.amisDepositOutDesc;
+              if (job.amisDepositOutDate) initialData.date = job.amisDepositOutDate;
+          }
       }
-    }
-  }, [isOpen, initialData, job, booking, type, allJobs]);
+      else if (type === 'extension') {
+          // Chi Gia Hạn (Extension Out)
+          // Based on AmisExport logic: tkNo: '13111', tkCo: '1121' for 'payment_ext' type.
+          initialData.tkNo = '13111';
+          initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
+          
+          if (booking) {
+              const extTotal = booking.costDetails.extensionCosts.reduce((s,e) => s+e.total, 0);
+              initialData.amount = extTotal;
+              initialData.paymentContent = `Chi tiền Gia Hạn cho Booking ${booking.bookingId}`;
+              initialData.receiverName = booking.line;
+          } else if (job) {
+              const extTotal = (job.bookingCostDetails?.extensionCosts || []).reduce((s,e) => s+e.total, 0);
+              initialData.amount = extTotal;
+              initialData.paymentContent = `Chi tiền Gia Hạn cho Job ${job.jobCode}`;
+              initialData.receiverName = job.line;
+              
+              if (job.amisExtensionPaymentDocNo) initialData.docNo = job.amisExtensionPaymentDocNo;
+              if (job.amisExtensionPaymentDesc) initialData.paymentContent = job.amisExtensionPaymentDesc;
+              if (job.amisExtensionPaymentDate) initialData.date = job.amisExtensionPaymentDate;
+          }
+      }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      setFormData(initialData);
+    }
+  }, [isOpen, job, booking, type, allJobs]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => {
-        const updated = { ...prev, [name]: value };
-        if (name === 'paymentContent') {
-            updated.description = value;
-        }
-        return updated;
-    });
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleDateChange = (val: string) => {
@@ -244,16 +197,16 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 border border-slate-200 flex flex-col max-h-[90vh]">
         
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-red-50 rounded-t-2xl">
             <div className="flex items-center space-x-3">
             <div className="p-2 bg-red-100 text-red-600 rounded-lg shadow-sm border border-red-200">
-                <Banknote className="w-5 h-5" />
+                <CreditCard className="w-5 h-5" />
             </div>
             <div>
                 <h2 className="text-lg font-bold text-slate-800">Phiếu Chi Tiền</h2>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{formData.docNo}</p>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">{type === 'local' ? 'Local Charge' : type === 'deposit' ? 'Cược (Deposit)' : 'Gia Hạn (Extension)'}</p>
             </div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all">
@@ -274,13 +227,13 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                          <DateInput value={formData.date} onChange={handleDateChange} />
                       </div>
                       <div className="space-y-1.5">
-                         <Label>Số chứng từ (Auto)</Label>
+                         <Label>Số chứng từ</Label>
                          <input 
                             type="text" 
                             name="docNo" 
                             value={formData.docNo} 
-                            readOnly 
-                            className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-red-600 cursor-not-allowed" 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-red-600 outline-none focus:ring-2 focus:ring-red-500" 
                          />
                       </div>
                    </div>
@@ -288,27 +241,37 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                    <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
-                       <User className="w-4 h-4 mr-2 text-red-500" /> Đối tượng
+                       <User className="w-4 h-4 mr-2 text-red-500" /> Đối tượng & Nội dung
                    </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
+                   <div className="space-y-4">
                       <div className="space-y-1.5">
-                         <Label>Mã Đối tượng</Label>
+                         <Label>Người nhận</Label>
                          <input 
                             type="text" 
-                            name="objCode" 
-                            value={formData.objCode} 
-                            onChange={handleChange} 
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 font-medium focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
+                            name="receiverName" 
+                            value={formData.receiverName} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500" 
                          />
                       </div>
                       <div className="space-y-1.5">
-                         <Label>Tên Đối tượng</Label>
+                         <Label>Lý do chi</Label>
                          <input 
                             type="text" 
-                            name="objName" 
-                            value={formData.objName} 
-                            onChange={handleChange} 
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none" 
+                            name="reason" 
+                            value={formData.reason} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500" 
+                         />
+                      </div>
+                      <div className="space-y-1.5">
+                         <Label>Diễn giải chi tiết</Label>
+                         <textarea 
+                            name="paymentContent" 
+                            rows={2}
+                            value={formData.paymentContent} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 resize-none" 
                          />
                       </div>
                    </div>
@@ -316,12 +279,31 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                    <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
-                       <DollarSign className="w-4 h-4 mr-2 text-red-500" /> Chi tiết thanh toán
+                       <DollarSign className="w-4 h-4 mr-2 text-red-500" /> Hạch toán (VND)
                    </h3>
-                   
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
-                      <div className="col-span-1 space-y-1.5">
-                           <Label>Số tiền</Label>
+                      <div className="space-y-1.5">
+                         <Label>TK Nợ</Label>
+                         <input 
+                            type="text" 
+                            name="tkNo" 
+                            value={formData.tkNo} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-center text-slate-700 focus:outline-none focus:ring-2 focus:ring-red-500" 
+                         />
+                      </div>
+                      <div className="space-y-1.5">
+                         <Label>TK Có</Label>
+                         <input 
+                            type="text" 
+                            name="tkCo" 
+                            value={formData.tkCo} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-center text-blue-700 focus:outline-none focus:ring-2 focus:ring-red-500" 
+                         />
+                      </div>
+                      <div className="space-y-1.5">
+                           <Label>Số Tiền</Label>
                            <input 
                                type="text" 
                                value={new Intl.NumberFormat('en-US').format(formData.amount)} 
@@ -329,46 +311,14 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                                    const val = Number(e.target.value.replace(/,/g, ''));
                                    if (!isNaN(val)) handleAmountChange(val);
                                }}
-                               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-red-600 text-right focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
+                               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-red-600 text-right focus:outline-none focus:ring-2 focus:ring-red-500"
                            />
                       </div>
-                      <div className="space-y-1.5">
-                           <Label>TK Nợ</Label>
-                           <input 
-                                type="text" 
-                                name="tkNo" 
-                                value={formData.tkNo} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center font-medium focus:ring-2 focus:ring-red-500 outline-none"
-                           />
-                      </div>
-                      <div className="space-y-1.5">
-                           <Label>TK Có</Label>
-                           <input 
-                                type="text" 
-                                name="tkCo" 
-                                value={formData.tkCo} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-center font-medium focus:ring-2 focus:ring-red-500 outline-none"
-                           />
-                      </div>
-                   </div>
-
-                   <div className="space-y-1.5">
-                      <Label>Nội dung thanh toán</Label>
-                      <textarea 
-                        name="paymentContent" 
-                        rows={2}
-                        value={formData.paymentContent} 
-                        onChange={handleChange} 
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none resize-none" 
-                      />
                    </div>
                 </div>
 
-                <div className="flex items-center space-x-2 text-xs text-slate-600 px-3 py-2 font-medium bg-white rounded-lg border border-slate-200 shadow-sm">
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                    <span>TK Chi: 345673979999 (MB Bank) - Lý do: Chi khác</span>
+                <div className="text-xs text-slate-500 px-3 py-2 bg-white rounded-lg border border-slate-200 shadow-sm italic">
+                   * Mặc định: TK Nợ {formData.tkNo}, TK Có 1121, Ngân hàng TMCP Quân đội.
                 </div>
 
             </form>
@@ -388,3 +338,4 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     document.body
   );
 };
+
