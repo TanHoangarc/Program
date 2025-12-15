@@ -33,8 +33,6 @@ interface ConvertJobData {
     month: string;
     booking: string;
     line: string;
-    customerId: string;
-    customerName: string;
     consol: string;
     transit: string;
     
@@ -42,6 +40,8 @@ interface ConvertJobData {
     jobRows: {
         id: string;
         jobCode: string;
+        customerId: string;   // Moved to Row
+        customerName: string; // Moved to Row
         cont20: number;
         cont40: number;
         sell: number;
@@ -79,7 +79,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // --- CONVERT MODAL STATE ---
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
   const [convertData, setConvertData] = useState<ConvertJobData>({
-      month: '1', booking: '', line: '', customerId: '', customerName: '', consol: '', transit: 'HCM', jobRows: []
+      month: '1', booking: '', line: '', consol: '', transit: 'HCM', jobRows: []
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -359,11 +359,18 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           month: new Date().getMonth() + 1 + '',
           booking: req.booking || '',
           line: req.lineCode || '',
-          customerId: '',
-          customerName: '',
           consol: '',
           transit: req.pod || 'HCM',
-          jobRows: [{ id: Date.now().toString(), jobCode: '', cont20: 0, cont40: 0, sell: 0, cost: 0 }]
+          jobRows: [{ 
+              id: Date.now().toString(), 
+              jobCode: '', 
+              customerId: '', 
+              customerName: '', 
+              cont20: 0, 
+              cont40: 0, 
+              sell: 0, 
+              cost: 0 
+          }]
       });
       setIsConvertModalOpen(true);
   };
@@ -371,7 +378,16 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const handleAddJobRow = () => {
       setConvertData(prev => ({
           ...prev,
-          jobRows: [...prev.jobRows, { id: Date.now().toString(), jobCode: '', cont20: 0, cont40: 0, sell: 0, cost: 0 }]
+          jobRows: [...prev.jobRows, { 
+              id: Date.now().toString(), 
+              jobCode: '', 
+              customerId: '', 
+              customerName: '', 
+              cont20: 0, 
+              cont40: 0, 
+              sell: 0, 
+              cost: 0 
+          }]
       }));
   };
 
@@ -396,11 +412,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           return;
       }
 
-      // Check Customer
-      let finalCustId = convertData.customerId;
-      let finalCustName = convertData.customerName;
-
       // Loop and Add Jobs
+      let createdCount = 0;
       convertData.jobRows.forEach(row => {
           if (!row.jobCode) return; // Skip empty rows
 
@@ -411,8 +424,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               jobCode: row.jobCode,
               booking: convertData.booking,
               line: convertData.line,
-              customerId: finalCustId,
-              customerName: finalCustName,
+              customerId: row.customerId,
+              customerName: row.customerName,
               consol: convertData.consol,
               transit: convertData.transit,
               cont20: row.cont20,
@@ -423,10 +436,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           };
           
           onAddJob(newJob);
+          createdCount++;
       });
 
       setIsConvertModalOpen(false);
-      alert(`Đã nhập ${convertData.jobRows.filter(r => r.jobCode).length} Job vào hệ thống thành công!`);
+      alert(`Đã nhập ${createdCount} Job vào hệ thống thành công!`);
   };
 
   // ============================================================
@@ -1004,8 +1018,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                     {/* Common Info Section */}
                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-5">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Thông tin chung (Booking)</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div>
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                            <div className="md:col-span-1">
                                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Tháng</label>
                                 <select 
                                     className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
@@ -1015,7 +1029,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                     {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                                 </select>
                             </div>
-                            <div>
+                            <div className="md:col-span-2">
                                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Booking</label>
                                 <input 
                                     type="text" 
@@ -1024,7 +1038,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                     className="w-full p-2 bg-slate-50 border rounded-lg text-sm font-bold text-blue-700 outline-none focus:ring-2 focus:ring-orange-500"
                                 />
                             </div>
-                            <div>
+                            <div className="md:col-span-1">
                                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Line</label>
                                 <select
                                     value={convertData.line}
@@ -1037,7 +1051,16 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                     ))}
                                 </select>
                             </div>
-                            <div>
+                            <div className="md:col-span-1">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Consol</label>
+                                <input 
+                                    type="text" 
+                                    value={convertData.consol}
+                                    onChange={(e) => setConvertData(prev => ({...prev, consol: e.target.value}))}
+                                    className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                                />
+                            </div>
+                            <div className="md:col-span-1">
                                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Transit</label>
                                 <select
                                     value={convertData.transit}
@@ -1046,40 +1069,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                 >
                                     {TRANSIT_PORTS.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Khách hàng</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Nhập mã KH hoặc tên..."
-                                        list="customer-list"
-                                        className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 font-medium"
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            const found = customers.find(c => c.code === val || c.name === val);
-                                            if (found) {
-                                                setConvertData(prev => ({...prev, customerId: found.id, customerName: found.name}));
-                                            } else {
-                                                // Allow partial input, but ID will be empty if not exact match.
-                                                setConvertData(prev => ({...prev, customerId: '', customerName: val}));
-                                            }
-                                        }}
-                                        defaultValue={convertData.customerName}
-                                    />
-                                    <datalist id="customer-list">
-                                        {customers.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
-                                    </datalist>
-                                </div>
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Consol</label>
-                                <input 
-                                    type="text" 
-                                    value={convertData.consol}
-                                    onChange={(e) => setConvertData(prev => ({...prev, consol: e.target.value}))}
-                                    className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
-                                />
                             </div>
                         </div>
                     </div>
@@ -1097,7 +1086,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase text-[10px]">
                                     <tr>
-                                        <th className="px-3 py-2 w-48">Job Code</th>
+                                        <th className="px-3 py-2 w-32">Job Code</th>
+                                        <th className="px-3 py-2 w-48">Khách hàng</th>
                                         <th className="px-3 py-2 w-20 text-center">Cont 20</th>
                                         <th className="px-3 py-2 w-20 text-center">Cont 40</th>
                                         <th className="px-3 py-2 text-right">Sell (Doanh thu)</th>
@@ -1116,6 +1106,28 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                     placeholder="Nhập Job Code"
                                                     className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-bold text-slate-700"
                                                 />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <div className="relative">
+                                                    <input 
+                                                        type="text" 
+                                                        list="customer-list"
+                                                        value={row.customerName}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            const found = customers.find(c => c.code === val || c.name === val);
+                                                            if (found) {
+                                                                handleJobRowChange(row.id, 'customerId', found.id);
+                                                                handleJobRowChange(row.id, 'customerName', found.name);
+                                                            } else {
+                                                                handleJobRowChange(row.id, 'customerId', '');
+                                                                handleJobRowChange(row.id, 'customerName', val);
+                                                            }
+                                                        }}
+                                                        placeholder="Chọn KH"
+                                                        className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-medium text-slate-700"
+                                                    />
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2">
                                                 <input 
@@ -1166,6 +1178,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                     ))}
                                 </tbody>
                             </table>
+                            {/* Datalist for Customer Selection */}
+                            <datalist id="customer-list">
+                                {customers.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
+                            </datalist>
                         </div>
                     </div>
 
