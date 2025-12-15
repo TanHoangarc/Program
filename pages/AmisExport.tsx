@@ -632,21 +632,38 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   const handleSavePayment = (data: any) => {
       if (selectedJobForModal && onUpdateJob) {
-          const updatedJob = { ...selectedJobForModal };
-          if (paymentType === 'local') {
-              updatedJob.amisPaymentDocNo = data.docNo;
-              updatedJob.amisPaymentDesc = data.paymentContent;
-              updatedJob.amisPaymentDate = data.date;
-          } else if (paymentType === 'deposit') {
-              updatedJob.amisDepositOutDocNo = data.docNo;
-              updatedJob.amisDepositOutDesc = data.paymentContent;
-              updatedJob.amisDepositOutDate = data.date;
+          // Determine fields based on current payment type
+          let docField: keyof JobData = 'amisPaymentDocNo';
+          let descField: keyof JobData = 'amisPaymentDesc';
+          let dateField: keyof JobData = 'amisPaymentDate';
+
+          if (paymentType === 'deposit') {
+              docField = 'amisDepositOutDocNo';
+              descField = 'amisDepositOutDesc';
+              dateField = 'amisDepositOutDate';
           } else if (paymentType === 'extension') {
-              updatedJob.amisExtensionPaymentDocNo = data.docNo;
-              updatedJob.amisExtensionPaymentDesc = data.paymentContent;
-              updatedJob.amisExtensionPaymentDate = data.date;
+              docField = 'amisExtensionPaymentDocNo';
+              descField = 'amisExtensionPaymentDesc';
+              dateField = 'amisExtensionPaymentDate';
           }
-          onUpdateJob(updatedJob);
+
+          // Smart Update Logic:
+          // If we are editing an existing voucher (has oldDocNo), we update ALL jobs sharing that voucher
+          // to keep them grouped. Otherwise, we split the group.
+          const oldDocNo = selectedJobForModal[docField];
+          
+          const targetJobs = (oldDocNo && typeof oldDocNo === 'string')
+             ? jobs.filter(j => j[docField] === oldDocNo) // Find all jobs in this voucher group
+             : [selectedJobForModal]; // Just this job
+
+          targetJobs.forEach(job => {
+              const updatedJob = { ...job };
+              (updatedJob as any)[docField] = data.docNo;
+              (updatedJob as any)[descField] = data.paymentContent;
+              (updatedJob as any)[dateField] = data.date;
+              onUpdateJob(updatedJob);
+          });
+
           setIsPaymentModalOpen(false);
       }
   };
@@ -1074,3 +1091,4 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     </div>
   );
 };
+
