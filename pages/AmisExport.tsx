@@ -280,6 +280,38 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         });
 
+        // 4. Chi Hoàn Cược (Deposit Refund to Customer)
+        const processedRefunds = new Set<string>();
+        jobs.forEach(j => {
+            if (j.amisDepositRefundDocNo && !processedRefunds.has(j.amisDepositRefundDocNo) && checkMonth(j.amisDepositRefundDate)) {
+                processedRefunds.add(j.amisDepositRefundDocNo);
+                
+                // Group refund amount if multiple jobs share the same refund doc
+                const groupJobs = jobs.filter(subJ => subJ.amisDepositRefundDocNo === j.amisDepositRefundDocNo);
+                const totalRefund = groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
+
+                rows.push({
+                     jobId: j.id, 
+                     type: 'payment_refund', 
+                     rowId: `pay-ref-${j.id}`, 
+                     date: j.amisDepositRefundDate || todayStr, 
+                     docNo: j.amisDepositRefundDocNo,
+                     objCode: getCustomerCode(j.maKhCuocId || j.customerId), 
+                     objName: getCustomerName(j.maKhCuocId || j.customerId), 
+                     desc: j.amisDepositRefundDesc, 
+                     amount: totalRefund,
+                     reason: 'Chi hoàn cược', 
+                     paymentContent: j.amisDepositRefundDesc, 
+                     paymentAccount: '345673979999', 
+                     paymentBank: 'Ngân hàng TMCP Quân đội',
+                     currency: 'VND', 
+                     description: j.amisDepositRefundDesc, 
+                     tkNo: '1388', 
+                     tkCo: '1121',
+                });
+            }
+        });
+
         // Sort Descending by Document Number
         return rows.sort((a, b) => (b.docNo || '').localeCompare(a.docNo || ''));
     }
@@ -555,11 +587,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       } 
       // MODE CHI
       else if (mode === 'chi' && job) {
-          setSelectedJobForModal(job);
-          if (row.type === 'payment_deposit') setPaymentType('deposit');
-          else if (row.type === 'payment_ext') setPaymentType('extension');
-          else setPaymentType('local');
-          setIsPaymentModalOpen(true);
+          // If Refund, Open QuickReceiveModal in deposit_refund mode
+          if (row.type === 'payment_refund') {
+              setQuickReceiveJob(job);
+              setQuickReceiveMode('deposit_refund');
+              setIsQuickReceiveOpen(true);
+          } else {
+              setSelectedJobForModal(job);
+              if (row.type === 'payment_deposit') setPaymentType('deposit');
+              else if (row.type === 'payment_ext') setPaymentType('extension');
+              else setPaymentType('local');
+              setIsPaymentModalOpen(true);
+          }
       }
       // MODE BAN
       else if (mode === 'ban' && job) {
@@ -624,6 +663,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisExtensionPaymentDocNo = '';
               updatedJob.amisExtensionPaymentDesc = '';
               updatedJob.amisExtensionPaymentDate = '';
+          } else if (row.type === 'payment_refund') {
+              updatedJob.amisDepositRefundDocNo = '';
+              updatedJob.amisDepositRefundDesc = '';
+              updatedJob.amisDepositRefundDate = '';
           }
           
           onUpdateJob(updatedJob);
@@ -649,7 +692,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
           // Smart Update Logic:
           // If we are editing an existing voucher (has oldDocNo), we update ALL jobs sharing that voucher
-          // to keep them grouped. Otherwise, we split the group.
+          // to keep them grouped (DocNo & Date). 
+          // However, we ONLY update the description for the currently selected job to preserve individual details of others.
           const oldDocNo = selectedJobForModal[docField];
           
           const targetJobs = (oldDocNo && typeof oldDocNo === 'string')
@@ -659,8 +703,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           targetJobs.forEach(job => {
               const updatedJob = { ...job };
               (updatedJob as any)[docField] = data.docNo;
-              (updatedJob as any)[descField] = data.paymentContent;
               (updatedJob as any)[dateField] = data.date;
+              
+              // Only update description for the specific job being edited in the modal
+              if (job.id === selectedJobForModal.id) {
+                  (updatedJob as any)[descField] = data.paymentContent;
+              }
+              
               onUpdateJob(updatedJob);
           });
 
