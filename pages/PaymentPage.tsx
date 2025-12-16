@@ -3,12 +3,12 @@
 // PAYMENT PAGE – FULL VERSION (UPDATED PATHS FOR INV & UNC)
 // ============================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search
 } from 'lucide-react';
 import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
@@ -49,6 +49,68 @@ interface ConvertJobData {
         amount: number; // NEW FIELD: Amount (Thực thu / Local Charge Total)
     }[];
 }
+
+// --- OPTIMIZED CUSTOMER INPUT COMPONENT ---
+const CustomerRowInput = ({ 
+    value, 
+    customers, 
+    onSelect, 
+    onChange 
+}: { 
+    value: string; 
+    customers: Customer[]; 
+    onSelect: (id: string, name: string) => void;
+    onChange: (text: string) => void;
+}) => {
+    const [showDropdown, setShowDropdown] = useState(false);
+    
+    // Efficient Filtering: only slice top 50 matches to prevent rendering lag
+    const filtered = useMemo(() => {
+        if (!showDropdown) return [];
+        const lower = (value || '').toLowerCase();
+        return customers
+            .filter(c => c.name.toLowerCase().includes(lower) || c.code.toLowerCase().includes(lower))
+            .slice(0, 50); // LIMIT RESULTS
+    }, [value, customers, showDropdown]);
+
+    return (
+        <div className="relative">
+            <input 
+                type="text" 
+                value={value}
+                onChange={(e) => {
+                    onChange(e.target.value);
+                    setShowDropdown(true);
+                }}
+                onFocus={() => setShowDropdown(true)}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+                placeholder="Chọn KH"
+                className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-medium text-slate-700"
+            />
+            {showDropdown && (
+                <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded shadow-xl max-h-60 overflow-y-auto mt-1 left-0">
+                    {filtered.length > 0 ? (
+                        filtered.map(c => (
+                            <li 
+                                key={c.id} 
+                                onMouseDown={() => {
+                                    onSelect(c.id, c.name);
+                                    setShowDropdown(false);
+                                }}
+                                className="px-3 py-2 text-xs cursor-pointer hover:bg-orange-50 border-b border-slate-50 last:border-0"
+                            >
+                                <div className="font-bold text-orange-700">{c.code}</div>
+                                <div className="text-slate-600 truncate">{c.name}</div>
+                            </li>
+                        ))
+                    ) : (
+                        <li className="px-3 py-2 text-xs text-slate-400 italic">Không tìm thấy</li>
+                    )}
+                </ul>
+            )}
+        </div>
+    );
+};
 
 export const PaymentPage: React.FC<PaymentPageProps> = ({
   lines,
@@ -1118,7 +1180,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                             </button>
                         </div>
                         
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto min-h-[200px]">
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase text-[10px]">
                                     <tr>
@@ -1145,30 +1207,18 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
-                                                <div className="relative">
-                                                    <input 
-                                                        type="text" 
-                                                        list={`customer-list-${row.id}`}
-                                                        value={row.customerName}
-                                                        onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            const found = customers.find(c => c.code === val || c.name === val);
-                                                            if (found) {
-                                                                handleJobRowChange(row.id, 'customerId', found.id);
-                                                                handleJobRowChange(row.id, 'customerName', found.name);
-                                                            } else {
-                                                                handleJobRowChange(row.id, 'customerId', '');
-                                                                handleJobRowChange(row.id, 'customerName', val);
-                                                            }
-                                                        }}
-                                                        placeholder="Chọn KH"
-                                                        className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-medium text-slate-700"
-                                                    />
-                                                    {/* Unique datalist for each row */}
-                                                    <datalist id={`customer-list-${row.id}`}>
-                                                        {customers.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
-                                                    </datalist>
-                                                </div>
+                                                <CustomerRowInput 
+                                                    value={row.customerName}
+                                                    customers={customers}
+                                                    onChange={(text) => {
+                                                        handleJobRowChange(row.id, 'customerId', '');
+                                                        handleJobRowChange(row.id, 'customerName', text);
+                                                    }}
+                                                    onSelect={(id, name) => {
+                                                        handleJobRowChange(row.id, 'customerId', id);
+                                                        handleJobRowChange(row.id, 'customerName', name);
+                                                    }}
+                                                />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <input 
@@ -1252,3 +1302,4 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     </div>
   );
 };
+
