@@ -190,7 +190,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                  jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
                  date: j.ngayThuCuoc, docNo: j.amisDepositDocNo, 
                  objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
-                 desc: j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`, 
+                 desc: j.amisDepositDesc || `Thu tiền của KH CƯỢC BL ${j.jobCode}`, 
                  amount: j.amisDepositAmount || j.thuCuoc, // Use override amount if set
                  tkNo: '1121', tkCo: '1388', 
              });
@@ -216,7 +216,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                    jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
                    date: j.localChargeDate, docNo: j.amisLcDocNo, 
                    objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
-                   desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
+                   desc: j.amisLcDesc || `Thu tiền của KH theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
                    amount: j.amisLcAmount || j.localChargeTotal, // Use override amount if set
                    tkNo: '1121', tkCo: '13111',
                });
@@ -242,7 +242,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                       jobId: j.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                       date: ext.invoiceDate, docNo: ext.amisDocNo, 
                       objCode: getCustomerCode(ext.customerId || j.customerId), objName: getCustomerName(ext.customerId || j.customerId),
-                      desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
+                      desc: ext.amisDesc || `Thu tiền của KH theo hoá đơn GH ${ext.invoice} (KIM)`, 
                       amount: ext.amisAmount || ext.total, 
                       tkNo: '1121', tkCo: '13111',
                   });
