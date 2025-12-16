@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Clock } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
-import { formatDateVN, parseDateVN } from '../utils';
+import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
 import { CustomerModal } from './CustomerModal';
 
 interface JobModalProps {
@@ -289,10 +289,11 @@ const MoneyInput: React.FC<{
   value: number;
   name?: string;
   onChange: (name: string, val: number) => void;
-  label: string;
+  label?: string; // Optional Label
   readOnly?: boolean;
   className?: string;
-}> = ({ value, name, onChange, label, readOnly, className }) => {
+  placeholder?: string;
+}> = ({ value, name, onChange, label, readOnly, className, placeholder }) => {
   const [displayVal, setDisplayVal] = useState('');
 
   useEffect(() => {
@@ -309,13 +310,13 @@ const MoneyInput: React.FC<{
 
   return (
     <div className="w-full">
-      <Label>{label}</Label>
+      {label && <Label>{label}</Label>}
       <input
         type="text"
         value={displayVal}
         onChange={handleChange}
         readOnly={readOnly}
-        placeholder="0"
+        placeholder={placeholder || "0"}
         className={`w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-bold transition-all shadow-sm h-9 ${readOnly ? 'bg-slate-50 text-slate-600' : 'bg-white text-blue-700'} ${className || ''}`}
       />
     </div>
@@ -364,9 +365,7 @@ export const JobModal: React.FC<JobModalProps> = ({
   const [newLine, setNewLine] = useState('');
   
   const [isJobCodeCopied, setIsJobCodeCopied] = useState(false);
-  
-  // Quick Add Customer State
-  const [quickAddTarget, setQuickAddTarget] = useState<{ type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string } | null>(null);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   
   const jobInputRef = useRef<HTMLInputElement>(null);
 
@@ -470,379 +469,333 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
-  const handleCustomerInputChange = (val: string) => {
+  const handleCustomerChange = (val: string) => {
     if (isViewMode) return;
-    setCustCodeInput(val);
-    setShowSuggestions(true);
-
-    let match = (customers || []).find(c => c.id === val);
-
-    if (!match) {
-        match = (customers || []).find(c => c?.code && String(c.code).toLowerCase() === val.toLowerCase().trim());
-    }
-    
-    if (!match) {
-         match = (customers || []).find(c => c?.name && String(c.name).toLowerCase() === val.toLowerCase().trim());
-    }
-    
-    if (match) {
-        setFormData(prev => ({ 
-            ...prev, 
-            customerId: match.id,
-            customerName: match.name
-        }));
-    } else {
-        setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-    }
+    // val is customer ID from CustomerInput
+    setFormData(prev => {
+        const found = customers.find(c => c.id === val);
+        return {
+            ...prev,
+            customerId: val,
+            customerName: found ? found.name : ''
+        };
+    });
   };
 
   const handleExtensionChange = (id: string, field: keyof ExtensionData, value: any) => {
     if (isViewMode) return;
-    setFormData(prev => {
-      const newExts = (prev.extensions || []).map(ext => {
-        if (ext.id === id) {
-          return { ...ext, [field]: value };
-        }
-        return ext;
-      });
-      return { ...prev, extensions: newExts };
-    });
+    setFormData(prev => ({
+        ...prev,
+        extensions: (prev.extensions || []).map(ext => {
+            if (ext.id === id) {
+                const updated = { ...ext, [field]: value };
+                if (field === 'net' || field === 'vat') {
+                    updated.total = (Number(updated.net) || 0) + (Number(updated.vat) || 0);
+                }
+                return updated;
+            }
+            return ext;
+        })
+    }));
   };
 
   const addExtension = () => {
     if (isViewMode) return;
-    setFormData(prev => ({
-      ...prev,
-      extensions: [...(prev.extensions || []), { 
-        id: Date.now().toString(), 
-        customerId: '', 
-        invoice: '', 
-        invoiceDate: '',
+    const newExt: ExtensionData = {
+        id: Date.now().toString(),
+        customerId: formData.customerId,
+        invoice: '',
+        invoiceDate: new Date().toISOString().split('T')[0],
         net: 0,
         vat: 0,
-        total: 0 
-      }]
-    }));
+        total: 0
+    };
+    setFormData(prev => ({ ...prev, extensions: [...(prev.extensions || []), newExt] }));
   };
 
   const removeExtension = (id: string) => {
     if (isViewMode) return;
-    setFormData(prev => ({
-      ...prev,
-      extensions: (prev.extensions || []).filter(ext => ext.id !== id)
-    }));
-  };
-
-  const handleCopyJobCode = () => {
-    if (formData.jobCode) {
-      navigator.clipboard.writeText(formData.jobCode);
-      setIsJobCodeCopied(true);
-      setTimeout(() => setIsJobCodeCopied(false), 2000);
-    }
+    setFormData(prev => ({ ...prev, extensions: (prev.extensions || []).filter(e => e.id !== id) }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isViewMode && onSwitchToEdit) {
-      onSwitchToEdit();
-      return;
-    }
-
-    const code = formData.jobCode || '';
-    if (!code.trim()) {
-      alert("Vui lòng nhập Job Code");
-      return;
-    }
-    if (/\s/.test(code)) {
-      alert("Job Code không được chứa khoảng trắng. Vui lòng kiểm tra lại.");
-      return;
-    }
-    if (existingJobs) {
-      const isDuplicate = existingJobs.some(j => 
-        j.jobCode.toLowerCase() === code.toLowerCase() && 
-        j.id !== formData.id 
-      );
-      if (isDuplicate) {
-        alert(`Job Code "${code}" đã tồn tại trong hệ thống. Vui lòng chọn mã khác.`);
-        return;
-      }
-    }
-
     onSave(formData);
   };
 
-  const handleEditClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onSwitchToEdit) {
-      onSwitchToEdit();
-    }
+  const handleAddNewCustomer = (cust: Customer) => {
+      onAddCustomer(cust);
+      setFormData(prev => ({
+          ...prev,
+          customerId: cust.id,
+          customerName: cust.name
+      }));
+      setIsCustomerModalOpen(false);
   };
-
-  const handleBookingClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (formData.booking) {
-      onViewBookingDetails(formData.booking);
-    }
-  };
-
-  // --- QUICK ADD CUSTOMER HANDLERS ---
-  const handleOpenQuickAdd = (type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string) => {
-      setQuickAddTarget({ type, extId });
-  };
-
-  const handleSaveQuickCustomer = (newCustomer: Customer) => {
-      onAddCustomer(newCustomer);
-      
-      if (quickAddTarget?.type === 'MAIN') {
-          setCustCodeInput(newCustomer.code);
-          setFormData(prev => ({ 
-              ...prev, 
-              customerId: newCustomer.id,
-              customerName: newCustomer.name
-          }));
-      } else if (quickAddTarget?.type === 'DEPOSIT') {
-          setFormData(prev => ({ ...prev, maKhCuocId: newCustomer.id }));
-      } else if (quickAddTarget?.type === 'EXTENSION' && quickAddTarget.extId) {
-          handleExtensionChange(quickAddTarget.extId, 'customerId', newCustomer.id);
-      }
-      
-      setQuickAddTarget(null);
-  };
-
-  const selectedCust = (customers || []).find(c => c?.id === formData.customerId);
-  const displayCustNameLongHoang = selectedCust?.name || formData.customerName || '';
-  const nameLowerLongHoang = displayCustNameLongHoang.toLowerCase();
-  const codeLowerLongHoang = (selectedCust?.code || '').toLowerCase(); 
-
-  const isLongHoang = nameLowerLongHoang.includes('long hoàng') || 
-                      nameLowerLongHoang.includes('long hoang') || 
-                      nameLowerLongHoang.includes('lhk') || 
-                      nameLowerLongHoang.includes('longhoang') ||
-                      codeLowerLongHoang.includes('longhoang') ||
-                      codeLowerLongHoang.includes('lhk');
 
   if (!isOpen) return null;
 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-white/50 ring-1 ring-black/5">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200">
         
-        {/* Compact Header */}
-        <div className="px-6 py-3 border-b border-slate-200/60 flex justify-between items-center bg-white/50">
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">
-              {isViewMode ? 'Chi Tiết Job' : (initialData ? 'Chỉnh sửa Job' : 'Thêm Job Mới')}
-            </h2>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-red-500 transition-all">
-            <X className="w-5 h-5" />
-          </button>
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+            <div className="flex items-center space-x-3">
+                <div className={`p-2 rounded-lg shadow-sm border ${isViewMode ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-teal-100 text-teal-700 border-teal-200'}`}>
+                    {isViewMode ? <ExternalLink className="w-5 h-5" /> : <Edit2 className="w-5 h-5" />}
+                </div>
+                <div>
+                    <h2 className="text-lg font-bold text-slate-800">{isViewMode ? 'Chi Tiết Job' : (initialData ? 'Cập Nhật Job' : 'Thêm Job Mới')}</h2>
+                    {isViewMode ? (
+                        <p className="text-xs text-slate-500 font-medium">Xem thông tin chi tiết</p>
+                    ) : (
+                        <p className="text-xs text-slate-500 font-medium">{initialData ? 'Chỉnh sửa thông tin Job' : 'Nhập thông tin Job mới'}</p>
+                    )}
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                {isViewMode && onSwitchToEdit && (
+                    <button onClick={onSwitchToEdit} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-colors flex items-center">
+                        <Edit2 className="w-4 h-4 mr-2" /> Chỉnh sửa
+                    </button>
+                )}
+                <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all">
+                    <X className="w-5 h-5" />
+                </button>
+            </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5 bg-slate-50/50 custom-scrollbar">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            
-            {/* 1. COMPACT GENERAL INFO */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                    {/* Basic IDs */}
-                    <div className="md:col-span-2">
-                        <Label>Tháng</Label>
-                        <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
-                            {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                        </Select>
+        <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50/50 flex-1">
+            <form id="jobForm" onSubmit={handleSubmit} className="space-y-6">
+                
+                {/* 1. Thông tin chung */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center mb-4 text-slate-800 font-bold text-sm uppercase tracking-wide border-b pb-2 border-slate-100">
+                        <LayoutGrid className="w-4 h-4 mr-2 text-teal-500" /> Thông tin chung
                     </div>
-                    <div className="md:col-span-3">
-                        <Label>Job Code</Label>
-                        <div className="relative">
-                            <Input name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} className={`${isViewMode ? "font-bold text-blue-700 bg-blue-50" : "font-semibold"} pr-8`} placeholder="VD: JOB123" />
-                            <button type="button" onClick={handleCopyJobCode} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-blue-600 rounded">
-                                {isJobCodeCopied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                            </button>
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                        <div className="md:col-span-1">
+                            <Label>Tháng</Label>
+                            <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
+                                {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </Select>
                         </div>
-                    </div>
-                    <div className="md:col-span-3">
-                        <Label>Booking</Label>
-                        <div className="flex items-center gap-1">
-                            <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />
-                            {formData.booking && (
-                                <button type="button" onClick={handleBookingClick} className="p-1.5 bg-slate-100 text-slate-500 rounded-lg hover:bg-blue-50 hover:text-blue-600 border border-slate-200" title="Chi tiết Booking"><ExternalLink className="w-3.5 h-3.5" /></button>
+                        <div className="md:col-span-1">
+                            <Label>Job Code</Label>
+                            <Input ref={jobInputRef} name="jobCode" value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} placeholder="Nhập Job Code" className="font-bold text-teal-700" />
+                        </div>
+                        <div className="md:col-span-1">
+                            <Label>Booking</Label>
+                            <div className="flex gap-1">
+                                <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} placeholder="Booking No." />
+                                {formData.booking && onViewBookingDetails && (
+                                    <button type="button" onClick={() => onViewBookingDetails(formData.booking)} className="bg-blue-50 text-blue-600 px-2 rounded-lg border border-blue-100 hover:bg-blue-100" title="Xem chi tiết Booking"><ExternalLink className="w-4 h-4" /></button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="md:col-span-1">
+                            <Label>Line</Label>
+                            {isAddingLine ? (
+                                <div className="flex gap-1">
+                                    <Input value={newLine} onChange={(e) => setNewLine(e.target.value)} placeholder="Nhập Line mới" autoFocus />
+                                    <button type="button" onClick={saveNewLine} className="bg-green-100 text-green-700 px-2 rounded hover:bg-green-200"><Check className="w-4 h-4"/></button>
+                                    <button type="button" onClick={() => setIsAddingLine(false)} className="bg-red-100 text-red-700 px-2 rounded hover:bg-red-200"><X className="w-4 h-4"/></button>
+                                </div>
+                            ) : (
+                                <Select name="line" value={formData.line} onChange={handleLineSelectChange} disabled={isViewMode}>
+                                    <option value="">-- Chọn Line --</option>
+                                    {lines.map(l => <option key={l.id} value={l.code}>{l.code}</option>)}
+                                    <option value="new" className="font-bold text-blue-600">+ Thêm mới</option>
+                                </Select>
                             )}
                         </div>
-                    </div>
-                    <div className="md:col-span-4">
-                        <Label>Khách hàng (Mã KH)</Label>
-                        <CustomerInput 
-                            value={custCodeInput} 
-                            onChange={handleCustomerInputChange} 
-                            onFocus={() => setShowSuggestions(true)} 
-                            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} 
-                            readOnly={isViewMode} 
-                            placeholder={isViewMode ? "" : "Tìm KH..."} 
-                            customers={customers} 
-                            onAddClick={() => handleOpenQuickAdd('MAIN')}
-                        />
-                    </div>
-
-                    {/* Logistics Info */}
-                    <div className="md:col-span-2">
-                        <Label>Line</Label>
-                        {!isAddingLine ? (
-                            <Select name="line" value={formData.line} onChange={handleLineSelectChange} disabled={isViewMode}>
-                                <option value="">--</option>
-                                {(lines || []).map((l, i) => <option key={i} value={l?.code}>{l?.code}</option>)}
-                                {!isViewMode && <option value="new">+ Mới</option>}
+                        <div className="md:col-span-1">
+                            <Label>Consol</Label>
+                            <Input name="consol" value={formData.consol} onChange={handleChange} readOnly={isViewMode} />
+                        </div>
+                        <div className="md:col-span-1">
+                            <Label>Transit</Label>
+                            <Select name="transit" value={formData.transit} onChange={handleChange} disabled={isViewMode}>
+                                {TRANSIT_PORTS.map(p => <option key={p} value={p}>{p}</option>)}
                             </Select>
-                        ) : (
-                            <div className="flex gap-1"><Input value={newLine} onChange={(e) => setNewLine(e.target.value)} placeholder="Mã..." autoFocus /><button type="button" onClick={saveNewLine} className="bg-green-500 text-white p-1.5 rounded-lg"><Check className="w-3.5 h-3.5" /></button><button type="button" onClick={() => setIsAddingLine(false)} className="bg-slate-200 text-slate-600 p-1.5 rounded-lg"><X className="w-3.5 h-3.5" /></button></div>
-                        )}
+                        </div>
                     </div>
-                    <div className="md:col-span-2"><Label>Consol</Label><Input name="consol" value={formData.consol} onChange={handleChange} readOnly={isViewMode} /></div>
-                    <div className="md:col-span-2"><Label>Transit</Label><Select name="transit" value={formData.transit} onChange={handleChange} disabled={isViewMode}>{TRANSIT_PORTS.map(p => <option key={p} value={p}>{p}</option>)}</Select></div>
                     
-                    {/* HBL: Show only for Long Hoang */}
-                    {isLongHoang && <div className="md:col-span-2"><Label>HBL</Label><Input name="hbl" value={formData.hbl} onChange={handleChange} readOnly={isViewMode} className="bg-orange-50 text-orange-800 border-orange-200" /></div>}
-                    
-                    {/* Container Counts */}
-                    <div className="md:col-span-2"><NumberStepper label="Cont 20'" value={formData.cont20} onChange={(val) => setFormData(prev => ({...prev, cont20: val}))} readOnly={isViewMode} /></div>
-                    <div className="md:col-span-2"><NumberStepper label="Cont 40'" value={formData.cont40} onChange={(val) => setFormData(prev => ({...prev, cont40: val}))} readOnly={isViewMode} /></div>
-                </div>
-            </div>
-
-            {/* 2. SPLIT VIEW: FINANCE & PAYMENTS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                
-                {/* LEFT: FINANCIALS */}
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 h-full flex flex-col">
-                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center border-b border-slate-100 pb-2">
-                        <LayoutGrid className="w-3.5 h-3.5 mr-1.5 text-blue-500" /> Tài Chính & Chi Phí
-                    </h3>
-                    
-                    {/* Big Numbers */}
-                    <div className="grid grid-cols-3 gap-3 mb-4">
-                        <MoneyInput label="Sell (Doanh thu)" name="sell" value={formData.sell} onChange={handleMoneyChange} readOnly={isViewMode} />
-                        <MoneyInput label="Cost (Chi phí)" name="cost" value={formData.cost} onChange={handleMoneyChange} readOnly={isViewMode} />
-                        <MoneyInput label="Profit (Lãi)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly className="font-black text-green-600 bg-green-50" />
-                    </div>
-
-                    {/* Breakdown */}
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex-1">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2">Chi tiết Cost</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                            <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
-                            <div className="relative">
-                                <MoneyInput label="Phí Kimberry (Auto)" name="feeKimberry" value={formData.feeKimberry} onChange={handleMoneyChange} readOnly={true} className="bg-slate-100 text-slate-500" />
-                            </div>
-                            <MoneyInput label="Phí PSC" name="feePsc" value={formData.feePsc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                            <MoneyInput label="Phí EMC" name="feeEmc" value={formData.feeEmc} onChange={handleMoneyChange} readOnly={isViewMode} />
-                            <MoneyInput label="Phí khác" name="feeOther" value={formData.feeOther} onChange={handleMoneyChange} readOnly={isViewMode} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <Label>Khách Hàng (Mã)</Label>
+                            <CustomerInput 
+                                value={formData.customerId} 
+                                onChange={handleCustomerChange} 
+                                customers={customers}
+                                readOnly={isViewMode}
+                                placeholder="Nhập mã hoặc tên KH"
+                                onAddClick={() => setIsCustomerModalOpen(true)}
+                            />
+                        </div>
+                        <div>
+                            <Label>Tên Công Ty (Tự động)</Label>
+                            <Input value={formData.customerName} readOnly className="bg-slate-100 text-slate-600 font-medium" />
                         </div>
                     </div>
                 </div>
 
-                {/* RIGHT: REVENUE / PAYMENTS */}
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 h-full flex flex-col">
-                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center border-b border-slate-100 pb-2">
-                        <DollarSign className="w-3.5 h-3.5 mr-1.5 text-green-600" /> Thu (Invoices)
-                    </h3>
+                {/* 2. Tài chính & Container */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center mb-4 text-slate-800 font-bold text-sm uppercase tracking-wide border-b pb-2 border-slate-100">
+                            <DollarSign className="w-4 h-4 mr-2 text-blue-500" /> Tài chính (VND)
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 mb-4">
+                            <MoneyInput label="Cost (Giá mua)" name="cost" value={formData.cost} onChange={handleMoneyChange} readOnly={isViewMode} className="text-red-600" />
+                            <MoneyInput label="Sell (Giá bán)" name="sell" value={formData.sell} onChange={handleMoneyChange} readOnly={isViewMode} className="text-blue-600" />
+                            <MoneyInput label="Profit (Lợi nhuận)" name="profit" value={formData.profit} onChange={handleMoneyChange} readOnly={true} className={formData.profit >= 0 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <NumberStepper label="Container 20'" value={formData.cont20} onChange={(v) => handleMoneyChange('cont20', v)} readOnly={isViewMode} />
+                            <NumberStepper label="Container 40'" value={formData.cont40} onChange={(v) => handleMoneyChange('cont40', v)} readOnly={isViewMode} />
+                        </div>
+                    </div>
 
-                    <div className="space-y-3 flex-1">
-                        {/* Local Charge Box */}
-                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 relative">
-                            <div className="absolute top-2 right-2 text-[10px] font-bold text-slate-400 uppercase">Local Charge</div>
-                            <div className="grid grid-cols-2 gap-3 mt-1">
-                                {!isLongHoang && <div className="col-span-2"><Label>Invoice</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} placeholder="Số hóa đơn..." /></div>}
-                                
-                                <div><MoneyInput label="Amount" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode || isLongHoang} className="text-blue-700" /></div>
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center mb-4 text-slate-800 font-bold text-sm uppercase tracking-wide border-b pb-2 border-slate-100">
+                            <FileText className="w-4 h-4 mr-2 text-purple-500" /> Các loại phí (Cost)
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
+                            <MoneyInput label="Phí Kimberry" name="feeKimberry" value={formData.feeKimberry} onChange={handleMoneyChange} readOnly={true} className="bg-slate-100" />
+                            <MoneyInput label="Phí PSC" name="feePsc" value={formData.feePsc} onChange={handleMoneyChange} readOnly={isViewMode} />
+                            <MoneyInput label="Phí EMC" name="feeEmc" value={formData.feeEmc} onChange={handleMoneyChange} readOnly={isViewMode} />
+                            <div className="col-span-2">
+                                <MoneyInput label="Phí Khác" name="feeOther" value={formData.feeOther} onChange={handleMoneyChange} readOnly={isViewMode} />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Thanh toán & Hóa đơn */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Payment Out */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-red-400"></div>
+                        <div className="flex items-center mb-4 text-slate-800 font-bold text-sm uppercase tracking-wide border-b pb-2 border-slate-100 pl-2">
+                            Thanh toán Hãng tàu (Chi)
+                        </div>
+                        <div className="space-y-4 pl-2">
+                            <div className="grid grid-cols-2 gap-4">
+                                <MoneyInput label="Chi Payment" name="chiPayment" value={formData.chiPayment} onChange={handleMoneyChange} readOnly={isViewMode} />
+                                <MoneyInput label="Chi Cược" name="chiCuoc" value={formData.chiCuoc} onChange={handleMoneyChange} readOnly={isViewMode} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><Label>Ngày chi cược</Label><DateInput name="ngayChiCuoc" value={formData.ngayChiCuoc} onChange={handleChange} readOnly={isViewMode} /></div>
+                                <div><Label>Ngày chi hoàn</Label><DateInput name="ngayChiHoan" value={formData.ngayChiHoan} onChange={handleChange} readOnly={isViewMode} /></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Invoice In */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-green-400"></div>
+                        <div className="flex items-center mb-4 text-slate-800 font-bold text-sm uppercase tracking-wide border-b pb-2 border-slate-100 pl-2">
+                            Thu tiền Khách hàng (Thu)
+                        </div>
+                        <div className="space-y-4 pl-2">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><Label>Số Hóa đơn</Label><Input name="localChargeInvoice" value={formData.localChargeInvoice} onChange={handleChange} readOnly={isViewMode} placeholder="Số HĐ" /></div>
+                                <div><Label>Ngày Hóa đơn</Label><DateInput name="localChargeDate" value={formData.localChargeDate} onChange={handleChange} readOnly={isViewMode} /></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <MoneyInput label="Thực thu Local Charge" name="localChargeTotal" value={formData.localChargeTotal} onChange={handleMoneyChange} readOnly={isViewMode} className="font-bold text-green-600" />
                                 <div>
                                     <Label>Ngân hàng</Label>
                                     <Select name="bank" value={formData.bank} onChange={handleChange} disabled={isViewMode}>
-                                        <option value="">--</option>
+                                        <option value="">-- Chọn --</option>
                                         {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
                                     </Select>
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Deposit Box */}
-                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 relative">
-                            <div className="absolute top-2 right-2 text-[10px] font-bold text-slate-400 uppercase">Deposit (Cược)</div>
-                            <div className="grid grid-cols-2 gap-3 mt-1">
-                                <div className="col-span-2">
-                                    <Label>KH Cược</Label>
-                                    <CustomerInput 
-                                        value={formData.maKhCuocId} 
-                                        onChange={(val) => setFormData(prev => ({ ...prev, maKhCuocId: val }))} 
-                                        customers={customers} 
-                                        readOnly={isViewMode} 
-                                        placeholder="Mã KH..." 
-                                        className="h-9" 
-                                        onAddClick={() => handleOpenQuickAdd('DEPOSIT')}
-                                    />
-                                </div>
-                                <div><MoneyInput label="Tiền Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} className="text-orange-700" /></div>
-                                <div className="grid grid-cols-2 gap-1">
-                                    <div><Label>Ngày Cược</Label><DateInput name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} /></div>
-                                    <div><Label>Ngày Hoàn</Label><DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} /></div>
+                            <div className="pt-2 border-t border-slate-100 mt-2">
+                                <Label>Thu Cược (Deposit)</Label>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <MoneyInput name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} placeholder="Số tiền cược" />
+                                    <DateInput name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} />
+                                    <DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} />
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* 3. EXTENSIONS */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
-                    <h3 className="text-xs font-bold text-slate-700 uppercase flex items-center"><FileText className="w-3.5 h-3.5 mr-1.5 text-orange-500" /> Gia Hạn</h3>
-                    {!isViewMode && <button type="button" onClick={addExtension} className="text-[10px] flex items-center bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-200 hover:bg-orange-100"><Plus className="w-3 h-3 mr-1" /> Thêm</button>}
-                </div>
-                <div className="space-y-2">
-                    {(formData.extensions || []).map((ext) => (
-                        <div key={ext.id} className="grid grid-cols-12 gap-2 items-end bg-slate-50 p-2 rounded border border-slate-200">
-                            <div className="col-span-5">
-                                <Label>Khách hàng</Label>
-                                <CustomerInput 
-                                    value={ext.customerId} 
-                                    onChange={(val) => handleExtensionChange(ext.id, 'customerId', val)} 
-                                    customers={customers} 
-                                    readOnly={isViewMode} 
-                                    placeholder="Mã KH" 
-                                    className="h-8 text-xs" 
-                                    onAddClick={() => handleOpenQuickAdd('EXTENSION', ext.id)}
-                                />
-                            </div>
-                            <div className="col-span-3"><Label>Invoice</Label><Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode} className="h-8 text-xs" /></div>
-                            <div className="col-span-3"><Label>Amount</Label><input type="text" value={new Intl.NumberFormat('en-US').format(ext.total)} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val); }} readOnly={isViewMode} className="w-full px-2 py-1 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-orange-500 text-right font-bold text-orange-700 h-8" placeholder="0" /></div>
-                            <div className="col-span-1 flex justify-center">{!isViewMode && <button type="button" onClick={() => removeExtension(ext.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</div>
+                {/* 4. Extensions */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex justify-between items-center mb-4 border-b pb-2 border-slate-100">
+                        <div className="flex items-center text-slate-800 font-bold text-sm uppercase tracking-wide">
+                            <Copy className="w-4 h-4 mr-2 text-orange-500" /> Gia Hạn (Extensions)
                         </div>
-                    ))}
-                    {(!formData.extensions || formData.extensions.length === 0) && <div className="text-xs text-slate-400 italic text-center py-2">Chưa có phát sinh</div>}
+                        {!isViewMode && (
+                            <button type="button" onClick={addExtension} className="text-xs bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 font-bold flex items-center">
+                                <Plus className="w-3 h-3 mr-1" /> Thêm dòng
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div className="space-y-3">
+                        {(formData.extensions || []).map((ext, idx) => (
+                            <div key={ext.id} className="grid grid-cols-12 gap-3 items-center bg-slate-50 p-3 rounded-lg border border-slate-100 relative group">
+                                <div className="col-span-1 text-center text-xs font-bold text-slate-400">#{idx + 1}</div>
+                                <div className="col-span-3">
+                                    <Label>Số Hóa Đơn</Label>
+                                    <Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode} placeholder="Số HĐ" />
+                                </div>
+                                <div className="col-span-3">
+                                    <Label>Ngày Hóa Đơn</Label>
+                                    <DateInput name={`ext_date_${ext.id}`} value={ext.invoiceDate} onChange={(e) => handleExtensionChange(ext.id, 'invoiceDate', e.target.value)} readOnly={isViewMode} />
+                                </div>
+                                <div className="col-span-4">
+                                    <Label>Tổng Tiền (Total)</Label>
+                                    <MoneyInput name={`ext_total_${ext.id}`} value={ext.total} onChange={(n, v) => handleExtensionChange(ext.id, 'total', v)} readOnly={isViewMode} className="text-orange-600" />
+                                </div>
+                                {!isViewMode && (
+                                    <button type="button" onClick={() => removeExtension(ext.id)} className="absolute -right-2 -top-2 bg-white border border-slate-200 rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100 transition-all">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                        {(formData.extensions || []).length === 0 && (
+                            <div className="text-center py-6 text-slate-400 text-xs italic border-2 border-dashed border-slate-100 rounded-lg">
+                                Chưa có thông tin gia hạn
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
 
-            {/* Footer */}
-            <div className="flex justify-end space-x-3 pt-3 sticky bottom-0 bg-white/95 backdrop-blur py-3 border-t border-slate-100 -mx-5 -mb-5 px-5 rounded-b-2xl">
-              <button type="button" onClick={onClose} className="px-4 py-2 bg-white text-slate-600 border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50">Đóng</button>
-              {isViewMode ? (
-                <button type="button" onClick={handleEditClick} className="px-4 py-2 bg-blue-900 text-white rounded-lg text-xs font-bold hover:bg-blue-800 flex items-center"><Edit2 className="w-3.5 h-3.5 mr-1.5" /> Sửa</button>
-              ) : (
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center"><Save className="w-3.5 h-3.5 mr-1.5" /> Lưu</button>
-              )}
-            </div>
-
-          </form>
+            </form>
         </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-white border-t border-slate-200 rounded-b-2xl flex justify-end space-x-3 shrink-0">
+            <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
+                {isViewMode ? 'Đóng' : 'Hủy bỏ'}
+            </button>
+            {!isViewMode && (
+                <button type="submit" form="jobForm" className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100">
+                    <Save className="w-4 h-4 mr-2" /> Lưu Job
+                </button>
+            )}
+        </div>
+
       </div>
 
-      {/* CUSTOMER MODAL FOR QUICK ADD */}
-      <CustomerModal 
-          isOpen={!!quickAddTarget} 
-          onClose={() => setQuickAddTarget(null)} 
-          onSave={handleSaveQuickCustomer} 
-      />
+      {isCustomerModalOpen && (
+          <CustomerModal 
+             isOpen={isCustomerModalOpen} 
+             onClose={() => setIsCustomerModalOpen(false)} 
+             onSave={handleAddNewCustomer} 
+          />
+      )}
     </div>,
     document.body
   );

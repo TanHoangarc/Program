@@ -270,8 +270,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               const isDeposit = r.desc && r.desc.includes('CƯỢC CONT BL');
               const tkCo = isDeposit ? '1388' : '13111';
               
-              // Main row
-              rows.push({ ...r, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
+              // Main row - ADDED jobId: r.id
+              rows.push({ ...r, jobId: r.id, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
 
               // Additional rows for custom receipts
               if (r.additionalReceipts && Array.isArray(r.additionalReceipts)) {
@@ -282,7 +282,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                           const arTkCo = arIsDeposit ? '1388' : '13111';
                           
                           rows.push({
-                              jobId: r.id,
+                              jobId: r.id, // Link back to the custom receipt
                               type: 'external',
                               rowId: `custom-add-${ar.id}`,
                               date: ar.date,
@@ -645,20 +645,23 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // MODE THU
       if (mode === 'thu') {
           if (row.type === 'external') {
-               // Load FULL Receipt object from state to get additionalReceipts
-               const fullReceipt = customReceipts.find(r => r.id === row.jobId);
+               // Load FULL Receipt object using row.jobId (which is the Receipt ID)
+               // Fallback to row.id if jobId missing (e.g. legacy data)
+               const receiptId = row.jobId || row.id;
+               const fullReceipt = customReceipts.find(r => r.id === receiptId);
                
                const dummyJob = { 
                    ...INITIAL_JOB, 
-                   id: row.id, 
+                   id: fullReceipt ? fullReceipt.id : receiptId, 
                    jobCode: 'THU-KHAC', 
-                   localChargeDate: row.date, 
-                   amisLcDocNo: row.docNo, 
-                   amisLcDesc: row.desc,
-                   localChargeTotal: row.amount,
-                   customerId: row.objCode,
-                   customerName: row.objName,
-                   additionalReceipts: fullReceipt?.additionalReceipts || [] // Load back additional receipts
+                   localChargeDate: fullReceipt ? fullReceipt.date : row.date, 
+                   amisLcDocNo: fullReceipt ? fullReceipt.docNo : row.docNo, 
+                   amisLcDesc: fullReceipt ? fullReceipt.desc : row.desc,
+                   localChargeTotal: fullReceipt ? fullReceipt.amount : row.amount,
+                   localChargeInvoice: fullReceipt ? fullReceipt.invoice : (row.invoice || ''), // Ensure invoice is loaded
+                   customerId: fullReceipt ? fullReceipt.objCode : row.objCode,
+                   customerName: fullReceipt ? fullReceipt.objName : row.objName,
+                   additionalReceipts: fullReceipt?.additionalReceipts || [] // Ensure additional receipts are passed
                };
                setQuickReceiveJob(dummyJob);
                setQuickReceiveMode('other');
@@ -1172,7 +1175,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                           objCode: finalObjCode, 
                           objName: updatedJob.customerName, 
                           desc: updatedJob.amisLcDesc, 
-                          amount: updatedJob.localChargeTotal,
+                          amount: updatedJob.amisLcAmount !== undefined ? updatedJob.amisLcAmount : updatedJob.localChargeTotal, // FIX: Use amisLcAmount priority
+                          invoice: updatedJob.localChargeInvoice, // FIX: Save Invoice Number
                           additionalReceipts: updatedJob.additionalReceipts // SAVE ADDITIONAL RECEIPTS
                       };
                       const exists = customReceipts.findIndex(r => r.id === updatedJob.id);

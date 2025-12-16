@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
@@ -84,21 +84,26 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<JobData>(job);
   const [otherSubMode, setOtherSubMode] = useState<'local' | 'deposit'>('local');
+  
+  // New state for Invoice/BL toggle
+  const [invoiceInputMode, setInvoiceInputMode] = useState<'invoice' | 'bl'>('invoice');
 
   // Fields for Main Receipt (Lần 1)
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
   const [amisAmount, setAmisAmount] = useState(0); // This overrides the total if set
+  const [amisDate, setAmisDate] = useState(''); // Separate date for Main Receipt
 
   // Fields for Extension Logic
   const [newExtension, setNewExtension] = useState({
     customerId: '',
     invoice: '',
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toISOString().split('T')[0], // Invoice Date
     total: 0,
     amisDocNo: '',
     amisDesc: '',
-    amisAmount: 0
+    amisAmount: 0,
+    amisDate: '' // Receipt Date
   });
   
   const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
@@ -171,6 +176,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   useEffect(() => {
       if (isOpen && mode === 'other') {
           setOtherSubMode('local');
+          setInvoiceInputMode('invoice'); // Reset to Invoice mode on open
       }
   }, [isOpen, mode]);
 
@@ -213,6 +219,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       if (mode === 'local') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
+          setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
           
           if (deepCopyJob.amisLcDesc) {
              setAmisDesc(deepCopyJob.amisLcDesc);
@@ -225,16 +232,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'other') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
+          setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
           const inv = deepCopyJob.localChargeInvoice || 'XXX';
           setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
       }
       else if (mode === 'deposit') {
           setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisDepositAmount !== undefined ? deepCopyJob.amisDepositAmount : (deepCopyJob.thuCuoc || 0));
+          setAmisDate(deepCopyJob.ngayThuCuoc || new Date().toISOString().split('T')[0]);
           setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
       } 
       else if (mode === 'deposit_refund') {
           setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC')); 
+          setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
           setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
           setAmisAmount(deepCopyJob.thuCuoc || 0); 
       }
@@ -263,7 +273,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 total: targetExt.total || 0,
                 amisDocNo: targetExt.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
                 amisDesc: targetExt.amisDesc || defaultDesc,
-                amisAmount: targetExt.amisAmount !== undefined ? targetExt.amisAmount : (targetExt.total || 0)
+                amisAmount: targetExt.amisAmount !== undefined ? targetExt.amisAmount : (targetExt.total || 0),
+                amisDate: targetExt.invoiceDate || new Date().toISOString().split('T')[0] // Default receipt date to invoice date
              });
           } else {
              setInternalTargetId(null);
@@ -274,7 +285,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                total: 0,
                amisDocNo: generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
                amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${deepCopyJob.jobCode} (KIM)`,
-               amisAmount: 0
+               amisAmount: 0,
+               amisDate: new Date().toISOString().split('T')[0]
              });
           }
       }
@@ -283,9 +295,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   const handleOtherSubModeChange = (subMode: 'local' | 'deposit') => {
       setOtherSubMode(subMode);
-      
       const invPlaceholder = formData.localChargeInvoice || 'XXX';
-      
       if (subMode === 'deposit') {
           setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
       } else {
@@ -294,55 +304,35 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const getDisplayValues = () => {
-      let tkNo = '1121';
-      let tkCo = '';
-      let currentDate = '';
-      let currentTotalReceivable = 0; // The invoice amount
-      let currentMainAmount = 0; // The amount paid in first receipt
+      let currentTotalReceivable = 0; // Total Debt
       let currentCustomer = '';
       let currentInvoice = '';
 
       if (mode === 'local') {
           currentInvoice = formData.localChargeInvoice || '';
-          tkCo = '13111';
-          currentDate = formData.localChargeDate || '';
           currentTotalReceivable = formData.localChargeTotal || 0;
-          currentMainAmount = amisAmount;
           currentCustomer = formData.customerId || '';
       } else if (mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
-          tkCo = otherSubMode === 'deposit' ? '1388' : '13111';
-          currentDate = formData.localChargeDate || '';
           currentTotalReceivable = formData.localChargeTotal || 0;
-          currentMainAmount = amisAmount;
           currentCustomer = formData.customerId || '';
       } else if (mode === 'deposit') {
-          tkCo = '1388';
-          currentDate = formData.ngayThuCuoc || '';
           currentTotalReceivable = formData.thuCuoc || 0;
-          currentMainAmount = amisAmount;
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A'; 
       } else if (mode === 'deposit_refund') {
-          tkNo = '1388'; 
-          tkCo = '1121'; 
-          currentDate = formData.ngayThuHoan || new Date().toISOString().split('T')[0];
           currentTotalReceivable = formData.thuCuoc || 0; 
-          currentMainAmount = amisAmount;
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A';
       } else if (mode === 'extension') {
           currentInvoice = newExtension.invoice;
-          tkCo = '13111';
-          currentDate = newExtension.date;
           currentTotalReceivable = newExtension.total;
-          currentMainAmount = newExtension.amisAmount;
           currentCustomer = newExtension.customerId;
       }
 
       const customerName = customers.find(c => c.id === currentCustomer || c.code === currentCustomer)?.name || '';
 
-      return { tkNo, tkCo, currentDate, currentTotalReceivable, currentMainAmount, currentCustomer, customerName, currentInvoice };
+      return { currentTotalReceivable, currentCustomer, customerName, currentInvoice };
   };
 
   const display = getDisplayValues();
@@ -358,9 +348,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       return false;
   });
 
+  const currentMainAmount = mode === 'extension' ? newExtension.amisAmount : amisAmount;
   const totalPaidAdditional = relevantAdditionalReceipts.reduce((sum, r) => sum + r.amount, 0);
-  const hasMainReceipt = mode === 'extension' ? !!newExtension.amisDocNo : (mode === 'deposit' ? !!amisDocNo : (mode === 'local' ? !!amisDocNo : !!amisDocNo));
-  const totalCollected = (hasMainReceipt ? display.currentMainAmount : 0) + totalPaidAdditional;
+  const totalCollected = currentMainAmount + totalPaidAdditional;
   const remaining = display.currentTotalReceivable - totalCollected;
 
   const handleAmountChange = (val: number) => {
@@ -368,11 +358,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else setAmisAmount(val);
   };
 
-  const handleDateChange = (val: string) => {
-      if (mode === 'local' || mode === 'other') setFormData(prev => ({ ...prev, localChargeDate: val }));
-      else if (mode === 'deposit') setFormData(prev => ({ ...prev, ngayThuCuoc: val }));
-      else if (mode === 'deposit_refund') setFormData(prev => ({ ...prev, ngayThuHoan: val }));
-      else if (mode === 'extension') setNewExtension(prev => ({ ...prev, date: val }));
+  const handleMainDateChange = (val: string) => {
+      if (mode === 'extension') setNewExtension(prev => ({ ...prev, amisDate: val }));
+      else setAmisDate(val);
   };
 
   const handleCustomerChange = (val: string) => {
@@ -395,8 +383,29 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'extension') setNewExtension(prev => ({ ...prev, customerId: val }));
   };
 
-  const handleInvoiceChange = (val: string) => {
+  // Helper to update description specifically for Other Receipt modes
+  const updateOtherDescription = (val: string, inputMode: 'invoice' | 'bl') => {
       const invPlaceholder = val || 'XXX';
+      if (otherSubMode === 'deposit') {
+          setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
+      } else {
+          // Check Input Mode: Invoice vs BL
+          if (inputMode === 'bl') {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${invPlaceholder} (LH MB)`);
+          } else {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
+          }
+      }
+  };
+
+  const toggleInvoiceMode = () => {
+      const newMode = invoiceInputMode === 'invoice' ? 'bl' : 'invoice';
+      setInvoiceInputMode(newMode);
+      // Trigger description update immediately
+      updateOtherDescription(formData.localChargeInvoice || '', newMode);
+  };
+
+  const handleInvoiceChange = (val: string) => {
       
       if (mode === 'local') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
@@ -404,18 +413,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
       else if (mode === 'other') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
-          
-          if (otherSubMode === 'deposit') {
-              setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
-          } else {
-              setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
-          }
+          updateOtherDescription(val, invoiceInputMode);
       }
       else if (mode === 'extension') {
-          setNewExtension(prev => ({ 
-              ...prev, 
-              invoice: val
-          }));
+          setNewExtension(prev => ({ ...prev, invoice: val }));
           recalculateMerge(val, addedJobs);
       }
   };
@@ -426,13 +427,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const jobsForCalc = allJobs || [];
       const extra = usedDocNos || [];
       
-      // Calculate next Doc No, ensuring uniqueness from Main Doc No and other additionals
       const currentMainDoc = mode === 'extension' ? newExtension.amisDocNo : amisDocNo;
-      
-      // Ensure we treat all currently visible Doc Nos as "taken"
       const existingInSession = [currentMainDoc, ...additionalReceipts.map(r => r.docNo)].filter(Boolean);
       
-      // Pass combined taken list to generator
       const nextDoc = generateNextDocNo(jobsForCalc, 'NTTK', 5, [...extra, ...existingInSession]);
       
       setNewReceipt({
@@ -467,7 +464,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const finalReceipts = additionalReceipts;
+    // Save Dates logic: Main Receipt Date maps to specific fields
+    const finalDate = mode === 'extension' ? newExtension.amisDate : amisDate;
 
     if (mode === 'extension') {
       let updatedExtensions;
@@ -478,11 +476,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                       ...ext,
                       customerId: newExtension.customerId,
                       invoice: newExtension.invoice,
-                      invoiceDate: newExtension.date,
+                      invoiceDate: newExtension.date, // Invoice Date
                       total: newExtension.total, 
                       amisDocNo: newExtension.amisDocNo,
                       amisDesc: newExtension.amisDesc,
                       amisAmount: newExtension.amisAmount 
+                      // Note: We don't save amisDate to Job Data for extension directly yet unless we add a field
                   };
               }
               return ext;
@@ -495,8 +494,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               customerId: newExtension.customerId,
               invoice: newExtension.invoice,
               invoiceDate: newExtension.date,
-              net: 0, 
-              vat: 0,
+              net: 0, vat: 0,
               total: newExtension.total,
               amisDocNo: newExtension.amisDocNo,
               amisDesc: newExtension.amisDesc,
@@ -507,7 +505,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       onSave({ 
           ...formData, 
           extensions: updatedExtensions,
-          additionalReceipts: finalReceipts 
+          additionalReceipts: additionalReceipts 
         });
 
       if (addedJobs.length > 0) {
@@ -528,7 +526,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             amisLcDocNo: amisDocNo, 
             amisLcDesc: amisDesc,
             amisLcAmount: amisAmount,
-            additionalReceipts: finalReceipts
+            localChargeDate: amisDate, // Update Main Date
+            additionalReceipts: additionalReceipts
         });
 
         if (addedJobs.length > 0) {
@@ -547,7 +546,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             amisDepositDocNo: amisDocNo, 
             amisDepositDesc: amisDesc,
             amisDepositAmount: amisAmount,
-            additionalReceipts: finalReceipts
+            ngayThuCuoc: amisDate, // Update Main Date
+            additionalReceipts: additionalReceipts
         });
     }
     else if (mode === 'deposit_refund') {
@@ -555,14 +555,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             ...formData, 
             amisDepositRefundDocNo: amisDocNo, 
             amisDepositRefundDesc: amisDesc,
-            amisDepositRefundDate: formData.ngayThuHoan
+            amisDepositRefundDate: amisDate, // Update Refund Date
+            ngayThuHoan: amisDate
         });
     }
     
     onClose();
   };
 
-  // ... (Keep render logic same as before) ...
+  // ... (Customer filter)
   const filteredCustomers = customers.filter(c => 
       c.code.toLowerCase().includes(custInputVal.toLowerCase()) || 
       c.name.toLowerCase().includes(custInputVal.toLowerCase())
@@ -633,7 +634,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               total: 0,
               amisDocNo: generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
               amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${formData.jobCode} (KIM)`,
-              amisAmount: 0
+              amisAmount: 0,
+              amisDate: new Date().toISOString().split('T')[0]
           });
           const mainCust = customers.find(c => c.id === formData.customerId);
           setCustInputVal(mainCust ? mainCust.code : '');
@@ -655,7 +657,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               total: target.total,
               amisDocNo: target.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
               amisDesc: desc,
-              amisAmount: target.amisAmount !== undefined ? target.amisAmount : target.total
+              amisAmount: target.amisAmount !== undefined ? target.amisAmount : target.total,
+              amisDate: target.invoiceDate || new Date().toISOString().split('T')[0]
           });
           
           const extCustId = target.customerId || formData.customerId;
@@ -668,11 +671,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   const getTitle = () => {
     switch (mode) {
-        case 'local': return 'Phiếu Thu Tiền (Local Charge)';
-        case 'other': return 'Phiếu Thu Tiền (Thu Khác)';
-        case 'deposit': return 'Phiếu Thu Tiền (Cược)';
-        case 'deposit_refund': return 'Phiếu Chi Tiền (Hoàn Cược)';
-        case 'extension': return 'Phiếu Thu Tiền (Gia Hạn)';
+        case 'local': return 'Thu Tiền Local Charge';
+        case 'other': return 'Thu Tiền Khác';
+        case 'deposit': return 'Thu Tiền Cược';
+        case 'deposit_refund': return 'Chi Hoàn Cược';
+        case 'extension': return 'Thu Tiền Gia Hạn';
     }
   };
 
@@ -696,46 +699,14 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         </div>
 
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-6">
             
-            {/* THU KHÁC TYPE SWITCHER */}
-            {mode === 'other' && (
-                <div className="flex space-x-4 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <label className="flex items-center cursor-pointer">
-                        <input 
-                            type="radio" 
-                            name="otherSubMode" 
-                            value="local" 
-                            checked={otherSubMode === 'local'} 
-                            onChange={() => handleOtherSubModeChange('local')}
-                            className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                        />
-                        <span className="ml-2 text-sm font-medium text-slate-700 flex items-center">
-                            <FileText className="w-4 h-4 mr-1 text-blue-500" /> Thu Local Charge
-                        </span>
-                    </label>
-                    <label className="flex items-center cursor-pointer">
-                        <input 
-                            type="radio" 
-                            name="otherSubMode" 
-                            value="deposit" 
-                            checked={otherSubMode === 'deposit'} 
-                            onChange={() => handleOtherSubModeChange('deposit')}
-                            className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300"
-                        />
-                        <span className="ml-2 text-sm font-medium text-slate-700 flex items-center">
-                            <Anchor className="w-4 h-4 mr-1 text-purple-500" /> Thu Deposit (Cược)
-                        </span>
-                    </label>
-                </div>
-            )}
-
-            {/* EXTENSION SELECTOR */}
+            {/* 1. EXTENSION SELECTOR (IF MODE EXTENSION) */}
             {mode === 'extension' && (formData.extensions?.length || 0) > 0 && (
-                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm mb-4">
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm">
                     <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
                         <ChevronDown className="w-4 h-4" />
-                        Chọn dòng gia hạn để thu tiền
+                        Chọn dòng gia hạn
                     </div>
                     <select
                         className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
@@ -752,92 +723,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
-            {/* MAIN PAYMENT INFO */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative">
-                <div className="absolute top-4 right-4 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded">Lần 1 (Chính)</div>
-                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center">
-                    <Calendar className={`w-4 h-4 mr-2 ${mode === 'deposit_refund' ? 'text-red-600' : 'text-blue-600'}`} />
-                    Thông tin chứng từ
-                </h3>
-                <div className="grid grid-cols-2 gap-5">
-                    <div>
-                        <Label>Ngày Chứng Từ</Label>
-                        <DateInput 
-                            value={display.currentDate} 
-                            onChange={handleDateChange}
-                        />
-                    </div>
-                    <div>
-                        <Label>Số Chứng Từ (AMIS)</Label>
-                        <input 
-                            type="text" 
-                            value={mode === 'extension' ? newExtension.amisDocNo : amisDocNo}
-                            onChange={(e) => {
-                                if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value}));
-                                else setAmisDocNo(e.target.value);
-                            }}
-                            className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 ${mode === 'deposit_refund' ? 'text-red-800 focus:ring-red-500' : 'text-blue-800 focus:ring-blue-500'}`}
-                        />
-                    </div>
-                </div>
-
-                {mode !== 'deposit' && mode !== 'deposit_refund' && (
-                     <div className="mt-4">
-                        <Label>
-                            {mode === 'other' && otherSubMode === 'deposit' ? 'Số BL' : 'Số Hóa Đơn (Invoice)'}
-                        </Label>
-                        <input 
-                            type="text" 
-                            required
-                            value={display.currentInvoice} 
-                            onChange={(e) => handleInvoiceChange(e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder-slate-400"
-                            placeholder={mode === 'other' && otherSubMode === 'deposit' ? "Nhập số BL..." : "Nhập số hóa đơn..."}
-                        />
-                    </div>
-                )}
-            </div>
-
-            {/* --- ADD JOBS SECTION (LOCAL & EXTENSION) --- */}
-            {(mode === 'local' || mode === 'extension') && (
-                <div className={`p-5 rounded-xl border shadow-sm ${mode === 'local' ? 'bg-orange-50 border-orange-200' : 'bg-orange-50 border-orange-200'}`}>
-                    <h3 className={`text-sm font-bold mb-3 flex items-center ${mode === 'local' ? 'text-orange-800' : 'text-orange-800'}`}>
-                        <Plus className="w-4 h-4 mr-2" /> Gộp Job (Thu nhiều lô)
-                    </h3>
-                    <div className="flex gap-2 mb-3">
-                        <input 
-                            type="text" 
-                            value={searchJobCode}
-                            onChange={(e) => setSearchJobCode(e.target.value)}
-                            className={`flex-1 px-3 py-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 ${mode === 'local' ? 'border-orange-300 focus:ring-orange-500' : 'border-orange-300 focus:ring-orange-500'}`}
-                            placeholder="Nhập Job Code để thêm..."
-                        />
-                        <button 
-                            type="button" 
-                            onClick={handleAddJob}
-                            className={`text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center ${mode === 'local' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-orange-600 hover:bg-orange-700'}`}
-                        >
-                            <Search className="w-4 h-4 mr-1" /> Thêm
-                        </button>
-                    </div>
-                    {addedJobs.length > 0 && (
-                        <div className="space-y-2">
-                            {addedJobs.map((j) => (
-                                <div key={j.id} className="flex justify-between items-center bg-white p-2 rounded-lg border border-orange-100 text-sm">
-                                    <div><span className="font-bold text-slate-700">{j.jobCode}</span></div>
-                                    <button type="button" onClick={() => handleRemoveAddedJob(j.id)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-4 h-4" /></button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
-
+            {/* 2. GENERAL INVOICE / DEBT INFO */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center">
-                    <User className="w-4 h-4 text-green-600 mr-2" />
-                    Đối tượng & Số tiền
+                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center uppercase tracking-wide">
+                    <User className="w-4 h-4 text-slate-500 mr-2" />
+                    Thông tin nợ (Invoice)
                 </h3>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
                         <div className="relative group">
                             <Label>Mã Đối Tượng</Label>
@@ -847,7 +739,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                 onChange={(e) => handleCustomerChange(e.target.value)}
                                 onFocus={() => setShowSuggestions(true)}
                                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 placeholder="Nhập mã đối tượng..."
                                 autoComplete="off"
                             />
@@ -864,127 +756,198 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         </div>
                         <div>
                             <Label>Tên Đối Tượng</Label>
-                            <input type="text" value={display.customerName} readOnly className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-600 font-medium" />
+                            <input type="text" value={display.customerName} readOnly className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-600 font-medium" />
                         </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <Label>Tổng Phải Thu (Invoice)</Label>
-                        <div className="p-3 bg-slate-100 rounded-xl text-lg font-bold text-slate-600 text-right border border-slate-200">
-                            {new Intl.NumberFormat('en-US').format(display.currentTotalReceivable)}
+                    {mode !== 'deposit' && mode !== 'deposit_refund' && (
+                        <div className={mode === 'other' ? "col-span-2" : ""}>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <Label>{invoiceInputMode === 'bl' ? 'Số BL' : 'Số Hóa Đơn (Invoice)'}</Label>
+                                {mode === 'other' && otherSubMode !== 'deposit' && (
+                                    <button 
+                                        type="button" 
+                                        onClick={toggleInvoiceMode}
+                                        className="text-[10px] flex items-center gap-1 font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                                        title="Chuyển đổi giữa nhập số Invoice và số BL"
+                                    >
+                                        {invoiceInputMode === 'invoice' ? <ToggleLeft className="w-3.5 h-3.5 text-slate-400" /> : <ToggleRight className="w-3.5 h-3.5 text-blue-600" />}
+                                        {invoiceInputMode === 'invoice' ? 'Chế độ Invoice' : 'Chế độ BL'}
+                                    </button>
+                                )}
+                            </div>
+                            <input 
+                                type="text" 
+                                required
+                                value={display.currentInvoice} 
+                                onChange={(e) => handleInvoiceChange(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder-slate-400"
+                                placeholder={invoiceInputMode === 'bl' ? "Nhập số BL..." : "Nhập số hóa đơn..."}
+                            />
+                        </div>
+                    )}
+                    {mode !== 'other' && (
+                        <div className={mode === 'deposit' || mode === 'deposit_refund' ? "col-span-2" : ""}>
+                            <Label>Tổng Phải Thu (Debt)</Label>
+                            <div className="p-2.5 bg-slate-100 rounded-lg text-base font-bold text-slate-700 text-right border border-slate-200">
+                                {new Intl.NumberFormat('en-US').format(display.currentTotalReceivable)} VND
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* 3. MAIN PAYMENT RECEIPT (Lần 1) */}
+            <div className="bg-white rounded-xl border-2 border-blue-100 shadow-sm relative overflow-hidden">
+                <div className="bg-blue-50 px-5 py-3 border-b border-blue-100 flex justify-between items-center">
+                    <h3 className="text-sm font-bold text-blue-800 flex items-center uppercase">
+                        <Receipt className="w-4 h-4 mr-2" /> Phiếu Thu Lần 1 (Gốc)
+                    </h3>
+                    <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-bold">MAIN</span>
+                </div>
+                
+                <div className="p-5 space-y-4">
+                    <div className="grid grid-cols-2 gap-5">
+                        <div>
+                            <Label>Ngày Chứng Từ</Label>
+                            <DateInput 
+                                value={mode === 'extension' ? newExtension.amisDate : amisDate} 
+                                onChange={handleMainDateChange}
+                            />
+                        </div>
+                        <div>
+                            <Label>Số Chứng Từ (AMIS)</Label>
+                            <input 
+                                type="text" 
+                                value={mode === 'extension' ? newExtension.amisDocNo : amisDocNo}
+                                onChange={(e) => {
+                                    if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value}));
+                                    else setAmisDocNo(e.target.value);
+                                }}
+                                className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 ${mode === 'deposit_refund' ? 'text-red-800 focus:ring-red-500' : 'text-blue-800 focus:ring-blue-500'}`}
+                            />
                         </div>
                     </div>
+
                     <div>
-                        <Label>Thực thu (Lần 1)</Label>
+                        <Label>Số tiền thu (Lần 1)</Label>
                         <div className="relative">
                             <input 
                                 type="text" 
                                 required
-                                value={display.currentMainAmount ? new Intl.NumberFormat('en-US').format(display.currentMainAmount) : ''} 
+                                value={currentMainAmount ? new Intl.NumberFormat('en-US').format(currentMainAmount) : ''} 
                                 onChange={(e) => {
                                     const val = Number(e.target.value.replace(/,/g, ''));
                                     if (!isNaN(val)) handleAmountChange(val);
                                 }}
-                                className={`w-full pl-4 pr-14 py-3 bg-white border border-slate-300 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 text-right ${mode === 'deposit_refund' ? 'text-red-700 focus:ring-red-500' : 'text-blue-700 focus:ring-blue-500'}`}
+                                className={`w-full pl-4 pr-14 py-2.5 bg-white border border-slate-300 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 text-right ${mode === 'deposit_refund' ? 'text-red-700 focus:ring-red-500' : 'text-blue-700 focus:ring-blue-500'}`}
                                 placeholder="0"
                             />
                             <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">VND</span>
                         </div>
                     </div>
+
+                    <div>
+                        <Label>Diễn giải</Label>
+                        <textarea 
+                            value={mode === 'extension' ? newExtension.amisDesc : amisDesc}
+                            onChange={(e) => {
+                                if(mode === 'extension') setNewExtension(prev => ({...prev, amisDesc: e.target.value}));
+                                else setAmisDesc(e.target.value);
+                            }}
+                            rows={2}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center">
-                    <CreditCard className="w-4 h-4 text-purple-600 mr-2" />
-                    Hạch toán & Diễn giải
-                </h3>
-                
-                <div className="grid grid-cols-2 gap-5 mb-4">
-                    <div>
-                        <Label>TK Nợ</Label>
-                        <input type="text" value={display.tkNo} readOnly className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold text-center text-slate-700" />
-                    </div>
-                    <div>
-                        <Label>TK Có</Label>
-                        <input type="text" value={display.tkCo} readOnly className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold text-center text-blue-700" />
-                    </div>
-                </div>
-
-                <div>
-                    <Label>Diễn giải lý do thu</Label>
-                    <textarea 
-                        value={mode === 'extension' ? newExtension.amisDesc : amisDesc}
-                        onChange={(e) => {
-                            if(mode === 'extension') setNewExtension(prev => ({...prev, amisDesc: e.target.value}));
-                            else setAmisDesc(e.target.value);
-                        }}
-                        rows={2}
-                        className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 ${mode === 'deposit_refund' ? 'focus:ring-red-500' : 'focus:ring-blue-500'}`}
-                    />
-                </div>
-            </div>
-
-            {/* --- ADDITIONAL RECEIPTS SECTION --- */}
+            {/* 4. ADDITIONAL RECEIPTS */}
             {mode !== 'deposit_refund' && (
-            <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-200 shadow-sm">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-sm font-bold text-emerald-800 flex items-center">
-                        <History className="w-4 h-4 mr-2" /> Các lần thu thêm (Partial Payment)
+            <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
+                        <History className="w-4 h-4 mr-2" /> Các lần thu thêm (Additional)
                     </h3>
                     {!isAddingReceipt && (
-                        <button type="button" onClick={handleAddNewReceipt} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 font-bold flex items-center">
-                            <Plus className="w-3 h-3 mr-1" /> Thêm lần thu
+                        <button type="button" onClick={handleAddNewReceipt} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 font-bold flex items-center shadow-sm">
+                            <Plus className="w-3 h-3 mr-1" /> Thêm phiếu
                         </button>
                     )}
                 </div>
 
-                {relevantAdditionalReceipts.length > 0 && (
-                    <div className="space-y-2 mb-3">
-                        {relevantAdditionalReceipts.map((rcpt, idx) => (
-                            <div key={rcpt.id} className="bg-white p-3 rounded-lg border border-emerald-100 flex justify-between items-center text-sm shadow-sm">
-                                <div>
-                                    <div className="font-bold text-slate-700">{rcpt.docNo} - <span className="text-emerald-600">{new Intl.NumberFormat('en-US').format(rcpt.amount)} VND</span></div>
-                                    <div className="text-xs text-slate-500">{formatDateVN(rcpt.date)} - {rcpt.desc}</div>
-                                </div>
-                                <button type="button" onClick={() => handleDeleteReceipt(rcpt.id)} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+                {/* List of Additional Receipts */}
+                <div className="space-y-3">
+                    {relevantAdditionalReceipts.map((rcpt, idx) => (
+                        <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition-shadow relative">
+                            <div className="absolute top-3 right-3 flex items-center gap-2">
+                                <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded">Phiếu #{idx + 2}</span>
+                                <button type="button" onClick={() => handleDeleteReceipt(rcpt.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                             </div>
-                        ))}
-                    </div>
-                )}
+                            <div className="grid grid-cols-2 gap-4 mb-2">
+                                <div>
+                                    <span className="block text-[10px] text-slate-400 font-bold uppercase">Ngày CT</span>
+                                    <span className="text-sm font-medium text-slate-700">{formatDateVN(rcpt.date)}</span>
+                                </div>
+                                <div>
+                                    <span className="block text-[10px] text-slate-400 font-bold uppercase">Số CT</span>
+                                    <span className="text-sm font-bold text-slate-800">{rcpt.docNo}</span>
+                                </div>
+                            </div>
+                            <div className="mb-2">
+                                <span className="block text-[10px] text-slate-400 font-bold uppercase">Số tiền</span>
+                                <span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('en-US').format(rcpt.amount)} VND</span>
+                            </div>
+                            <div>
+                                <span className="block text-[10px] text-slate-400 font-bold uppercase">Diễn giải</span>
+                                <p className="text-xs text-slate-600 truncate">{rcpt.desc}</p>
+                            </div>
+                        </div>
+                    ))}
+                    
+                    {relevantAdditionalReceipts.length === 0 && !isAddingReceipt && (
+                        <div className="text-center py-4 text-slate-400 text-xs italic border-2 border-dashed border-emerald-100 rounded-xl">
+                            Chưa có phiếu thu thêm nào
+                        </div>
+                    )}
+                </div>
 
                 {/* Add Receipt Form */}
                 {isAddingReceipt && (
-                    <div className="bg-white p-4 rounded-lg border-2 border-emerald-200 animate-in zoom-in-95">
+                    <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg">
                         <div className="grid grid-cols-2 gap-3 mb-3">
                             <div><Label>Ngày</Label><DateInput value={newReceipt.date || ''} onChange={(val) => setNewReceipt(prev => ({...prev, date: val}))} /></div>
-                            <div><Label>Số chứng từ</Label><input type="text" value={newReceipt.docNo} onChange={e => setNewReceipt(prev => ({...prev, docNo: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold" /></div>
+                            <div><Label>Số chứng từ</Label><input type="text" value={newReceipt.docNo} onChange={e => setNewReceipt(prev => ({...prev, docNo: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
                         </div>
                         <div className="mb-3"><Label>Số tiền</Label>
                             <input 
                                 type="text" 
                                 value={newReceipt.amount ? new Intl.NumberFormat('en-US').format(newReceipt.amount) : ''} 
                                 onChange={e => { const val = Number(e.target.value.replace(/,/g, '')); if(!isNaN(val)) setNewReceipt(prev => ({...prev, amount: val})); }} 
-                                className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-right" 
+                                className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-right text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none" 
                             />
                         </div>
                         <div className="mb-3"><Label>Diễn giải</Label><input type="text" value={newReceipt.desc} onChange={e => setNewReceipt(prev => ({...prev, desc: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
                         <div className="flex justify-end gap-2">
-                            <button type="button" onClick={() => setIsAddingReceipt(false)} className="text-xs px-3 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold">Hủy</button>
-                            <button type="button" onClick={handleSaveNewReceipt} className="text-xs px-3 py-2 bg-emerald-600 text-white rounded-lg font-bold">Lưu dòng</button>
+                            <button type="button" onClick={() => setIsAddingReceipt(false)} className="text-xs px-3 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Hủy</button>
+                            <button type="button" onClick={handleSaveNewReceipt} className="text-xs px-3 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Lưu phiếu</button>
                         </div>
                     </div>
                 )}
 
                 {/* Summary */}
-                <div className="flex justify-between items-center text-xs font-bold pt-2 border-t border-emerald-200 mt-2">
-                    <span className="text-emerald-800">Tổng đã thu (Lần 1 + Thêm):</span>
-                    <span className={remaining === 0 ? "text-green-600" : "text-slate-600"}>{new Intl.NumberFormat('en-US').format(totalCollected)}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs font-bold pt-1">
-                    <span className="text-emerald-800">Còn lại:</span>
-                    <span className="text-red-600">{new Intl.NumberFormat('en-US').format(remaining)}</span>
+                <div className="mt-4 pt-3 border-t border-emerald-200/60">
+                    <div className="flex justify-between items-center text-sm mb-1">
+                        <span className="text-emerald-900 font-medium">Tổng thực thu (Lần 1 + Thêm):</span>
+                        <span className="text-emerald-700 font-bold">{new Intl.NumberFormat('en-US').format(totalCollected)} VND</span>
+                    </div>
+                    {mode !== 'other' && (
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 font-medium">Còn lại phải thu:</span>
+                            <span className={`font-bold ${remaining > 0 ? 'text-red-500' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(remaining)} VND</span>
+                        </div>
+                    )}
                 </div>
             </div>
             )}

@@ -1,12 +1,12 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // Import createPortal
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw, AlertCircle, AlertTriangle } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine, INITIAL_JOB } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
-import { calculateBookingSummary, getPaginationRange, formatDateVN } from '../utils';
+import { calculateBookingSummary, getPaginationRange, formatDateVN, calculatePaymentStatus } from '../utils';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx';
 
@@ -453,11 +453,22 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   const isLongHoang = custName.includes('long hoàng') || custName.includes('long hoang') || custName.includes('lhk') || custName.includes('longhoang');
                   const missingInvoice = !job.localChargeInvoice && !isLongHoang;
                   const missingBank = !job.bank;
+                  
+                  // Payment Status Check
+                  const paymentStatus = calculatePaymentStatus(job);
+                  const hasPaymentMismatch = paymentStatus.hasMismatch;
 
                   return (
                   <tr key={job.id} className="hover:bg-white/40 cursor-pointer group transition-colors" onClick={(e) => handleRowClick(job, e)}>
                     <td className="px-6 py-4 text-slate-500">T{job.month}</td>
-                    <td className="px-6 py-4 font-bold text-teal-700">{job.jobCode}</td>
+                    <td className="px-6 py-4 font-bold text-teal-700 relative">
+                        {job.jobCode}
+                        {hasPaymentMismatch && (
+                            <span className="absolute -right-2 top-3" title="Thanh toán không khớp (Thiếu/Dư)">
+                                <AlertTriangle className="w-4 h-4 text-yellow-500 fill-yellow-100" />
+                            </span>
+                        )}
+                    </td>
                     <td className="px-6 py-4 text-slate-700 font-medium">
                       <div>{job.customerName}</div>
                       {job.hbl && <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-orange-100/50 text-orange-700 mt-1 border border-orange-200/50">{job.hbl}</span>}

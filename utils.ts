@@ -144,3 +144,73 @@ export const generateNextDocNo = (jobs: JobData[], prefix: string, padding: numb
   const nextNum = max + 1;
   return `${prefix}${String(nextNum).padStart(padding, '0')}`;
 };
+
+// --- PAYMENT STATUS CALCULATION ---
+export interface PaymentStatus {
+  lcDiff: number;
+  depositDiff: number;
+  hasMismatch: boolean;
+  totalCollectedLC: number;
+  totalCollectedDeposit: number;
+}
+
+export const calculatePaymentStatus = (job: JobData): PaymentStatus => {
+  // EXCLUSION LOGIC:
+  // 1. Customer is LONG HOANG LOGISTICS (or variations like LHK)
+  // 2. Bank is TCB Bank
+  const custName = (job.customerName || '').toUpperCase();
+  const isLongHoang = custName.includes('LONG HOANG') || custName.includes('LONGHOANG') || custName.includes('LHK');
+  const isTCB = job.bank === 'TCB Bank';
+
+  if (isLongHoang || isTCB) {
+      return {
+          lcDiff: 0,
+          depositDiff: 0,
+          hasMismatch: false,
+          totalCollectedLC: 0,
+          totalCollectedDeposit: 0
+      };
+  }
+
+  // 1. Local Charge
+  // Expected: localChargeTotal
+  // Collected: amisLcAmount (Lần 1) + Additional Receipts (type='local' or type='other')
+  const lcExpected = job.localChargeTotal || 0;
+  
+  // Nếu chưa có DocNo thì coi như chưa thu lần 1 -> amisLcAmount = 0
+  const lcMain = job.amisLcDocNo ? (job.amisLcAmount !== undefined ? job.amisLcAmount : job.localChargeTotal) : 0;
+  
+  const lcAdditional = (job.additionalReceipts || [])
+    .filter(r => r.type === 'local') // 'other' thường map vào local charge trong ngữ cảnh này
+    .reduce((sum, r) => sum + r.amount, 0);
+    
+  const totalCollectedLC = lcMain + lcAdditional;
+  const lcDiff = totalCollectedLC - lcExpected;
+
+  // 2. Deposit
+  // Expected: thuCuoc
+  // Collected: amisDepositAmount (Lần 1) + Additional Receipts (type='deposit')
+  const depositExpected = job.thuCuoc || 0;
+  
+  const depositMain = job.amisDepositDocNo ? (job.amisDepositAmount !== undefined ? job.amisDepositAmount : job.thuCuoc) : 0;
+  
+  const depositAdditional = (job.additionalReceipts || [])
+    .filter(r => r.type === 'deposit')
+    .reduce((sum, r) => sum + r.amount, 0);
+
+  const totalCollectedDeposit = depositMain + depositAdditional;
+  const depositDiff = totalCollectedDeposit - depositExpected;
+
+  // Logic: Mismatch exists if Diff != 0 AND (Expected > 0 OR Collected > 0)
+  // We ignore cases where both are 0.
+  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && lcDiff !== 0;
+  const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && depositDiff !== 0;
+
+  return {
+    lcDiff,
+    depositDiff,
+    hasMismatch: lcMismatch || depositMismatch,
+    totalCollectedLC,
+    totalCollectedDeposit
+  };
+};

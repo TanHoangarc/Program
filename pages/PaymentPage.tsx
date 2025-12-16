@@ -46,6 +46,7 @@ interface ConvertJobData {
         cont40: number;
         sell: number;
         cost: number;
+        amount: number; // NEW FIELD: Amount (Thực thu / Local Charge Total)
     }[];
 }
 
@@ -354,6 +355,12 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // CONVERT TO JOB MODAL HANDLERS
   // ============================================================
 
+  // Helper check Long Hoang
+  const isLongHoang = (name: string) => {
+      const n = (name || '').toLowerCase();
+      return n.includes('long hoàng') || n.includes('long hoang') || n.includes('lhk') || n.includes('longhoang');
+  };
+
   const handleOpenConvert = (req: PaymentRequest) => {
       setConvertData({
           month: new Date().getMonth() + 1 + '',
@@ -369,7 +376,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               cont20: 0, 
               cont40: 0, 
               sell: 0, 
-              cost: 0 
+              cost: 0,
+              amount: 0 
           }]
       });
       setIsConvertModalOpen(true);
@@ -386,7 +394,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               cont20: 0, 
               cont40: 0, 
               sell: 0, 
-              cost: 0 
+              cost: 0,
+              amount: 0
           }]
       }));
   };
@@ -401,7 +410,28 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const handleJobRowChange = (id: string, field: string, value: any) => {
       setConvertData(prev => ({
           ...prev,
-          jobRows: prev.jobRows.map(r => r.id === id ? { ...r, [field]: value } : r)
+          jobRows: prev.jobRows.map(r => {
+              if (r.id !== id) return r;
+              
+              const updatedRow = { ...r, [field]: value };
+
+              // LOGIC: Long Hoang Auto-fill
+              if (field === 'customerName' || field === 'customerId') {
+                  // If customer becomes Long Hoang, set amount = sell
+                  if (isLongHoang(updatedRow.customerName)) {
+                      updatedRow.amount = updatedRow.sell;
+                  }
+              }
+              
+              if (field === 'sell') {
+                  // If selling price changes AND it is Long Hoang, update amount
+                  if (isLongHoang(updatedRow.customerName)) {
+                      updatedRow.amount = value;
+                  }
+              }
+
+              return updatedRow;
+          })
       }));
   };
 
@@ -433,8 +463,14 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               sell: row.sell,
               cost: row.cost,
               profit: row.sell - row.cost,
+              localChargeTotal: row.amount, // Map Amount to Local Charge Total
           };
           
+          // Auto set bank if Long Hoang
+          if (isLongHoang(row.customerName)) {
+              newJob.bank = 'MB Bank';
+          }
+
           onAddJob(newJob);
           createdCount++;
       });
@@ -995,7 +1031,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       {/* MODAL: CONVERT PAYMENT TO JOB */}
       {isConvertModalOpen && createPortal(
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col border border-white/50 animate-in zoom-in-95">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col border border-white/50 animate-in zoom-in-95">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-orange-50 rounded-t-2xl">
                     <div className="flex items-center space-x-3">
@@ -1086,12 +1122,13 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase text-[10px]">
                                     <tr>
-                                        <th className="px-3 py-2 w-32">Job Code</th>
-                                        <th className="px-3 py-2 w-48">Khách hàng</th>
-                                        <th className="px-3 py-2 w-20 text-center">Cont 20</th>
-                                        <th className="px-3 py-2 w-20 text-center">Cont 40</th>
-                                        <th className="px-3 py-2 text-right">Sell (Doanh thu)</th>
-                                        <th className="px-3 py-2 text-right">Cost (Chi phí)</th>
+                                        <th className="px-3 py-2 w-48">Job Code</th>
+                                        <th className="px-3 py-2 flex-1">Khách hàng</th>
+                                        <th className="px-3 py-2 w-20 text-center">20'</th>
+                                        <th className="px-3 py-2 w-20 text-center">40'</th>
+                                        <th className="px-3 py-2 w-32 text-right">Sell</th>
+                                        <th className="px-3 py-2 w-32 text-right">Cost</th>
+                                        <th className="px-3 py-2 w-32 text-right">Amount</th>
                                         <th className="px-3 py-2 w-10 text-center"></th>
                                     </tr>
                                 </thead>
@@ -1111,7 +1148,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                 <div className="relative">
                                                     <input 
                                                         type="text" 
-                                                        list="customer-list"
+                                                        list={`customer-list-${row.id}`}
                                                         value={row.customerName}
                                                         onChange={(e) => {
                                                             const val = e.target.value;
@@ -1127,6 +1164,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                         placeholder="Chọn KH"
                                                         className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-medium text-slate-700"
                                                     />
+                                                    {/* Unique datalist for each row */}
+                                                    <datalist id={`customer-list-${row.id}`}>
+                                                        {customers.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
+                                                    </datalist>
                                                 </div>
                                             </td>
                                             <td className="px-3 py-2">
@@ -1167,6 +1208,17 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                     className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-right text-sm font-medium text-red-600"
                                                 />
                                             </td>
+                                            <td className="px-3 py-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={new Intl.NumberFormat('en-US').format(row.amount)}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value.replace(/,/g, ''));
+                                                        if(!isNaN(val)) handleJobRowChange(row.id, 'amount', val);
+                                                    }}
+                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-right text-sm font-bold text-green-600"
+                                                />
+                                            </td>
                                             <td className="px-3 py-2 text-center">
                                                 {convertData.jobRows.length > 1 && (
                                                     <button onClick={() => handleRemoveJobRow(row.id)} className="text-slate-300 hover:text-red-500 transition-colors">
@@ -1178,10 +1230,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                     ))}
                                 </tbody>
                             </table>
-                            {/* Datalist for Customer Selection */}
-                            <datalist id="customer-list">
-                                {customers.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
-                            </datalist>
                         </div>
                     </div>
 
@@ -1204,4 +1252,3 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     </div>
   );
 };
-
