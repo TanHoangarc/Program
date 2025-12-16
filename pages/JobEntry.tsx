@@ -463,11 +463,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                     <td className="px-6 py-4 text-slate-500">T{job.month}</td>
                     <td className="px-6 py-4 font-bold text-teal-700 relative">
                         {job.jobCode}
-                        {hasPaymentMismatch && (
-                            <span className="absolute -right-2 top-3" title="Thanh toán không khớp (Thiếu/Dư)">
-                                <AlertTriangle className="w-4 h-4 text-yellow-500 fill-yellow-100" />
-                            </span>
-                        )}
                     </td>
                     <td className="px-6 py-4 text-slate-700 font-medium">
                       <div>{job.customerName}</div>
@@ -494,6 +489,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                             {missingBank && (
                                 <div title="Chưa chọn ngân hàng">
                                     <AlertCircle className="w-4 h-4 text-pink-500" />
+                                </div>
+                            )}
+                            {hasPaymentMismatch && (
+                                <div title="Thanh toán không khớp (Dư/Thiếu)">
+                                    <AlertTriangle className="w-4 h-4 text-yellow-500 fill-yellow-100" />
                                 </div>
                             )}
                         </div>
@@ -570,3 +570,4 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     </div>
   );
 };
+
