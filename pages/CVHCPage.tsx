@@ -18,7 +18,7 @@ interface CVHCRow {
   customerId: string;
   amount: number;
   jobId?: string; // Link to actual job if found
-  previewUrl?: string; // Link blob xem trước trang cắt
+  previewUrl?: string; // Preview URL for PDF page
 }
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
@@ -96,19 +96,12 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
 
   const handlePageCountChange = (count: number) => {
       setPageCount(count);
-      // Generate rows based on count if user manually changes (though file select handles this usually)
-      if (rows.length !== count) {
-          const newRows: CVHCRow[] = [];
-          for(let i=0; i<count; i++) {
-              // Try to preserve existing data if resizing
-              if (i < rows.length) {
-                  newRows.push(rows[i]);
-              } else {
-                  newRows.push({ id: `page-${i}`, jobCode: '', customerName: '', customerId: '', amount: 0 });
-              }
-          }
-          setRows(newRows);
+      // Generate rows based on count
+      const newRows: CVHCRow[] = [];
+      for(let i=0; i<count; i++) {
+          newRows.push({ id: `page-${i}`, jobCode: '', customerName: '', customerId: '', amount: 0 });
       }
+      setRows(newRows);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -499,3 +492,4 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
     </div>
   );
 };
+
