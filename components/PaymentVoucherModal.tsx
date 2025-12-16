@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, User, FileText } from 'lucide-react';
-import { JobData, BookingSummary } from '../types';
+import { X, Save, DollarSign, Calendar, CreditCard, User, FileText, ChevronDown } from 'lucide-react';
+import { JobData, BookingSummary, BookingExtensionCost } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
 interface PaymentVoucherModalProps {
@@ -88,6 +88,49 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     tkCo: '1121'
   });
 
+  const [selectedExtensionId, setSelectedExtensionId] = useState<string>('');
+
+  // Get list of available extensions based on input (Job or Booking)
+  const availableExtensions = useMemo(() => {
+      if (type !== 'extension') return [];
+      
+      let list: BookingExtensionCost[] = [];
+      if (booking) {
+          list = booking.costDetails.extensionCosts || [];
+      } else if (job) {
+          // If viewing a single job, try to get extensions from its booking details first
+          // fallback to job specific extensions if structure differs
+          list = job.bookingCostDetails?.extensionCosts || [];
+      }
+      return list;
+  }, [booking, job, type]);
+
+  // Helper to generate description
+  const generateDescription = (prefix: string, specificInvoice?: string) => {
+      let jobCodes = '';
+      let bkNumber = '';
+
+      if (booking) {
+          jobCodes = booking.jobs.map(j => j.jobCode).filter(Boolean).join('+');
+          bkNumber = booking.bookingId;
+      } else if (job) {
+          bkNumber = job.booking;
+          if (allJobs && job.booking) {
+              const siblings = allJobs.filter(j => j.booking === job.booking);
+              if (siblings.length > 0) {
+                  jobCodes = siblings.map(j => j.jobCode).filter(Boolean).join('+');
+              } else {
+                  jobCodes = job.jobCode;
+              }
+          } else {
+              jobCodes = job.jobCode;
+          }
+      }
+      
+      const invoicePart = specificInvoice ? ` hóa đơn ${specificInvoice}` : '';
+      return `${prefix} ${jobCodes} BL ${bkNumber}${invoicePart} (kimberry)`;
+  };
+
   useEffect(() => {
     if (isOpen) {
       const today = new Date().toISOString().split('T')[0];
@@ -102,32 +145,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         amount: 0,
         tkNo: '3311', 
         tkCo: '1121'
-      };
-
-      // Helper to generate the specific description format
-      const generateDescription = (prefix: string) => {
-          let jobCodes = '';
-          let bkNumber = '';
-
-          if (booking) {
-              jobCodes = booking.jobs.map(j => j.jobCode).filter(Boolean).join('+');
-              bkNumber = booking.bookingId;
-          } else if (job) {
-              bkNumber = job.booking;
-              // Attempt to find siblings to create the joined string if "allJobs" is available
-              if (allJobs && job.booking) {
-                  const siblings = allJobs.filter(j => j.booking === job.booking);
-                  if (siblings.length > 0) {
-                      jobCodes = siblings.map(j => j.jobCode).filter(Boolean).join('+');
-                  } else {
-                      jobCodes = job.jobCode;
-                  }
-              } else {
-                  jobCodes = job.jobCode;
-              }
-          }
-          
-          return `${prefix} ${jobCodes} BL ${bkNumber} (kimberry)`;
       };
 
       if (type === 'local') {
@@ -202,8 +219,44 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       }
 
       setFormData(initialData);
+      setSelectedExtensionId(''); // Reset selection on open
     }
   }, [isOpen, job, booking, type, allJobs]);
+
+  // Handle Extension Selection
+  const handleSelectExtension = (extId: string) => {
+      setSelectedExtensionId(extId);
+      
+      if (!extId) {
+          // Revert to Total
+          if (booking) {
+              const total = booking.costDetails.extensionCosts.reduce((s,e) => s+e.total, 0);
+              setFormData(prev => ({ 
+                  ...prev, 
+                  amount: total,
+                  paymentContent: generateDescription("Chi tiền cho ncc GH lô")
+              }));
+          } else if (job) {
+              const total = (job.bookingCostDetails?.extensionCosts || []).reduce((s,e) => s+e.total, 0);
+              setFormData(prev => ({ 
+                  ...prev, 
+                  amount: total,
+                  paymentContent: generateDescription("Chi tiền cho ncc GH lô")
+              }));
+          }
+          return;
+      }
+
+      // Pick Specific Extension
+      const targetExt = availableExtensions.find(e => e.id === extId);
+      if (targetExt) {
+          setFormData(prev => ({
+              ...prev,
+              amount: targetExt.total,
+              paymentContent: generateDescription("Chi tiền cho ncc GH lô", targetExt.invoice)
+          }));
+      }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -248,6 +301,28 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
             <form onSubmit={handleSubmit} className="space-y-5">
                 
+                {/* Extension Selector - Only visible for 'extension' type */}
+                {type === 'extension' && availableExtensions.length > 0 && (
+                    <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
+                            <ChevronDown className="w-4 h-4" />
+                            Chọn phiếu gia hạn để chi
+                        </div>
+                        <select
+                            className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
+                            value={selectedExtensionId}
+                            onChange={(e) => handleSelectExtension(e.target.value)}
+                        >
+                            <option value="">-- Chi gộp tất cả ({new Intl.NumberFormat('en-US').format(availableExtensions.reduce((s,e)=>s+e.total, 0))} VND) --</option>
+                            {availableExtensions.map(ext => (
+                                <option key={ext.id} value={ext.id}>
+                                    [HĐ: {ext.invoice || 'Chưa có số'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND (Ngày: {formatDateVN(ext.date)})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                    <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
                        <Calendar className="w-4 h-4 mr-2 text-red-500" /> Thông tin chung
@@ -369,3 +444,4 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     document.body
   );
 };
+
