@@ -1019,4 +1019,3 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     document.body
   );
 };
-

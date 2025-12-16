@@ -499,4 +499,3 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
     </div>
   );
 };
-

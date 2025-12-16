@@ -675,7 +675,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                         </div>
                     </div>
                     <div className="md:col-span-4">
-                        <Label>Khách hàng</Label>
+                        <Label>Khách hàng (Mã KH)</Label>
                         <CustomerInput 
                             value={custCodeInput} 
                             onChange={handleCustomerInputChange} 
@@ -879,4 +879,3 @@ export const JobModal: React.FC<JobModalProps> = ({
     document.body
   );
 };
-

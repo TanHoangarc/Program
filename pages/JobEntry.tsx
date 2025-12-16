@@ -570,4 +570,3 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     </div>
   );
 };
-
