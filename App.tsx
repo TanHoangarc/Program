@@ -177,7 +177,8 @@ const App: React.FC = () => {
 
   // --- JOB HANDLERS WITH TRACKING ---
   const handleAddJob = (job: JobData) => {
-      setJobs([job, ...jobs]);
+      // Use functional update to ensure batch updates work correctly in loops
+      setJobs(prevJobs => [job, ...prevJobs]);
       setModifiedJobIds(prev => new Set(prev).add(job.id));
   };
 
@@ -824,3 +825,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
