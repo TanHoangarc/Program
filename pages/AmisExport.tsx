@@ -267,7 +267,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       customReceipts.forEach(r => {
           if (checkMonth(r.date)) {
               // Logic to determine TK Co for External receipts
-              const isDeposit = r.desc && r.desc.includes('CƯỢC CONT BL');
+              // Check description for keyword 'CƯỢC' or 'DEPOSIT' to assign 1388
+              const descUpper = (r.desc || '').toUpperCase();
+              const isDeposit = descUpper.includes('CƯỢC') || descUpper.includes('DEPOSIT') || r.type === 'deposit';
               const tkCo = isDeposit ? '1388' : '13111';
               
               // Main row - ADDED jobId: r.id
@@ -278,7 +280,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                   r.additionalReceipts.forEach((ar: any) => {
                       if (checkMonth(ar.date)) {
                           // Inherit deposit logic based on desc or type
-                          const arIsDeposit = ar.type === 'deposit' || (ar.desc && ar.desc.includes('CƯỢC CONT BL'));
+                          const arDescUpper = (ar.desc || '').toUpperCase();
+                          const arIsDeposit = ar.type === 'deposit' || arDescUpper.includes('CƯỢC');
                           const arTkCo = arIsDeposit ? '1388' : '13111';
                           
                           rows.push({
@@ -1237,3 +1240,4 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     </div>
   );
 };
+
