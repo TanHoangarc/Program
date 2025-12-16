@@ -175,10 +175,16 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   useEffect(() => {
       if (isOpen && mode === 'other') {
-          setOtherSubMode('local');
-          setInvoiceInputMode('invoice'); // Reset to Invoice mode on open
+          // Check existing description to determine mode if editing
+          const desc = job.amisLcDesc || '';
+          if (desc.includes('CƯỢC')) {
+              setOtherSubMode('deposit');
+          } else {
+              setOtherSubMode('local');
+          }
+          setInvoiceInputMode('invoice');
       }
-  }, [isOpen, mode]);
+  }, [isOpen, mode, job.amisLcDesc]);
 
   useEffect(() => {
     if (isOpen) {
@@ -234,7 +240,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
           setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
           const inv = deepCopyJob.localChargeInvoice || 'XXX';
-          setAmisDesc(deepCopyJob.amisLcDesc || `Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
+          // Use existing desc or default based on detected submode
+          if (deepCopyJob.amisLcDesc) {
+              setAmisDesc(deepCopyJob.amisLcDesc);
+          } else {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
+          }
       }
       else if (mode === 'deposit') {
           setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
@@ -296,10 +307,17 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleOtherSubModeChange = (subMode: 'local' | 'deposit') => {
       setOtherSubMode(subMode);
       const invPlaceholder = formData.localChargeInvoice || 'XXX';
+      
+      // CRITICAL: Update description keyword for AmisExport.tsx logic
       if (subMode === 'deposit') {
           setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
       } else {
-          setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
+          // If switching back to local/other, determine format
+          if (invoiceInputMode === 'bl') {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${invPlaceholder} (LH MB)`);
+          } else {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
+          }
       }
   };
 
@@ -406,7 +424,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const handleInvoiceChange = (val: string) => {
-      
       if (mode === 'local') {
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
           recalculateMerge(val, addedJobs);
@@ -723,6 +740,37 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
+            {/* TOGGLE OTHER MODE TYPE (REVENUE VS DEPOSIT) */}
+            {mode === 'other' && (
+                <div className="bg-slate-100 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className={`p-2 rounded-lg ${otherSubMode === 'deposit' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                            {otherSubMode === 'deposit' ? <Anchor className="w-5 h-5" /> : <DollarSign className="w-5 h-5" />}
+                        </div>
+                        <div>
+                            <Label>Phân loại thu khác</Label>
+                            <p className="text-xs text-slate-500">{otherSubMode === 'deposit' ? 'Thu tiền cược vỏ (Deposit)' : 'Thu tiền hàng / phí dịch vụ'}</p>
+                        </div>
+                    </div>
+                    <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => handleOtherSubModeChange('local')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${otherSubMode === 'local' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            Doanh Thu
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleOtherSubModeChange('deposit')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${otherSubMode === 'deposit' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            Thu Cược
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* 2. GENERAL INVOICE / DEBT INFO */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center uppercase tracking-wide">
@@ -971,3 +1019,4 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     document.body
   );
 };
+
