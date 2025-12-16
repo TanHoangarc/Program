@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
+import { formatDateVN } from '../utils';
 
 interface PaymentPageProps {
   lines: ShippingLine[];
@@ -610,7 +611,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // ============================================================
 
   const pendingList = requests.filter(r => r.status === "pending");
-  const completedList = requests.filter(r => r.status === "completed");
+  
+  // SORT COMPLETED LIST BY DATE DESCENDING
+  const completedList = requests
+    .filter(r => r.status === "completed")
+    .sort((a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime());
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat("vi-VN", {
@@ -934,6 +939,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               <tr>
                 <th className="px-6 py-3">Mã Line</th>
                 <th className="px-6 py-3">Booking</th>
+                <th className="px-6 py-3">Ngày TT</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
                 <th className="px-6 py-3 text-center">Loại chi</th>
                 <th className="px-6 py-3 text-center">UNC File</th>
@@ -948,6 +954,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
                   <td className="px-6 py-4">{getLineDisplay(req)}</td>
                   <td className="px-6 py-4">{req.booking}</td>
+                  <td className="px-6 py-4 text-slate-600 font-medium">
+                      {req.completedAt ? formatDateVN(req.completedAt.split('T')[0]) : '-'}
+                  </td>
                   <td className="px-6 py-4 text-right">{formatCurrency(req.amount)}</td>
                   
                   <td className="px-6 py-4 text-center">
@@ -1302,3 +1311,4 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     </div>
   );
 };
+
