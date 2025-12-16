@@ -292,7 +292,8 @@ const MoneyInput: React.FC<{
   label: string;
   readOnly?: boolean;
   className?: string;
-}> = ({ value, name, onChange, label, readOnly, className }) => {
+  rightElement?: React.ReactNode;
+}> = ({ value, name, onChange, label, readOnly, className, rightElement }) => {
   const [displayVal, setDisplayVal] = useState('');
 
   useEffect(() => {
@@ -310,14 +311,17 @@ const MoneyInput: React.FC<{
   return (
     <div className="w-full">
       <Label>{label}</Label>
-      <input
-        type="text"
-        value={displayVal}
-        onChange={handleChange}
-        readOnly={readOnly}
-        placeholder="0"
-        className={`w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-bold transition-all shadow-sm h-9 ${readOnly ? 'bg-slate-50 text-slate-600' : 'bg-white text-blue-700'} ${className || ''}`}
-      />
+      <div className="flex items-center gap-1">
+        <input
+            type="text"
+            value={displayVal}
+            onChange={handleChange}
+            readOnly={readOnly}
+            placeholder="0"
+            className={`w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-bold transition-all shadow-sm h-9 ${readOnly ? 'bg-slate-50 text-slate-600' : 'bg-white text-blue-700'} ${className || ''}`}
+        />
+        {rightElement}
+      </div>
     </div>
   );
 };
@@ -364,6 +368,7 @@ export const JobModal: React.FC<JobModalProps> = ({
   const [newLine, setNewLine] = useState('');
   
   const [isJobCodeCopied, setIsJobCodeCopied] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   
   // Quick Add Customer State
   const [quickAddTarget, setQuickAddTarget] = useState<{ type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string } | null>(null);
@@ -539,6 +544,12 @@ export const JobModal: React.FC<JobModalProps> = ({
       setIsJobCodeCopied(true);
       setTimeout(() => setIsJobCodeCopied(false), 2000);
     }
+  };
+
+  const handleCopyText = (text: string, fieldId: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldId);
+    setTimeout(() => setCopiedField(null), 1500);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -784,7 +795,36 @@ export const JobModal: React.FC<JobModalProps> = ({
                                         onAddClick={() => handleOpenQuickAdd('DEPOSIT')}
                                     />
                                 </div>
-                                <div><MoneyInput label="Tiền Cược" name="thuCuoc" value={formData.thuCuoc} onChange={handleMoneyChange} readOnly={isViewMode} className="text-orange-700" /></div>
+                                <div>
+                                    <MoneyInput 
+                                        label="Tiền Cược" 
+                                        name="thuCuoc" 
+                                        value={formData.thuCuoc} 
+                                        onChange={handleMoneyChange} 
+                                        readOnly={isViewMode} 
+                                        className="text-orange-700" 
+                                        rightElement={
+                                            <div className="flex gap-1">
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => handleCopyText(formData.thuCuoc.toString(), 'deposit-amt')}
+                                                    className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                                                    title="Copy số tiền"
+                                                >
+                                                    {copiedField === 'deposit-amt' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => handleCopyText(`PAYMENT HOAN CUOC BL ${formData.booking || formData.jobCode || ''} MST 0316113070`, 'deposit-txt')}
+                                                    className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                                                    title="Copy nội dung chuyển khoản"
+                                                >
+                                                    {copiedField === 'deposit-txt' ? <Check className="w-4 h-4 text-green-500" /> : <FileText className="w-4 h-4" />}
+                                                </button>
+                                            </div>
+                                        }
+                                    />
+                                </div>
                                 <div className="grid grid-cols-2 gap-1">
                                     <div><Label>Ngày Cược</Label><DateInput name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} /></div>
                                     <div><Label>Ngày Hoàn</Label><DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} /></div>
@@ -879,3 +919,4 @@ export const JobModal: React.FC<JobModalProps> = ({
     document.body
   );
 };
+
