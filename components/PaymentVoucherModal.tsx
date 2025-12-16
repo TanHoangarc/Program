@@ -198,22 +198,44 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           initialData.tkNo = '13111';
           initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
           
-          if (booking) {
-              const extTotal = booking.costDetails.extensionCosts.reduce((s,e) => s+e.total, 0);
-              initialData.amount = extTotal;
+          // Check if previous payment exists
+          const existingDoc = booking 
+            ? booking.jobs[0]?.amisExtensionPaymentDocNo
+            : job?.amisExtensionPaymentDocNo;
+            
+          const existingDesc = booking
+            ? booking.jobs[0]?.amisExtensionPaymentDesc
+            : job?.amisExtensionPaymentDesc;
+            
+          const existingDate = booking
+            ? booking.jobs[0]?.amisExtensionPaymentDate
+            : job?.amisExtensionPaymentDate;
+            
+          // PREFER SAVED AMOUNT if available, otherwise calculate total
+          const savedAmount = booking
+            ? booking.jobs.reduce((s, j) => s + (j.amisExtensionPaymentAmount || 0), 0) // Sum of parts if split, but usually it's one
+            : job?.amisExtensionPaymentAmount;
+
+          if (existingDoc) {
+              initialData.docNo = existingDoc;
+              initialData.paymentContent = existingDesc || '';
+              initialData.date = existingDate || today;
+          } else {
               initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
-              initialData.receiverName = booking.line;
-          } else if (job) {
-              const extTotal = (job.bookingCostDetails?.extensionCosts || []).reduce((s,e) => s+e.total, 0);
-              initialData.amount = extTotal;
-              initialData.receiverName = job.line;
-              
-              if (job.amisExtensionPaymentDocNo) {
-                  initialData.docNo = job.amisExtensionPaymentDocNo;
-                  initialData.paymentContent = job.amisExtensionPaymentDesc || '';
-                  initialData.date = job.amisExtensionPaymentDate || today;
-              } else {
-                  initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
+          }
+
+          if (savedAmount && savedAmount > 0) {
+              initialData.amount = savedAmount;
+          } else {
+              // Fallback to total cost
+              if (booking) {
+                  const extTotal = booking.costDetails.extensionCosts.reduce((s,e) => s+e.total, 0);
+                  initialData.amount = extTotal;
+                  initialData.receiverName = booking.line;
+              } else if (job) {
+                  const extTotal = (job.bookingCostDetails?.extensionCosts || []).reduce((s,e) => s+e.total, 0);
+                  initialData.amount = extTotal;
+                  initialData.receiverName = job.line;
               }
           }
       }
@@ -273,7 +295,11 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    // Include selectedExtensionId in the payload
+    onSave({
+        ...formData,
+        selectedExtensionId: selectedExtensionId || undefined
+    });
     onClose();
   };
 

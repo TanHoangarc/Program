@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search, Check
 } from 'lucide-react';
 import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
@@ -1207,13 +1207,22 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                     {convertData.jobRows.map((row, idx) => (
                                         <tr key={row.id}>
                                             <td className="px-3 py-2">
-                                                <input 
-                                                    type="text" 
-                                                    value={row.jobCode}
-                                                    onChange={(e) => handleJobRowChange(row.id, 'jobCode', e.target.value)}
-                                                    placeholder="Nhập Job Code"
-                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-bold text-slate-700"
-                                                />
+                                                <div className="relative">
+                                                    <input 
+                                                        type="text" 
+                                                        value={row.jobCode}
+                                                        onChange={(e) => handleJobRowChange(row.id, 'jobCode', e.target.value)}
+                                                        placeholder="Nhập Job Code"
+                                                        className="w-full p-1.5 pr-8 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-bold text-slate-700"
+                                                    />
+                                                    <button 
+                                                        onClick={() => copyToClipboard(row.jobCode, `jobcode-${row.id}`)}
+                                                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-blue-600 transition-colors"
+                                                        title="Copy Job Code"
+                                                    >
+                                                        {copiedId === `jobcode-${row.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                                                    </button>
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2">
                                                 <CustomerRowInput 
@@ -1311,4 +1320,3 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     </div>
   );
 };
-

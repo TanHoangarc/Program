@@ -369,9 +369,15 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             if (j.amisExtensionPaymentDocNo && !processedExtOut.has(j.amisExtensionPaymentDocNo) && checkMonth(j.amisExtensionPaymentDate)) {
                 processedExtOut.add(j.amisExtensionPaymentDocNo);
                 let amount = 0;
-                if (j.booking) {
-                    const summary = calculateBookingSummary(jobs, j.booking);
-                    amount = (summary?.costDetails.extensionCosts || []).reduce((s,e) => s+e.total, 0);
+                
+                // Prioritize the explicit payment amount if saved
+                if (j.amisExtensionPaymentAmount && j.amisExtensionPaymentAmount > 0) {
+                    amount = j.amisExtensionPaymentAmount;
+                } else {
+                    if (j.booking) {
+                        const summary = calculateBookingSummary(jobs, j.booking);
+                        amount = (summary?.costDetails.extensionCosts || []).reduce((s,e) => s+e.total, 0);
+                    }
                 }
                 
                 rows.push({
@@ -768,6 +774,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisExtensionPaymentDocNo = '';
               updatedJob.amisExtensionPaymentDesc = '';
               updatedJob.amisExtensionPaymentDate = '';
+              updatedJob.amisExtensionPaymentAmount = 0; // Clear amount
           } else if (row.type === 'payment_refund') {
               updatedJob.amisDepositRefundDocNo = '';
               updatedJob.amisDepositRefundDesc = '';
@@ -807,6 +814,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               
               if (job.id === selectedJobForModal.id) {
                   (updatedJob as any)[descField] = data.paymentContent;
+                  
+                  // Save Specific Amount for Extension if applicable
+                  if (paymentType === 'extension' && data.amount > 0) {
+                      updatedJob.amisExtensionPaymentAmount = data.amount;
+                  }
               }
               
               onUpdateJob(updatedJob);
@@ -1242,4 +1254,3 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     </div>
   );
 };
-

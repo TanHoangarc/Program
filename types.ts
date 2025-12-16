@@ -167,6 +167,7 @@ export interface JobData {
   amisExtensionPaymentDocNo?: string;
   amisExtensionPaymentDesc?: string;
   amisExtensionPaymentDate?: string;
+  amisExtensionPaymentAmount?: number; // New field to track specific payment amount
 
   // Payment In (Local Charge – Thu KH)
   localChargeInvoice: string;
