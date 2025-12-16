@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
 import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
@@ -820,6 +820,14 @@ export const JobModal: React.FC<JobModalProps> = ({
                                                     title="Copy nội dung chuyển khoản"
                                                 >
                                                     {copiedField === 'deposit-txt' ? <Check className="w-4 h-4 text-green-500" /> : <FileText className="w-4 h-4" />}
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => handleCopyText("doc_hph@kimberryline.com", 'email-txt')}
+                                                    className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                                                    title="Copy Email: doc_hph@kimberryline.com"
+                                                >
+                                                    {copiedField === 'email-txt' ? <Check className="w-4 h-4 text-green-500" /> : <Mail className="w-4 h-4" />}
                                                 </button>
                                             </div>
                                         }
