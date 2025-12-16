@@ -303,11 +303,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           }
       });
 
-      // Sort Descending by Document Number
-      return rows.sort((a, b) => (b.docNo || '').localeCompare(a.docNo || ''));
+      // Sort Ascending by Document Number (Oldest/Smallest first)
+      return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     } 
     
-    // ... (Keep existing code for 'chi', 'ban', 'mua' modes) ...
     // --- MODE CHI ---
     else if (mode === 'chi') {
         const rows: any[] = [];
@@ -417,7 +416,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         });
 
-        return rows.sort((a, b) => (b.docNo || '').localeCompare(a.docNo || ''));
+        // Sort Ascending by Document Number
+        return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     }
     else if (mode === 'ban') {
         const rows: any[] = [];
@@ -473,7 +473,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             });
         });
 
-        return rows.sort((a, b) => b.docNo.localeCompare(a.docNo));
+        // Sort Ascending by Document Number
+        return rows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
     else if (mode === 'mua') {
         const rawItems: any[] = [];
@@ -634,7 +635,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             };
         });
 
-        return finalRows.sort((a, b) => b.docNo.localeCompare(a.docNo));
+        // Sort Ascending by Document Number
+        return finalRows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
 
     return [];
@@ -1240,3 +1242,4 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     </div>
   );
 };
+
