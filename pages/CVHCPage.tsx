@@ -3,7 +3,7 @@ import React, { useState, useRef } from 'react';
 import { JobData, Customer } from '../types';
 import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye } from 'lucide-react';
 import axios from 'axios';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1'; // Use direct ESM URL to fix build resolution
 
 interface CVHCPageProps {
   jobs: JobData[];
@@ -492,4 +492,3 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
     </div>
   );
 };
-
