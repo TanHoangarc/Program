@@ -815,7 +815,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                                                 </button>
                                                 <button 
                                                     type="button"
-                                                    onClick={() => handleCopyText(`PAYMENT HOAN CUOC BL ${formData.booking || formData.jobCode || ''} MST 0316113070`, 'deposit-txt')}
+                                                    onClick={() => handleCopyText(`PAYMENT HOAN CUOC BL ${formData.jobCode || ''} MST 0316113070`, 'deposit-txt')}
                                                     className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
                                                     title="Copy nội dung chuyển khoản"
                                                 >
