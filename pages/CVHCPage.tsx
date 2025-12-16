@@ -1,8 +1,9 @@
 
 import React, { useState, useRef } from 'react';
 import { JobData, Customer } from '../types';
-import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle } from 'lucide-react';
+import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye } from 'lucide-react';
 import axios from 'axios';
+import { PDFDocument } from 'pdf-lib';
 
 interface CVHCPageProps {
   jobs: JobData[];
@@ -17,6 +18,7 @@ interface CVHCRow {
   customerId: string;
   amount: number;
   jobId?: string; // Link to actual job if found
+  previewUrl?: string; // Link blob xem trước trang cắt
 }
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
@@ -28,6 +30,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
   ]);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [pageCount, setPageCount] = useState<number>(1); // For combined mode
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -45,6 +48,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
     setMode(newMode);
     setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0 }]);
     setFile(null);
+    setUploadProgress('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -66,7 +70,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
           };
         } else {
           // Not found -> just update code, clear others
-          return { ...row, jobCode: code, jobId: undefined, amount: 0, customerName: '', customerId: '' };
+          return { ...row, jobCode: code, jobId: undefined, amount: 0, customerName: '', customerId: '', previewUrl: row.previewUrl };
         }
       }
       return row;
@@ -92,18 +96,88 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
 
   const handlePageCountChange = (count: number) => {
       setPageCount(count);
-      // Generate rows based on count
-      const newRows: CVHCRow[] = [];
-      for(let i=0; i<count; i++) {
-          newRows.push({ id: `page-${i}`, jobCode: '', customerName: '', customerId: '', amount: 0 });
+      // Generate rows based on count if user manually changes (though file select handles this usually)
+      if (rows.length !== count) {
+          const newRows: CVHCRow[] = [];
+          for(let i=0; i<count; i++) {
+              // Try to preserve existing data if resizing
+              if (i < rows.length) {
+                  newRows.push(rows[i]);
+              } else {
+                  newRows.push({ id: `page-${i}`, jobCode: '', customerName: '', customerId: '', amount: 0 });
+              }
+          }
+          setRows(newRows);
       }
-      setRows(newRows);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+      const selectedFile = e.target.files[0];
+      setFile(selectedFile);
+
+      // AUTO SPLIT PREVIEW FOR COMBINED MODE
+      if (mode === 'combined' && selectedFile.type === 'application/pdf') {
+          setIsUploading(true);
+          setUploadProgress('Đang phân tích và tách trang...');
+          
+          try {
+              const arrayBuffer = await selectedFile.arrayBuffer();
+              const pdfDoc = await PDFDocument.load(arrayBuffer);
+              const totalPages = pdfDoc.getPageCount();
+              
+              setPageCount(totalPages); // Auto update page count input
+
+              const newRows: CVHCRow[] = [];
+              
+              for (let i = 0; i < totalPages; i++) {
+                  // Create single page PDF for preview
+                  const subDoc = await PDFDocument.create();
+                  const [copiedPage] = await subDoc.copyPages(pdfDoc, [i]);
+                  subDoc.addPage(copiedPage);
+                  const pdfBytes = await subDoc.save();
+                  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                  const url = URL.createObjectURL(blob);
+
+                  newRows.push({
+                      id: `page-${i}-${Date.now()}`,
+                      jobCode: '',
+                      customerName: '',
+                      customerId: '',
+                      amount: 0,
+                      previewUrl: url // Attach blob URL
+                  });
+              }
+              setRows(newRows);
+          } catch (error) {
+              console.error("Error splitting PDF preview:", error);
+              alert("Không thể đọc file PDF. Vui lòng kiểm tra lại file.");
+          } finally {
+              setIsUploading(false);
+              setUploadProgress('');
+          }
+      }
     }
+  };
+
+  const uploadSingleFile = async (fileToUpload: File, fileName: string): Promise<{ url: string, name: string }> => {
+      const formData = new FormData();
+      formData.append("fileName", fileName); 
+      formData.append("file", fileToUpload);
+
+      const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (res.data && res.data.success) {
+          const finalFileName = res.data.fileName || fileName;
+          let uploadedUrl = res.data.cvhcUrl;
+          if (uploadedUrl && !uploadedUrl.startsWith('http')) {
+              uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
+          }
+          return { url: uploadedUrl, name: finalFileName };
+      }
+      throw new Error(res.data?.message || "Upload failed");
   };
 
   const handleSubmit = async () => {
@@ -119,79 +193,105 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
     }
 
     setIsUploading(true);
+    setUploadProgress('Đang xử lý...');
 
     try {
-      const ext = file.name.split('.').pop() || 'pdf';
-      let svFileName = '';
-      
-      // Determine filename based on mode
-      if (mode === 'single' || mode === 'multi') {
-          // Use the first job code as the file identifier
-          // Filename format: CVHC BL [JobCode].[ext]
-          const mainJobCode = rows[0]?.jobCode || 'Unknown';
-          // Sanitize job code to be safe for filenames
-          const safeJobCode = mainJobCode.replace(/[^a-zA-Z0-9-_]/g, ''); 
-          svFileName = `CVHC BL ${safeJobCode}.${ext}`;
+      // MODE COMBINED: SPLIT PDF
+      if (mode === 'combined') {
+          if (file.type !== 'application/pdf') {
+              throw new Error("Chế độ 'Nộp Tổng Hợp' (Tách trang) chỉ hỗ trợ file PDF.");
+          }
+
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await PDFDocument.load(arrayBuffer);
+          const pageCount = pdfDoc.getPages().length;
+
+          if (pageCount !== rows.length) {
+              throw new Error(`Số trang PDF (${pageCount}) không khớp với số dòng dữ liệu (${rows.length}). Vui lòng kiểm tra lại.`);
+          }
+
+          let successCount = 0;
+
+          // Loop through rows and split
+          for (let i = 0; i < rows.length; i++) {
+              const row = rows[i];
+              setUploadProgress(`Đang tách và upload trang ${i + 1}/${pageCount}...`);
+
+              // Split Page
+              const subDoc = await PDFDocument.create();
+              const [copiedPage] = await subDoc.copyPages(pdfDoc, [i]);
+              subDoc.addPage(copiedPage);
+              const subPdfBytes = await subDoc.save();
+              
+              // Create File
+              const safeJobCode = row.jobCode.replace(/[^a-zA-Z0-9-_]/g, ''); 
+              const subFileName = `CVHC BL ${safeJobCode}.pdf`;
+              const subFile = new File([subPdfBytes], subFileName, { type: 'application/pdf' });
+
+              // Upload
+              const result = await uploadSingleFile(subFile, subFileName);
+
+              // Update Job
+              const job = jobs.find(j => j.id === row.jobId);
+              if (job) {
+                  const updatedJob: JobData = {
+                      ...job,
+                      thuCuoc: row.amount,
+                      maKhCuocId: row.customerId || job.maKhCuocId,
+                      cvhcUrl: result.url,
+                      cvhcFileName: result.name
+                  };
+                  onUpdateJob(updatedJob);
+                  successCount++;
+              }
+          }
+          
+          alert(`Hoàn tất! Đã tách file và cập nhật CVHC cho ${successCount} Job.`);
+
       } else {
-          svFileName = `CVHC_TongHop_${Date.now()}.${ext}`;
-      }
+          // MODE SINGLE / MULTI (One file for all)
+          const ext = file.name.split('.').pop() || 'pdf';
+          let svFileName = '';
+          
+          if (mode === 'single' || mode === 'multi') {
+              const mainJobCode = rows[0]?.jobCode || 'Unknown';
+              const safeJobCode = mainJobCode.replace(/[^a-zA-Z0-9-_]/g, ''); 
+              svFileName = `CVHC BL ${safeJobCode}.${ext}`;
+          }
 
-      // 2. Upload File using specific /upload-cvhc endpoint
-      const formData = new FormData();
-      // CRITICAL: Append text fields BEFORE file so multer diskStorage can access req.body.fileName
-      formData.append("fileName", svFileName); 
-      formData.append("file", file);
+          setUploadProgress('Đang upload file...');
+          const result = await uploadSingleFile(file, svFileName);
 
-      // Use the specific endpoint for CVHC
-      const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      
-      if (res.data && res.data.success) {
-         // Server returns { success: true, fileName: "...", cvhcUrl: "..." }
-         const finalFileName = res.data.fileName || svFileName;
-         let uploadedUrl = res.data.cvhcUrl;
-         
-         // Construct absolute URL if relative
-         if (uploadedUrl && !uploadedUrl.startsWith('http')) {
-             uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
-         }
-         
-         // 3. Update Jobs
-         let updatedCount = 0;
-         rows.forEach(row => {
+          // Update All Rows with SAME File
+          let updatedCount = 0;
+          rows.forEach(row => {
              const job = jobs.find(j => j.id === row.jobId);
              if (job) {
                  const updatedJob: JobData = {
                      ...job,
-                     thuCuoc: row.amount, // Update amount if edited
-                     // Update customer if needed
+                     thuCuoc: row.amount, 
                      maKhCuocId: row.customerId || job.maKhCuocId,
-                     
-                     // LINK FILE
-                     cvhcUrl: uploadedUrl,
-                     cvhcFileName: finalFileName
+                     cvhcUrl: result.url,
+                     cvhcFileName: result.name
                  };
                  onUpdateJob(updatedJob);
                  updatedCount++;
              }
-         });
-
-         alert(`Đã nộp CVHC thành công cho ${updatedCount} Job! File: ${finalFileName}`);
-         
-         // Reset form
-         handleModeChange(mode); 
-
-      } else {
-          throw new Error(res.data?.message || "Upload failed without success flag");
+          });
+          
+          alert(`Đã nộp CVHC thành công cho ${updatedCount} Job! File: ${result.name}`);
       }
+
+      // Reset form
+      handleModeChange(mode); 
 
     } catch (err: any) {
       console.error("Submit Error:", err);
       const msg = err.response?.data?.message || err.message || "Unknown Error";
-      alert(`Có lỗi khi nộp CVHC: ${msg}\n(Kiểm tra lại kết nối mạng hoặc endpoint /upload-cvhc)`);
+      alert(`Có lỗi xảy ra: ${msg}`);
     } finally {
       setIsUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -229,14 +329,14 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
             className={`flex-1 p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${mode === 'combined' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200'}`}
           >
               <FileStack className="w-6 h-6" />
-              <span className="font-bold">Nộp Tổng Hợp</span>
+              <span className="font-bold">Nộp Tổng Hợp (Tách trang)</span>
           </button>
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col">
           
-          {/* File Upload Section (Top for Combined, Bottom for others? Standardizing to Top for consistency) */}
+          {/* File Upload Section */}
           <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                   <div className="p-3 bg-white rounded-lg border border-slate-200 text-slate-400">
@@ -244,7 +344,9 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
                   </div>
                   <div>
                       <h3 className="font-bold text-slate-700">File đính kèm (PDF/Image)</h3>
-                      <p className="text-xs text-slate-500">File sẽ được lưu vào hệ thống (E:\ServerData\CVHC)</p>
+                      <p className="text-xs text-slate-500">
+                          {mode === 'combined' ? 'Vui lòng chọn file PDF nhiều trang. Hệ thống sẽ tự động tách và tạo dòng.' : 'File sẽ được lưu vào hệ thống (E:\\ServerData\\CVHC)'}
+                      </p>
                   </div>
               </div>
               <div className="flex items-center space-x-3">
@@ -253,6 +355,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
                       ref={fileInputRef}
                       onChange={handleFileSelect}
                       className="hidden" 
+                      accept={mode === 'combined' ? "application/pdf" : "*/*"}
                   />
                   <button 
                       onClick={() => fileInputRef.current?.click()}
@@ -266,16 +369,19 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
 
           {/* COMBINED MODE: Page Count Input */}
           {mode === 'combined' && (
-              <div className="mb-6 flex items-center space-x-3">
-                  <label className="font-bold text-slate-700">Số lượng trang / dòng:</label>
+              <div className="mb-6 flex items-center space-x-3 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                  <AlertCircle className="w-5 h-5 text-blue-500" />
+                  <label className="font-bold text-slate-700">Số lượng trang PDF (Số Job):</label>
                   <input 
                       type="number" 
                       min="1" 
                       value={pageCount} 
                       onChange={(e) => handlePageCountChange(Number(e.target.value))}
-                      className="w-24 px-3 py-2 border border-slate-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-24 px-3 py-2 border border-blue-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none"
                   />
-                  <span className="text-xs text-slate-500 italic">(Nhập số lượng dòng cần điền thông tin)</span>
+                  <span className="text-xs text-slate-500 italic">
+                      (Đã tự động đếm số trang từ file PDF của bạn)
+                  </span>
               </div>
           )}
 
@@ -284,17 +390,22 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
               <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs sticky top-0 z-10 shadow-sm">
                       <tr>
-                          <th className="px-4 py-3 w-12 text-center">#</th>
+                          <th className="px-4 py-3 w-16 text-center">
+                              {mode === 'combined' ? 'Trang' : '#'}
+                          </th>
                           <th className="px-4 py-3 w-64">Số BL (Job Code)</th>
                           <th className="px-4 py-3">Khách hàng (Cược)</th>
                           <th className="px-4 py-3 w-48 text-right">Số tiền cược</th>
+                          {mode === 'combined' && <th className="px-4 py-3 w-16 text-center">Xem</th>}
                           {(mode === 'multi' || mode === 'single') && <th className="px-4 py-3 w-16 text-center"></th>}
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                       {rows.map((row, idx) => (
                           <tr key={row.id} className="hover:bg-slate-50/50">
-                              <td className="px-4 py-3 text-center text-slate-400">{idx + 1}</td>
+                              <td className="px-4 py-3 text-center font-bold text-slate-500">
+                                  {mode === 'combined' ? `Trang ${idx + 1}` : idx + 1}
+                              </td>
                               <td className="px-4 py-3">
                                   <div className="relative">
                                       <input 
@@ -328,6 +439,23 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
                                       placeholder="0"
                                   />
                               </td>
+                              {mode === 'combined' && (
+                                  <td className="px-4 py-3 text-center">
+                                      {row.previewUrl ? (
+                                          <a 
+                                            href={row.previewUrl} 
+                                            target="_blank" 
+                                            rel="noreferrer"
+                                            className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                            title="Xem trước trang này"
+                                          >
+                                              <Eye className="w-4 h-4" />
+                                          </a>
+                                      ) : (
+                                          <span className="text-slate-300">-</span>
+                                      )}
+                                  </td>
+                              )}
                               {(mode === 'multi' || mode === 'single') && (
                                   <td className="px-4 py-3 text-center">
                                       {mode === 'multi' && (
@@ -351,6 +479,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
                           <Plus className="w-4 h-4 mr-2" /> Thêm dòng
                       </button>
                   )}
+                  {isUploading && <span className="text-sm font-bold text-indigo-600 animate-pulse flex items-center"><Loader2 className="w-4 h-4 mr-2 animate-spin"/> {uploadProgress}</span>}
               </div>
               <div className="flex space-x-3">
                   <div className="px-4 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold text-sm">
@@ -359,9 +488,9 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
                   <button 
                       onClick={handleSubmit}
                       disabled={isUploading}
-                      className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg hover:shadow-indigo-500/30 transition-all transform active:scale-95 flex items-center"
+                      className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg hover:shadow-indigo-500/30 transition-all transform active:scale-95 flex items-center disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                      <Save className="w-4 h-4 mr-2" /> {isUploading ? 'Đang lưu...' : 'Lưu & Cập nhật'}
+                      <Save className="w-4 h-4 mr-2" /> {isUploading ? 'Đang xử lý...' : 'Lưu & Cập nhật'}
                   </button>
               </div>
           </div>
@@ -370,3 +499,4 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
     </div>
   );
 };
+
