@@ -197,6 +197,10 @@ export interface JobData {
   amisDepositRefundDesc?: string;
   amisDepositRefundDate?: string;
 
+  // NEW: CVHC File Info
+  cvhcUrl?: string;
+  cvhcFileName?: string;
+
   // Revenue Extensions
   extensions: ExtensionData[];
 

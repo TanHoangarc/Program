@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
-import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight, FileCheck } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { formatDateVN, getPaginationRange, calculateBookingSummary } from '../utils';
 import { JobModal } from '../components/JobModal';
@@ -161,7 +161,10 @@ export const DepositList: React.FC<DepositListProps> = ({
           customerName: customer ? customer.name : 'Unknown',
           amount: job.thuCuoc,
           dateIn: job.ngayThuCuoc, 
-          dateOut: job.ngayThuHoan
+          dateOut: job.ngayThuHoan,
+          // NEW: File Link
+          cvhcUrl: job.cvhcUrl,
+          cvhcFileName: job.cvhcFileName
         };
       })
       .sort((a, b) => Number(b.month) - Number(a.month));
@@ -342,6 +345,7 @@ export const DepositList: React.FC<DepositListProps> = ({
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Ngày Cược</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Ngày Hoàn</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Trạng Thái</th>
+                {mode === 'customer' && <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">File CVHC</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/40">
@@ -393,10 +397,26 @@ export const DepositList: React.FC<DepositListProps> = ({
                           </span>
                         )}
                       </td>
+                      <td className="px-6 py-4 text-center">
+                          {item.cvhcUrl ? (
+                              <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(item.cvhcUrl, '_blank');
+                                }}
+                                className="text-indigo-600 hover:text-indigo-800 p-1 rounded-md hover:bg-indigo-50 transition-colors flex items-center justify-center mx-auto"
+                                title={item.cvhcFileName || "Xem CVHC"}
+                              >
+                                  <FileCheck className="w-4 h-4" />
+                              </button>
+                          ) : (
+                              <span className="text-slate-300">-</span>
+                          )}
+                      </td>
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
                 )
               )}
             </tbody>
@@ -405,7 +425,7 @@ export const DepositList: React.FC<DepositListProps> = ({
                 <tr>
                     <td colSpan={mode === 'line' ? 3 : 4} className="px-6 py-4 text-right">Tổng Cộng:</td>
                     <td className="px-6 py-4 text-right text-base text-red-600">{formatCurrency(totalAmount)}</td>
-                    <td colSpan={3}></td>
+                    <td colSpan={4}></td>
                 </tr>
                 </tfoot>
             )}

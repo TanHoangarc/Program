@@ -14,6 +14,7 @@ import { Reconciliation } from './pages/Reconciliation';
 import { ProfitReport } from './pages/ProfitReport';
 import { LookupPage } from './pages/LookupPage'; 
 import { PaymentPage } from './pages/PaymentPage'; 
+import { CVHCPage } from './pages/CVHCPage'; // IMPORT CVHCPage
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship } from 'lucide-react';
 
@@ -787,12 +788,11 @@ const App: React.FC = () => {
             )}
 
             {currentPage === 'cvhc' && (
-              <div className="flex items-center justify-center h-full text-slate-400">
-                 <div className="text-center">
-                    <h2 className="text-2xl font-bold mb-2">Nộp CVHC</h2>
-                    <p>Chức năng đang được phát triển...</p>
-                 </div>
-              </div>
+                <CVHCPage 
+                    jobs={jobs} 
+                    customers={customers} 
+                    onUpdateJob={handleEditJob} 
+                />
             )}
 
             {currentPage === 'system' && (
@@ -824,4 +824,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
