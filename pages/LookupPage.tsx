@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { JobData } from '../types';
-import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText } from 'lucide-react';
-import { formatDateVN } from '../utils';
+import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText, AlertTriangle } from 'lucide-react';
+import { formatDateVN, calculatePaymentStatus } from '../utils';
 
 interface LookupPageProps {
   jobs: JobData[];
@@ -78,6 +79,9 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
   // Is Paid if: (Has Bank AND Date) OR (Has Bank and is TCB)
   const isTCB = result?.bank?.includes('TCB');
   const isLcPaid = (result && result.bank && result.localChargeDate) || (result && isTCB);
+  
+  // Calculate Payment Mismatch (Dư/Thiếu)
+  const paymentStatus = result ? calculatePaymentStatus(result) : null;
   
   // Find ALL paid extensions
   const paidExtensions = useMemo(() => {
@@ -190,16 +194,13 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                             <div className="flex items-center text-green-700 font-bold text-lg mb-2">
                                                 <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
                                                 {isTCB ? (
-                                                    // TCB CASE: Just show paid status, no date
                                                     <span>Đã nhận thanh toán local charge từ khách hàng</span>
                                                 ) : (
-                                                    // STANDARD CASE: Show date
                                                     <span>Đã nhận thanh toán local charge từ khách hàng ngày {formatDateVN(result.localChargeDate)}</span>
                                                 )}
                                             </div>
                                             
-                                            {/* Merged Payment Info - ONLY SHOW IF NOT TCB */}
-                                            {/* (TCB payments are usually direct and don't have merged AMIS slips in this logic) */}
+                                            {/* Merged Payment Info */}
                                             {!isTCB && mergedLcTotal > result.localChargeTotal && (
                                                 <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
                                                     <div className="flex items-center gap-2 mb-1">
@@ -217,6 +218,26 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                         <div className="flex items-center text-slate-500 font-medium">
                                             <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
                                             Chưa ghi nhận thanh toán
+                                        </div>
+                                    )}
+
+                                    {/* MISMATCH WARNING - LOCAL CHARGE */}
+                                    {paymentStatus && paymentStatus.lcDiff !== 0 && (
+                                        <div className="mt-3 p-3 bg-white/80 rounded-xl border border-yellow-200 flex items-start gap-3 shadow-sm">
+                                            <div className="p-1.5 bg-yellow-100 rounded-full mt-0.5">
+                                                <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold text-slate-700">
+                                                    Khách hàng thanh toán {paymentStatus.lcDiff > 0 ? 'DƯ' : 'THIẾU'}:
+                                                    <span className={`ml-2 text-lg ${paymentStatus.lcDiff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                                                        {formatCurrency(Math.abs(paymentStatus.lcDiff))}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-1">
+                                                    Phải thu: {formatCurrency(result.localChargeTotal)} | Thực thu: {formatCurrency(paymentStatus.totalCollectedLC)}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -240,7 +261,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                                                                 </span>
                                                             </div>
                                                             
-                                                            {/* Merged Info Block (Only if this specific payment was merged) */}
+                                                            {/* Merged Info Block */}
                                                             {mergeInfo.isMerged && (
                                                                 <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm mt-2 ml-7">
                                                                     <div className="flex items-center gap-2 mb-1">
