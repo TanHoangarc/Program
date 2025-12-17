@@ -149,7 +149,41 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
 
       setFormData(deepCopyJob);
-      setAddedJobs([]); 
+      
+      // --- DETECT MERGED JOBS ---
+      let foundMergedJobs: JobData[] = [];
+      if (allJobs && allJobs.length > 0) {
+          // 1. Check Local/Other Merge
+          if (mode === 'local' || mode === 'other') {
+              const currentDoc = deepCopyJob.amisLcDocNo;
+              if (currentDoc) {
+                  // Find other jobs with SAME DocNo but DIFFERENT ID
+                  foundMergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisLcDocNo === currentDoc);
+              }
+          }
+          // 2. Check Extension Merge
+          else if (mode === 'extension') {
+              // If editing a specific extension or generally
+              const exts = deepCopyJob.extensions || [];
+              let targetDoc = '';
+              if (targetExtensionId) {
+                  const t = exts.find((e: any) => e.id === targetExtensionId);
+                  if (t) targetDoc = t.amisDocNo;
+              } else if (exts.length > 0) {
+                  // Try to find any docno if not specified
+                  targetDoc = exts[0].amisDocNo;
+              }
+
+              if (targetDoc) {
+                  foundMergedJobs = allJobs.filter(j => 
+                      j.id !== deepCopyJob.id && 
+                      (j.extensions || []).some(e => e.amisDocNo === targetDoc)
+                  );
+              }
+          }
+      }
+      setAddedJobs(foundMergedJobs);
+
       setInternalTargetId(null);
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
 
