@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Link } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
@@ -330,13 +330,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentInvoice = formData.localChargeInvoice || '';
           currentTotalReceivable = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
-          
-          // ADD Merge Amounts
-          if (addedJobs.length > 0) {
-              const addedSum = addedJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
-              currentTotalReceivable += addedSum;
-          }
-
       } else if (mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
           currentTotalReceivable = formData.localChargeTotal || 0;
@@ -376,6 +369,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const currentMainAmount = mode === 'extension' ? newExtension.amisAmount : amisAmount;
   const totalPaidAdditional = relevantAdditionalReceipts.reduce((sum, r) => sum + r.amount, 0);
   const totalCollected = currentMainAmount + totalPaidAdditional;
+  
+  // Calculate Grand Total for Merge
+  const grandTotalMerge = useMemo(() => {
+      let sum = currentMainAmount;
+      if (addedJobs.length > 0) {
+          if (mode === 'extension') {
+              sum += addedJobs.reduce((s, j) => s + (j.extensions || []).reduce((sub, e) => sub + e.total, 0), 0);
+          } else {
+              sum += addedJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
+          }
+      }
+      return sum;
+  }, [currentMainAmount, addedJobs, mode]);
+
   const remaining = display.currentTotalReceivable - totalCollected;
 
   const handleAmountChange = (val: number) => {
@@ -538,6 +545,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   ...ext,
                   amisDocNo: newExtension.amisDocNo,
                   amisDesc: newExtension.amisDesc,
+                  // IMPORTANT: Child job extensions get 0 amount to allow aggregation in export
+                  amisAmount: 0 
               }));
               onSave({ ...addedJob, extensions: updatedAddedJobExtensions });
           });
@@ -559,7 +568,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 onSave({
                     ...addedJob,
                     amisLcDocNo: amisDocNo,
-                    amisLcDesc: amisDesc
+                    amisLcDesc: amisDesc,
+                    // IMPORTANT: Child jobs get 0 amount to allow aggregation in export
+                    amisLcAmount: 0
                 });
             });
         }
@@ -618,37 +629,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setSearchJobCode('');
 
       if (mode === 'extension') {
-          const extTotal = (found.extensions || []).reduce((sum, e) => sum + e.total, 0);
-          const currentAmt = newExtension.total || 0;
-          setNewExtension(prev => ({ ...prev, total: currentAmt + extTotal, amisAmount: (prev.amisAmount || 0) + extTotal }));
           recalculateMerge(newExtension.invoice, newAddedJobs);
       } else {
-          // Local Charge Merge
-          // We don't update formData.localChargeTotal as it belongs to the MAIN job. 
-          // We update the amisAmount (Receipt Total).
-          // But visually we want to see the total sum.
-          const addedAmt = found.localChargeTotal || 0; 
-          setAmisAmount(prev => prev + addedAmt);
           recalculateMerge(formData.localChargeInvoice, newAddedJobs);
       }
   };
 
   const handleRemoveAddedJob = (id: string) => {
-      const jobToRemove = addedJobs.find(j => j.id === id);
       const newAddedJobs = addedJobs.filter(j => j.id !== id);
       setAddedJobs(newAddedJobs);
 
       if (mode === 'extension') {
           recalculateMerge(newExtension.invoice, newAddedJobs);
-          if (jobToRemove) {
-              const extTotal = (jobToRemove.extensions || []).reduce((sum, e) => sum + e.total, 0);
-              setNewExtension(prev => ({ ...prev, total: Math.max(0, (prev.total || 0) - extTotal), amisAmount: Math.max(0, (prev.amisAmount || 0) - extTotal) }));
-          }
       } else {
           recalculateMerge(formData.localChargeInvoice, newAddedJobs);
-          if (jobToRemove) {
-              setAmisAmount(prev => Math.max(0, prev - (jobToRemove.localChargeTotal || 0)));
-          }
       }
   };
 
@@ -879,7 +873,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         </button>
                     </div>
                     {addedJobs.length > 0 && (
-                        <div className="space-y-2">
+                        <div className="space-y-2 mb-2">
                             {addedJobs.map(j => {
                                 const amt = mode === 'extension' 
                                     ? (j.extensions || []).reduce((s, e) => s + e.total, 0)
@@ -898,6 +892,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                     </div>
                                 );
                             })}
+                        </div>
+                    )}
+                    {addedJobs.length > 0 && (
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Tổng tiền gộp (Hiển thị):</span>
+                            <span className="text-lg font-bold text-blue-700">{new Intl.NumberFormat('en-US').format(grandTotalMerge)} VND</span>
                         </div>
                     )}
                 </div>
