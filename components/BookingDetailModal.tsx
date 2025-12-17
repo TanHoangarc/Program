@@ -319,10 +319,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           const folderPath = `Invoice/${year}.${month}`;
           
           // Naming Convention: Line.Booking.Invoice.dd.mm.yyyy.ext
+          // Fix: Wrap values in String() to prevent .replace on numbers
           const ext = selectedFile.name.split('.').pop();
-          const safeLine = (booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
-          const safeBooking = (booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
-          const safeInvoice = localCharge.invoice.replace(/[^a-zA-Z0-9]/g, '');
+          const safeLine = String(booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+          const safeBooking = String(booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+          const safeInvoice = String(localCharge.invoice || '').replace(/[^a-zA-Z0-9]/g, '');
           
           const fileName = `${safeLine}.${safeBooking}.${safeInvoice}.${day}.${month}.${year}.${ext}`;
 
