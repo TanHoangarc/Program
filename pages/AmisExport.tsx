@@ -178,27 +178,51 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       return (date.getMonth() + 1).toString() === filterMonth;
   };
 
+  // --- HELPER FOR GROUPING ---
+  const addToGroupMap = (map: Map<string, any>, item: any) => {
+      const key = `${item.type}_${item.docNo}`;
+      if (map.has(key)) {
+          const existing = map.get(key);
+          existing.amount += item.amount;
+          // Keep the description that is longer as it likely contains merged info
+          if (item.desc && item.desc.length > existing.desc.length) {
+              existing.desc = item.desc;
+          }
+          // Preserve main Job ID link if the existing one was a "child" or "add" row
+          if (!existing.jobId && item.jobId) existing.jobId = item.jobId;
+          if (existing.rowId.includes('add') && !item.rowId.includes('add')) {
+              existing.jobId = item.jobId;
+              existing.rowId = item.rowId;
+          }
+      } else {
+          map.set(key, { ...item });
+      }
+  };
+
   const exportData = useMemo(() => {
     // --- MODE THU ---
     if (mode === 'thu') {
-      const rows: any[] = [];
+      const groupMap = new Map<string, any>();
+
       // 1. Thu Cược
       jobs.forEach(j => {
          // Main Receipt
-         if (j.thuCuoc > 0 && j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
-             rows.push({
+         if (j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
+             const amt = j.amisDepositAmount !== undefined ? j.amisDepositAmount : j.thuCuoc;
+             // Only add if amount > 0 OR if it's a valid record we want to track (even if 0 for child jobs)
+             addToGroupMap(groupMap, {
                  jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
                  date: j.ngayThuCuoc, docNo: j.amisDepositDocNo, 
                  objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
                  desc: j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`, 
-                 amount: j.amisDepositAmount || j.thuCuoc, // Use override amount if set
+                 amount: amt, 
                  tkNo: '1121', tkCo: '1388', 
              });
          }
          // Additional Receipts (Multi-payment)
          (j.additionalReceipts || []).forEach(r => {
              if (r.type === 'deposit' && checkMonth(r.date)) {
-                 rows.push({
+                 addToGroupMap(groupMap, {
                      jobId: j.id, type: 'deposit_thu', rowId: `dep-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
@@ -211,20 +235,21 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // 2. Thu Local Charge
       jobs.forEach(j => {
           // Main Receipt
-          if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
-               rows.push({
+          if (j.amisLcDocNo && checkMonth(j.localChargeDate)) {
+               const amt = j.amisLcAmount !== undefined ? j.amisLcAmount : j.localChargeTotal;
+               addToGroupMap(groupMap, {
                    jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
                    date: j.localChargeDate, docNo: j.amisLcDocNo, 
                    objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
                    desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
-                   amount: j.amisLcAmount || j.localChargeTotal, // Use override amount if set
+                   amount: amt,
                    tkNo: '1121', tkCo: '13111',
                });
           }
           // Additional Receipts (Multi-payment)
           (j.additionalReceipts || []).forEach(r => {
              if (r.type === 'local' && checkMonth(r.date)) {
-                 rows.push({
+                 addToGroupMap(groupMap, {
                      jobId: j.id, type: 'lc_thu', rowId: `lc-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
@@ -237,13 +262,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // 3. Thu Extension
       jobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
-              if (ext.total > 0 && ext.amisDocNo && checkMonth(ext.invoiceDate)) {
-                  rows.push({
+              if (ext.amisDocNo && checkMonth(ext.invoiceDate)) {
+                  const amt = ext.amisAmount !== undefined ? ext.amisAmount : ext.total;
+                  addToGroupMap(groupMap, {
                       jobId: j.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                       date: ext.invoiceDate, docNo: ext.amisDocNo, 
                       objCode: getCustomerCode(ext.customerId || j.customerId), objName: getCustomerName(ext.customerId || j.customerId),
                       desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
-                      amount: ext.amisAmount || ext.total, 
+                      amount: amt, 
                       tkNo: '1121', tkCo: '13111',
                   });
               }
@@ -253,7 +279,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
              if (r.type === 'extension' && checkMonth(r.date)) {
                  const extTarget = (j.extensions || []).find(e => e.id === r.extensionId);
                  const custId = extTarget ? (extTarget.customerId || j.customerId) : j.customerId;
-                 rows.push({
+                 addToGroupMap(groupMap, {
                      jobId: j.id, type: 'ext_thu', extensionId: r.extensionId, rowId: `ext-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(custId), objName: getCustomerName(custId),
@@ -266,26 +292,21 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // 4. Thu Khác (External + Multi-Payment of type 'other')
       customReceipts.forEach(r => {
           if (checkMonth(r.date)) {
-              // Logic to determine TK Co for External receipts
-              // Check description for keyword 'CƯỢC' or 'DEPOSIT' to assign 1388
               const descUpper = (r.desc || '').toUpperCase();
               const isDeposit = descUpper.includes('CƯỢC') || descUpper.includes('DEPOSIT') || r.type === 'deposit';
               const tkCo = isDeposit ? '1388' : '13111';
               
-              // Main row - ADDED jobId: r.id
-              rows.push({ ...r, jobId: r.id, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
+              addToGroupMap(groupMap, { ...r, jobId: r.id, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
 
-              // Additional rows for custom receipts
               if (r.additionalReceipts && Array.isArray(r.additionalReceipts)) {
                   r.additionalReceipts.forEach((ar: any) => {
                       if (checkMonth(ar.date)) {
-                          // Inherit deposit logic based on desc or type
                           const arDescUpper = (ar.desc || '').toUpperCase();
                           const arIsDeposit = ar.type === 'deposit' || arDescUpper.includes('CƯỢC');
                           const arTkCo = arIsDeposit ? '1388' : '13111';
                           
-                          rows.push({
-                              jobId: r.id, // Link back to the custom receipt
+                          addToGroupMap(groupMap, {
+                              jobId: r.id, 
                               type: 'external',
                               rowId: `custom-add-${ar.id}`,
                               date: ar.date,
@@ -303,6 +324,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           }
       });
 
+      const rows = Array.from(groupMap.values());
       // Sort Ascending by Document Number (Oldest/Smallest first)
       return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     } 
@@ -1254,3 +1276,4 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     </div>
   );
 };
+
