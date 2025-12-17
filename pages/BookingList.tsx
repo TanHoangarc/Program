@@ -313,9 +313,11 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
                 const diff = actualNet - target;
                 
-                // Logic: Kiểm tra xem có file URL không (nếu invoice required)
-                // Nếu "Không có hóa đơn" (hasInvoice === false) thì không cần file
-                const missingInvoiceFile = (booking.costDetails.localCharge.hasInvoice !== false) && !booking.costDetails.localCharge.fileUrl;
+                // Logic: Check for missing file only if invoice is required
+                // hasInvoice defaults to true if undefined. If explicit false, skip check.
+                const isInvoiceRequired = booking.costDetails.localCharge.hasInvoice !== false;
+                const hasFile = !!booking.costDetails.localCharge.fileUrl;
+                const showMissingFileAlert = isInvoiceRequired && !hasFile;
 
                 return (
                   <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
@@ -335,8 +337,8 @@ export const BookingList: React.FC<BookingListProps> = ({
                        </div>
                     </td>
                     <td className="px-2 py-4 text-center">
-                        {missingInvoiceFile && (
-                            <div title="Thiếu thông tin hóa đơn đầu vào" className="flex justify-center">
+                        {showMissingFileAlert && (
+                            <div title="Thiếu file đính kèm hóa đơn" className="flex justify-center cursor-help">
                                 <AlertCircle className="w-4 h-4 text-purple-600" />
                             </div>
                         )}
