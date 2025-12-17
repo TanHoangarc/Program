@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Link } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
@@ -330,6 +330,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentInvoice = formData.localChargeInvoice || '';
           currentTotalReceivable = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
+          
+          // ADD Merge Amounts
+          if (addedJobs.length > 0) {
+              const addedSum = addedJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
+              currentTotalReceivable += addedSum;
+          }
+
       } else if (mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
           currentTotalReceivable = formData.localChargeTotal || 0;
@@ -594,6 +601,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           alert("Không tìm thấy Job Code này hoặc Job đang là Job chính!");
           return;
       }
+      
+      // CHECK SAME CUSTOMER
+      if (found.customerId !== formData.customerId) {
+          alert("Chỉ được gộp các Job của cùng một khách hàng!");
+          return;
+      }
+
       if (addedJobs.some(j => j.id === found.id)) {
           alert("Job này đã được thêm vào danh sách!");
           return;
@@ -609,9 +623,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setNewExtension(prev => ({ ...prev, total: currentAmt + extTotal, amisAmount: (prev.amisAmount || 0) + extTotal }));
           recalculateMerge(newExtension.invoice, newAddedJobs);
       } else {
-          const currentAmt = formData.localChargeTotal || 0;
+          // Local Charge Merge
+          // We don't update formData.localChargeTotal as it belongs to the MAIN job. 
+          // We update the amisAmount (Receipt Total).
+          // But visually we want to see the total sum.
           const addedAmt = found.localChargeTotal || 0; 
-          setFormData(prev => ({ ...prev, localChargeTotal: currentAmt + addedAmt }));
           setAmisAmount(prev => prev + addedAmt);
           recalculateMerge(formData.localChargeInvoice, newAddedJobs);
       }
@@ -631,8 +647,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       } else {
           recalculateMerge(formData.localChargeInvoice, newAddedJobs);
           if (jobToRemove) {
-              const currentAmt = formData.localChargeTotal || 0;
-              setFormData(prev => ({ ...prev, localChargeTotal: Math.max(0, currentAmt - (jobToRemove.localChargeTotal || 0)) }));
               setAmisAmount(prev => Math.max(0, prev - (jobToRemove.localChargeTotal || 0)));
           }
       }
@@ -846,6 +860,49 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             </div>
 
+            {/* MERGE JOB SECTION - AVAILABLE FOR LOCAL & EXTENSION */}
+            {(mode === 'local' || mode === 'extension') && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-600 uppercase mb-3 flex items-center">
+                        <Link className="w-4 h-4 mr-2 text-blue-500" /> Gộp Job (Thu cùng lúc)
+                    </h3>
+                    <div className="flex gap-2 mb-3">
+                        <input 
+                            type="text" 
+                            placeholder="Nhập Job Code để gộp..." 
+                            value={searchJobCode}
+                            onChange={(e) => setSearchJobCode(e.target.value)}
+                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                        <button type="button" onClick={handleAddJob} className="bg-blue-600 text-white px-3 py-2 rounded-lg font-bold text-xs hover:bg-blue-700 flex items-center">
+                            <Plus className="w-4 h-4 mr-1" /> Thêm
+                        </button>
+                    </div>
+                    {addedJobs.length > 0 && (
+                        <div className="space-y-2">
+                            {addedJobs.map(j => {
+                                const amt = mode === 'extension' 
+                                    ? (j.extensions || []).reduce((s, e) => s + e.total, 0)
+                                    : (j.localChargeTotal || 0);
+                                return (
+                                    <div key={j.id} className="flex justify-between items-center bg-white p-2 rounded border border-blue-100 text-sm">
+                                        <div>
+                                            <span className="font-bold text-blue-700">{j.jobCode}</span>
+                                            <span className="text-slate-500 mx-2">|</span>
+                                            <span className="text-slate-600">{j.booking}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-bold text-slate-700">{new Intl.NumberFormat('en-US').format(amt)}</span>
+                                            <button onClick={() => handleRemoveAddedJob(j.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* 3. MAIN PAYMENT RECEIPT (Lần 1) */}
             <div className="bg-white rounded-xl border-2 border-blue-100 shadow-sm relative overflow-hidden">
                 <div className="bg-blue-50 px-5 py-3 border-b border-blue-100 flex justify-between items-center">
@@ -1019,3 +1076,4 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     document.body
   );
 };
+
