@@ -21,6 +21,18 @@ export interface ExtensionData {
 }
 
 // ============================================================
+// SALARY (LƯƠNG)
+// ============================================================
+
+export interface SalaryRecord {
+  id: string;
+  month: string; // "1", "2"... "12"
+  year: number;
+  amount: number;
+  note?: string;
+}
+
+// ============================================================
 // CUSTOMER
 // ============================================================
 
@@ -328,3 +340,4 @@ export const INITIAL_JOB: JobData = {
   extensions: [],
   additionalReceipts: []
 };
+
