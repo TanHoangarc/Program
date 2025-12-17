@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Link } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Link, Layers, List } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
@@ -87,6 +87,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   
   // New state for Invoice/BL toggle
   const [invoiceInputMode, setInvoiceInputMode] = useState<'invoice' | 'bl'>('invoice');
+
+  // UI State: Tab selection
+  const [activeTab, setActiveTab] = useState<'merge' | 'installments'>('merge');
 
   // Fields for Main Receipt (Lần 1)
   const [amisDocNo, setAmisDocNo] = useState('');
@@ -198,6 +201,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setAddedJobs([]); 
       setInternalTargetId(null);
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
+
+      // Reset Tab to Merge by default unless there are existing additional receipts
+      if ((deepCopyJob.additionalReceipts || []).length > 0) {
+          setActiveTab('installments');
+      } else {
+          setActiveTab('merge');
+      }
 
       let initialCustId = '';
       if (mode === 'local' || mode === 'other') initialCustId = deepCopyJob.customerId;
@@ -854,11 +864,31 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             </div>
 
-            {/* MERGE JOB SECTION - AVAILABLE FOR LOCAL & EXTENSION */}
-            {(mode === 'local' || mode === 'extension') && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+            {/* --- NEW TAB INTERFACE --- */}
+            {mode !== 'deposit_refund' && (
+            <div className="border-b border-slate-200 flex space-x-6 mb-4">
+                <button 
+                    type="button"
+                    onClick={() => setActiveTab('merge')}
+                    className={`pb-2 text-sm font-bold flex items-center space-x-2 transition-colors border-b-2 ${activeTab === 'merge' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <Layers className="w-4 h-4" /> <span>Gộp Job (Cùng khách)</span>
+                </button>
+                <button 
+                    type="button"
+                    onClick={() => setActiveTab('installments')}
+                    className={`pb-2 text-sm font-bold flex items-center space-x-2 transition-colors border-b-2 ${activeTab === 'installments' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <History className="w-4 h-4" /> <span>Thu Nhiều Lần / Lịch Sử</span>
+                </button>
+            </div>
+            )}
+
+            {/* TAB CONTENT: MERGE JOB */}
+            {activeTab === 'merge' && (mode === 'local' || mode === 'extension') && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-left-2 duration-200">
                     <h3 className="text-xs font-bold text-slate-600 uppercase mb-3 flex items-center">
-                        <Link className="w-4 h-4 mr-2 text-blue-500" /> Gộp Job (Thu cùng lúc)
+                        <Link className="w-4 h-4 mr-2 text-blue-500" /> Chọn Job để gộp
                     </h3>
                     <div className="flex gap-2 mb-3">
                         <input 
@@ -900,6 +930,95 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             <span className="text-lg font-bold text-blue-700">{new Intl.NumberFormat('en-US').format(grandTotalMerge)} VND</span>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* TAB CONTENT: ADDITIONAL RECEIPTS */}
+            {activeTab === 'installments' && mode !== 'deposit_refund' && (
+                <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 shadow-sm animate-in fade-in slide-in-from-right-2 duration-200">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
+                            <List className="w-4 h-4 mr-2" /> Danh sách phiếu thu phụ
+                        </h3>
+                        {!isAddingReceipt && (
+                            <button type="button" onClick={handleAddNewReceipt} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 font-bold flex items-center shadow-sm">
+                                <Plus className="w-3 h-3 mr-1" /> Thêm phiếu
+                            </button>
+                        )}
+                    </div>
+
+                    {/* List of Additional Receipts */}
+                    <div className="space-y-3">
+                        {relevantAdditionalReceipts.map((rcpt, idx) => (
+                            <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition-shadow relative">
+                                <div className="absolute top-3 right-3 flex items-center gap-2">
+                                    <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded">Phiếu #{idx + 2}</span>
+                                    <button type="button" onClick={() => handleDeleteReceipt(rcpt.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 mb-2">
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-bold uppercase">Ngày CT</span>
+                                        <span className="text-sm font-medium text-slate-700">{formatDateVN(rcpt.date)}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-bold uppercase">Số CT</span>
+                                        <span className="text-sm font-bold text-slate-800">{rcpt.docNo}</span>
+                                    </div>
+                                </div>
+                                <div className="mb-2">
+                                    <span className="block text-[10px] text-slate-400 font-bold uppercase">Số tiền</span>
+                                    <span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('en-US').format(rcpt.amount)} VND</span>
+                                </div>
+                                <div>
+                                    <span className="block text-[10px] text-slate-400 font-bold uppercase">Diễn giải</span>
+                                    <p className="text-xs text-slate-600 truncate">{rcpt.desc}</p>
+                                </div>
+                            </div>
+                        ))}
+                        
+                        {relevantAdditionalReceipts.length === 0 && !isAddingReceipt && (
+                            <div className="text-center py-4 text-slate-400 text-xs italic border-2 border-dashed border-emerald-100 rounded-xl">
+                                Chưa có phiếu thu thêm nào
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Add Receipt Form */}
+                    {isAddingReceipt && (
+                        <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg">
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div><Label>Ngày</Label><DateInput value={newReceipt.date || ''} onChange={(val) => setNewReceipt(prev => ({...prev, date: val}))} /></div>
+                                <div><Label>Số chứng từ</Label><input type="text" value={newReceipt.docNo} onChange={e => setNewReceipt(prev => ({...prev, docNo: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                            </div>
+                            <div className="mb-3"><Label>Số tiền</Label>
+                                <input 
+                                    type="text" 
+                                    value={newReceipt.amount ? new Intl.NumberFormat('en-US').format(newReceipt.amount) : ''} 
+                                    onChange={e => { const val = Number(e.target.value.replace(/,/g, '')); if(!isNaN(val)) setNewReceipt(prev => ({...prev, amount: val})); }} 
+                                    className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-right text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none" 
+                                />
+                            </div>
+                            <div className="mb-3"><Label>Diễn giải</Label><input type="text" value={newReceipt.desc} onChange={e => setNewReceipt(prev => ({...prev, desc: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                            <div className="flex justify-end gap-2">
+                                <button type="button" onClick={() => setIsAddingReceipt(false)} className="text-xs px-3 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Hủy</button>
+                                <button type="button" onClick={handleSaveNewReceipt} className="text-xs px-3 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Lưu phiếu</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Summary */}
+                    <div className="mt-4 pt-3 border-t border-emerald-200/60">
+                        <div className="flex justify-between items-center text-sm mb-1">
+                            <span className="text-emerald-900 font-medium">Tổng thực thu (Lần 1 + Thêm):</span>
+                            <span className="text-emerald-700 font-bold">{new Intl.NumberFormat('en-US').format(totalCollected)} VND</span>
+                        </div>
+                        {mode !== 'other' && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500 font-medium">Còn lại phải thu:</span>
+                                <span className={`font-bold ${remaining > 0 ? 'text-red-500' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(remaining)} VND</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -967,95 +1086,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     </div>
                 </div>
             </div>
-
-            {/* 4. ADDITIONAL RECEIPTS */}
-            {mode !== 'deposit_refund' && (
-            <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 shadow-sm">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
-                        <History className="w-4 h-4 mr-2" /> Các lần thu thêm (Additional)
-                    </h3>
-                    {!isAddingReceipt && (
-                        <button type="button" onClick={handleAddNewReceipt} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 font-bold flex items-center shadow-sm">
-                            <Plus className="w-3 h-3 mr-1" /> Thêm phiếu
-                        </button>
-                    )}
-                </div>
-
-                {/* List of Additional Receipts */}
-                <div className="space-y-3">
-                    {relevantAdditionalReceipts.map((rcpt, idx) => (
-                        <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition-shadow relative">
-                            <div className="absolute top-3 right-3 flex items-center gap-2">
-                                <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded">Phiếu #{idx + 2}</span>
-                                <button type="button" onClick={() => handleDeleteReceipt(rcpt.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 mb-2">
-                                <div>
-                                    <span className="block text-[10px] text-slate-400 font-bold uppercase">Ngày CT</span>
-                                    <span className="text-sm font-medium text-slate-700">{formatDateVN(rcpt.date)}</span>
-                                </div>
-                                <div>
-                                    <span className="block text-[10px] text-slate-400 font-bold uppercase">Số CT</span>
-                                    <span className="text-sm font-bold text-slate-800">{rcpt.docNo}</span>
-                                </div>
-                            </div>
-                            <div className="mb-2">
-                                <span className="block text-[10px] text-slate-400 font-bold uppercase">Số tiền</span>
-                                <span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('en-US').format(rcpt.amount)} VND</span>
-                            </div>
-                            <div>
-                                <span className="block text-[10px] text-slate-400 font-bold uppercase">Diễn giải</span>
-                                <p className="text-xs text-slate-600 truncate">{rcpt.desc}</p>
-                            </div>
-                        </div>
-                    ))}
-                    
-                    {relevantAdditionalReceipts.length === 0 && !isAddingReceipt && (
-                        <div className="text-center py-4 text-slate-400 text-xs italic border-2 border-dashed border-emerald-100 rounded-xl">
-                            Chưa có phiếu thu thêm nào
-                        </div>
-                    )}
-                </div>
-
-                {/* Add Receipt Form */}
-                {isAddingReceipt && (
-                    <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg">
-                        <div className="grid grid-cols-2 gap-3 mb-3">
-                            <div><Label>Ngày</Label><DateInput value={newReceipt.date || ''} onChange={(val) => setNewReceipt(prev => ({...prev, date: val}))} /></div>
-                            <div><Label>Số chứng từ</Label><input type="text" value={newReceipt.docNo} onChange={e => setNewReceipt(prev => ({...prev, docNo: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                        </div>
-                        <div className="mb-3"><Label>Số tiền</Label>
-                            <input 
-                                type="text" 
-                                value={newReceipt.amount ? new Intl.NumberFormat('en-US').format(newReceipt.amount) : ''} 
-                                onChange={e => { const val = Number(e.target.value.replace(/,/g, '')); if(!isNaN(val)) setNewReceipt(prev => ({...prev, amount: val})); }} 
-                                className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-right text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none" 
-                            />
-                        </div>
-                        <div className="mb-3"><Label>Diễn giải</Label><input type="text" value={newReceipt.desc} onChange={e => setNewReceipt(prev => ({...prev, desc: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-                        <div className="flex justify-end gap-2">
-                            <button type="button" onClick={() => setIsAddingReceipt(false)} className="text-xs px-3 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Hủy</button>
-                            <button type="button" onClick={handleSaveNewReceipt} className="text-xs px-3 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Lưu phiếu</button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Summary */}
-                <div className="mt-4 pt-3 border-t border-emerald-200/60">
-                    <div className="flex justify-between items-center text-sm mb-1">
-                        <span className="text-emerald-900 font-medium">Tổng thực thu (Lần 1 + Thêm):</span>
-                        <span className="text-emerald-700 font-bold">{new Intl.NumberFormat('en-US').format(totalCollected)} VND</span>
-                    </div>
-                    {mode !== 'other' && (
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 font-medium">Còn lại phải thu:</span>
-                            <span className={`font-bold ${remaining > 0 ? 'text-red-500' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(remaining)} VND</span>
-                        </div>
-                    )}
-                </div>
-            </div>
-            )}
 
             </form>
         </div>
