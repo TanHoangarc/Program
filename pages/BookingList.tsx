@@ -313,7 +313,9 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
                 const diff = actualNet - target;
                 
-                const missingInvoiceInfo = !booking.costDetails.localCharge.invoice || !booking.costDetails.localCharge.date;
+                // Logic: Kiểm tra xem có file URL không (nếu invoice required)
+                // Nếu "Không có hóa đơn" (hasInvoice === false) thì không cần file
+                const missingInvoiceFile = (booking.costDetails.localCharge.hasInvoice !== false) && !booking.costDetails.localCharge.fileUrl;
 
                 return (
                   <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
@@ -333,7 +335,7 @@ export const BookingList: React.FC<BookingListProps> = ({
                        </div>
                     </td>
                     <td className="px-2 py-4 text-center">
-                        {missingInvoiceInfo && (
+                        {missingInvoiceFile && (
                             <div title="Thiếu thông tin hóa đơn đầu vào" className="flex justify-center">
                                 <AlertCircle className="w-4 h-4 text-purple-600" />
                             </div>
@@ -415,26 +417,27 @@ export const BookingList: React.FC<BookingListProps> = ({
           <PurchaseInvoiceModal 
              isOpen={purchaseModalOpen}
              onClose={() => setPurchaseModalOpen(false)}
-             booking={targetBookingForPurchase}
              onSave={handleSavePurchase}
+             booking={targetBookingForPurchase}
+             lines={lines}
           />
       )}
 
-      {/* Job Modal for Editing/Viewing via BookingDetail */}
+      {/* Job Modal */}
       {isJobModalOpen && (
-        <JobModal
-            isOpen={isJobModalOpen}
-            onClose={() => setIsJobModalOpen(false)}
-            onSave={handleSaveJob}
-            initialData={editingJob}
-            customers={customers}
-            lines={lines}
-            onAddLine={onAddLine}
-            onViewBookingDetails={() => {}} // No need to re-open booking from here
-            existingJobs={jobs}
-            onAddCustomer={onAddCustomer} // Added
-        />
+          <JobModal 
+              isOpen={isJobModalOpen}
+              onClose={() => setIsJobModalOpen(false)}
+              onSave={handleSaveJob}
+              initialData={editingJob}
+              customers={customers}
+              lines={lines}
+              onAddLine={onAddLine}
+              onViewBookingDetails={() => {}}
+              onAddCustomer={onAddCustomer}
+          />
       )}
     </div>
   );
 };
+
