@@ -1,25 +1,29 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Link, Layers, List, ArrowRight } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Link, Layers, List } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
 export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'extension' | 'other';
 
-interface QuickReceiveModalProps {
+export interface QuickReceiveModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (updatedJob: JobData) => void;
+  onSave: (job: JobData) => void;
   job: JobData;
   mode: ReceiveMode;
   customers: Customer[];
   allJobs?: JobData[];
   targetExtensionId?: string | null;
-  usedDocNos?: string[]; 
+  usedDocNos?: string[];
 }
 
-// Reusable DateInput Component
+// --- INTERNAL COMPONENTS ---
+const Label = ({ children }: { children?: React.ReactNode }) => (
+  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
+);
+
 const DateInput = ({ 
   value, 
   onChange, 
@@ -53,7 +57,7 @@ const DateInput = ({
   };
 
   return (
-    <div className={`relative w-full ${className}`}>
+    <div className={`relative w-full ${className || ''}`}>
       <input 
         type="text" 
         value={displayValue} 
@@ -75,43 +79,28 @@ const DateInput = ({
   );
 };
 
-const Label = ({ children }: { children?: React.ReactNode }) => (
-  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
-);
-
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, usedDocNos = []
 }) => {
   const [formData, setFormData] = useState<JobData>(job);
   const [otherSubMode, setOtherSubMode] = useState<'local' | 'deposit'>('local');
-  
-  // New state for Invoice/BL toggle
   const [invoiceInputMode, setInvoiceInputMode] = useState<'invoice' | 'bl'>('invoice');
-
-  // UI State: Tab selection
   const [activeTab, setActiveTab] = useState<'merge' | 'installments'>('merge');
-
-  // Fields for Main Receipt (Lần 1)
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
-  const [amisAmount, setAmisAmount] = useState(0); // This overrides the total if set
-  const [amisDate, setAmisDate] = useState(''); // Separate date for Main Receipt
-
-  // Fields for Extension Logic
+  const [amisAmount, setAmisAmount] = useState(0); 
+  const [amisDate, setAmisDate] = useState(''); 
   const [newExtension, setNewExtension] = useState({
     customerId: '',
     invoice: '',
-    date: new Date().toISOString().split('T')[0], // Invoice Date
+    date: new Date().toISOString().split('T')[0],
     total: 0,
     amisDocNo: '',
     amisDesc: '',
     amisAmount: 0,
-    amisDate: '' // Receipt Date
+    amisDate: '' 
   });
-  
   const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
-
-  // --- MULTI-PAYMENT STATE ---
   const [additionalReceipts, setAdditionalReceipts] = useState<AdditionalReceipt[]>([]);
   const [isAddingReceipt, setIsAddingReceipt] = useState(false);
   const [newReceipt, setNewReceipt] = useState<Partial<AdditionalReceipt>>({
@@ -120,17 +109,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       desc: '',
       docNo: ''
   });
-
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [custInputVal, setCustInputVal] = useState('');
-
-  // --- MERGE JOB STATE ---
   const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
   const [searchJobCode, setSearchJobCode] = useState('');
 
-  // ----------------------------------------------------------------------
-  // DESCRIPTION LOGIC
-  // ----------------------------------------------------------------------
+  // Define filteredCustomers logic
+  const filteredCustomers = useMemo(() => {
+    if (!custInputVal) return customers;
+    const lower = custInputVal.toLowerCase();
+    return customers.filter(c => 
+      (c.code || '').toLowerCase().includes(lower) || 
+      (c.name || '').toLowerCase().includes(lower)
+    );
+  }, [customers, custInputVal]);
 
   const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean = false) => {
       const invoices: string[] = [];
@@ -169,7 +161,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const recalculateMerge = (currentMainInvoice: string, extraJobs: JobData[]) => {
-      if (activeTab !== 'merge') return; // Only recalculate merge desc if in merge mode
+      if (activeTab !== 'merge') return; 
 
       const isExtension = mode === 'extension';
       const newDesc = generateMergedDescription(currentMainInvoice, extraJobs, isExtension);
@@ -180,10 +172,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDesc(newDesc);
       }
   };
-
-  // ----------------------------------------------------------------------
-  // EFFECTS
-  // ----------------------------------------------------------------------
 
   useEffect(() => {
       if (isOpen && mode === 'other') {
@@ -197,21 +185,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
   }, [isOpen, mode, job.amisLcDesc]);
 
-  // Handle Tab Switch Logic for Descriptions
   useEffect(() => {
       if (!isOpen) return;
 
       const currentDesc = mode === 'extension' ? newExtension.amisDesc : amisDesc;
       
       if (activeTab === 'installments') {
-          // Append "LẦN 1" if needed
           if (currentDesc && !currentDesc.toUpperCase().includes('LẦN')) {
               const newDesc = `${currentDesc} (LẦN 1)`;
               if (mode === 'extension') setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
               else setAmisDesc(newDesc);
           }
       } else if (activeTab === 'merge') {
-          // Revert/Recalculate merge description (remove "LẦN X" implicitly by regenerating)
           if (mode === 'extension') {
               recalculateMerge(newExtension.invoice, addedJobs);
           } else {
@@ -219,6 +204,24 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
       }
   }, [activeTab, isOpen]);
+
+  useEffect(() => {
+      if (activeTab === 'merge' && isOpen) {
+          const mainTotal = mode === 'extension' ? (newExtension.total || 0) : (formData.localChargeTotal || 0);
+          const addedTotal = addedJobs.reduce((sum, j) => {
+              if (mode === 'extension') return sum + (j.extensions || []).reduce((s, e) => s + e.total, 0);
+              return sum + (j.localChargeTotal || 0);
+          }, 0);
+          
+          const finalTotal = mainTotal + addedTotal;
+          
+          if (mode === 'extension') {
+              setNewExtension(prev => ({...prev, amisAmount: finalTotal}));
+          } else {
+              setAmisAmount(finalTotal);
+          }
+      }
+  }, [addedJobs, activeTab, mode, formData.localChargeTotal, newExtension.total, isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -233,7 +236,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setInternalTargetId(null);
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
 
-      // Reset Tab to Merge by default unless there are existing additional receipts
       if ((deepCopyJob.additionalReceipts || []).length > 0) {
           setActiveTab('installments');
       } else {
@@ -246,13 +248,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'extension') {
           const exts = deepCopyJob.extensions || [];
           let target = null;
-          
           if (targetExtensionId) {
               target = exts.find((e: any) => e.id === targetExtensionId);
           } else if (exts.length > 0) {
               target = exts[0];
           }
-          
           initialCustId = target ? (target.customerId || deepCopyJob.customerId) : deepCopyJob.customerId;
       }
 
@@ -343,14 +343,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     }
   }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos]);
 
-  // ----------------------------------------------------------------------
-  // HANDLERS
-  // ----------------------------------------------------------------------
-
   const handleOtherSubModeChange = (subMode: 'local' | 'deposit') => {
       setOtherSubMode(subMode);
       const invPlaceholder = formData.localChargeInvoice || 'XXX';
-      
       if (subMode === 'deposit') {
           setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
       } else {
@@ -411,16 +406,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const totalCollected = currentMainAmount + totalPaidAdditional;
   
   const grandTotalMerge = useMemo(() => {
-      let sum = currentMainAmount;
-      if (addedJobs.length > 0) {
-          if (mode === 'extension') {
-              sum += addedJobs.reduce((s, j) => s + (j.extensions || []).reduce((sub, e) => sub + e.total, 0), 0);
-          } else {
-              sum += addedJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
-          }
-      }
-      return sum;
-  }, [currentMainAmount, addedJobs, mode]);
+      return currentMainAmount;
+  }, [currentMainAmount]);
 
   const remaining = display.currentTotalReceivable - totalCollected;
 
@@ -498,12 +485,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       
       const nextDoc = generateNextDocNo(jobsForCalc, 'NTTK', 5, [...extra, ...existingInSession]);
       
-      // Auto-generate description for installment X
       const mainDesc = mode === 'extension' ? newExtension.amisDesc : amisDesc;
       let nextDesc = mainDesc;
       
-      // Try to replace (LẦN 1) with (LẦN X)
-      const nextCount = relevantAdditionalReceipts.length + 2; // +2 because 1 is Main, so next is 2
+      const nextCount = relevantAdditionalReceipts.length + 2; 
       if (mainDesc.includes('LẦN 1')) {
           nextDesc = mainDesc.replace('LẦN 1', `LẦN ${nextCount}`);
       } else {
@@ -542,7 +527,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Save Dates logic
     if (mode === 'extension') {
       let updatedExtensions;
       if (internalTargetId) {
@@ -640,11 +624,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     onClose();
   };
 
-  const filteredCustomers = customers.filter(c => 
-      c.code.toLowerCase().includes(custInputVal.toLowerCase()) || 
-      c.name.toLowerCase().includes(custInputVal.toLowerCase())
-  );
-
   const handleAddJob = () => {
       if (!allJobs) return;
       const found = allJobs.find(j => j.jobCode === searchJobCode && j.id !== formData.id);
@@ -729,7 +708,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200">
         
-        {/* HEADER */}
         <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center rounded-t-2xl ${mode === 'deposit_refund' ? 'bg-red-50' : 'bg-blue-50'}`}>
             <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-lg shadow-sm border ${mode === 'deposit_refund' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
@@ -748,7 +726,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50 flex-1">
             <form onSubmit={handleSubmit} className="space-y-6">
             
-            {/* 1. EXTENSION SELECTOR (IF MODE EXTENSION) */}
             {mode === 'extension' && (formData.extensions?.length || 0) > 0 && (
                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm">
                     <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
@@ -770,7 +747,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
-            {/* 2. GENERAL INVOICE / DEBT INFO (COMMON) */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center uppercase tracking-wide">
                     <User className="w-4 h-4 text-slate-500 mr-2" />
@@ -845,7 +821,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             </div>
 
-            {/* TAB INTERFACE */}
             {mode !== 'deposit_refund' && (
             <div className="border-b border-slate-200 flex space-x-6 mb-4">
                 <button 
@@ -865,11 +840,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             </div>
             )}
 
-            {/* ========= TAB 1: MERGE JOB ========= */}
             {activeTab === 'merge' && (mode === 'local' || mode === 'extension') && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
                     
-                    {/* ADD JOB SECTION */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
                         <h3 className="text-xs font-bold text-slate-600 uppercase mb-3 flex items-center">
                             <Link className="w-4 h-4 mr-2 text-blue-500" /> Chọn Job để gộp
@@ -916,11 +889,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         )}
                     </div>
 
-                    {/* MAIN RECEIPT (MERGE MODE) */}
                     <div className="bg-white rounded-xl border-2 border-blue-100 shadow-sm relative overflow-hidden">
                         <div className="bg-blue-50 px-5 py-3 border-b border-blue-100 flex justify-between items-center">
                             <h3 className="text-sm font-bold text-blue-800 flex items-center uppercase">
-                                <Receipt className="w-4 h-4 mr-2" /> Phiếu Thu (Gộp)
+                                <Receipt className="w-4 h-4 mr-2" /> Tổng thu
                             </h3>
                             <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-bold">MERGED</span>
                         </div>
@@ -930,7 +902,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                 <div><Label>Số Chứng Từ (AMIS)</Label><input type="text" value={mode === 'extension' ? newExtension.amisDocNo : amisDocNo} onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value})); else setAmisDocNo(e.target.value); }} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-800" /></div>
                             </div>
                             <div>
-                                <Label>Số tiền thu (Tổng gộp)</Label>
+                                <Label>Tổng tiền</Label>
                                 <div className="relative">
                                     <input 
                                         type="text" 
@@ -957,11 +929,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
-            {/* ========= TAB 2: INSTALLMENTS ========= */}
             {activeTab === 'installments' && mode !== 'deposit_refund' && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
                     
-                    {/* MAIN RECEIPT (LẦN 1) */}
                     <div className="bg-white rounded-xl border-2 border-emerald-100 shadow-sm relative overflow-hidden">
                         <div className="bg-emerald-50 px-5 py-3 border-b border-emerald-100 flex justify-between items-center">
                             <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
@@ -1000,7 +970,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         </div>
                     </div>
 
-                    {/* LIST ADDITIONAL RECEIPTS */}
                     <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 shadow-sm">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
@@ -1013,7 +982,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             )}
                         </div>
 
-                        {/* List */}
                         <div className="space-y-3">
                             {relevantAdditionalReceipts.map((rcpt, idx) => (
                                 <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition-shadow relative">
@@ -1034,7 +1002,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             )}
                         </div>
 
-                        {/* Add Form */}
                         {isAddingReceipt && (
                             <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg">
                                 <h4 className="text-xs font-bold text-emerald-700 uppercase mb-3 border-b border-emerald-100 pb-1">Nhập phiếu lần {relevantAdditionalReceipts.length + 2}</h4>
@@ -1051,7 +1018,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             </div>
                         )}
 
-                        {/* Summary */}
                         <div className="mt-4 pt-3 border-t border-emerald-200/60">
                             <div className="flex justify-between items-center text-sm mb-1">
                                 <span className="text-emerald-900 font-medium">Tổng thực thu (Tất cả các lần):</span>
@@ -1066,7 +1032,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
-            {/* DEFAULT VIEW FOR DEPOSIT REFUND */}
             {mode === 'deposit_refund' && (
                 <div className="bg-white rounded-xl border-2 border-red-100 shadow-sm relative overflow-hidden">
                     <div className="bg-red-50 px-5 py-3 border-b border-red-100 flex justify-between items-center">
