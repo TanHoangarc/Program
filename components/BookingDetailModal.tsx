@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Upload } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 
@@ -139,9 +139,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // FILE UPLOAD
+  // FILE UPLOAD STATES
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [activeUploadRowId, setActiveUploadRowId] = useState<string | null>(null); // Track which row is uploading
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // -----------------------------
@@ -302,10 +304,23 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const handleUpdateDeposit = (id: string, field: keyof BookingDeposit, val: any) => setDeposits(prev => prev.map(item => item.id === id ? { ...item, [field]: val } : item));
   const handleRemoveDeposit = (id: string) => setDeposits(prev => prev.filter(d => d.id !== id));
 
-  // --- FILE UPLOAD ---
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); };
+  // --- FILE UPLOAD LOGIC ---
   
-  const handleUploadFile = async () => {
+  // Trigger file selection for a specific extension, additional LC, or main local charge
+  const handleRowFileClick = (rowId: string | null) => {
+      setActiveUploadRowId(rowId);
+      // Clear previous selection to ensure change event fires if selecting same file
+      if (fileInputRef.current) fileInputRef.current.value = ''; 
+      setSelectedFile(null);
+      fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { 
+      if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); 
+  };
+  
+  // Upload for Main Local Charge
+  const handleUploadMainFile = async () => {
       if (!selectedFile || !localCharge.invoice) { 
           alert("Vui lòng nhập số Hóa đơn trước khi upload file."); 
           return; 
@@ -318,8 +333,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           const [year, month, day] = dateStr.split('-'); 
           const folderPath = `Invoice/${year}.${month}`;
           
-          // Naming Convention: Line.Booking.Invoice.dd.mm.yyyy.ext
-          // Fix: Wrap values in String() to prevent .replace on numbers
           const ext = selectedFile.name.split('.').pop();
           const safeLine = String(booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
           const safeBooking = String(booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
@@ -336,13 +349,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           
           if (response.data && response.data.success) {
               const fileUrl = `${BACKEND_URL}/uploads/${folderPath}/${fileName}`;
-              
-              setLocalCharge(prev => ({
-                  ...prev, 
-                  fileUrl: fileUrl, 
-                  fileName: fileName
-              }));
+              setLocalCharge(prev => ({ ...prev, fileUrl: fileUrl, fileName: fileName }));
               setSelectedFile(null);
+              setActiveUploadRowId(null);
               alert("Upload thành công!");
           } else {
               throw new Error(response.data?.message || "Upload failed");
@@ -356,7 +365,82 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       }
   };
 
-  const handleDeleteFile = () => { if(window.confirm("Xóa file?")) setLocalCharge(prev => ({...prev, fileUrl: '', fileName: ''})); };
+  // Upload for Row (Extension or Additional LC)
+  const handleUploadRowFile = async () => {
+      if (!selectedFile || !activeUploadRowId) return;
+      
+      let isExtension = true;
+      let item = extensionCosts.find(e => e.id === activeUploadRowId);
+      
+      if (!item) {
+          isExtension = false;
+          item = additionalLocalCharges.find(e => e.id === activeUploadRowId);
+      }
+
+      if (!item || !item.invoice) {
+          alert("Vui lòng nhập số Hóa đơn trước khi upload.");
+          return;
+      }
+
+      setIsUploading(true);
+      try {
+          const dateStr = item.date || new Date().toISOString().split('T')[0];
+          const [year, month, day] = dateStr.split('-'); 
+          const folderPath = `Invoice/${year}.${month}`;
+          
+          const ext = selectedFile.name.split('.').pop();
+          const safeLine = String(booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+          const safeBooking = String(booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+          const safeInvoice = String(item.invoice || '').replace(/[^a-zA-Z0-9]/g, '');
+          
+          const fileName = `${safeLine}.${safeBooking}.${safeInvoice}.${day}.${month}.${year}.${ext}`;
+
+          const formData = new FormData();
+          formData.append("folderPath", folderPath);
+          formData.append("fileName", fileName);
+          formData.append("file", selectedFile);
+
+          const response = await axios.post(`${BACKEND_URL}/upload-file`, formData);
+          
+          if (response.data && response.data.success) {
+              const fileUrl = `${BACKEND_URL}/uploads/${folderPath}/${fileName}`;
+              
+              if (isExtension) {
+                  setExtensionCosts(prev => prev.map(i => 
+                      i.id === activeUploadRowId 
+                      ? { ...i, fileUrl, fileName }
+                      : i
+                  ));
+              } else {
+                  setAdditionalLocalCharges(prev => prev.map(i => 
+                      i.id === activeUploadRowId 
+                      ? { ...i, fileUrl, fileName }
+                      : i
+                  ));
+              }
+              
+              setSelectedFile(null);
+              setActiveUploadRowId(null);
+              alert("Upload thành công!");
+          } else {
+              throw new Error(response.data?.message || "Upload failed");
+          }
+      } catch (err) {
+          console.error("Row Upload error:", err);
+          alert("Có lỗi khi upload file dòng.");
+      } finally {
+          setIsUploading(false);
+      }
+  };
+
+  const handleDeleteMainFile = () => { if(window.confirm("Xóa file?")) setLocalCharge(prev => ({...prev, fileUrl: '', fileName: ''})); };
+  
+  const handleDeleteRowFile = (id: string) => {
+      if(window.confirm("Xóa file đính kèm này?")) {
+          setExtensionCosts(prev => prev.map(item => item.id === id ? { ...item, fileUrl: '', fileName: '' } : item));
+          setAdditionalLocalCharges(prev => prev.map(item => item.id === id ? { ...item, fileUrl: '', fileName: '' } : item));
+      }
+  };
 
   const copyColumn = (type: 'sell' | 'cost' | 'vat' | 'project') => {
     const values = booking.jobs.map(job => {
@@ -511,49 +595,75 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         }
                     />
                     
-                    <div className="grid grid-cols-12 gap-3 mb-2">
-                        <div className="col-span-3"><Label>Số HĐ</Label><Input value={localCharge.invoice} onChange={(e) => handleLocalChargeChange("invoice", e.target.value)} placeholder={!localCharge.hasInvoice ? "Tham chiếu" : ""} /></div>
-                        <div className="col-span-3"><Label>Ngày</Label><DateInput value={localCharge.date} onChange={(e) => handleLocalChargeChange("date", e.target.value)} /></div>
-                        {localCharge.hasInvoice ? (
-                            <>
-                                <div className="col-span-3"><Label>Giá Net</Label><MoneyInput name="net" value={localCharge.net} onChange={(n, v) => handleLocalChargeChange(n as any, v)} /></div>
-                                <div className="col-span-3"><Label>VAT</Label><MoneyInput name="vat" value={localCharge.vat} onChange={(n, v) => handleLocalChargeChange(n as any, v)} /></div>
-                            </>
-                        ) : (
-                            <div className="col-span-6"><Label>Tổng tiền (Tạm tính)</Label><MoneyInput name="total" value={localCharge.total} onChange={(n, v) => handleLocalChargeChange(n as any, v)} className="bg-red-50 text-red-700 font-bold" /></div>
+                    {/* MAIN LOCAL CHARGE ITEM */}
+                    <div className="mb-4 pb-2 border-b border-slate-100">
+                        <div className="grid grid-cols-12 gap-3 mb-2">
+                            <div className="col-span-3"><Label>Số HĐ</Label><Input value={localCharge.invoice} onChange={(e) => handleLocalChargeChange("invoice", e.target.value)} placeholder={!localCharge.hasInvoice ? "Tham chiếu" : ""} /></div>
+                            <div className="col-span-3"><Label>Ngày</Label><DateInput value={localCharge.date} onChange={(e) => handleLocalChargeChange("date", e.target.value)} /></div>
+                            {localCharge.hasInvoice ? (
+                                <>
+                                    <div className="col-span-3"><Label>Giá Net</Label><MoneyInput name="net" value={localCharge.net} onChange={(n, v) => handleLocalChargeChange(n as any, v)} /></div>
+                                    <div className="col-span-3"><Label>VAT</Label><MoneyInput name="vat" value={localCharge.vat} onChange={(n, v) => handleLocalChargeChange(n as any, v)} /></div>
+                                </>
+                            ) : (
+                                <div className="col-span-6"><Label>Tổng tiền (Tạm tính)</Label><MoneyInput name="total" value={localCharge.total} onChange={(n, v) => handleLocalChargeChange(n as any, v)} className="bg-red-50 text-red-700 font-bold" /></div>
+                            )}
+                        </div>
+
+                        {/* File Upload Mini (Main Local Charge) */}
+                        {localCharge.hasInvoice && (
+                            <div className="flex items-center justify-between bg-slate-50 rounded border border-slate-200 px-3 py-1.5">
+                                {localCharge.fileUrl ? (
+                                    <div className="flex items-center gap-2 text-xs text-green-700">
+                                        <Check className="w-3.5 h-3.5" /> 
+                                        <a href={localCharge.fileUrl} target="_blank" className="hover:underline font-medium truncate max-w-[200px]">{localCharge.fileName}</a>
+                                        <button onClick={handleDeleteMainFile} className="text-slate-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5"/></button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
+                                        <button onClick={() => handleRowFileClick(null)} className="text-[10px] bg-white border px-2 py-1 rounded hover:bg-slate-100 flex items-center text-slate-600"><FileUp className="w-3 h-3 mr-1"/> {selectedFile && activeUploadRowId === null ? selectedFile.name : "Đính kèm HĐ (Gốc)"}</button>
+                                        {selectedFile && activeUploadRowId === null && <button onClick={handleUploadMainFile} disabled={isUploading} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">{isUploading ? "..." : "Upload"}</button>}
+                                    </div>
+                                )}
+                                <div className="text-[10px] text-slate-400">Total Invoice: <strong className={totalActualNet !== systemTotalAdjustedCost ? "text-red-600" : "text-green-600"}>{formatMoney(totalActualTotal)}</strong> / Target: {formatMoney(systemTotalAdjustedCost)}</div>
+                            </div>
                         )}
                     </div>
 
                     {/* Additional LCs */}
                     {additionalLocalCharges.map(item => (
-                        <div key={item.id} className="grid grid-cols-12 gap-3 mt-2 items-center bg-slate-50 p-2 rounded border border-slate-100 group relative">
-                            <div className="col-span-3"><Input value={item.invoice} onChange={(e) => handleUpdateAdditionalLC(item.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs" /></div>
-                            <div className="col-span-3"><DateInput value={item.date} onChange={(e) => handleUpdateAdditionalLC(item.id, "date", e.target.value)} className="h-7" /></div>
-                            <div className="col-span-3"><MoneyInput value={item.net} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "net", v)} className="h-7" /></div>
-                            <div className="col-span-2"><MoneyInput value={item.vat} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "vat", v)} className="h-7" /></div>
-                            <button onClick={() => handleRemoveAdditionalLC(item.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
+                        <div key={item.id} className="relative group mb-4 pb-2 border-b border-slate-100 last:border-0 last:pb-0 last:mb-0">
+                            {/* Inputs - Same grid as Main */}
+                            <div className="grid grid-cols-12 gap-3 mb-2">
+                                <div className="col-span-3"><Label>Số HĐ (Thêm)</Label><Input value={item.invoice} onChange={(e) => handleUpdateAdditionalLC(item.id, "invoice", e.target.value)} placeholder="Số HĐ" /></div>
+                                <div className="col-span-3"><Label>Ngày</Label><DateInput value={item.date} onChange={(e) => handleUpdateAdditionalLC(item.id, "date", e.target.value)} /></div>
+                                <div className="col-span-3"><Label>Giá Net</Label><MoneyInput value={item.net} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "net", v)} /></div>
+                                <div className="col-span-3"><Label>VAT</Label><MoneyInput value={item.vat} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "vat", v)} /></div>
+                            </div>
+
+                            {/* File Upload - Same style as Main */}
+                            <div className="flex items-center justify-between bg-slate-50 rounded border border-slate-200 px-3 py-1.5">
+                                {item.fileUrl ? (
+                                    <div className="flex items-center gap-2 text-xs text-green-700">
+                                        <Check className="w-3.5 h-3.5" /> 
+                                        <a href={item.fileUrl} target="_blank" className="hover:underline font-medium truncate max-w-[200px]">{item.fileName}</a>
+                                        <button onClick={() => handleDeleteRowFile(item.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5"/></button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        {selectedFile && activeUploadRowId === item.id ? (
+                                            <button onClick={handleUploadRowFile} disabled={isUploading} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 flex items-center">{isUploading ? "..." : "Upload"}</button>
+                                        ) : (
+                                            <button onClick={() => handleRowFileClick(item.id)} className="text-[10px] bg-white border px-2 py-1 rounded hover:bg-slate-100 flex items-center text-slate-600"><FileUp className="w-3 h-3 mr-1"/> Đính kèm HĐ (Thêm)</button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <button onClick={() => handleRemoveAdditionalLC(item.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3 h-3"/></button>
                         </div>
                     ))}
-
-                    {/* File Upload Mini */}
-                    {localCharge.hasInvoice && (
-                        <div className="mt-3 flex items-center justify-between bg-slate-50 rounded border border-slate-200 px-3 py-1.5">
-                            {localCharge.fileUrl ? (
-                                <div className="flex items-center gap-2 text-xs text-green-700">
-                                    <Check className="w-3.5 h-3.5" /> 
-                                    <a href={localCharge.fileUrl} target="_blank" className="hover:underline font-medium truncate max-w-[200px]">{localCharge.fileName}</a>
-                                    <button onClick={handleDeleteFile} className="text-slate-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5"/></button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
-                                    <button onClick={() => fileInputRef.current?.click()} className="text-[10px] bg-white border px-2 py-1 rounded hover:bg-slate-100 flex items-center text-slate-600"><FileUp className="w-3 h-3 mr-1"/> {selectedFile ? selectedFile.name : "Đính kèm HĐ"}</button>
-                                    {selectedFile && <button onClick={handleUploadFile} disabled={isUploading} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">{isUploading ? "..." : "Upload"}</button>}
-                                </div>
-                            )}
-                            <div className="text-[10px] text-slate-400">Total Invoice: <strong className={totalActualNet !== systemTotalAdjustedCost ? "text-red-600" : "text-green-600"}>{formatMoney(totalActualTotal)}</strong> / Target: {formatMoney(systemTotalAdjustedCost)}</div>
-                        </div>
-                    )}
                 </div>
 
                 {/* 3. EXTENSIONS (Input) */}
@@ -566,11 +676,28 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     />
                     <div className="space-y-2">
                         {extensionCosts.map(ext => (
-                            <div key={ext.id} className="grid grid-cols-12 gap-2 items-center bg-orange-50/30 p-2 rounded border border-orange-100 group relative">
+                            <div key={ext.id} className="grid grid-cols-12 gap-1 items-center bg-orange-50/30 p-2 rounded border border-orange-100 group relative">
                                 <div className="col-span-3"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white" /></div>
-                                <div className="col-span-3"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7" /></div>
-                                <div className="col-span-3"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} className="h-7 bg-white" /></div>
-                                <div className="col-span-3"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} className="h-7 bg-white" /></div>
+                                <div className="col-span-2"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7" /></div>
+                                <div className="col-span-2"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} className="h-7 bg-white" /></div>
+                                <div className="col-span-2"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} className="h-7 bg-white" /></div>
+                                <div className="col-span-3 flex items-center justify-end gap-1">
+                                    {/* EXTENSION FILE UPLOAD BUTTON */}
+                                    {ext.fileUrl ? (
+                                        <div className="flex items-center bg-white border border-green-200 rounded px-1.5 h-7 gap-1 max-w-full overflow-hidden">
+                                            <a href={ext.fileUrl} target="_blank" className="text-[9px] text-green-700 hover:underline truncate max-w-[60px]" title={ext.fileName}>{ext.fileName}</a>
+                                            <button onClick={() => handleDeleteRowFile(ext.id)} className="text-slate-400 hover:text-red-500"><X className="w-3 h-3"/></button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {selectedFile && activeUploadRowId === ext.id ? (
+                                                <button onClick={handleUploadRowFile} disabled={isUploading} className="h-7 px-2 bg-blue-600 text-white rounded text-[9px] font-bold hover:bg-blue-700 flex items-center">{isUploading ? "..." : "Up"}</button>
+                                            ) : (
+                                                <button onClick={() => handleRowFileClick(ext.id)} className="h-7 w-7 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-400 hover:text-orange-600 hover:border-orange-200" title="Đính kèm file"><Paperclip className="w-3.5 h-3.5" /></button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
                                 <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
                             </div>
                         ))}
