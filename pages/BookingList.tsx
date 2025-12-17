@@ -313,11 +313,17 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
                 const diff = actualNet - target;
                 
-                // Logic: Check for missing file only if invoice is required
-                // hasInvoice defaults to true if undefined. If explicit false, skip check.
-                const isInvoiceRequired = booking.costDetails.localCharge.hasInvoice !== false;
+                // Logic: 
+                // 1. Check if invoice is required (hasInvoice !== false) AND file is missing.
+                // 2. OR check if "No Invoice" mode is enabled (hasInvoice === false).
+                const hasInvoice = booking.costDetails.localCharge.hasInvoice !== false;
                 const hasFile = !!booking.costDetails.localCharge.fileUrl;
-                const showMissingFileAlert = isInvoiceRequired && !hasFile;
+                const isNoInvoice = booking.costDetails.localCharge.hasInvoice === false;
+
+                const showAlert = (hasInvoice && !hasFile) || isNoInvoice;
+                let alertTitle = "";
+                if (isNoInvoice) alertTitle = "Đang ở chế độ 'Chưa HĐ'";
+                else if (!hasFile) alertTitle = "Thiếu file đính kèm hóa đơn";
 
                 return (
                   <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
@@ -337,8 +343,8 @@ export const BookingList: React.FC<BookingListProps> = ({
                        </div>
                     </td>
                     <td className="px-2 py-4 text-center">
-                        {showMissingFileAlert && (
-                            <div title="Thiếu file đính kèm hóa đơn" className="flex justify-center cursor-help">
+                        {showAlert && (
+                            <div title={alertTitle} className="flex justify-center cursor-help">
                                 <AlertCircle className="w-4 h-4 text-purple-600" />
                             </div>
                         )}
