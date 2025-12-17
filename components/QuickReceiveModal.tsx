@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Link, Layers, List } from 'lucide-react';
+import { X, Save, Calendar, FileText, User, RotateCcw, Plus, Trash2, ChevronDown, History, Receipt, Link, Layers, List, ToggleLeft, ToggleRight } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
@@ -10,20 +10,16 @@ export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'extension' |
 export interface QuickReceiveModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (job: JobData) => void;
+  onSave: (updatedJob: JobData) => void;
   job: JobData;
   mode: ReceiveMode;
   customers: Customer[];
   allJobs?: JobData[];
   targetExtensionId?: string | null;
-  usedDocNos?: string[];
+  usedDocNos?: string[]; 
 }
 
-// --- INTERNAL COMPONENTS ---
-const Label = ({ children }: { children?: React.ReactNode }) => (
-  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
-);
-
+// Reusable DateInput Component
 const DateInput = ({ 
   value, 
   onChange, 
@@ -57,7 +53,7 @@ const DateInput = ({
   };
 
   return (
-    <div className={`relative w-full ${className || ''}`}>
+    <div className={`relative w-full ${className}`}>
       <input 
         type="text" 
         value={displayValue} 
@@ -79,28 +75,43 @@ const DateInput = ({
   );
 };
 
+const Label = ({ children }: { children?: React.ReactNode }) => (
+  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
+);
+
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, usedDocNos = []
 }) => {
   const [formData, setFormData] = useState<JobData>(job);
   const [otherSubMode, setOtherSubMode] = useState<'local' | 'deposit'>('local');
+  
+  // New state for Invoice/BL toggle
   const [invoiceInputMode, setInvoiceInputMode] = useState<'invoice' | 'bl'>('invoice');
+
+  // UI State: Tab selection
   const [activeTab, setActiveTab] = useState<'merge' | 'installments'>('merge');
+
+  // Fields for Main Receipt (Lần 1 / Tổng thu)
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
-  const [amisAmount, setAmisAmount] = useState(0); 
-  const [amisDate, setAmisDate] = useState(''); 
+  const [amisAmount, setAmisAmount] = useState(0); // This overrides the total if set
+  const [amisDate, setAmisDate] = useState(''); // Separate date for Main Receipt
+
+  // Fields for Extension Logic
   const [newExtension, setNewExtension] = useState({
     customerId: '',
     invoice: '',
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toISOString().split('T')[0], // Invoice Date
     total: 0,
     amisDocNo: '',
     amisDesc: '',
     amisAmount: 0,
-    amisDate: '' 
+    amisDate: '' // Receipt Date
   });
+  
   const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
+
+  // --- MULTI-PAYMENT STATE ---
   const [additionalReceipts, setAdditionalReceipts] = useState<AdditionalReceipt[]>([]);
   const [isAddingReceipt, setIsAddingReceipt] = useState(false);
   const [newReceipt, setNewReceipt] = useState<Partial<AdditionalReceipt>>({
@@ -109,73 +120,26 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       desc: '',
       docNo: ''
   });
+
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [custInputVal, setCustInputVal] = useState('');
+
+  // --- MERGE JOB STATE ---
   const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
   const [searchJobCode, setSearchJobCode] = useState('');
 
-  // Define filteredCustomers logic
-  const filteredCustomers = useMemo(() => {
-    if (!custInputVal) return customers;
-    const lower = custInputVal.toLowerCase();
-    return customers.filter(c => 
-      (c.code || '').toLowerCase().includes(lower) || 
-      (c.name || '').toLowerCase().includes(lower)
-    );
-  }, [customers, custInputVal]);
+  // ----------------------------------------------------------------------
+  // EFFECTS
+  // ----------------------------------------------------------------------
 
-  const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean = false) => {
-      const invoices: string[] = [];
-      const missingJobCodes: string[] = [];
-
-      if (mainInvoice && mainInvoice.trim()) {
-          invoices.push(mainInvoice.trim());
-      } else {
-          missingJobCodes.push(formData.jobCode);
-      }
-
-      extraJobs.forEach(j => {
-          let inv = isExtension 
-            ? (j.extensions || []).map(e => e.invoice).filter(Boolean).join('+')
-            : j.localChargeInvoice;
-            
-          if (inv && inv.trim()) {
-              invoices.push(inv.trim());
-          } else {
-              missingJobCodes.push(j.jobCode);
-          }
-      });
-
-      let desc = isExtension ? "Thu tiền của KH theo hoá đơn GH " : "Thu tiền của KH theo hoá đơn ";
-      
-      const invPart = invoices.join('+');
-      desc += invPart;
-
-      if (missingJobCodes.length > 0) {
-          if (invPart.length > 0) desc += "+"; 
-          desc += "XXX BL " + missingJobCodes.join('+');
-      }
-
-      desc += " (KIM)";
-      return desc;
-  };
-
-  const recalculateMerge = (currentMainInvoice: string, extraJobs: JobData[]) => {
-      if (activeTab !== 'merge') return; 
-
-      const isExtension = mode === 'extension';
-      const newDesc = generateMergedDescription(currentMainInvoice, extraJobs, isExtension);
-      
-      if (isExtension) {
-          setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
-      } else {
-          setAmisDesc(newDesc);
-      }
-  };
-
+  // 1. Initialize Mode & Data
   useEffect(() => {
-      if (isOpen && mode === 'other') {
-          const desc = job.amisLcDesc || '';
+    if (isOpen) {
+      const deepCopyJob = JSON.parse(JSON.stringify(job));
+      
+      if (mode === 'other') {
+          if (!deepCopyJob.localChargeDate) deepCopyJob.localChargeDate = new Date().toISOString().split('T')[0];
+          const desc = deepCopyJob.amisLcDesc || '';
           if (desc.includes('CƯỢC')) {
               setOtherSubMode('deposit');
           } else {
@@ -183,59 +147,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
           setInvoiceInputMode('invoice');
       }
-  }, [isOpen, mode, job.amisLcDesc]);
-
-  useEffect(() => {
-      if (!isOpen) return;
-
-      const currentDesc = mode === 'extension' ? newExtension.amisDesc : amisDesc;
-      
-      if (activeTab === 'installments') {
-          if (currentDesc && !currentDesc.toUpperCase().includes('LẦN')) {
-              const newDesc = `${currentDesc} (LẦN 1)`;
-              if (mode === 'extension') setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
-              else setAmisDesc(newDesc);
-          }
-      } else if (activeTab === 'merge') {
-          if (mode === 'extension') {
-              recalculateMerge(newExtension.invoice, addedJobs);
-          } else {
-              recalculateMerge(formData.localChargeInvoice, addedJobs);
-          }
-      }
-  }, [activeTab, isOpen]);
-
-  useEffect(() => {
-      if (activeTab === 'merge' && isOpen) {
-          const mainTotal = mode === 'extension' ? (newExtension.total || 0) : (formData.localChargeTotal || 0);
-          const addedTotal = addedJobs.reduce((sum, j) => {
-              if (mode === 'extension') return sum + (j.extensions || []).reduce((s, e) => s + e.total, 0);
-              return sum + (j.localChargeTotal || 0);
-          }, 0);
-          
-          const finalTotal = mainTotal + addedTotal;
-          
-          if (mode === 'extension') {
-              setNewExtension(prev => ({...prev, amisAmount: finalTotal}));
-          } else {
-              setAmisAmount(finalTotal);
-          }
-      }
-  }, [addedJobs, activeTab, mode, formData.localChargeTotal, newExtension.total, isOpen]);
-
-  useEffect(() => {
-    if (isOpen) {
-      const deepCopyJob = JSON.parse(JSON.stringify(job));
-      
-      if (mode === 'other') {
-          if (!deepCopyJob.localChargeDate) deepCopyJob.localChargeDate = new Date().toISOString().split('T')[0];
-      }
 
       setFormData(deepCopyJob);
       setAddedJobs([]); 
       setInternalTargetId(null);
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
 
+      // Reset Tab to Merge by default unless there are existing additional receipts
       if ((deepCopyJob.additionalReceipts || []).length > 0) {
           setActiveTab('installments');
       } else {
@@ -248,11 +166,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'extension') {
           const exts = deepCopyJob.extensions || [];
           let target = null;
+          
           if (targetExtensionId) {
               target = exts.find((e: any) => e.id === targetExtensionId);
           } else if (exts.length > 0) {
               target = exts[0];
           }
+          
           initialCustId = target ? (target.customerId || deepCopyJob.customerId) : deepCopyJob.customerId;
       }
 
@@ -271,7 +191,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
              setAmisDesc(deepCopyJob.amisLcDesc);
           } else {
              const inv = deepCopyJob.localChargeInvoice;
-             const desc = generateMergedDescription(inv, []);
+             const desc = `Thu tiền của KH theo hoá đơn ${inv || 'XXX'} (KIM)`;
              setAmisDesc(desc);
           }
       } 
@@ -343,19 +263,106 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     }
   }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos]);
 
-  const handleOtherSubModeChange = (subMode: 'local' | 'deposit') => {
-      setOtherSubMode(subMode);
-      const invPlaceholder = formData.localChargeInvoice || 'XXX';
-      if (subMode === 'deposit') {
-          setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
-      } else {
-          if (invoiceInputMode === 'bl') {
-              setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${invPlaceholder} (LH MB)`);
+  // 2. Auto-sum logic for MERGE MODE
+  useEffect(() => {
+      if (activeTab === 'merge' && isOpen) {
+          const mainTotal = mode === 'extension' ? (newExtension.total || 0) : (formData.localChargeTotal || 0);
+          
+          const addedTotal = addedJobs.reduce((sum, j) => {
+              if (mode === 'extension') {
+                  // For extension mode, sum all extension totals of added jobs
+                  return sum + (j.extensions || []).reduce((s, e) => s + e.total, 0);
+              }
+              // For local/other, sum localChargeTotal
+              return sum + (j.localChargeTotal || 0);
+          }, 0);
+          
+          const finalTotal = mainTotal + addedTotal;
+          
+          if (mode === 'extension') {
+              setNewExtension(prev => ({...prev, amisAmount: finalTotal}));
           } else {
-              setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
+              setAmisAmount(finalTotal);
           }
       }
+  }, [addedJobs, activeTab, mode, formData.localChargeTotal, newExtension.total, isOpen]);
+
+  // 3. Description Logic Helper
+  const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean = false) => {
+      const invoices: string[] = [];
+      const missingJobCodes: string[] = [];
+
+      if (mainInvoice && mainInvoice.trim()) {
+          invoices.push(mainInvoice.trim());
+      } else {
+          missingJobCodes.push(formData.jobCode);
+      }
+
+      extraJobs.forEach(j => {
+          let inv = isExtension 
+            ? (j.extensions || []).map(e => e.invoice).filter(Boolean).join('+')
+            : j.localChargeInvoice;
+            
+          if (inv && inv.trim()) {
+              invoices.push(inv.trim());
+          } else {
+              missingJobCodes.push(j.jobCode);
+          }
+      });
+
+      let desc = isExtension ? "Thu tiền của KH theo hoá đơn GH " : "Thu tiền của KH theo hoá đơn ";
+      
+      const invPart = invoices.join('+');
+      desc += invPart;
+
+      if (missingJobCodes.length > 0) {
+          if (invPart.length > 0) desc += "+"; 
+          desc += "XXX BL " + missingJobCodes.join('+');
+      }
+
+      desc += " (KIM)";
+      return desc;
   };
+
+  const recalculateMerge = (currentMainInvoice: string, extraJobs: JobData[]) => {
+      if (activeTab !== 'merge') return; 
+
+      const isExtension = mode === 'extension';
+      const newDesc = generateMergedDescription(currentMainInvoice, extraJobs, isExtension);
+      
+      if (isExtension) {
+          setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
+      } else {
+          setAmisDesc(newDesc);
+      }
+  };
+
+  // 4. Tab Switch Effect for Descriptions
+  useEffect(() => {
+      if (!isOpen) return;
+
+      const currentDesc = mode === 'extension' ? newExtension.amisDesc : amisDesc;
+      
+      if (activeTab === 'installments') {
+          // Append "LẦN 1" if needed
+          if (currentDesc && !currentDesc.toUpperCase().includes('LẦN')) {
+              const newDesc = `${currentDesc} (LẦN 1)`;
+              if (mode === 'extension') setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
+              else setAmisDesc(newDesc);
+          }
+      } else if (activeTab === 'merge') {
+          // Recalculate merge description (clears LẦN X)
+          if (mode === 'extension') {
+              recalculateMerge(newExtension.invoice, addedJobs);
+          } else {
+              recalculateMerge(formData.localChargeInvoice, addedJobs);
+          }
+      }
+  }, [activeTab, isOpen]);
+
+  // ----------------------------------------------------------------------
+  // HANDLERS
+  // ----------------------------------------------------------------------
 
   const getDisplayValues = () => {
       let currentTotalReceivable = 0; 
@@ -391,6 +398,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   const display = getDisplayValues();
 
+  // Additional Receipts Filter
   const relevantAdditionalReceipts = additionalReceipts.filter(r => {
       if (mode === 'extension') {
           return r.type === 'extension' && r.extensionId === internalTargetId;
@@ -404,11 +412,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const currentMainAmount = mode === 'extension' ? newExtension.amisAmount : amisAmount;
   const totalPaidAdditional = relevantAdditionalReceipts.reduce((sum, r) => sum + r.amount, 0);
   const totalCollected = currentMainAmount + totalPaidAdditional;
-  
-  const grandTotalMerge = useMemo(() => {
-      return currentMainAmount;
-  }, [currentMainAmount]);
-
   const remaining = display.currentTotalReceivable - totalCollected;
 
   const handleAmountChange = (val: number) => {
@@ -475,6 +478,38 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
   };
 
+  const filteredCustomers = useMemo(() => {
+    if (!custInputVal) return customers;
+    const lower = custInputVal.toLowerCase();
+    return customers.filter(c => 
+      (c.code || '').toLowerCase().includes(lower) || 
+      (c.name || '').toLowerCase().includes(lower)
+    );
+  }, [customers, custInputVal]);
+
+  const handleAddJob = () => {
+      if (!allJobs) return;
+      const found = allJobs.find(j => j.jobCode === searchJobCode && j.id !== formData.id);
+      if (!found) { alert("Không tìm thấy Job Code!"); return; }
+      if (found.customerId !== formData.customerId) { alert("Chỉ được gộp các Job của cùng một khách hàng!"); return; }
+      if (addedJobs.some(j => j.id === found.id)) { alert("Job này đã được thêm!"); return; }
+
+      const newAddedJobs = [...addedJobs, found];
+      setAddedJobs(newAddedJobs);
+      setSearchJobCode('');
+
+      if (mode === 'extension') recalculateMerge(newExtension.invoice, newAddedJobs);
+      else recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+  };
+
+  const handleRemoveAddedJob = (id: string) => {
+      const newAddedJobs = addedJobs.filter(j => j.id !== id);
+      setAddedJobs(newAddedJobs);
+      if (mode === 'extension') recalculateMerge(newExtension.invoice, newAddedJobs);
+      else recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+  };
+
+  // --- INSTALLMENT / ADD RECEIPT HANDLERS ---
   const handleAddNewReceipt = () => {
       setIsAddingReceipt(true);
       const jobsForCalc = allJobs || [];
@@ -524,6 +559,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setAdditionalReceipts(prev => prev.filter(r => r.id !== id));
   };
 
+  // --- SUBMIT ---
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -567,13 +603,14 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           additionalReceipts: additionalReceipts 
         });
 
+      // Update merged jobs as well
       if (addedJobs.length > 0) {
           addedJobs.forEach(addedJob => {
               const updatedAddedJobExtensions = (addedJob.extensions || []).map(ext => ({
                   ...ext,
                   amisDocNo: newExtension.amisDocNo,
                   amisDesc: newExtension.amisDesc,
-                  amisAmount: 0 
+                  amisAmount: 0 // Set amount to 0 for merged jobs as main job holds total
               }));
               onSave({ ...addedJob, extensions: updatedAddedJobExtensions });
           });
@@ -596,7 +633,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     ...addedJob,
                     amisLcDocNo: amisDocNo,
                     amisLcDesc: amisDesc,
-                    amisLcAmount: 0
+                    amisLcAmount: 0 
                 });
             });
         }
@@ -622,28 +659,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     }
     
     onClose();
-  };
-
-  const handleAddJob = () => {
-      if (!allJobs) return;
-      const found = allJobs.find(j => j.jobCode === searchJobCode && j.id !== formData.id);
-      if (!found) { alert("Không tìm thấy Job Code!"); return; }
-      if (found.customerId !== formData.customerId) { alert("Chỉ được gộp các Job của cùng một khách hàng!"); return; }
-      if (addedJobs.some(j => j.id === found.id)) { alert("Job này đã được thêm!"); return; }
-
-      const newAddedJobs = [...addedJobs, found];
-      setAddedJobs(newAddedJobs);
-      setSearchJobCode('');
-
-      if (mode === 'extension') recalculateMerge(newExtension.invoice, newAddedJobs);
-      else recalculateMerge(formData.localChargeInvoice, newAddedJobs);
-  };
-
-  const handleRemoveAddedJob = (id: string) => {
-      const newAddedJobs = addedJobs.filter(j => j.id !== id);
-      setAddedJobs(newAddedJobs);
-      if (mode === 'extension') recalculateMerge(newExtension.invoice, newAddedJobs);
-      else recalculateMerge(formData.localChargeInvoice, newAddedJobs);
   };
 
   const handleSelectExtensionToPay = (extId: string) => {
@@ -708,6 +723,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200">
         
+        {/* HEADER */}
         <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center rounded-t-2xl ${mode === 'deposit_refund' ? 'bg-red-50' : 'bg-blue-50'}`}>
             <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-lg shadow-sm border ${mode === 'deposit_refund' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
@@ -726,6 +742,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50 flex-1">
             <form onSubmit={handleSubmit} className="space-y-6">
             
+            {/* 1. EXTENSION SELECTOR (IF MODE EXTENSION) */}
             {mode === 'extension' && (formData.extensions?.length || 0) > 0 && (
                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm">
                     <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
@@ -747,6 +764,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
+            {/* 2. GENERAL INVOICE / DEBT INFO (COMMON) */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center uppercase tracking-wide">
                     <User className="w-4 h-4 text-slate-500 mr-2" />
@@ -821,6 +839,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             </div>
 
+            {/* TAB INTERFACE */}
             {mode !== 'deposit_refund' && (
             <div className="border-b border-slate-200 flex space-x-6 mb-4">
                 <button 
@@ -840,9 +859,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             </div>
             )}
 
+            {/* ========= TAB 1: MERGE JOB ========= */}
             {activeTab === 'merge' && (mode === 'local' || mode === 'extension') && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
                     
+                    {/* ADD JOB SECTION */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
                         <h3 className="text-xs font-bold text-slate-600 uppercase mb-3 flex items-center">
                             <Link className="w-4 h-4 mr-2 text-blue-500" /> Chọn Job để gộp
@@ -881,14 +902,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                 })}
                             </div>
                         )}
-                        {addedJobs.length > 0 && (
-                            <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Tổng tiền gộp (Hiển thị):</span>
-                                <span className="text-lg font-bold text-blue-700">{new Intl.NumberFormat('en-US').format(grandTotalMerge)} VND</span>
-                            </div>
-                        )}
                     </div>
 
+                    {/* MAIN RECEIPT (MERGE MODE) */}
                     <div className="bg-white rounded-xl border-2 border-blue-100 shadow-sm relative overflow-hidden">
                         <div className="bg-blue-50 px-5 py-3 border-b border-blue-100 flex justify-between items-center">
                             <h3 className="text-sm font-bold text-blue-800 flex items-center uppercase">
@@ -929,9 +945,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
+            {/* ========= TAB 2: INSTALLMENTS ========= */}
             {activeTab === 'installments' && mode !== 'deposit_refund' && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
                     
+                    {/* MAIN RECEIPT (LẦN 1) */}
                     <div className="bg-white rounded-xl border-2 border-emerald-100 shadow-sm relative overflow-hidden">
                         <div className="bg-emerald-50 px-5 py-3 border-b border-emerald-100 flex justify-between items-center">
                             <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
@@ -970,6 +988,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         </div>
                     </div>
 
+                    {/* LIST ADDITIONAL RECEIPTS */}
                     <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 shadow-sm">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
@@ -982,6 +1001,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             )}
                         </div>
 
+                        {/* List */}
                         <div className="space-y-3">
                             {relevantAdditionalReceipts.map((rcpt, idx) => (
                                 <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition-shadow relative">
@@ -1002,6 +1022,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             )}
                         </div>
 
+                        {/* Add Form */}
                         {isAddingReceipt && (
                             <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg">
                                 <h4 className="text-xs font-bold text-emerald-700 uppercase mb-3 border-b border-emerald-100 pb-1">Nhập phiếu lần {relevantAdditionalReceipts.length + 2}</h4>
@@ -1018,6 +1039,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             </div>
                         )}
 
+                        {/* Summary */}
                         <div className="mt-4 pt-3 border-t border-emerald-200/60">
                             <div className="flex justify-between items-center text-sm mb-1">
                                 <span className="text-emerald-900 font-medium">Tổng thực thu (Tất cả các lần):</span>
@@ -1032,6 +1054,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
             )}
 
+            {/* DEFAULT VIEW FOR DEPOSIT REFUND */}
             {mode === 'deposit_refund' && (
                 <div className="bg-white rounded-xl border-2 border-red-100 shadow-sm relative overflow-hidden">
                     <div className="bg-red-50 px-5 py-3 border-b border-red-100 flex justify-between items-center">
