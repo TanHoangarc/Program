@@ -14,11 +14,12 @@ import { Reconciliation } from './pages/Reconciliation';
 import { ProfitReport } from './pages/ProfitReport';
 import { LookupPage } from './pages/LookupPage'; 
 import { PaymentPage } from './pages/PaymentPage'; 
-import { CVHCPage } from './pages/CVHCPage'; // IMPORT CVHCPage
+import { CVHCPage } from './pages/CVHCPage'; 
+import { SalaryPage } from './pages/SalaryPage'; // NEW IMPORT
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -43,7 +44,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -148,6 +149,16 @@ const App: React.FC = () => {
     } catch {
         return [];
     }
+  });
+
+  // --- SALARIES STATE ---
+  const [salaries, setSalaries] = useState<SalaryRecord[]>(() => {
+      try {
+          const saved = localStorage.getItem('logistics_salaries');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
   });
 
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
@@ -582,6 +593,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
+  useEffect(() => { localStorage.setItem('logistics_salaries', JSON.stringify(salaries)); }, [salaries]); // NEW Persist Salary
 
   useEffect(() => {
       if (currentPage === 'system' && currentUser?.role === 'Admin') {
@@ -732,7 +744,18 @@ const App: React.FC = () => {
             )}
 
             {currentPage === 'profit' && (
-              <ProfitReport jobs={jobs} onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} />
+              <ProfitReport 
+                jobs={jobs} 
+                salaries={salaries} // NEW PROP
+                onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} 
+              />
+            )}
+
+            {currentPage === 'salary' && (
+                <SalaryPage 
+                    salaries={salaries} 
+                    onUpdateSalaries={setSalaries} 
+                />
             )}
 
             {currentPage === 'data-lines' && (
@@ -825,3 +848,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
