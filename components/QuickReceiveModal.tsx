@@ -187,8 +187,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setInternalTargetId(null);
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
 
-      // Reset Tab to Merge by default unless there are existing additional receipts
-      if ((deepCopyJob.additionalReceipts || []).length > 0) {
+      // Reset Tab logic
+      if (foundMergedJobs.length > 0) {
+          setActiveTab('merge');
+      } else if ((deepCopyJob.additionalReceipts || []).length > 0) {
           setActiveTab('installments');
       } else {
           setActiveTab('merge');
@@ -598,6 +600,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     e.preventDefault();
     
     if (mode === 'extension') {
+      const addedTotal = addedJobs.reduce((sum, j) => sum + (j.extensions || []).reduce((s, e) => s + e.total, 0), 0);
+      const mainAmount = newExtension.amisAmount - addedTotal;
+
       let updatedExtensions;
       if (internalTargetId) {
           updatedExtensions = (formData.extensions || []).map(ext => {
@@ -610,7 +615,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                       total: newExtension.total, 
                       amisDocNo: newExtension.amisDocNo,
                       amisDesc: newExtension.amisDesc,
-                      amisAmount: newExtension.amisAmount 
+                      amisAmount: mainAmount 
                   };
               }
               return ext;
@@ -627,7 +632,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               total: newExtension.total,
               amisDocNo: newExtension.amisDocNo,
               amisDesc: newExtension.amisDesc,
-              amisAmount: newExtension.amisAmount
+              amisAmount: mainAmount
             }
           ];
       }
@@ -644,7 +649,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   ...ext,
                   amisDocNo: newExtension.amisDocNo,
                   amisDesc: newExtension.amisDesc,
-                  amisAmount: 0 // Set amount to 0 for merged jobs as main job holds total
+                  amisAmount: ext.total // CORRECTED: Set Amount to total for merged item
               }));
               onSave({ ...addedJob, extensions: updatedAddedJobExtensions });
           });
@@ -652,11 +657,14 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
     } 
     else if (mode === 'local' || mode === 'other') {
+        const addedTotal = addedJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
+        const mainAmount = amisAmount - addedTotal;
+
         onSave({ 
             ...formData, 
             amisLcDocNo: amisDocNo, 
             amisLcDesc: amisDesc,
-            amisLcAmount: amisAmount,
+            amisLcAmount: mainAmount, // CORRECTED: Set Main Amount to difference
             localChargeDate: amisDate,
             additionalReceipts: additionalReceipts
         });
@@ -667,7 +675,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     ...addedJob,
                     amisLcDocNo: amisDocNo,
                     amisLcDesc: amisDesc,
-                    amisLcAmount: 0 
+                    amisLcAmount: addedJob.localChargeTotal // CORRECTED: Set Amount to total for merged item
                 });
             });
         }
