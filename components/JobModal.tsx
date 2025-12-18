@@ -673,7 +673,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             className="text-center font-bold text-slate-700" 
                         />
                     </div>
-                    <div className="md:col-span-1">
+                    <div className="md:col-span-2">
                         <Label>Tháng</Label>
                         <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
                             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -688,7 +688,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             </button>
                         </div>
                     </div>
-                    <div className="md:col-span-3">
+                    <div className="md:col-span-2">
                         <Label>Booking</Label>
                         <div className="flex items-center gap-1">
                             <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />
@@ -939,3 +939,4 @@ export const JobModal: React.FC<JobModalProps> = ({
     document.body
   );
 };
+
