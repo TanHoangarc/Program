@@ -586,7 +586,8 @@ const App: React.FC = () => {
         paymentRequests,
         customers,
         lines,
-        users, // Bổ sung users vào backup
+        salaries, // NEW: Added salary records to backup
+        users, 
         lockedIds: Array.from(lockedIds),
         processedRequestIds: Array.from(localDeletedIds),
         customReceipts
@@ -611,13 +612,18 @@ const App: React.FC = () => {
   useEffect(() => { 
     if (!isServerAvailable) return;
     
+    // Decreased debounce time for faster syncing (500ms instead of 2000ms)
     const timeoutId = setTimeout(() => {
         autoBackup();
-    }, 2000);
+    }, 500);
 
     return () => clearTimeout(timeoutId);
-    // Thêm users vào dependency array để backup khi thêm tài khoản
-  }, [jobs, paymentRequests, customers, lines, users, lockedIds, customReceipts, localDeletedIds, isServerAvailable]);
+    // Added all essential states to dependency array for complete coverage
+  }, [
+    jobs, paymentRequests, customers, lines, users, 
+    lockedIds, customReceipts, localDeletedIds, 
+    salaries, isServerAvailable, currentUser
+  ]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -881,3 +887,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
