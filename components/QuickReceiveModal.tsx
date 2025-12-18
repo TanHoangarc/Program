@@ -271,7 +271,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       return allJobs.filter(j => 
         j.id !== formData.id && 
         !addedJobs.some(added => added.id === j.id) &&
-        (j.jobCode.toLowerCase().includes(term) || j.booking.toLowerCase().includes(term))
+        (String(j.jobCode || '').toLowerCase().includes(term) || String(j.booking || '').toLowerCase().includes(term))
       ).slice(0, 5);
   }, [searchJobTerm, allJobs, addedJobs, formData.id]);
 
