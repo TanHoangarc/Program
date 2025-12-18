@@ -19,7 +19,6 @@ export interface QuickReceiveModalProps {
   usedDocNos?: string[]; 
 }
 
-// Reusable DateInput Component
 const DateInput = ({ 
   value, 
   onChange, 
@@ -83,32 +82,24 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, usedDocNos = []
 }) => {
   const [formData, setFormData] = useState<JobData>(job);
-  
-  // Tabs: 'single' (Mặc định) | 'merge' (Thu gộp nhiều Job)
   const [activeTab, setActiveTab] = useState<'single' | 'merge'>('single');
 
-  // Trạng thái phiếu thu AMIS
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
   const [amisAmount, setAmisAmount] = useState(0); 
   const [amisDate, setAmisDate] = useState('');
 
-  // Thu gộp Job
   const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
   const [searchJobTerm, setSearchJobTerm] = useState('');
-
-  // Chọn dòng Gia hạn (dành riêng cho mode extension)
   const [selectedExtIds, setSelectedExtIds] = useState<Set<string>>(new Set());
-
   const [custInputVal, setCustInputVal] = useState('');
 
-  // 1. Khởi tạo dữ liệu ban đầu
+  // 1. Khởi tạo dữ liệu ban đầu khi mở Modal
   useEffect(() => {
     if (isOpen) {
       const deepCopyJob = JSON.parse(JSON.stringify(job));
       setFormData(deepCopyJob);
 
-      // Tìm mã khách hàng hiển thị
       let initialCustId = '';
       if (mode === 'local' || mode === 'other' || mode === 'local_refund') initialCustId = deepCopyJob.customerId;
       else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
@@ -117,16 +108,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const foundCust = customers.find(c => c.id === initialCustId);
       setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
-      // Tự động chọn dòng gia hạn nếu có targetExtensionId
+      // Tự động chọn dòng gia hạn đích
       if (mode === 'extension') {
           if (targetExtensionId) setSelectedExtIds(new Set([targetExtensionId]));
-          else if (deepCopyJob.extensions?.length > 0) setSelectedExtIds(new Set([deepCopyJob.extensions[0].id]));
+          else if (deepCopyJob.extensions?.length > 0) {
+              // Nếu không truyền ID cụ thể, tick chọn tất cả các dòng chưa thu của Job chính
+              const pendingIds = deepCopyJob.extensions.filter((e: any) => !e.amisDocNo).map((e: any) => e.id);
+              setSelectedExtIds(new Set(pendingIds.length > 0 ? pendingIds : [deepCopyJob.extensions[0].id]));
+          }
       }
 
       const jobsForCalc = allJobs || [];
       const extra = usedDocNos || [];
 
-      // Cấu hình ban đầu cho các mode
       if (mode === 'local' || mode === 'other') {
           setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
@@ -157,25 +151,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     }
   }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos]);
 
-  // 2. Tự động tính toán Số tiền và Diễn giải khi thay đổi Job gộp hoặc Dòng chọn
+  // 2. Tự động tính toán Số tiền và Diễn giải khi có thay đổi (Chọn dòng hoặc thêm Job)
   useEffect(() => {
       if (!isOpen) return;
 
-      // --- Tính tổng tiền ---
       let total = 0;
+      const allInvolvedJobs = [formData, ...addedJobs];
+      
+      // --- TÍNH TỔNG TIỀN ---
       if (mode === 'extension') {
-          // Tiền từ các dòng đã chọn của Job chính
-          const mainJobExtTotal = (formData.extensions || [])
-              .filter(ext => selectedExtIds.has(ext.id))
-              .reduce((s, ext) => s + ext.total, 0);
-          
-          // Tiền từ các Job gộp thêm (lấy tất cả extension chưa thu của các Job đó)
-          const addedJobsExtTotal = addedJobs.reduce((s, j) => 
-              s + (j.extensions || []).reduce((sum, ext) => sum + ext.total, 0), 0
-          );
-          total = mainJobExtTotal + addedJobsExtTotal;
+          total = allInvolvedJobs.reduce((sum, j) => {
+              const selectedInJob = (j.extensions || []).filter(ext => selectedExtIds.has(ext.id));
+              return sum + selectedInJob.reduce((s, ext) => s + ext.total, 0);
+          }, 0);
       } else {
-          // Local charge hoặc mode khác
           total = (formData.localChargeTotal || 0) + addedJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
       }
       
@@ -183,17 +172,24 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisAmount(total);
       }
 
-      // --- Tự động tạo diễn giải ---
-      const allCodes = [formData.jobCode, ...addedJobs.map(j => j.jobCode)].filter(Boolean);
+      // --- TẠO DIỄN GIẢI ---
+      // Chỉ lấy JobCode của các Job có ít nhất 1 dòng được chọn (đối với gia hạn)
+      const jobsWithSelection = mode === 'extension' 
+          ? allInvolvedJobs.filter(j => (j.extensions || []).some(ext => selectedExtIds.has(ext.id)))
+          : allInvolvedJobs;
+
+      const allCodes = jobsWithSelection.map(j => j.jobCode).filter(Boolean);
       const codesStr = allCodes.join('+');
       const suffix = mode === 'other' ? '(LH MB)' : '(KIM)';
       
       if (mode === 'extension') {
-          const invs = (formData.extensions || [])
-              .filter(ext => selectedExtIds.has(ext.id))
-              .map(ext => ext.invoice)
-              .filter(Boolean);
-          const invStr = invs.length > 0 ? invs.join(',') : 'XXX';
+          const allInvoices = allInvolvedJobs.flatMap(j => 
+              (j.extensions || [])
+                  .filter(ext => selectedExtIds.has(ext.id))
+                  .map(ext => ext.invoice)
+          ).filter(Boolean);
+          
+          const invStr = allInvoices.length > 0 ? Array.from(new Set(allInvoices)).join(',') : 'XXX';
           setAmisDesc(`Thu tiền của KH theo hoá đơn GH ${invStr} BL ${codesStr} ${suffix}`);
       } else if (mode === 'local' || mode === 'other') {
           setAmisDesc(`Thu tiền của KH theo hoá đơn ${formData.localChargeInvoice || 'XXX'} BL ${codesStr} ${suffix}`);
@@ -210,11 +206,25 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleAddJobToMerge = (j: JobData) => {
       if (j.id === formData.id) return;
       if (addedJobs.some(x => x.id === j.id)) return;
+      
+      // Khi gộp Job mới, mặc định chọn các dòng gia hạn chưa thu của Job đó
+      if (mode === 'extension') {
+          const newIds = new Set(selectedExtIds);
+          (j.extensions || []).forEach(ext => { if(!ext.amisDocNo) newIds.add(ext.id); });
+          setSelectedExtIds(newIds);
+      }
+
       setAddedJobs(prev => [...prev, j]);
       setSearchJobTerm('');
   };
 
   const handleRemoveJobFromMerge = (id: string) => {
+      const targetJob = addedJobs.find(j => j.id === id);
+      if (targetJob && mode === 'extension') {
+          const next = new Set(selectedExtIds);
+          (targetJob.extensions || []).forEach(ext => next.delete(ext.id));
+          setSelectedExtIds(next);
+      }
       setAddedJobs(prev => prev.filter(j => j.id !== id));
   };
 
@@ -240,11 +250,14 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         });
         onSave({ ...formData, extensions: updatedMainExtensions });
 
-        // Cập nhật các Job gộp thêm
+        // Cập nhật các Job gộp
         addedJobs.forEach(j => {
-            const updatedExts = (j.extensions || []).map(ext => ({
-                ...ext, amisDocNo, amisDesc, amisAmount: ext.total, invoiceDate: amisDate
-            }));
+            const updatedExts = (j.extensions || []).map(ext => {
+                if (selectedExtIds.has(ext.id)) {
+                    return { ...ext, amisDocNo, amisDesc, amisAmount: ext.total, invoiceDate: amisDate };
+                }
+                return ext;
+            });
             onSave({ ...j, extensions: updatedExts });
         });
     } 
@@ -283,7 +296,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200 overflow-hidden">
         
-        {/* Header Section */}
+        {/* Header */}
         <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center ${mode.includes('refund') ? 'bg-red-50' : 'bg-blue-50'}`}>
             <div className="flex items-center space-x-4">
               <div className={`p-2.5 rounded-2xl shadow-sm border ${mode.includes('refund') ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
@@ -302,53 +315,33 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Tabs */}
         <div className="flex border-b border-slate-100 bg-slate-50/50 p-1">
-            <button 
-                onClick={() => setActiveTab('single')}
-                className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'single' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
+            <button onClick={() => setActiveTab('single')} className={`flex-1 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'single' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 <FileText className="w-4 h-4" /> Thu một Job
             </button>
-            <button 
-                onClick={() => setActiveTab('merge')}
-                className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'merge' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
+            <button onClick={() => setActiveTab('merge')} className={`flex-1 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'merge' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 <Layers className="w-4 h-4" /> Thu gộp nhiều Job
             </button>
         </div>
 
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50/30 flex-1 space-y-6">
             
-            {/* Merge Selection UI */}
+            {/* SEARCH & MERGE LIST */}
             {activeTab === 'merge' && (
                 <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 shadow-sm animate-in fade-in duration-200">
                     <h3 className="text-xs font-black text-blue-800 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Plus className="w-4 h-4" /> Danh sách Job gộp thêm
+                        <Plus className="w-4 h-4" /> Thêm Job để gộp
                     </h3>
-                    
                     <div className="space-y-4">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input 
-                                type="text"
-                                value={searchJobTerm}
-                                onChange={e => setSearchJobTerm(e.target.value)}
-                                placeholder="Nhập mã Job hoặc Booking để gộp..."
-                                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
+                            <input type="text" value={searchJobTerm} onChange={e => setSearchJobTerm(e.target.value)} placeholder="Nhập mã Job hoặc Booking..." className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
                             {searchResults.length > 0 && (
                                 <ul className="absolute z-20 w-full bg-white border border-slate-200 rounded-xl shadow-xl mt-2 py-1 overflow-hidden">
                                     {searchResults.map(res => (
-                                        <li 
-                                            key={res.id}
-                                            onClick={() => handleAddJobToMerge(res)}
-                                            className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0"
-                                        >
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-slate-800 text-sm">{res.jobCode}</span>
-                                                <span className="text-[10px] text-slate-500">Booking: {res.booking}</span>
-                                            </div>
+                                        <li key={res.id} onClick={() => handleAddJobToMerge(res)} className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0">
+                                            <div className="flex flex-col"><span className="font-bold text-slate-800 text-sm">{res.jobCode}</span><span className="text-[10px] text-slate-500">Booking: {res.booking}</span></div>
                                             <span className="text-xs font-bold text-blue-600">Chọn</span>
                                         </li>
                                     ))}
@@ -356,70 +349,74 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             )}
                         </div>
 
-                        {addedJobs.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                                {addedJobs.map(j => (
-                                    <div key={j.id} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-blue-200 rounded-xl text-xs font-bold text-blue-700 shadow-sm group">
-                                        {j.jobCode}
-                                        <button onClick={() => handleRemoveJobFromMerge(j.id)} className="text-slate-300 hover:text-red-500"><X className="w-3.5 h-3.5"/></button>
+                        {/* DANH SÁCH JOB GỘP CHI TIẾT (CHỌN DÒNG) */}
+                        <div className="space-y-3">
+                            {addedJobs.map(j => (
+                                <div key={j.id} className="bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md border-l-4 border-l-blue-500">
+                                    <div className="px-4 py-2 bg-blue-50/50 border-b border-blue-100 flex justify-between items-center">
+                                        <span className="text-sm font-black text-blue-700">{j.jobCode}</span>
+                                        <button onClick={() => handleRemoveJobFromMerge(j.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1"><Trash2 className="w-3.5 h-3.5"/></button>
                                     </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-4 border-2 border-dashed border-blue-100 rounded-2xl">
-                                <p className="text-xs text-blue-400 italic">Chưa chọn Job nào để gộp</p>
-                            </div>
-                        )}
+                                    {mode === 'extension' ? (
+                                        <div className="p-3 space-y-2">
+                                            {(j.extensions || []).map(ext => (
+                                                <div key={ext.id} onClick={() => toggleExtSelection(ext.id)} className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${selectedExtIds.has(ext.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100 hover:border-blue-200'}`}>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${selectedExtIds.has(ext.id) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300'}`}>
+                                                            {selectedExtIds.has(ext.id) && <Check className="w-3 h-3" />}
+                                                        </div>
+                                                        <span className="text-[11px] font-bold text-slate-700">HĐ: {ext.invoice || 'N/A'}</span>
+                                                    </div>
+                                                    <span className={`text-[11px] font-black ${selectedExtIds.has(ext.id) ? 'text-blue-700' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(ext.total)} đ</span>
+                                                </div>
+                                            ))}
+                                            {(j.extensions || []).length === 0 && <p className="text-[10px] text-slate-400 italic text-center py-1">Không có dòng gia hạn</p>}
+                                        </div>
+                                    ) : (
+                                        <div className="px-4 py-2 flex justify-between text-[11px]">
+                                            <span className="text-slate-500">Local Charge:</span>
+                                            <span className="font-bold text-blue-700">{new Intl.NumberFormat('en-US').format(j.localChargeTotal)} đ</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* Extension Line Selection (Only for Extension mode) */}
+            {/* CHỌN DÒNG JOB CHÍNH */}
             {mode === 'extension' && (
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-orange-500">
                     <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <List className="w-4 h-4" /> Chọn hóa đơn gia hạn của Job chính
                     </h3>
                     <div className="space-y-2">
                         {(formData.extensions || []).map((ext) => (
-                            <div 
-                                key={ext.id}
-                                onClick={() => toggleExtSelection(ext.id)}
-                                className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between group ${selectedExtIds.has(ext.id) ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 hover:border-blue-200 bg-slate-50/50'}`}
-                            >
+                            <div key={ext.id} onClick={() => toggleExtSelection(ext.id)} className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between group ${selectedExtIds.has(ext.id) ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 hover:border-blue-200 bg-slate-50/50'}`}>
                                 <div className="flex items-center gap-3">
                                     <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${selectedExtIds.has(ext.id) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300'}`}>
                                         {selectedExtIds.has(ext.id) && <Check className="w-3.5 h-3.5" />}
                                     </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-xs font-black text-slate-800">HĐ: {ext.invoice || 'N/A'}</span>
-                                        <span className="text-[10px] text-slate-500">Ngày: {formatDateVN(ext.invoiceDate)}</span>
-                                    </div>
+                                    <div className="flex flex-col"><span className="text-xs font-black text-slate-800">HĐ: {ext.invoice || 'N/A'}</span><span className="text-[10px] text-slate-500">Ngày: {formatDateVN(ext.invoiceDate)}</span></div>
                                 </div>
-                                <span className={`text-sm font-black ${selectedExtIds.has(ext.id) ? 'text-blue-700' : 'text-slate-400'}`}>
-                                    {new Intl.NumberFormat('en-US').format(ext.total)} đ
-                                </span>
+                                <span className={`text-sm font-black ${selectedExtIds.has(ext.id) ? 'text-blue-700' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(ext.total)} đ</span>
                             </div>
                         ))}
                     </div>
-                    {selectedExtIds.size === 0 && (
-                        <div className="mt-3 flex items-center gap-2 text-red-500 text-[10px] font-bold uppercase italic">
-                            <AlertCircle className="w-3.5 h-3.5" /> Vui lòng chọn ít nhất một dòng
-                        </div>
-                    )}
                 </div>
             )}
 
-            {/* Common Info Section */}
+            {/* ĐỐI TƯỢNG HẠCH TOÁN */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-black text-slate-800 mb-4 flex items-center uppercase tracking-wide"><User className="w-4 h-4 text-slate-500 mr-2" /> Đối tượng hạch toán</h3>
                 <div className="grid grid-cols-2 gap-5">
                     <div><Label>Mã Đối Tượng</Label><input type="text" value={custInputVal} readOnly className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-700" /></div>
-                    <div><Label>Tên Đối Tượng</Label><input type="text" value={customerName} readOnly className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-500 font-medium" /></div>
+                    <div><Label>Tên Đối Tượng</Label><input type="text" value={customerName} readOnly className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-[10px] text-slate-500 font-medium" /></div>
                 </div>
             </div>
 
-            {/* AMIS Voucher Section */}
+            {/* CHỨNG TỪ AMIS */}
             <div className="bg-white rounded-3xl border-2 border-slate-100 shadow-lg relative overflow-hidden">
                 <div className={`${mode.includes('refund') ? 'bg-red-600' : 'bg-blue-700'} px-5 py-3 border-b flex justify-between items-center text-white`}>
                     <h3 className="text-xs font-black flex items-center uppercase tracking-widest">
@@ -434,39 +431,22 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     <div>
                         <Label>Tổng số tiền hạch toán</Label>
                         <div className="relative">
-                            <input 
-                                type="text" 
-                                value={amisAmount ? new Intl.NumberFormat('en-US').format(amisAmount) : ''} 
-                                onChange={(e) => {
-                                    const val = Number(e.target.value.replace(/,/g, ''));
-                                    if (!isNaN(val)) setAmisAmount(val);
-                                }}
-                                className={`w-full pl-5 pr-14 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-2xl font-black text-right focus:ring-4 focus:outline-none transition-all ${mode.includes('refund') ? 'text-red-700 focus:ring-red-500/20 focus:border-red-500' : 'text-blue-700 focus:ring-blue-500/20 focus:border-blue-500'}`} 
-                            />
+                            <input type="text" value={amisAmount ? new Intl.NumberFormat('en-US').format(amisAmount) : ''} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) setAmisAmount(val); }} className={`w-full pl-5 pr-14 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-2xl font-black text-right focus:ring-4 focus:outline-none transition-all ${mode.includes('refund') ? 'text-red-700 focus:ring-red-500/20 focus:border-red-500' : 'text-blue-700 focus:ring-blue-500/20 focus:border-blue-500'}`} />
                             <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 uppercase">VND</span>
                         </div>
                     </div>
                     <div>
                         <Label>Diễn giải</Label>
-                        <textarea 
-                            value={amisDesc} 
-                            onChange={(e) => setAmisDesc(e.target.value)} 
-                            rows={3} 
-                            className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl text-xs font-medium text-slate-700 resize-none focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed" 
-                        />
+                        <textarea value={amisDesc} onChange={(e) => setAmisDesc(e.target.value)} rows={3} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl text-xs font-medium text-slate-700 resize-none focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed" />
                     </div>
                 </div>
             </div>
         </div>
 
-        {/* Footer Actions */}
+        {/* Footer */}
         <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-end space-x-3">
             <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-sm font-black text-slate-500 bg-slate-50 hover:bg-slate-100 transition-colors">Hủy bỏ</button>
-            <button 
-                onClick={handleSave} 
-                disabled={mode === 'extension' && selectedExtIds.size === 0}
-                className={`px-8 py-2.5 rounded-xl text-sm font-black text-white shadow-xl transition-all transform active:scale-95 disabled:opacity-50 disabled:pointer-events-none ${mode.includes('refund') ? 'bg-red-600 hover:bg-red-700 shadow-red-500/20' : 'bg-blue-700 hover:bg-blue-800 shadow-blue-500/20'}`}
-            >
+            <button onClick={handleSave} disabled={mode === 'extension' && selectedExtIds.size === 0} className={`px-8 py-2.5 rounded-xl text-sm font-black text-white shadow-xl transition-all transform active:scale-95 disabled:opacity-50 disabled:pointer-events-none ${mode.includes('refund') ? 'bg-red-600 hover:bg-red-700 shadow-red-500/20' : 'bg-blue-700 hover:bg-blue-800 shadow-blue-500/20'}`}>
                 <Save className="w-4 h-4 mr-2 inline" /> Lưu Thay Đổi
             </button>
         </div>
