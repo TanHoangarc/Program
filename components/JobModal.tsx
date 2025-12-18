@@ -679,7 +679,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                         </Select>
                     </div>
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-3">
                         <Label>Job Code</Label>
                         <div className="relative">
                             <Input name="jobCode" ref={jobInputRef} value={formData.jobCode} onChange={handleChange} readOnly={isViewMode} className={`${isViewMode ? "font-bold text-blue-700 bg-blue-50" : "font-semibold"} pr-8`} placeholder="VD: JOB123" />
@@ -688,7 +688,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             </button>
                         </div>
                     </div>
-                    <div className="md:col-span-3">
+                    <div className="md:col-span-2">
                         <Label>Booking</Label>
                         <div className="flex items-center gap-1">
                             <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />
