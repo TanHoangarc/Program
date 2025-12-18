@@ -527,7 +527,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       if (!allJobs) return;
       const found = allJobs.find(j => j.jobCode === searchJobCode && j.id !== formData.id);
       if (!found) { alert("Không tìm thấy Job Code!"); return; }
-      if (found.customerId !== formData.customerId) { alert("Chỉ được gộp các Job của cùng một khách hàng!"); return; }
+      
+      // REMOVED CUSTOMER MISMATCH CHECK: Users want to be able to merge jobs of different customers.
+      // if (found.customerId !== formData.customerId) { alert("Chỉ được gộp các Job của cùng một khách hàng!"); return; }
+      
       if (addedJobs.some(j => j.id === found.id)) { alert("Job này đã được thêm!"); return; }
 
       const newAddedJobs = [...addedJobs, found];
@@ -889,7 +892,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     onClick={() => setActiveTab('merge')}
                     className={`pb-2 text-sm font-bold flex items-center space-x-2 transition-colors border-b-2 ${activeTab === 'merge' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
-                    <Layers className="w-4 h-4" /> <span>Gộp Job (Cùng khách)</span>
+                    <Layers className="w-4 h-4" /> <span>Gộp Job</span>
                 </button>
                 <button 
                     type="button"
@@ -1024,7 +1027,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                     value={mode === 'extension' ? newExtension.amisDesc : amisDesc}
                                     onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDesc: e.target.value})); else setAmisDesc(e.target.value); }}
                                     rows={2}
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
                         </div>
