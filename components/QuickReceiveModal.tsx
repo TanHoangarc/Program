@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Calendar, FileText, User, RotateCcw, Plus, Trash2, ChevronDown, History, Receipt, Link, Layers, List, ToggleLeft, ToggleRight, Search, Check, AlertCircle } from 'lucide-react';
-import { JobData, Customer, AdditionalReceipt, ExtensionData } from '../types';
-import { formatDateVN, parseDateVN, generateNextDocNo, calculatePaymentStatus } from '../utils';
+import { X, Save, Calendar, FileText, User, RotateCcw, Plus, Trash2, ChevronDown, History, Receipt, Link, Layers, List, ToggleLeft, ToggleRight } from 'lucide-react';
+import { JobData, Customer, AdditionalReceipt } from '../types';
+import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
-export type ReceiveMode = 'local' | 'local_refund' | 'deposit' | 'deposit_refund' | 'extension' | 'other';
+export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'extension' | 'other';
 
 export interface QuickReceiveModalProps {
   isOpen: boolean;
@@ -19,6 +19,7 @@ export interface QuickReceiveModalProps {
   usedDocNos?: string[]; 
 }
 
+// Reusable DateInput Component
 const DateInput = ({ 
   value, 
   onChange, 
@@ -75,411 +76,1077 @@ const DateInput = ({
 };
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
-  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{children}</label>
+  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">{children}</label>
 );
 
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, usedDocNos = []
 }) => {
   const [formData, setFormData] = useState<JobData>(job);
-  const [activeTab, setActiveTab] = useState<'single' | 'merge'>('single');
+  const [otherSubMode, setOtherSubMode] = useState<'local' | 'deposit'>('local');
+  
+  // New state for Invoice/BL toggle
+  const [invoiceInputMode, setInvoiceInputMode] = useState<'invoice' | 'bl'>('invoice');
 
+  // UI State: Tab selection
+  const [activeTab, setActiveTab] = useState<'merge' | 'installments'>('merge');
+
+  // Fields for Main Receipt (Lần 1 / Tổng thu)
   const [amisDocNo, setAmisDocNo] = useState('');
   const [amisDesc, setAmisDesc] = useState('');
-  const [amisAmount, setAmisAmount] = useState(0); 
-  const [amisDate, setAmisDate] = useState('');
+  const [amisAmount, setAmisAmount] = useState(0); // This overrides the total if set
+  const [amisDate, setAmisDate] = useState(''); // Separate date for Main Receipt
 
-  const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
-  const [searchJobTerm, setSearchJobTerm] = useState('');
-  const [selectedExtIds, setSelectedExtIds] = useState<Set<string>>(new Set());
+  // Fields for Extension Logic
+  const [newExtension, setNewExtension] = useState({
+    customerId: '',
+    invoice: '',
+    date: new Date().toISOString().split('T')[0], // Invoice Date
+    total: 0,
+    amisDocNo: '',
+    amisDesc: '',
+    amisAmount: 0,
+    amisDate: '' // Receipt Date
+  });
+  
+  const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
+
+  // --- MULTI-PAYMENT STATE ---
+  const [additionalReceipts, setAdditionalReceipts] = useState<AdditionalReceipt[]>([]);
+  const [isAddingReceipt, setIsAddingReceipt] = useState(false);
+  const [newReceipt, setNewReceipt] = useState<Partial<AdditionalReceipt>>({
+      amount: 0,
+      date: new Date().toISOString().split('T')[0],
+      desc: '',
+      docNo: ''
+  });
+
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [custInputVal, setCustInputVal] = useState('');
 
-  // 1. Khởi tạo dữ liệu và KHÔI PHỤC TRẠNG THÁI GỘP KHI CHỈNH SỬA
+  // --- MERGE JOB STATE ---
+  const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
+  const [searchJobCode, setSearchJobCode] = useState('');
+
+  // ----------------------------------------------------------------------
+  // EFFECTS
+  // ----------------------------------------------------------------------
+
+  // 1. Initialize Mode & Data
   useEffect(() => {
     if (isOpen) {
       const deepCopyJob = JSON.parse(JSON.stringify(job));
+      
+      if (mode === 'other') {
+          if (!deepCopyJob.localChargeDate) deepCopyJob.localChargeDate = new Date().toISOString().split('T')[0];
+          const desc = deepCopyJob.amisLcDesc || '';
+          if (desc.includes('CƯỢC')) {
+              setOtherSubMode('deposit');
+          } else {
+              setOtherSubMode('local');
+          }
+          setInvoiceInputMode('invoice');
+      }
+
       setFormData(deepCopyJob);
+      
+      // --- DETECT MERGED JOBS ---
+      let foundMergedJobs: JobData[] = [];
+      if (allJobs && allJobs.length > 0) {
+          // 1. Check Local/Other Merge
+          if (mode === 'local' || mode === 'other') {
+              const currentDoc = deepCopyJob.amisLcDocNo;
+              if (currentDoc) {
+                  // Find other jobs with SAME DocNo but DIFFERENT ID
+                  foundMergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisLcDocNo === currentDoc);
+              }
+          }
+          // 2. Check Extension Merge
+          else if (mode === 'extension') {
+              // If editing a specific extension or generally
+              const exts = deepCopyJob.extensions || [];
+              let targetDoc = '';
+              if (targetExtensionId) {
+                  const t = exts.find((e: any) => e.id === targetExtensionId);
+                  if (t) targetDoc = t.amisDocNo;
+              } else if (exts.length > 0) {
+                  // Try to find any docno if not specified
+                  targetDoc = exts[0].amisDocNo;
+              }
+
+              if (targetDoc) {
+                  foundMergedJobs = allJobs.filter(j => 
+                      j.id !== deepCopyJob.id && 
+                      (j.extensions || []).some(e => e.amisDocNo === targetDoc)
+                  );
+              }
+          }
+      }
+      setAddedJobs(foundMergedJobs);
+
+      setInternalTargetId(null);
+      setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
+
+      // Reset Tab logic
+      if (foundMergedJobs.length > 0) {
+          setActiveTab('merge');
+      } else if ((deepCopyJob.additionalReceipts || []).length > 0) {
+          setActiveTab('installments');
+      } else {
+          setActiveTab('merge');
+      }
 
       let initialCustId = '';
-      if (mode === 'local' || mode === 'other' || mode === 'local_refund') initialCustId = deepCopyJob.customerId;
+      if (mode === 'local' || mode === 'other') initialCustId = deepCopyJob.customerId;
       else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
-      else if (mode === 'extension') initialCustId = deepCopyJob.customerId;
+      else if (mode === 'extension') {
+          const exts = deepCopyJob.extensions || [];
+          let target = null;
+          
+          if (targetExtensionId) {
+              target = exts.find((e: any) => e.id === targetExtensionId);
+          } else if (exts.length > 0) {
+              target = exts[0];
+          }
+          
+          initialCustId = target ? (target.customerId || deepCopyJob.customerId) : deepCopyJob.customerId;
+      }
 
       const foundCust = customers.find(c => c.id === initialCustId);
       setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
       const jobsForCalc = allJobs || [];
       const extra = usedDocNos || [];
-      let currentDoc = '';
 
-      // Tự động chọn dòng gia hạn đích
-      if (mode === 'extension') {
-          const exts = deepCopyJob.extensions || [];
-          const target = targetExtensionId ? exts.find((e: any) => e.id === targetExtensionId) : null;
-          currentDoc = target?.amisDocNo || '';
-
-          if (currentDoc) {
-              // CHẾ ĐỘ CHỈNH SỬA: Tìm tất cả Job và Dòng có chung số chứng từ
-              const othersWithSameDoc = (allJobs || []).filter(j => 
-                (j.extensions || []).some(ext => ext.amisDocNo === currentDoc)
-              );
-              
-              const siblingJobs = othersWithSameDoc.filter(j => j.id !== deepCopyJob.id);
-              const allMatchingExtIds = othersWithSameDoc.flatMap(j => 
-                (j.extensions || []).filter(ext => ext.amisDocNo === currentDoc).map(ext => ext.id)
-              );
-
-              setAddedJobs(siblingJobs);
-              setSelectedExtIds(new Set(allMatchingExtIds));
-              if (siblingJobs.length > 0) setActiveTab('merge');
-          } else {
-              // CHẾ ĐỘ THÊM MỚI
-              if (targetExtensionId) setSelectedExtIds(new Set([targetExtensionId]));
-              else if (exts.length > 0) {
-                  const pendingIds = exts.filter((e: any) => !e.amisDocNo).map((e: any) => e.id);
-                  setSelectedExtIds(new Set(pendingIds.length > 0 ? pendingIds : [exts[0].id]));
-              }
-          }
-      }
-
-      // Cấu hình chứng từ dựa trên mode
-      if (mode === 'local' || mode === 'other') {
-          const doc = deepCopyJob.amisLcDocNo;
-          setAmisDocNo(doc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
+      if (mode === 'local') {
+          setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
           setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
           
-          if (doc && allJobs) {
-              const siblings = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisLcDocNo === doc);
-              if (siblings.length > 0) { setAddedJobs(siblings); setActiveTab('merge'); }
+          if (deepCopyJob.amisLcDesc) {
+             setAmisDesc(deepCopyJob.amisLcDesc);
+          } else {
+             const inv = deepCopyJob.localChargeInvoice;
+             const desc = `Thu tiền của KH theo hoá đơn ${inv || 'XXX'} (KIM)`;
+             setAmisDesc(desc);
           }
       } 
-      else if (mode === 'local_refund') {
-          setAmisDocNo(deepCopyJob.amisLcRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC'));
-          setAmisDate(deepCopyJob.amisLcRefundDate || new Date().toISOString().split('T')[0]);
-          const status = calculatePaymentStatus(deepCopyJob);
-          setAmisAmount(deepCopyJob.amisLcRefundAmount || (status.lcDiff > 0 ? status.lcDiff : 0));
+      else if (mode === 'other') {
+          setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
+          setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
+          setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
+          const inv = deepCopyJob.localChargeInvoice || 'XXX';
+          if (deepCopyJob.amisLcDesc) {
+              setAmisDesc(deepCopyJob.amisLcDesc);
+          } else {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn ${inv} (LH MB)`);
+          }
       }
       else if (mode === 'deposit') {
-          const doc = deepCopyJob.amisDepositDocNo;
-          setAmisDocNo(doc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
+          setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisDepositAmount !== undefined ? deepCopyJob.amisDepositAmount : (deepCopyJob.thuCuoc || 0));
           setAmisDate(deepCopyJob.ngayThuCuoc || new Date().toISOString().split('T')[0]);
-          
-          if (doc && allJobs) {
-            const siblings = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisDepositDocNo === doc);
-            if (siblings.length > 0) { setAddedJobs(siblings); setActiveTab('merge'); }
-          }
+          setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
       } 
       else if (mode === 'deposit_refund') {
           setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC')); 
           setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
+          setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
           setAmisAmount(deepCopyJob.thuCuoc || 0); 
       }
       else if (mode === 'extension') {
           const exts = deepCopyJob.extensions || [];
-          const target = targetExtensionId ? exts.find((e: any) => e.id === targetExtensionId) : (exts.length > 0 ? exts[0] : null);
-          setAmisDocNo(currentDoc || target?.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
-          setAmisDate(target?.invoiceDate || new Date().toISOString().split('T')[0]);
+          let targetExt = null;
+
+          if (targetExtensionId) {
+              targetExt = exts.find((e: any) => e.id === targetExtensionId);
+          } else if (exts.length > 0) {
+              targetExt = exts[0];
+          }
+
+          if (targetExt) {
+             setInternalTargetId(targetExt.id);
+             
+             const extInv = targetExt.invoice;
+             const defaultDesc = extInv 
+                ? `Thu tiền của KH theo hoá đơn GH ${extInv} (KIM)`
+                : `Thu tiền của KH theo hoá đơn GH XXX BL ${deepCopyJob.jobCode} (KIM)`;
+
+             setNewExtension({ 
+                customerId: targetExt.customerId || deepCopyJob.customerId || '', 
+                invoice: targetExt.invoice || '', 
+                date: targetExt.invoiceDate || new Date().toISOString().split('T')[0],
+                total: targetExt.total || 0,
+                amisDocNo: targetExt.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
+                amisDesc: targetExt.amisDesc || defaultDesc,
+                amisAmount: targetExt.amisAmount !== undefined ? targetExt.amisAmount : (targetExt.total || 0),
+                amisDate: targetExt.invoiceDate || new Date().toISOString().split('T')[0]
+             });
+          } else {
+             setInternalTargetId(null);
+             setNewExtension({ 
+               customerId: deepCopyJob.customerId || '', 
+               invoice: '', 
+               date: new Date().toISOString().split('T')[0],
+               total: 0,
+               amisDocNo: generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
+               amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${deepCopyJob.jobCode} (KIM)`,
+               amisAmount: 0,
+               amisDate: new Date().toISOString().split('T')[0]
+             });
+          }
       }
     }
   }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos]);
 
-  // 2. Tự động tính toán Số tiền và Diễn giải
+  // 2. Auto-sum logic for MERGE MODE
+  useEffect(() => {
+      if (activeTab === 'merge' && isOpen) {
+          const mainTotal = mode === 'extension' ? (newExtension.total || 0) : (formData.localChargeTotal || 0);
+          
+          const addedTotal = addedJobs.reduce((sum, j) => {
+              if (mode === 'extension') {
+                  // For extension mode, sum all extension totals of added jobs
+                  return sum + (j.extensions || []).reduce((s, e) => s + e.total, 0);
+              }
+              // For local/other, sum localChargeTotal
+              return sum + (j.localChargeTotal || 0);
+          }, 0);
+          
+          const finalTotal = mainTotal + addedTotal;
+          
+          if (mode === 'extension') {
+              setNewExtension(prev => ({...prev, amisAmount: finalTotal}));
+          } else {
+              setAmisAmount(finalTotal);
+          }
+      }
+  }, [addedJobs, activeTab, mode, formData.localChargeTotal, newExtension.total, isOpen]);
+
+  // 3. Description Logic Helper
+  const generateMergedDescription = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean = false) => {
+      const invoices: string[] = [];
+      const missingJobCodes: string[] = [];
+
+      if (mainInvoice && mainInvoice.trim()) {
+          invoices.push(mainInvoice.trim());
+      } else {
+          missingJobCodes.push(formData.jobCode);
+      }
+
+      extraJobs.forEach(j => {
+          let inv = isExtension 
+            ? (j.extensions || []).map(e => e.invoice).filter(Boolean).join('+')
+            : j.localChargeInvoice;
+            
+          if (inv && inv.trim()) {
+              invoices.push(inv.trim());
+          } else {
+              missingJobCodes.push(j.jobCode);
+          }
+      });
+
+      let desc = isExtension ? "Thu tiền của KH theo hoá đơn GH " : "Thu tiền của KH theo hoá đơn ";
+      
+      const invPart = invoices.join('+');
+      desc += invPart;
+
+      if (missingJobCodes.length > 0) {
+          if (invPart.length > 0) desc += "+"; 
+          desc += "XXX BL " + missingJobCodes.join('+');
+      }
+
+      desc += " (KIM)";
+      return desc;
+  };
+
+  const recalculateMerge = (currentMainInvoice: string, extraJobs: JobData[]) => {
+      if (activeTab !== 'merge') return; 
+
+      const isExtension = mode === 'extension';
+      const newDesc = generateMergedDescription(currentMainInvoice, extraJobs, isExtension);
+      
+      if (isExtension) {
+          setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
+      } else {
+          setAmisDesc(newDesc);
+      }
+  };
+
+  // 4. Tab Switch Effect for Descriptions
   useEffect(() => {
       if (!isOpen) return;
 
-      let total = 0;
-      const allInvolvedJobs = [formData, ...addedJobs];
+      const currentDesc = mode === 'extension' ? newExtension.amisDesc : amisDesc;
       
-      if (mode === 'extension') {
-          total = allInvolvedJobs.reduce((sum, j) => {
-              const selectedInJob = (j.extensions || []).filter(ext => selectedExtIds.has(ext.id));
-              return sum + selectedInJob.reduce((s, ext) => s + ext.total, 0);
-          }, 0);
-      } else {
-          total = (formData.localChargeTotal || 0) + addedJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
-      }
-      
-      if (mode !== 'local_refund' && mode !== 'deposit_refund') {
-          setAmisAmount(total);
-      }
-
-      const jobsWithSelection = mode === 'extension' 
-          ? allInvolvedJobs.filter(j => (j.extensions || []).some(ext => selectedExtIds.has(ext.id)))
-          : allInvolvedJobs;
-
-      const allCodes = jobsWithSelection.map(j => j.jobCode).filter(Boolean);
-      const codesStr = allCodes.join('+');
-      const suffix = '(KIM)';
-      
-      if (mode === 'extension') {
-          const allInvoices = allInvolvedJobs.flatMap(j => 
-              (j.extensions || [])
-                  .filter(ext => selectedExtIds.has(ext.id))
-                  .map(ext => ext.invoice)
-          ).filter(Boolean);
-          
-          const uniqueInvoices = Array.from(new Set(allInvoices));
-          if (uniqueInvoices.length > 0) {
-              const invStr = uniqueInvoices.join('+');
-              setAmisDesc(`Thu tiền của KH theo hoá đơn GH ${invStr} ${suffix}`);
-          } else {
-              setAmisDesc(`Thu tiền của KH theo hoá đơn GH XXX BL ${codesStr} ${suffix}`);
+      if (activeTab === 'installments') {
+          // Append "LẦN 1" if needed
+          if (currentDesc && !currentDesc.toUpperCase().includes('LẦN')) {
+              const newDesc = `${currentDesc} (LẦN 1)`;
+              if (mode === 'extension') setNewExtension(prev => ({ ...prev, amisDesc: newDesc }));
+              else setAmisDesc(newDesc);
           }
-      } else if (mode === 'local' || mode === 'other') {
-          setAmisDesc(`Thu tiền của KH theo hoá đơn ${formData.localChargeInvoice || 'XXX'} BL ${codesStr} ${suffix}`);
-      } else if (mode === 'local_refund') {
-          setAmisDesc(`Chi hoàn tiền thanh toán dư Local Charge BL ${codesStr}`);
+      } else if (activeTab === 'merge') {
+          // Recalculate merge description (clears LẦN X)
+          if (mode === 'extension') {
+              recalculateMerge(newExtension.invoice, addedJobs);
+          } else {
+              recalculateMerge(formData.localChargeInvoice, addedJobs);
+          }
+      }
+  }, [activeTab, isOpen]);
+
+  // ----------------------------------------------------------------------
+  // HANDLERS
+  // ----------------------------------------------------------------------
+
+  const getDisplayValues = () => {
+      let currentTotalReceivable = 0; 
+      let currentCustomer = '';
+      let currentInvoice = '';
+
+      if (mode === 'local') {
+          currentInvoice = formData.localChargeInvoice || '';
+          currentTotalReceivable = formData.localChargeTotal || 0;
+          currentCustomer = formData.customerId || '';
+      } else if (mode === 'other') {
+          currentInvoice = formData.localChargeInvoice || '';
+          currentTotalReceivable = formData.localChargeTotal || 0;
+          currentCustomer = formData.customerId || '';
       } else if (mode === 'deposit') {
-          setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${codesStr}`);
+          currentTotalReceivable = formData.thuCuoc || 0;
+          currentCustomer = formData.maKhCuocId || '';
+          currentInvoice = 'N/A'; 
       } else if (mode === 'deposit_refund') {
-          setAmisDesc(`Chi tiền cho KH HOÀN CƯỢC BL ${codesStr}`);
+          currentTotalReceivable = formData.thuCuoc || 0; 
+          currentCustomer = formData.maKhCuocId || '';
+          currentInvoice = 'N/A';
+      } else if (mode === 'extension') {
+          currentInvoice = newExtension.invoice;
+          currentTotalReceivable = newExtension.total;
+          currentCustomer = newExtension.customerId;
       }
 
-  }, [addedJobs, selectedExtIds, formData, mode, isOpen]);
+      const customerName = customers.find(c => c.id === currentCustomer || c.code === currentCustomer)?.name || '';
 
-  const handleAddJobToMerge = (j: JobData) => {
-      if (j.id === formData.id) return;
-      if (addedJobs.some(x => x.id === j.id)) return;
-      
+      return { currentTotalReceivable, currentCustomer, customerName, currentInvoice };
+  };
+
+  const display = getDisplayValues();
+
+  // Additional Receipts Filter
+  const relevantAdditionalReceipts = additionalReceipts.filter(r => {
       if (mode === 'extension') {
-          const newIds = new Set(selectedExtIds);
-          (j.extensions || []).forEach(ext => { if(!ext.amisDocNo) newIds.add(ext.id); });
-          setSelectedExtIds(newIds);
+          return r.type === 'extension' && r.extensionId === internalTargetId;
       }
+      if (mode === 'local') return r.type === 'local';
+      if (mode === 'deposit') return r.type === 'deposit';
+      if (mode === 'other') return r.type === otherSubMode;
+      return false;
+  });
 
-      setAddedJobs(prev => [...prev, j]);
-      setSearchJobTerm('');
+  const currentMainAmount = mode === 'extension' ? newExtension.amisAmount : amisAmount;
+  const totalPaidAdditional = relevantAdditionalReceipts.reduce((sum, r) => sum + r.amount, 0);
+  const totalCollected = currentMainAmount + totalPaidAdditional;
+  const remaining = display.currentTotalReceivable - totalCollected;
+
+  const handleAmountChange = (val: number) => {
+      if (mode === 'extension') setNewExtension(prev => ({ ...prev, amisAmount: val }));
+      else setAmisAmount(val);
   };
 
-  const handleRemoveJobFromMerge = (id: string) => {
-      const targetJob = addedJobs.find(j => j.id === id);
-      if (targetJob && mode === 'extension') {
-          const next = new Set(selectedExtIds);
-          (targetJob.extensions || []).forEach(ext => next.delete(ext.id));
-          setSelectedExtIds(next);
-      }
-      setAddedJobs(prev => prev.filter(j => j.id !== id));
+  const handleMainDateChange = (val: string) => {
+      if (mode === 'extension') setNewExtension(prev => ({ ...prev, amisDate: val }));
+      else setAmisDate(val);
   };
 
-  const toggleExtSelection = (id: string) => {
-      setSelectedExtIds(prev => {
-          const next = new Set(prev);
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-          return next;
+  const handleCustomerChange = (val: string) => {
+      setCustInputVal(val);
+      setShowSuggestions(true);
+      updateCustomerData(val);
+  };
+
+  const handleSelectCustomer = (customer: Customer) => {
+      setCustInputVal(customer.code);
+      updateCustomerData(customer.id);
+      setShowSuggestions(false);
+  };
+
+  const updateCustomerData = (val: string) => {
+      if (mode === 'local' || mode === 'other') {
+          setFormData(prev => ({ ...prev, customerId: val }));
+      }
+      else if (mode === 'deposit' || mode === 'deposit_refund') setFormData(prev => ({ ...prev, maKhCuocId: val }));
+      else if (mode === 'extension') setNewExtension(prev => ({ ...prev, customerId: val }));
+  };
+
+  const updateOtherDescription = (val: string, inputMode: 'invoice' | 'bl') => {
+      const invPlaceholder = val || 'XXX';
+      if (otherSubMode === 'deposit') {
+          setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
+      } else {
+          if (inputMode === 'bl') {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${invPlaceholder} (LH MB)`);
+          } else {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
+          }
+      }
+  };
+
+  const toggleInvoiceMode = () => {
+      const newMode = invoiceInputMode === 'invoice' ? 'bl' : 'invoice';
+      setInvoiceInputMode(newMode);
+      updateOtherDescription(formData.localChargeInvoice || '', newMode);
+  };
+
+  const handleInvoiceChange = (val: string) => {
+      if (mode === 'local') {
+          setFormData(prev => ({ ...prev, localChargeInvoice: val }));
+          recalculateMerge(val, addedJobs);
+      }
+      else if (mode === 'other') {
+          setFormData(prev => ({ ...prev, localChargeInvoice: val }));
+          updateOtherDescription(val, invoiceInputMode);
+      }
+      else if (mode === 'extension') {
+          setNewExtension(prev => ({ ...prev, invoice: val }));
+          recalculateMerge(val, addedJobs);
+      }
+  };
+
+  const filteredCustomers = useMemo(() => {
+    if (!custInputVal) return customers;
+    const lower = custInputVal.toLowerCase();
+    return customers.filter(c => 
+      (c.code || '').toLowerCase().includes(lower) || 
+      (c.name || '').toLowerCase().includes(lower)
+    );
+  }, [customers, custInputVal]);
+
+  const handleAddJob = () => {
+      if (!allJobs) return;
+      const found = allJobs.find(j => j.jobCode === searchJobCode && j.id !== formData.id);
+      if (!found) { alert("Không tìm thấy Job Code!"); return; }
+      if (found.customerId !== formData.customerId) { alert("Chỉ được gộp các Job của cùng một khách hàng!"); return; }
+      if (addedJobs.some(j => j.id === found.id)) { alert("Job này đã được thêm!"); return; }
+
+      const newAddedJobs = [...addedJobs, found];
+      setAddedJobs(newAddedJobs);
+      setSearchJobCode('');
+
+      if (mode === 'extension') recalculateMerge(newExtension.invoice, newAddedJobs);
+      else recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+  };
+
+  const handleRemoveAddedJob = (id: string) => {
+      const newAddedJobs = addedJobs.filter(j => j.id !== id);
+      setAddedJobs(newAddedJobs);
+      if (mode === 'extension') recalculateMerge(newExtension.invoice, newAddedJobs);
+      else recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+  };
+
+  // --- INSTALLMENT / ADD RECEIPT HANDLERS ---
+  const handleAddNewReceipt = () => {
+      setIsAddingReceipt(true);
+      const jobsForCalc = allJobs || [];
+      const extra = usedDocNos || [];
+      
+      const currentMainDoc = mode === 'extension' ? newExtension.amisDocNo : amisDocNo;
+      const existingInSession = [currentMainDoc, ...additionalReceipts.map(r => r.docNo)].filter(Boolean);
+      
+      const nextDoc = generateNextDocNo(jobsForCalc, 'NTTK', 5, [...extra, ...existingInSession]);
+      
+      const mainDesc = mode === 'extension' ? newExtension.amisDesc : amisDesc;
+      let nextDesc = mainDesc;
+      
+      const nextCount = relevantAdditionalReceipts.length + 2; 
+      if (mainDesc.includes('LẦN 1')) {
+          nextDesc = mainDesc.replace('LẦN 1', `LẦN ${nextCount}`);
+      } else {
+          nextDesc = `${mainDesc} (LẦN ${nextCount})`;
+      }
+
+      setNewReceipt({
+          amount: Math.max(0, remaining),
+          date: new Date().toISOString().split('T')[0],
+          docNo: nextDoc,
+          desc: nextDesc 
       });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSaveNewReceipt = () => {
+      if (!newReceipt.amount || !newReceipt.docNo) return;
+      
+      const receipt: AdditionalReceipt = {
+          id: `rcpt-${Date.now()}`,
+          type: mode === 'other' ? otherSubMode : (mode === 'deposit' ? 'deposit' : (mode === 'extension' ? 'extension' : 'local')),
+          date: newReceipt.date || '',
+          docNo: newReceipt.docNo || '',
+          desc: newReceipt.desc || '',
+          amount: newReceipt.amount || 0,
+          extensionId: mode === 'extension' ? internalTargetId || undefined : undefined
+      };
+
+      setAdditionalReceipts(prev => [...prev, receipt]);
+      setIsAddingReceipt(false);
+  };
+
+  const handleDeleteReceipt = (id: string) => {
+      setAdditionalReceipts(prev => prev.filter(r => r.id !== id));
+  };
+
+  // --- SUBMIT ---
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (mode === 'extension') {
-        const updatedMainExtensions = (formData.extensions || []).map(ext => {
-            if (selectedExtIds.has(ext.id)) {
-                return { ...ext, amisDocNo, amisDesc, amisAmount: ext.total, invoiceDate: amisDate };
-            }
-            return ext;
-        });
-        onSave({ ...formData, extensions: updatedMainExtensions });
+      const addedTotal = addedJobs.reduce((sum, j) => sum + (j.extensions || []).reduce((s, e) => s + e.total, 0), 0);
+      const mainAmount = newExtension.amisAmount - addedTotal;
 
-        addedJobs.forEach(j => {
-            const updatedExts = (j.extensions || []).map(ext => {
-                if (selectedExtIds.has(ext.id)) {
-                    return { ...ext, amisDocNo, amisDesc, amisAmount: ext.total, invoiceDate: amisDate };
-                }
-                return ext;
-            });
-            onSave({ ...j, extensions: updatedExts });
+      let updatedExtensions;
+      if (internalTargetId) {
+          updatedExtensions = (formData.extensions || []).map(ext => {
+              if (ext.id === internalTargetId) {
+                  return {
+                      ...ext,
+                      customerId: newExtension.customerId,
+                      invoice: newExtension.invoice,
+                      invoiceDate: newExtension.date, 
+                      total: newExtension.total, 
+                      amisDocNo: newExtension.amisDocNo,
+                      amisDesc: newExtension.amisDesc,
+                      amisAmount: mainAmount 
+                  };
+              }
+              return ext;
+          });
+      } else {
+          updatedExtensions = [
+            ...(formData.extensions || []),
+            {
+              id: Date.now().toString(),
+              customerId: newExtension.customerId,
+              invoice: newExtension.invoice,
+              invoiceDate: newExtension.date,
+              net: 0, vat: 0,
+              total: newExtension.total,
+              amisDocNo: newExtension.amisDocNo,
+              amisDesc: newExtension.amisDesc,
+              amisAmount: mainAmount
+            }
+          ];
+      }
+      onSave({ 
+          ...formData, 
+          extensions: updatedExtensions,
+          additionalReceipts: additionalReceipts 
         });
+
+      // Update merged jobs as well
+      if (addedJobs.length > 0) {
+          addedJobs.forEach(addedJob => {
+              const updatedAddedJobExtensions = (addedJob.extensions || []).map(ext => ({
+                  ...ext,
+                  amisDocNo: newExtension.amisDocNo,
+                  amisDesc: newExtension.amisDesc,
+                  amisAmount: ext.total // CORRECTED: Set Amount to total for merged item
+              }));
+              onSave({ ...addedJob, extensions: updatedAddedJobExtensions });
+          });
+      }
+
     } 
     else if (mode === 'local' || mode === 'other') {
-        onSave({ ...formData, amisLcDocNo: amisDocNo, amisLcDesc: amisDesc, amisLcAmount: formData.localChargeTotal, localChargeDate: amisDate });
-        addedJobs.forEach(j => onSave({ ...j, amisLcDocNo: amisDocNo, amisLcDesc: amisDesc, amisLcAmount: j.localChargeTotal, localChargeDate: amisDate }));
-    }
-    else if (mode === 'local_refund') {
-        onSave({ ...formData, amisLcRefundDocNo: amisDocNo, amisLcRefundDesc: amisDesc, amisLcRefundAmount: amisAmount, amisLcRefundDate: amisDate });
+        const addedTotal = addedJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
+        const mainAmount = amisAmount - addedTotal;
+
+        onSave({ 
+            ...formData, 
+            amisLcDocNo: amisDocNo, 
+            amisLcDesc: amisDesc,
+            amisLcAmount: mainAmount, // CORRECTED: Set Main Amount to difference
+            localChargeDate: amisDate,
+            additionalReceipts: additionalReceipts
+        });
+
+        if (addedJobs.length > 0) {
+            addedJobs.forEach(addedJob => {
+                onSave({
+                    ...addedJob,
+                    amisLcDocNo: amisDocNo,
+                    amisLcDesc: amisDesc,
+                    amisLcAmount: addedJob.localChargeTotal // CORRECTED: Set Amount to total for merged item
+                });
+            });
+        }
     }
     else if (mode === 'deposit') {
-        onSave({ ...formData, amisDepositDocNo: amisDocNo, amisDepositDesc: amisDesc, amisDepositAmount: formData.thuCuoc, ngayThuCuoc: amisDate });
-        addedJobs.forEach(j => onSave({ ...j, amisDepositDocNo: amisDocNo, amisDepositDesc: amisDesc, amisDepositAmount: j.thuCuoc, ngayThuCuoc: amisDate }));
+        onSave({ 
+            ...formData, 
+            amisDepositDocNo: amisDocNo, 
+            amisDepositDesc: amisDesc,
+            amisDepositAmount: amisAmount,
+            ngayThuCuoc: amisDate,
+            additionalReceipts: additionalReceipts
+        });
     }
     else if (mode === 'deposit_refund') {
-        onSave({ ...formData, amisDepositRefundDocNo: amisDocNo, amisDepositRefundDesc: amisDesc, amisDepositRefundDate: amisDate, ngayThuHoan: amisDate });
+        onSave({ 
+            ...formData, 
+            amisDepositRefundDocNo: amisDocNo, 
+            amisDepositRefundDesc: amisDesc,
+            amisDepositRefundDate: amisDate,
+            ngayThuHoan: amisDate
+        });
     }
+    
     onClose();
   };
 
-  const searchResults = useMemo(() => {
-      if (!searchJobTerm || !allJobs) return [];
-      const term = searchJobTerm.toLowerCase().trim();
-      return allJobs.filter(j => 
-        j.id !== formData.id && 
-        !addedJobs.some(added => added.id === j.id) &&
-        (String(j.jobCode || '').toLowerCase().includes(term) || String(j.booking || '').toLowerCase().includes(term))
-      ).slice(0, 5);
-  }, [searchJobTerm, allJobs, addedJobs, formData.id]);
+  const handleSelectExtensionToPay = (extId: string) => {
+      const jobsForCalc = allJobs || [];
+      const extra = usedDocNos || [];
+      
+      if (!extId) {
+          setInternalTargetId(null);
+          setNewExtension({
+              customerId: formData.customerId,
+              invoice: '',
+              date: new Date().toISOString().split('T')[0],
+              total: 0,
+              amisDocNo: generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
+              amisDesc: `Thu tiền của KH theo hoá đơn GH XXX BL ${formData.jobCode} (KIM)`,
+              amisAmount: 0,
+              amisDate: new Date().toISOString().split('T')[0]
+          });
+          const mainCust = customers.find(c => c.id === formData.customerId);
+          setCustInputVal(mainCust ? mainCust.code : '');
+          return;
+      }
 
-  const customerName = customers.find(c => c.id === formData.customerId || c.code === formData.customerId)?.name || '';
+      const target = formData.extensions?.find(e => e.id === extId);
+      if (target) {
+          setInternalTargetId(target.id);
+          const inv = target.invoice;
+          const desc = target.amisDesc || (inv
+            ? `Thu tiền của KH theo hoá đơn GH ${inv} (KIM)`
+            : `Thu tiền của KH theo hoá đơn GH XXX BL ${formData.jobCode} (KIM)`);
+
+          setNewExtension({
+              customerId: target.customerId || formData.customerId,
+              invoice: target.invoice,
+              date: target.invoiceDate || new Date().toISOString().split('T')[0],
+              total: target.total,
+              amisDocNo: target.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
+              amisDesc: desc,
+              amisAmount: target.amisAmount !== undefined ? target.amisAmount : target.total,
+              amisDate: target.invoiceDate || new Date().toISOString().split('T')[0]
+          });
+          
+          const extCustId = target.customerId || formData.customerId;
+          const extCust = customers.find(c => c.id === extCustId);
+          setCustInputVal(extCust ? extCust.code : '');
+      }
+  };
 
   if (!isOpen) return null;
 
+  const getTitle = () => {
+    switch (mode) {
+        case 'local': return 'Thu Tiền Local Charge';
+        case 'other': return 'Thu Tiền Khác';
+        case 'deposit': return 'Thu Tiền Cược';
+        case 'deposit_refund': return 'Chi Hoàn Cược';
+        case 'extension': return 'Thu Tiền Gia Hạn';
+    }
+  };
+
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200">
         
-        {/* Header */}
-        <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center ${mode.includes('refund') ? 'bg-red-50' : 'bg-blue-50'}`}>
-            <div className="flex items-center space-x-4">
-              <div className={`p-2.5 rounded-2xl shadow-sm border ${mode.includes('refund') ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
-                {mode.includes('refund') ? <RotateCcw className="w-6 h-6" /> : <Receipt className="w-6 h-6" />}
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-800 tracking-tight">
-                  {mode === 'extension' ? 'Thu Gia Hạn' : (mode === 'local' ? 'Thu Local Charge' : (mode.includes('refund') ? 'Chi Hoàn Tiền' : 'Thu Cược'))}
-                </h2>
-                <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-slate-500 font-bold uppercase">Main Job:</span>
-                    <span className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-xs font-black text-blue-700">{job.jobCode}</span>
-                </div>
-              </div>
+        {/* HEADER */}
+        <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center rounded-t-2xl ${mode === 'deposit_refund' ? 'bg-red-50' : 'bg-blue-50'}`}>
+            <div className="flex items-center space-x-3">
+            <div className={`p-2 rounded-lg shadow-sm border ${mode === 'deposit_refund' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
+                {mode === 'deposit_refund' ? <RotateCcw className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all"><X className="w-5 h-5" /></button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-slate-100 bg-slate-50/50 p-1">
-            <button onClick={() => setActiveTab('single')} className={`flex-1 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'single' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <FileText className="w-4 h-4" /> Thu một Job
-            </button>
-            <button onClick={() => setActiveTab('merge')} className={`flex-1 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'merge' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <Layers className="w-4 h-4" /> Thu gộp nhiều Job
+            <div>
+                <h2 className="text-lg font-bold text-slate-800">{getTitle()}</h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">Job: <span className="font-bold text-blue-700">{job.jobCode}</span></p>
+            </div>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all">
+            <X className="w-5 h-5" />
             </button>
         </div>
 
-        <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50/30 flex-1 space-y-6">
+        <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50 flex-1">
+            <form onSubmit={handleSubmit} className="space-y-6">
             
-            {/* SEARCH & MERGE LIST */}
-            {activeTab === 'merge' && (
-                <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 shadow-sm animate-in fade-in duration-200">
-                    <h3 className="text-xs font-black text-blue-800 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Plus className="w-4 h-4" /> Thêm Job để gộp
-                    </h3>
-                    <div className="space-y-4">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input type="text" value={searchJobTerm} onChange={e => setSearchJobTerm(e.target.value)} placeholder="Nhập mã Job hoặc Booking..." className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
-                            {searchResults.length > 0 && (
-                                <ul className="absolute z-20 w-full bg-white border border-slate-200 rounded-xl shadow-xl mt-2 py-1 overflow-hidden">
-                                    {searchResults.map(res => (
-                                        <li key={res.id} onClick={() => handleAddJobToMerge(res)} className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0">
-                                            <div className="flex flex-col"><span className="font-bold text-slate-800 text-sm">{res.jobCode}</span><span className="text-[10px] text-slate-500">Booking: {res.booking}</span></div>
-                                            <span className="text-xs font-bold text-blue-600">Chọn</span>
+            {/* 1. EXTENSION SELECTOR (IF MODE EXTENSION) */}
+            {mode === 'extension' && (formData.extensions?.length || 0) > 0 && (
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
+                        <ChevronDown className="w-4 h-4" />
+                        Chọn dòng gia hạn
+                    </div>
+                    <select
+                        className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
+                        value={internalTargetId || ''}
+                        onChange={(e) => handleSelectExtensionToPay(e.target.value)}
+                    >
+                        <option value="">+ Tạo mới dòng gia hạn</option>
+                        {formData.extensions?.map(ext => (
+                            <option key={ext.id} value={ext.id}>
+                                [HĐ: {ext.invoice || 'N/A'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
+            {/* 2. GENERAL INVOICE / DEBT INFO (COMMON) */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center uppercase tracking-wide">
+                    <User className="w-4 h-4 text-slate-500 mr-2" />
+                    Thông tin nợ (Invoice)
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
+                        <div className="relative group">
+                            <Label>Mã Đối Tượng</Label>
+                            <input
+                                type="text"
+                                value={custInputVal}
+                                onChange={(e) => handleCustomerChange(e.target.value)}
+                                onFocus={() => setShowSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Nhập mã đối tượng..."
+                                autoComplete="off"
+                            />
+                            {showSuggestions && custInputVal && filteredCustomers.length > 0 && (
+                                <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto mt-1 left-0 py-1">
+                                    {filteredCustomers.map(c => (
+                                        <li key={c.id} onMouseDown={() => handleSelectCustomer(c)} className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0">
+                                            <div className="font-bold text-blue-700">{c.code}</div>
+                                            <div className="text-xs text-slate-500 truncate">{c.name}</div>
                                         </li>
                                     ))}
                                 </ul>
                             )}
                         </div>
+                        <div>
+                            <Label>Tên Đối Tượng</Label>
+                            <input type="text" value={display.customerName} readOnly className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-600 font-medium" />
+                        </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    {mode !== 'deposit' && mode !== 'deposit_refund' && (
+                        <div className={mode === 'other' ? "col-span-2" : ""}>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <Label>{invoiceInputMode === 'bl' ? 'Số BL' : 'Số Hóa Đơn (Invoice)'}</Label>
+                                {mode === 'other' && otherSubMode !== 'deposit' && (
+                                    <button 
+                                        type="button" 
+                                        onClick={toggleInvoiceMode}
+                                        className="text-[10px] flex items-center gap-1 font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                                        title="Chuyển đổi giữa nhập số Invoice và số BL"
+                                    >
+                                        {invoiceInputMode === 'invoice' ? <ToggleLeft className="w-3.5 h-3.5 text-slate-400" /> : <ToggleRight className="w-3.5 h-3.5 text-blue-600" />}
+                                        {invoiceInputMode === 'invoice' ? 'Chế độ Invoice' : 'Chế độ BL'}
+                                    </button>
+                                )}
+                            </div>
+                            <input 
+                                type="text" 
+                                required
+                                value={display.currentInvoice} 
+                                onChange={(e) => handleInvoiceChange(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder-slate-400"
+                                placeholder={invoiceInputMode === 'bl' ? "Nhập số BL..." : "Nhập số hóa đơn..."}
+                            />
+                        </div>
+                    )}
+                    {mode !== 'other' && (
+                        <div className={mode === 'deposit' || mode === 'deposit_refund' ? "col-span-2" : ""}>
+                            <Label>Tổng Phải Thu (Debt)</Label>
+                            <div className="p-2.5 bg-slate-100 rounded-lg text-base font-bold text-slate-700 text-right border border-slate-200">
+                                {new Intl.NumberFormat('en-US').format(display.currentTotalReceivable)} VND
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
 
+            {/* TAB INTERFACE */}
+            {mode !== 'deposit_refund' && (
+            <div className="border-b border-slate-200 flex space-x-6 mb-4">
+                <button 
+                    type="button"
+                    onClick={() => setActiveTab('merge')}
+                    className={`pb-2 text-sm font-bold flex items-center space-x-2 transition-colors border-b-2 ${activeTab === 'merge' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <Layers className="w-4 h-4" /> <span>Gộp Job (Cùng khách)</span>
+                </button>
+                <button 
+                    type="button"
+                    onClick={() => setActiveTab('installments')}
+                    className={`pb-2 text-sm font-bold flex items-center space-x-2 transition-colors border-b-2 ${activeTab === 'installments' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <History className="w-4 h-4" /> <span>Thu Nhiều Lần / Lịch Sử</span>
+                </button>
+            </div>
+            )}
+
+            {/* ========= TAB 1: MERGE JOB ========= */}
+            {activeTab === 'merge' && (mode === 'local' || mode === 'extension') && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
+                    
+                    {/* ADD JOB SECTION */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <h3 className="text-xs font-bold text-slate-600 uppercase mb-3 flex items-center">
+                            <Link className="w-4 h-4 mr-2 text-blue-500" /> Chọn Job để gộp
+                        </h3>
+                        <div className="flex gap-2 mb-3">
+                            <input 
+                                type="text" 
+                                placeholder="Nhập Job Code để gộp..." 
+                                value={searchJobCode}
+                                onChange={(e) => setSearchJobCode(e.target.value)}
+                                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                            <button type="button" onClick={handleAddJob} className="bg-blue-600 text-white px-3 py-2 rounded-lg font-bold text-xs hover:bg-blue-700 flex items-center">
+                                <Plus className="w-4 h-4 mr-1" /> Thêm
+                            </button>
+                        </div>
+                        {addedJobs.length > 0 && (
+                            <div className="space-y-2 mb-2">
+                                {addedJobs.map(j => {
+                                    const amt = mode === 'extension' 
+                                        ? (j.extensions || []).reduce((s, e) => s + e.total, 0)
+                                        : (j.localChargeTotal || 0);
+                                    return (
+                                        <div key={j.id} className="flex justify-between items-center bg-white p-2 rounded border border-blue-100 text-sm">
+                                            <div>
+                                                <span className="font-bold text-blue-700">{j.jobCode}</span>
+                                                <span className="text-slate-500 mx-2">|</span>
+                                                <span className="text-slate-600">{j.booking}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-bold text-slate-700">{new Intl.NumberFormat('en-US').format(amt)}</span>
+                                                <button onClick={() => handleRemoveAddedJob(j.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* MAIN RECEIPT (MERGE MODE) */}
+                    <div className="bg-white rounded-xl border-2 border-blue-100 shadow-sm relative overflow-hidden">
+                        <div className="bg-blue-50 px-5 py-3 border-b border-blue-100 flex justify-between items-center">
+                            <h3 className="text-sm font-bold text-blue-800 flex items-center uppercase">
+                                <Receipt className="w-4 h-4 mr-2" /> Tổng thu
+                            </h3>
+                            <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-bold">MERGED</span>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div className="grid grid-cols-2 gap-5">
+                                <div><Label>Ngày Chứng Từ</Label><DateInput value={mode === 'extension' ? newExtension.amisDate : amisDate} onChange={handleMainDateChange} /></div>
+                                <div><Label>Số Chứng Từ (AMIS)</Label><input type="text" value={mode === 'extension' ? newExtension.amisDocNo : amisDocNo} onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value})); else setAmisDocNo(e.target.value); }} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-800" /></div>
+                            </div>
+                            <div>
+                                <Label>Tổng tiền</Label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={currentMainAmount ? new Intl.NumberFormat('en-US').format(currentMainAmount) : ''} 
+                                        onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleAmountChange(val); }}
+                                        className="w-full pl-4 pr-14 py-2.5 bg-white border border-slate-300 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 text-right text-blue-700 focus:ring-blue-500"
+                                        placeholder="0"
+                                    />
+                                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">VND</span>
+                                </div>
+                            </div>
+                            <div>
+                                <Label>Diễn giải</Label>
+                                <textarea 
+                                    value={mode === 'extension' ? newExtension.amisDesc : amisDesc}
+                                    onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDesc: e.target.value})); else setAmisDesc(e.target.value); }}
+                                    rows={2}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ========= TAB 2: INSTALLMENTS ========= */}
+            {activeTab === 'installments' && mode !== 'deposit_refund' && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+                    
+                    {/* MAIN RECEIPT (LẦN 1) */}
+                    <div className="bg-white rounded-xl border-2 border-emerald-100 shadow-sm relative overflow-hidden">
+                        <div className="bg-emerald-50 px-5 py-3 border-b border-emerald-100 flex justify-between items-center">
+                            <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
+                                <Receipt className="w-4 h-4 mr-2" /> Phiếu Thu Lần 1 (Gốc)
+                            </h3>
+                            <span className="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded font-bold">LẦN 1</span>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div className="grid grid-cols-2 gap-5">
+                                <div><Label>Ngày Chứng Từ</Label><DateInput value={mode === 'extension' ? newExtension.amisDate : amisDate} onChange={handleMainDateChange} /></div>
+                                <div><Label>Số Chứng Từ (AMIS)</Label><input type="text" value={mode === 'extension' ? newExtension.amisDocNo : amisDocNo} onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value})); else setAmisDocNo(e.target.value); }} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-emerald-800" /></div>
+                            </div>
+                            <div>
+                                <Label>Số tiền thu (Lần 1)</Label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={currentMainAmount ? new Intl.NumberFormat('en-US').format(currentMainAmount) : ''} 
+                                        onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleAmountChange(val); }}
+                                        className="w-full pl-4 pr-14 py-2.5 bg-white border border-slate-300 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 text-right text-emerald-700 focus:ring-emerald-500"
+                                        placeholder="0"
+                                    />
+                                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">VND</span>
+                                </div>
+                            </div>
+                            <div>
+                                <Label>Diễn giải (Lần 1)</Label>
+                                <textarea 
+                                    value={mode === 'extension' ? newExtension.amisDesc : amisDesc}
+                                    onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDesc: e.target.value})); else setAmisDesc(e.target.value); }}
+                                    rows={2}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* LIST ADDITIONAL RECEIPTS */}
+                    <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 shadow-sm">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
+                                <List className="w-4 h-4 mr-2" /> Các lần thu thêm (Trả góp)
+                            </h3>
+                            {!isAddingReceipt && (
+                                <button type="button" onClick={handleAddNewReceipt} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 font-bold flex items-center shadow-sm">
+                                    <Plus className="w-3 h-3 mr-1" /> Thêm phiếu (Lần {relevantAdditionalReceipts.length + 2})
+                                </button>
+                            )}
+                        </div>
+
+                        {/* List */}
                         <div className="space-y-3">
-                            {addedJobs.map(j => (
-                                <div key={j.id} className="bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md border-l-4 border-l-blue-500">
-                                    <div className="px-4 py-2 bg-blue-50/50 border-b border-blue-100 flex justify-between items-center">
-                                        <span className="text-sm font-black text-blue-700">{j.jobCode}</span>
-                                        <button onClick={() => handleRemoveJobFromMerge(j.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1"><Trash2 className="w-3.5 h-3.5"/></button>
+                            {relevantAdditionalReceipts.map((rcpt, idx) => (
+                                <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm hover:shadow-md transition-shadow relative">
+                                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                                        <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded">Phiếu #{idx + 2}</span>
+                                        <button type="button" onClick={() => handleDeleteReceipt(rcpt.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                                     </div>
-                                    {mode === 'extension' ? (
-                                        <div className="p-3 space-y-2">
-                                            {(j.extensions || []).map(ext => (
-                                                <div key={ext.id} onClick={() => toggleExtSelection(ext.id)} className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${selectedExtIds.has(ext.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100 hover:border-blue-200'}`}>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${selectedExtIds.has(ext.id) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300'}`}>
-                                                            {selectedExtIds.has(ext.id) && <Check className="w-3 h-3" />}
-                                                        </div>
-                                                        <span className="text-[11px] font-bold text-slate-700">HĐ: {ext.invoice || 'N/A'}</span>
-                                                    </div>
-                                                    <span className={`text-[11px] font-black ${selectedExtIds.has(ext.id) ? 'text-blue-700' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(ext.total)} đ</span>
-                                                </div>
-                                            ))}
-                                            {(j.extensions || []).length === 0 && <p className="text-[10px] text-slate-400 italic text-center py-1">Không có dòng gia hạn</p>}
-                                        </div>
-                                    ) : (
-                                        <div className="px-4 py-2 flex justify-between text-[11px]">
-                                            <span className="text-slate-500">Local Charge:</span>
-                                            <span className="font-bold text-blue-700">{new Intl.NumberFormat('en-US').format(j.localChargeTotal)} đ</span>
-                                        </div>
-                                    )}
+                                    <div className="grid grid-cols-2 gap-4 mb-2">
+                                        <div><span className="block text-[10px] text-slate-400 font-bold uppercase">Ngày CT</span><span className="text-sm font-medium text-slate-700">{formatDateVN(rcpt.date)}</span></div>
+                                        <div><span className="block text-[10px] text-slate-400 font-bold uppercase">Số CT</span><span className="text-sm font-bold text-slate-800">{rcpt.docNo}</span></div>
+                                    </div>
+                                    <div className="mb-2"><span className="block text-[10px] text-slate-400 font-bold uppercase">Số tiền</span><span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('en-US').format(rcpt.amount)} VND</span></div>
+                                    <div><span className="block text-[10px] text-slate-400 font-bold uppercase">Diễn giải</span><p className="text-xs text-slate-600 truncate">{rcpt.desc}</p></div>
                                 </div>
                             ))}
+                            {relevantAdditionalReceipts.length === 0 && !isAddingReceipt && (
+                                <div className="text-center py-4 text-slate-400 text-xs italic border-2 border-dashed border-emerald-100 rounded-xl">Chưa có phiếu thu thêm nào</div>
+                            )}
                         </div>
-                    </div>
-                </div>
-            )}
 
-            {/* CHỌN DÒNG JOB CHÍNH */}
-            {mode === 'extension' && (
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-orange-500">
-                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <List className="w-4 h-4" /> Chọn hóa đơn gia hạn của Job chính
-                    </h3>
-                    <div className="space-y-2">
-                        {(formData.extensions || []).map((ext) => (
-                            <div key={ext.id} onClick={() => toggleExtSelection(ext.id)} className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between group ${selectedExtIds.has(ext.id) ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 hover:border-blue-200 bg-slate-50/50'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${selectedExtIds.has(ext.id) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300'}`}>
-                                        {selectedExtIds.has(ext.id) && <Check className="w-3.5 h-3.5" />}
-                                    </div>
-                                    <div className="flex flex-col"><span className="text-xs font-black text-slate-800">HĐ: {ext.invoice || 'N/A'}</span><span className="text-[10px] text-slate-500">Ngày: {formatDateVN(ext.invoiceDate)}</span></div>
+                        {/* Add Form */}
+                        {isAddingReceipt && (
+                            <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg">
+                                <h4 className="text-xs font-bold text-emerald-700 uppercase mb-3 border-b border-emerald-100 pb-1">Nhập phiếu lần {relevantAdditionalReceipts.length + 2}</h4>
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <div><Label>Ngày</Label><DateInput value={newReceipt.date || ''} onChange={(val) => setNewReceipt(prev => ({...prev, date: val}))} /></div>
+                                    <div><Label>Số chứng từ</Label><input type="text" value={newReceipt.docNo} onChange={e => setNewReceipt(prev => ({...prev, docNo: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
                                 </div>
-                                <span className={`text-sm font-black ${selectedExtIds.has(ext.id) ? 'text-blue-700' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(ext.total)} đ</span>
+                                <div className="mb-3"><Label>Số tiền</Label><input type="text" value={newReceipt.amount ? new Intl.NumberFormat('en-US').format(newReceipt.amount) : ''} onChange={e => { const val = Number(e.target.value.replace(/,/g, '')); if(!isNaN(val)) setNewReceipt(prev => ({...prev, amount: val})); }} className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-right text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                                <div className="mb-3"><Label>Diễn giải</Label><input type="text" value={newReceipt.desc} onChange={e => setNewReceipt(prev => ({...prev, desc: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                                <div className="flex justify-end gap-2">
+                                    <button type="button" onClick={() => setIsAddingReceipt(false)} className="text-xs px-3 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Hủy</button>
+                                    <button type="button" onClick={handleSaveNewReceipt} className="text-xs px-3 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Lưu phiếu</button>
+                                </div>
                             </div>
-                        ))}
+                        )}
+
+                        {/* Summary */}
+                        <div className="mt-4 pt-3 border-t border-emerald-200/60">
+                            <div className="flex justify-between items-center text-sm mb-1">
+                                <span className="text-emerald-900 font-medium">Tổng thực thu (Tất cả các lần):</span>
+                                <span className="text-emerald-700 font-bold">{new Intl.NumberFormat('en-US').format(totalCollected)} VND</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500 font-medium">Còn lại phải thu:</span>
+                                <span className={`font-bold ${remaining > 0 ? 'text-red-500' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(remaining)} VND</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* ĐỐI TƯỢNG HẠCH TOÁN */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-black text-slate-800 mb-4 flex items-center uppercase tracking-wide"><User className="w-4 h-4 text-slate-500 mr-2" /> Đối tượng hạch toán</h3>
-                <div className="grid grid-cols-2 gap-5">
-                    <div><Label>Mã Đối Tượng</Label><input type="text" value={custInputVal} readOnly className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-700" /></div>
-                    <div><Label>Tên Đối Tượng</Label><input type="text" value={customerName} readOnly className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-[10px] text-slate-500 font-medium" /></div>
-                </div>
-            </div>
-
-            {/* CHỨNG TỪ AMIS */}
-            <div className="bg-white rounded-3xl border-2 border-slate-100 shadow-lg relative overflow-hidden">
-                <div className={`${mode.includes('refund') ? 'bg-red-600' : 'bg-blue-700'} px-5 py-3 border-b flex justify-between items-center text-white`}>
-                    <h3 className="text-xs font-black flex items-center uppercase tracking-widest">
-                        <FileText className="w-4 h-4 mr-2" /> {mode.includes('refund') ? 'Phiếu Chi (UNC)' : 'Phiếu Thu (NTTK)'}
-                    </h3>
-                </div>
-                <div className="p-6 space-y-5">
-                    <div className="grid grid-cols-2 gap-5">
-                        <div><Label>Ngày Chứng Từ</Label><DateInput value={amisDate} onChange={setAmisDate} /></div>
-                        <div><Label>Số Chứng Từ</Label><input type="text" value={amisDocNo} onChange={(e) => setAmisDocNo(e.target.value)} className={`w-full px-4 py-2 bg-white border border-slate-300 rounded-xl text-sm font-black focus:ring-2 focus:outline-none ${mode.includes('refund') ? 'text-red-700 focus:ring-red-500' : 'text-blue-800 focus:ring-blue-500'}`} /></div>
+            {/* DEFAULT VIEW FOR DEPOSIT REFUND */}
+            {mode === 'deposit_refund' && (
+                <div className="bg-white rounded-xl border-2 border-red-100 shadow-sm relative overflow-hidden">
+                    <div className="bg-red-50 px-5 py-3 border-b border-red-100 flex justify-between items-center">
+                        <h3 className="text-sm font-bold text-red-800 flex items-center uppercase">
+                            <RotateCcw className="w-4 h-4 mr-2" /> Phiếu Chi Hoàn Cược
+                        </h3>
                     </div>
-                    <div>
-                        <Label>Tổng số tiền hạch toán</Label>
-                        <div className="relative">
-                            <input type="text" value={amisAmount ? new Intl.NumberFormat('en-US').format(amisAmount) : ''} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) setAmisAmount(val); }} className={`w-full pl-5 pr-14 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-2xl font-black text-right focus:ring-4 focus:outline-none transition-all ${mode.includes('refund') ? 'text-red-700 focus:ring-red-500/20 focus:border-red-500' : 'text-blue-700 focus:ring-blue-500/20 focus:border-blue-500'}`} />
-                            <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 uppercase">VND</span>
+                    <div className="p-5 space-y-4">
+                        <div className="grid grid-cols-2 gap-5">
+                            <div><Label>Ngày Chứng Từ</Label><DateInput value={amisDate} onChange={handleMainDateChange} /></div>
+                            <div><Label>Số Chứng Từ (AMIS)</Label><input type="text" value={amisDocNo} onChange={(e) => setAmisDocNo(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 text-red-800" /></div>
+                        </div>
+                        <div>
+                            <Label>Số tiền hoàn</Label>
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    required
+                                    value={new Intl.NumberFormat('en-US').format(formData.thuCuoc || 0)} 
+                                    readOnly
+                                    className="w-full pl-4 pr-14 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-lg font-bold text-right text-slate-500 cursor-not-allowed"
+                                />
+                                <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">VND</span>
+                            </div>
+                        </div>
+                        <div>
+                            <Label>Diễn giải</Label>
+                            <textarea 
+                                value={amisDesc}
+                                onChange={(e) => setAmisDesc(e.target.value)}
+                                rows={2}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+                            />
                         </div>
                     </div>
-                    <div>
-                        <Label>Diễn giải</Label>
-                        <textarea value={amisDesc} onChange={(e) => setAmisDesc(e.target.value)} rows={3} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl text-xs font-medium text-slate-700 resize-none focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed" />
-                    </div>
                 </div>
-            </div>
+            )}
+
+            </form>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-end space-x-3">
-            <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-sm font-black text-slate-500 bg-slate-50 hover:bg-slate-100 transition-colors">Hủy bỏ</button>
-            <button onClick={handleSave} disabled={mode === 'extension' && selectedExtIds.size === 0} className={`px-8 py-2.5 rounded-xl text-sm font-black text-white shadow-xl transition-all transform active:scale-95 disabled:opacity-50 disabled:pointer-events-none ${mode.includes('refund') ? 'bg-red-600 hover:bg-red-700 shadow-red-500/20' : 'bg-blue-700 hover:bg-blue-800 shadow-blue-500/20'}`}>
-                <Save className="w-4 h-4 mr-2 inline" /> Lưu Thay Đổi
+        <div className="px-6 py-4 bg-white border-t border-slate-200 rounded-b-2xl flex justify-end space-x-3">
+            <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
+            Hủy bỏ
+            </button>
+            <button 
+                onClick={handleSubmit} 
+                className={`px-5 py-2.5 rounded-lg text-sm font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100 ${mode === 'deposit_refund' ? 'bg-red-700 hover:bg-red-800' : 'bg-blue-700 hover:bg-blue-800'}`}
+            >
+            <Save className="w-4 h-4 mr-2" /> Lưu Thay Đổi
             </button>
         </div>
       </div>
