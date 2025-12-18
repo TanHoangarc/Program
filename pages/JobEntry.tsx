@@ -168,6 +168,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     const templateJob: JobData = {
       ...INITIAL_JOB, // Reset all fields to default first
       month: job.month,
+      year: job.year, // Keep year
       booking: job.booking,
       consol: job.consol,
       line: job.line,
@@ -259,9 +260,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       let addedCount = 0; let updatedCount = 0;
       data.forEach((row: any) => {
         const rowJobCode = String(row['Job'] || row['Job Code'] || '');
+        const rowYear = Number(row['Năm'] || row['Year']);
         
         const mappedData: Partial<JobData> = {
           month: String(row['Tháng'] || '1'),
+          year: !isNaN(rowYear) && rowYear > 2000 ? rowYear : new Date().getFullYear(),
           jobCode: rowJobCode || `IMP-${Date.now()}`,
           booking: String(row['Booking'] || ''),
           consol: String(row['Consol'] || ''),
@@ -306,6 +309,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
       const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
       return {
+        "Năm": job.year,
         "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
@@ -335,8 +339,15 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
     });
     return matches.sort((a, b) => {
+      // 1. Year Descending
+      const yearDiff = (b.year || new Date().getFullYear()) - (a.year || new Date().getFullYear());
+      if (yearDiff !== 0) return yearDiff;
+
+      // 2. Month Descending
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
+      
+      // 3. Booking Ascending
       const bookingA = String(a.booking || '').toLowerCase();
       const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
@@ -433,6 +444,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider w-16">Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Customer</th>
@@ -460,6 +472,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
                   return (
                   <tr key={job.id} className="hover:bg-white/40 cursor-pointer group transition-colors" onClick={(e) => handleRowClick(job, e)}>
+                    <td className="px-6 py-4 text-slate-500 font-bold">{job.year}</td>
                     <td className="px-6 py-4 text-slate-500">T{job.month}</td>
                     <td className="px-6 py-4 font-bold text-teal-700 relative">
                         {job.jobCode}
@@ -529,14 +542,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   </tr>
                 )})
               ) : (
-                <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu phù hợp</td></tr>
+                <tr><td colSpan={12} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu phù hợp</td></tr>
               )}
             </tbody>
             {/* Footer Totals */}
             {filteredJobs.length > 0 && (
               <tfoot className="bg-white/30 border-t border-white/40 font-bold text-slate-800 text-xs uppercase">
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng:</td>
+                  <td colSpan={6} className="px-6 py-4 text-right">Tổng cộng:</td>
                   <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                   <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                   <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>

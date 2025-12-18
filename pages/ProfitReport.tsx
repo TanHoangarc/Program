@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, SalaryRecord } from '../types';
-import { BadgeDollarSign, Search, ExternalLink, ChevronLeft, ChevronRight, Coins, Percent } from 'lucide-react';
+import { BadgeDollarSign, Search, ExternalLink, ChevronLeft, ChevronRight, Coins, Percent, Calendar } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { getPaginationRange } from '../utils';
 
@@ -12,21 +12,34 @@ interface ProfitReportProps {
 }
 
 export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onViewJob }) => {
+  const currentYear = new Date().getFullYear();
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState<number>(currentYear);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, searchTerm]);
+  }, [filterMonth, filterYear, searchTerm]);
+
+  // Extract unique years
+  const uniqueYears = useMemo(() => {
+      const years = new Set<number>();
+      years.add(currentYear);
+      jobs.forEach(j => { if (j.year) years.add(j.year); });
+      salaries.forEach(s => { if (s.year) years.add(s.year); });
+      return Array.from(years).sort((a, b) => b - a);
+  }, [jobs, salaries, currentYear]);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   // 1. Process Job Data
   const profitData = useMemo(() => {
-    let filtered = jobs;
+    let filtered = jobs.filter(j => j.year === filterYear);
+    
     if (filterMonth) filtered = filtered.filter(j => j.month === filterMonth);
+    
     if (searchTerm) {
         filtered = filtered.filter(j => 
             String(j.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -44,6 +57,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
       return {
         id: job.id,
         month: job.month,
+        year: job.year,
         jobCode: job.jobCode,
         booking: job.booking,
         totalProfit: job.profit,
@@ -58,26 +72,24 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
       const bookingB = String(b.booking || '').trim().toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterMonth, searchTerm]);
+  }, [jobs, filterMonth, filterYear, searchTerm]);
 
   // 2. Statistics Calculation
   const totalNetProfit = profitData.reduce((acc, p) => acc + p.totalProfit, 0);
   const totalFees = profitData.reduce((acc, p) => acc + p.fees, 0);
 
-  // 3. Salary Calculation
+  // 3. Salary Calculation (Filtered by Year AND Month)
   const totalSalary = useMemo(() => {
-      let filteredSalaries = salaries;
+      let filteredSalaries = salaries.filter(s => s.year === filterYear);
       if (filterMonth) filteredSalaries = filteredSalaries.filter(s => s.month === filterMonth);
       return filteredSalaries.reduce((sum, s) => sum + s.amount, 0);
-  }, [salaries, filterMonth]);
+  }, [salaries, filterMonth, filterYear]);
 
   // 4. VAT Calculation
-  // Formula: (Total Revenue VAT) - (Total Expense VAT)
-  // Revenue VAT = Total Revenue LC - (Total Revenue LC / 1.08)
-  // Expense VAT = Sum of Booking VATs (Deduplicated by Booking)
   const totalVAT = useMemo(() => {
-      let filteredJobs = jobs;
+      let filteredJobs = jobs.filter(j => j.year === filterYear);
       if (filterMonth) filteredJobs = filteredJobs.filter(j => j.month === filterMonth);
+      
       if (searchTerm) {
           filteredJobs = filteredJobs.filter(j => 
               String(j.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -86,7 +98,6 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
       }
 
       // A. Revenue VAT (Sum of ALL jobs)
-      // Note: We use localChargeTotal from each job as Revenue base
       const totalRevenueLC = filteredJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
       const revenueVAT = totalRevenueLC - (totalRevenueLC / 1.08);
 
@@ -119,7 +130,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
       });
 
       return revenueVAT - totalExpenseVAT;
-  }, [jobs, filterMonth, searchTerm]);
+  }, [jobs, filterMonth, filterYear, searchTerm]);
 
   // Pagination Logic
   const totalPages = Math.ceil(profitData.length / ITEMS_PER_PAGE);
@@ -136,20 +147,28 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
             </div>
             <h1 className="text-3xl font-bold">Báo Cáo Lợi Nhuận</h1>
           </div>
-          <p className="text-slate-500 ml-11">Phân tích lợi nhuận, chi phí và thuế</p>
+          <p className="text-slate-500 ml-11">Phân tích lợi nhuận, chi phí và thuế năm {filterYear}</p>
         </div>
         
-        <div className="flex space-x-4">
-           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded text-sm min-w-[150px]">
+        <div className="flex space-x-3">
+           <div className="flex items-center space-x-2 glass-panel px-3 py-1.5 rounded-lg border border-slate-200">
+               <Calendar className="w-4 h-4 text-slate-400" />
+               <select value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="bg-transparent border-none text-sm text-slate-700 font-bold focus:ring-0 outline-none cursor-pointer">
+                 {uniqueYears.map(y => <option key={y} value={y}>Năm {y}</option>)}
+               </select>
+           </div>
+
+           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border border-slate-200 rounded-lg text-sm min-w-[130px] outline-none focus:ring-2 focus:ring-green-500">
              <option value="">Tất cả tháng</option>
              {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
            </select>
+           
            <div className="relative">
               <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
               <input 
                 type="text" placeholder="Tìm kiếm..." 
                 value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                className="pl-8 p-2 border rounded text-sm w-64"
+                className="pl-8 p-2 border border-slate-200 rounded-lg text-sm w-64 outline-none focus:ring-2 focus:ring-green-500"
               />
            </div>
         </div>
@@ -183,7 +202,8 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
               <tr>
-                <th className="px-6 py-4">Tháng</th>
+                <th className="px-6 py-4 w-16">Năm</th>
+                <th className="px-6 py-4 w-20">Tháng</th>
                 <th className="px-6 py-4">Job Code</th>
                 <th className="px-6 py-4">Booking</th>
                 <th className="px-6 py-4 text-right">Tổng Phí (Fees)</th>
@@ -195,6 +215,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
              {paginatedData.length > 0 ? (
                 paginatedData.map(item => (
                   <tr key={item.id} className="hover:bg-gray-50">
+                     <td className="px-6 py-4 font-bold text-slate-500">{item.year}</td>
                      <td className="px-6 py-4 text-gray-500">T{item.month}</td>
                      <td 
                         className="px-6 py-4 font-bold text-blue-700 cursor-pointer hover:underline"
@@ -216,7 +237,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
                   </tr>
                 ))
              ) : (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
              )}
             </tbody>
           </table>
@@ -271,4 +292,3 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
     </div>
   );
 };
-

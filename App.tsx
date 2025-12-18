@@ -112,15 +112,25 @@ const App: React.FC = () => {
   const sanitizeData = (data: JobData[]): JobData[] => {
     const seenIds = new Set<string>();
     let hasDuplicates = false;
+    const currentYear = new Date().getFullYear();
 
     const sanitized = data.map(job => {
-      if (!job.id || seenIds.has(job.id)) {
+      const fixedJob = { ...job };
+      
+      // Fix missing IDs
+      if (!fixedJob.id || seenIds.has(fixedJob.id)) {
         hasDuplicates = true;
         const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        return { ...job, id: newId };
+        fixedJob.id = newId;
       }
-      seenIds.add(job.id);
-      return job;
+      seenIds.add(fixedJob.id);
+
+      // Backfill missing Year
+      if (!fixedJob.year) {
+          fixedJob.year = currentYear;
+      }
+
+      return fixedJob;
     });
     if (hasDuplicates) console.warn("Fixed duplicate IDs");
     return sanitized;
@@ -274,7 +284,7 @@ const App: React.FC = () => {
             customers: [...customers],
             lines: [...lines],
             customReceipts: [...customReceipts],
-            // Removed lockedIds from default payload to prevent snapshotting
+            users: [...users] // Bổ sung users vào gói tin gửi duyệt
         };
     } else {
         if (!payload.lockedIds) {
@@ -403,11 +413,19 @@ const App: React.FC = () => {
           return Array.from(map.values());
       };
 
+      const mergeUsers = (current: UserAccount[], incoming: UserAccount[]) => {
+          if (!incoming) return current;
+          const map = new Map(current.map(u => [u.username, u]));
+          incoming.forEach(u => map.set(u.username, u));
+          return Array.from(map.values());
+      };
+
       const incJobs = Array.isArray(incomingData.jobs) ? incomingData.jobs : (incomingData.data?.jobs || incomingData.payload?.jobs || []);
       const incPayments = Array.isArray(incomingData.paymentRequests) ? incomingData.paymentRequests : (incomingData.data?.paymentRequests || incomingData.payload?.paymentRequests || []);
       const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
+      const incUsers = Array.isArray(incomingData.users) ? incomingData.users : (incomingData.data?.users || incomingData.payload?.users || []);
 
       const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
       if (incLocks.length > 0) {
@@ -423,15 +441,16 @@ const App: React.FC = () => {
       const newCustomers = mergeArrays(customers, incCustomers);
       const newLines = mergeArrays(lines, incLines);
       const newReceipts = mergeArrays(customReceipts, incReceipts);
+      const newUsers = mergeUsers(users, incUsers);
 
       setJobs(newJobs);
       setPaymentRequests(newPayments);
       setCustomers(newCustomers);
       setLines(newLines);
       setCustomReceipts(newReceipts);
+      setUsers(newUsers);
 
       await handleRejectRequest(requestId);
-
   };
 
   useEffect(() => {
@@ -455,6 +474,11 @@ const App: React.FC = () => {
         if (data.paymentRequests && Array.isArray(data.paymentRequests)) setPaymentRequests(data.paymentRequests);
         if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
         if (data.lines && Array.isArray(data.lines)) setLines(data.lines);
+        if (data.users && Array.isArray(data.users)) setUsers(prev => {
+            const map = new Map(prev.map(u => [u.username, u]));
+            data.users.forEach((u: UserAccount) => map.set(u.username, u));
+            return Array.from(map.values());
+        });
         
         if (data.lockedIds && Array.isArray(data.lockedIds)) {
             setLockedIds(new Set(data.lockedIds));
@@ -511,6 +535,7 @@ const App: React.FC = () => {
 
   const handleLogin = (username: string, pass: string, remember: boolean) => {
     setLoginError('');
+    // Tìm kiếm trong danh sách users mới nhất
     const user = users.find(u => u.username === username && u.pass === pass);
 
     if (user) {
@@ -524,6 +549,11 @@ const App: React.FC = () => {
       
       if (remember) sessionStorage.removeItem('kb_user');
       else localStorage.removeItem('kb_user');
+
+      // Gửi thông báo đăng nhập qua BroadcastChannel để đồng bộ các tab
+      const channel = new BroadcastChannel(AUTH_CHANNEL_NAME);
+      channel.postMessage({ type: 'LOGIN_SUCCESS', username: user.username });
+      channel.close();
 
       if (user.role === 'Docs') {
           setCurrentPage('lookup');
@@ -551,11 +581,12 @@ const App: React.FC = () => {
     try {
       const data = {
         timestamp: new Date().toISOString(),
-        version: "2.3",
+        version: "2.4",
         jobs,
         paymentRequests,
         customers,
         lines,
+        users, // Bổ sung users vào backup
         lockedIds: Array.from(lockedIds),
         processedRequestIds: Array.from(localDeletedIds),
         customReceipts
@@ -585,7 +616,8 @@ const App: React.FC = () => {
     }, 2000);
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, isServerAvailable]);
+    // Thêm users vào dependency array để backup khi thêm tài khoản
+  }, [jobs, paymentRequests, customers, lines, users, lockedIds, customReceipts, localDeletedIds, isServerAvailable]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -593,7 +625,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
-  useEffect(() => { localStorage.setItem('logistics_salaries', JSON.stringify(salaries)); }, [salaries]); // NEW Persist Salary
+  useEffect(() => { localStorage.setItem('logistics_salaries', JSON.stringify(salaries)); }, [salaries]);
 
   useEffect(() => {
       if (currentPage === 'system' && currentUser?.role === 'Admin') {
@@ -746,7 +778,7 @@ const App: React.FC = () => {
             {currentPage === 'profit' && (
               <ProfitReport 
                 jobs={jobs} 
-                salaries={salaries} // NEW PROP
+                salaries={salaries} 
                 onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} 
               />
             )}
@@ -830,10 +862,11 @@ const App: React.FC = () => {
                   setJobs(sanitizeData(d.jobs));
                   setCustomers(d.customers);
                   setLines(d.lines);
+                  if (d.users) setUsers(d.users);
                 }}
-                onAddUser={(u) => setUsers([...users, u])}
-                onEditUser={(u, oldName) => setUsers(users.map(user => user.username === oldName ? u : user))}
-                onDeleteUser={(name) => setUsers(users.filter(u => u.username !== name))}
+                onAddUser={(u) => setUsers(prev => [...prev, u])}
+                onEditUser={(u, oldName) => setUsers(prev => prev.map(user => user.username === oldName ? u : user))}
+                onDeleteUser={(name) => setUsers(prev => prev.filter(u => u.username !== name))}
                 pendingRequests={pendingRequests}
                 onApproveRequest={handleApproveRequest}
                 onRejectRequest={handleRejectRequest}
@@ -848,4 +881,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

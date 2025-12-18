@@ -136,6 +136,7 @@ export interface JobData {
 
   // General
   month: string;
+  year: number; // NEW FIELD
   jobCode: string;
   booking: string;
   consol: string;
@@ -231,6 +232,7 @@ export interface JobData {
 export interface BookingSummary {
   bookingId: string;
   month: string;
+  year: number; // NEW FIELD
   line: string;
 
   jobCount: number;
@@ -299,6 +301,7 @@ export const INITIAL_JOB: JobData = {
   id: '',
 
   month: '1',
+  year: new Date().getFullYear(), // Default current year
   jobCode: '',
   booking: '',
   consol: '',
@@ -340,4 +343,3 @@ export const INITIAL_JOB: JobData = {
   extensions: [],
   additionalReceipts: []
 };
-

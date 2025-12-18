@@ -54,6 +54,7 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
   const summary: BookingSummary = {
     bookingId: firstJob.booking,
     month: firstJob.month,
+    year: firstJob.year || new Date().getFullYear(), // Default to current year if missing
     line: firstJob.line,
     jobCount: 0,
     totalCost: 0,

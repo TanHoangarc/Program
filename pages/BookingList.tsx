@@ -73,7 +73,12 @@ export const BookingList: React.FC<BookingListProps> = ({
       summaries = summaries.filter(s => String(s.bookingId || '').toLowerCase().includes(searchLower));
     }
 
-    return summaries.sort((a, b) => Number(b.month) - Number(a.month));
+    return summaries.sort((a, b) => {
+        // Sort by Year Descending, then Month Descending
+        const yearDiff = (b.year || new Date().getFullYear()) - (a.year || new Date().getFullYear());
+        if (yearDiff !== 0) return yearDiff;
+        return Number(b.month) - Number(a.month);
+    });
   }, [jobs, filterMonth, filterBooking]);
 
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
@@ -179,7 +184,7 @@ export const BookingList: React.FC<BookingListProps> = ({
       // Save data back to jobs in the booking
       if (targetBookingForPayment) {
           targetBookingForPayment.jobs.forEach(job => {
-              const updatedJob = { ...job };
+              const updatedJob = { ...job, year: job.year || new Date().getFullYear() };
               
               if (paymentType === 'local') {
                   updatedJob.amisPaymentDocNo = data.docNo;
@@ -288,6 +293,7 @@ export const BookingList: React.FC<BookingListProps> = ({
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider w-16">Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Line</th>
@@ -327,6 +333,7 @@ export const BookingList: React.FC<BookingListProps> = ({
 
                 return (
                   <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
+                    <td className="px-6 py-4 font-bold text-slate-500">{booking.year}</td>
                     <td className="px-6 py-4 font-medium text-slate-500" onClick={() => setSelectedBooking(booking)}>Tháng {booking.month}</td>
                     <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => setSelectedBooking(booking)}>{booking.bookingId}</td>
                     <td className="px-6 py-4 text-slate-600">{booking.line}</td>
@@ -373,7 +380,7 @@ export const BookingList: React.FC<BookingListProps> = ({
             {bookingData.length > 0 && (
               <tfoot className="bg-white/30 border-t border-white/40 font-bold text-slate-800 text-xs uppercase">
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
+                  <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
                   <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                   <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                   <td className={`px-6 py-4 text-right ${totals.diff !== 0 ? 'text-orange-600' : 'text-slate-400'}`}>{formatCurrency(totals.diff)}</td>
@@ -448,4 +455,3 @@ export const BookingList: React.FC<BookingListProps> = ({
     </div>
   );
 };
-
