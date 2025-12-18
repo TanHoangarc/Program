@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
-import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag, Search, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag, Search, AlertCircle, Calendar } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
@@ -26,6 +26,7 @@ export const BookingList: React.FC<BookingListProps> = ({
 }) => {
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [filterYear, setFilterYear] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -57,12 +58,23 @@ export const BookingList: React.FC<BookingListProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, filterBooking]);
+  }, [filterMonth, filterBooking, filterYear]);
+
+  const uniqueYears = useMemo(() => {
+    const years = new Set<number>();
+    years.add(new Date().getFullYear());
+    jobs.forEach(j => { if (j.year) years.add(j.year); });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [jobs]);
 
   const bookingData = useMemo(() => {
     const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter((b): b is string => !!b)));
     let summaries = bookingIds.map((id: string) => calculateBookingSummary(jobs, id)).filter((b): b is BookingSummary => !!b);
     
+    if (filterYear) {
+      summaries = summaries.filter(s => String(s.year) === filterYear);
+    }
+
     if (filterMonth) {
       summaries = summaries.filter(s => s.month === filterMonth);
     }
@@ -79,7 +91,7 @@ export const BookingList: React.FC<BookingListProps> = ({
         if (yearDiff !== 0) return yearDiff;
         return Number(b.month) - Number(a.month);
     });
-  }, [jobs, filterMonth, filterBooking]);
+  }, [jobs, filterMonth, filterBooking, filterYear]);
 
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
   const paginatedData = bookingData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -272,6 +284,18 @@ export const BookingList: React.FC<BookingListProps> = ({
                   onChange={(e) => setFilterBooking(e.target.value)}
                   className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none w-32 md:w-48 placeholder-slate-400 text-slate-700"
                />
+           </div>
+
+           <div className="glass-panel px-4 py-2 flex items-center space-x-2 rounded-lg text-slate-700">
+               <Calendar className="w-4 h-4 text-slate-500" />
+               <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none cursor-pointer min-w-[100px] text-slate-700"
+               >
+                 <option value="">Tất cả các năm</option>
+                 {uniqueYears.map(y => <option key={y} value={y.toString()}>Năm {y}</option>)}
+               </select>
            </div>
 
            <div className="glass-panel px-4 py-2 flex items-center space-x-2 rounded-lg text-slate-700">

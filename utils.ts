@@ -127,6 +127,7 @@ export const generateNextDocNo = (jobs: JobData[], prefix: string, padding: numb
     checkValue(j.amisLcDocNo);
     checkValue(j.amisDepositDocNo);
     checkValue(j.amisDepositRefundDocNo);
+    checkValue(j.amisLcRefundDocNo); // Added Lc Refund
     checkValue(j.amisPaymentDocNo);
     checkValue(j.amisDepositOutDocNo);
     checkValue(j.amisExtensionPaymentDocNo);
@@ -175,17 +176,19 @@ export const calculatePaymentStatus = (job: JobData): PaymentStatus => {
 
   // 1. Local Charge
   // Expected: localChargeTotal
-  // Collected: amisLcAmount (Lần 1) + Additional Receipts (type='local' or type='other')
+  // Collected: amisLcAmount (Lần 1) + Additional Receipts (type='local') - Refunds
   const lcExpected = job.localChargeTotal || 0;
   
   // Nếu chưa có DocNo thì coi như chưa thu lần 1 -> amisLcAmount = 0
   const lcMain = job.amisLcDocNo ? (job.amisLcAmount !== undefined ? job.amisLcAmount : job.localChargeTotal) : 0;
   
   const lcAdditional = (job.additionalReceipts || [])
-    .filter(r => r.type === 'local') // 'other' thường map vào local charge trong ngữ cảnh này
+    .filter(r => r.type === 'local') 
     .reduce((sum, r) => sum + r.amount, 0);
+
+  const lcRefunded = job.amisLcRefundAmount || 0;
     
-  const totalCollectedLC = lcMain + lcAdditional;
+  const totalCollectedLC = lcMain + lcAdditional - lcRefunded;
   const lcDiff = totalCollectedLC - lcExpected;
 
   // 2. Deposit
@@ -204,8 +207,8 @@ export const calculatePaymentStatus = (job: JobData): PaymentStatus => {
 
   // Logic: Mismatch exists if Diff != 0 AND (Expected > 0 OR Collected > 0)
   // We ignore cases where both are 0.
-  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && lcDiff !== 0;
-  const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && depositDiff !== 0;
+  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && Math.abs(lcDiff) > 10;
+  const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && Math.abs(depositDiff) > 10;
 
   return {
     lcDiff,

@@ -195,6 +195,12 @@ export interface JobData {
   amisLcDesc?: string;
   amisLcAmount?: number; // Actual collected amount for the main slip (Partial Payment 1)
 
+  // NEW: AMIS Fields for Local Charge Refund (Hoàn tiền Local Charge dư cho khách)
+  amisLcRefundDocNo?: string;
+  amisLcRefundDesc?: string;
+  amisLcRefundDate?: string;
+  amisLcRefundAmount?: number;
+
   // Payment In (Deposit - Thu)
   maKhCuocId: string;
   thuCuoc: number;
