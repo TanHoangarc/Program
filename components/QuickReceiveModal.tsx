@@ -94,7 +94,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [selectedExtIds, setSelectedExtIds] = useState<Set<string>>(new Set());
   const [custInputVal, setCustInputVal] = useState('');
 
-  // 1. Khởi tạo dữ liệu ban đầu khi mở Modal
+  // 1. Khởi tạo dữ liệu và KHÔI PHỤC TRẠNG THÁI GỘP KHI CHỈNH SỬA
   useEffect(() => {
     if (isOpen) {
       const deepCopyJob = JSON.parse(JSON.stringify(job));
@@ -108,23 +108,51 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const foundCust = customers.find(c => c.id === initialCustId);
       setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
+      const jobsForCalc = allJobs || [];
+      const extra = usedDocNos || [];
+      let currentDoc = '';
+
       // Tự động chọn dòng gia hạn đích
       if (mode === 'extension') {
-          if (targetExtensionId) setSelectedExtIds(new Set([targetExtensionId]));
-          else if (deepCopyJob.extensions?.length > 0) {
-              // Nếu không truyền ID cụ thể, tick chọn tất cả các dòng chưa thu của Job chính
-              const pendingIds = deepCopyJob.extensions.filter((e: any) => !e.amisDocNo).map((e: any) => e.id);
-              setSelectedExtIds(new Set(pendingIds.length > 0 ? pendingIds : [deepCopyJob.extensions[0].id]));
+          const exts = deepCopyJob.extensions || [];
+          const target = targetExtensionId ? exts.find((e: any) => e.id === targetExtensionId) : null;
+          currentDoc = target?.amisDocNo || '';
+
+          if (currentDoc) {
+              // CHẾ ĐỘ CHỈNH SỬA: Tìm tất cả Job và Dòng có chung số chứng từ
+              const othersWithSameDoc = (allJobs || []).filter(j => 
+                (j.extensions || []).some(ext => ext.amisDocNo === currentDoc)
+              );
+              
+              const siblingJobs = othersWithSameDoc.filter(j => j.id !== deepCopyJob.id);
+              const allMatchingExtIds = othersWithSameDoc.flatMap(j => 
+                (j.extensions || []).filter(ext => ext.amisDocNo === currentDoc).map(ext => ext.id)
+              );
+
+              setAddedJobs(siblingJobs);
+              setSelectedExtIds(new Set(allMatchingExtIds));
+              if (siblingJobs.length > 0) setActiveTab('merge');
+          } else {
+              // CHẾ ĐỘ THÊM MỚI
+              if (targetExtensionId) setSelectedExtIds(new Set([targetExtensionId]));
+              else if (exts.length > 0) {
+                  const pendingIds = exts.filter((e: any) => !e.amisDocNo).map((e: any) => e.id);
+                  setSelectedExtIds(new Set(pendingIds.length > 0 ? pendingIds : [exts[0].id]));
+              }
           }
       }
 
-      const jobsForCalc = allJobs || [];
-      const extra = usedDocNos || [];
-
+      // Cấu hình chứng từ dựa trên mode
       if (mode === 'local' || mode === 'other') {
-          setAmisDocNo(deepCopyJob.amisLcDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
+          const doc = deepCopyJob.amisLcDocNo;
+          setAmisDocNo(doc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
           setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
+          
+          if (doc && allJobs) {
+              const siblings = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisLcDocNo === doc);
+              if (siblings.length > 0) { setAddedJobs(siblings); setActiveTab('merge'); }
+          }
       } 
       else if (mode === 'local_refund') {
           setAmisDocNo(deepCopyJob.amisLcRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC'));
@@ -133,9 +161,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisAmount(deepCopyJob.amisLcRefundAmount || (status.lcDiff > 0 ? status.lcDiff : 0));
       }
       else if (mode === 'deposit') {
-          setAmisDocNo(deepCopyJob.amisDepositDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
+          const doc = deepCopyJob.amisDepositDocNo;
+          setAmisDocNo(doc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisAmount(deepCopyJob.amisDepositAmount !== undefined ? deepCopyJob.amisDepositAmount : (deepCopyJob.thuCuoc || 0));
           setAmisDate(deepCopyJob.ngayThuCuoc || new Date().toISOString().split('T')[0]);
+          
+          if (doc && allJobs) {
+            const siblings = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisDepositDocNo === doc);
+            if (siblings.length > 0) { setAddedJobs(siblings); setActiveTab('merge'); }
+          }
       } 
       else if (mode === 'deposit_refund') {
           setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC')); 
@@ -145,20 +179,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'extension') {
           const exts = deepCopyJob.extensions || [];
           const target = targetExtensionId ? exts.find((e: any) => e.id === targetExtensionId) : (exts.length > 0 ? exts[0] : null);
-          setAmisDocNo(target?.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
+          setAmisDocNo(currentDoc || target?.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
           setAmisDate(target?.invoiceDate || new Date().toISOString().split('T')[0]);
       }
     }
   }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos]);
 
-  // 2. Tự động tính toán Số tiền và Diễn giải khi có thay đổi (Chọn dòng hoặc thêm Job)
+  // 2. Tự động tính toán Số tiền và Diễn giải
   useEffect(() => {
       if (!isOpen) return;
 
       let total = 0;
       const allInvolvedJobs = [formData, ...addedJobs];
       
-      // --- TÍNH TỔNG TIỀN ---
       if (mode === 'extension') {
           total = allInvolvedJobs.reduce((sum, j) => {
               const selectedInJob = (j.extensions || []).filter(ext => selectedExtIds.has(ext.id));
@@ -172,15 +205,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisAmount(total);
       }
 
-      // --- TẠO DIỄN GIẢI ---
-      // Chỉ lấy JobCode của các Job có ít nhất 1 dòng được chọn (đối với gia hạn)
       const jobsWithSelection = mode === 'extension' 
           ? allInvolvedJobs.filter(j => (j.extensions || []).some(ext => selectedExtIds.has(ext.id)))
           : allInvolvedJobs;
 
       const allCodes = jobsWithSelection.map(j => j.jobCode).filter(Boolean);
       const codesStr = allCodes.join('+');
-      const suffix = mode === 'other' ? '(LH MB)' : '(KIM)';
+      const suffix = '(KIM)';
       
       if (mode === 'extension') {
           const allInvoices = allInvolvedJobs.flatMap(j => 
@@ -189,8 +220,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   .map(ext => ext.invoice)
           ).filter(Boolean);
           
-          const invStr = allInvoices.length > 0 ? Array.from(new Set(allInvoices)).join(',') : 'XXX';
-          setAmisDesc(`Thu tiền của KH theo hoá đơn GH ${invStr} BL ${codesStr} ${suffix}`);
+          const uniqueInvoices = Array.from(new Set(allInvoices));
+          if (uniqueInvoices.length > 0) {
+              const invStr = uniqueInvoices.join('+');
+              setAmisDesc(`Thu tiền của KH theo hoá đơn GH ${invStr} ${suffix}`);
+          } else {
+              setAmisDesc(`Thu tiền của KH theo hoá đơn GH XXX BL ${codesStr} ${suffix}`);
+          }
       } else if (mode === 'local' || mode === 'other') {
           setAmisDesc(`Thu tiền của KH theo hoá đơn ${formData.localChargeInvoice || 'XXX'} BL ${codesStr} ${suffix}`);
       } else if (mode === 'local_refund') {
@@ -207,7 +243,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       if (j.id === formData.id) return;
       if (addedJobs.some(x => x.id === j.id)) return;
       
-      // Khi gộp Job mới, mặc định chọn các dòng gia hạn chưa thu của Job đó
       if (mode === 'extension') {
           const newIds = new Set(selectedExtIds);
           (j.extensions || []).forEach(ext => { if(!ext.amisDocNo) newIds.add(ext.id); });
@@ -241,7 +276,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     e.preventDefault();
     
     if (mode === 'extension') {
-        // Cập nhật Job chính
         const updatedMainExtensions = (formData.extensions || []).map(ext => {
             if (selectedExtIds.has(ext.id)) {
                 return { ...ext, amisDocNo, amisDesc, amisAmount: ext.total, invoiceDate: amisDate };
@@ -250,7 +284,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         });
         onSave({ ...formData, extensions: updatedMainExtensions });
 
-        // Cập nhật các Job gộp
         addedJobs.forEach(j => {
             const updatedExts = (j.extensions || []).map(ext => {
                 if (selectedExtIds.has(ext.id)) {
@@ -349,7 +382,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             )}
                         </div>
 
-                        {/* DANH SÁCH JOB GỘP CHI TIẾT (CHỌN DÒNG) */}
                         <div className="space-y-3">
                             {addedJobs.map(j => (
                                 <div key={j.id} className="bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md border-l-4 border-l-blue-500">
