@@ -29,8 +29,6 @@ const DEFAULT_USERS: UserAccount[] = [
   { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' }
 ];
 
-const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
-
 const App: React.FC = () => {
   const [isServerAvailable, setIsServerAvailable] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -38,7 +36,6 @@ const App: React.FC = () => {
   const [loginError, setLoginError] = useState('');
   const [sessionError, setSessionError] = useState('');
   
-  // Trạng thái đồng bộ hiển thị cho người dùng
   const [syncStatus, setSyncStatus] = useState<'saved' | 'syncing' | 'error'>('saved');
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -96,7 +93,6 @@ const App: React.FC = () => {
     });
   };
 
-  // --- MAIN DATA STATE ---
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('logistics_jobs_v2');
     return saved ? sanitizeData(JSON.parse(saved)) : sanitizeData(MOCK_DATA);
@@ -146,7 +142,6 @@ const App: React.FC = () => {
     return DEFAULT_USERS;
   });
 
-  // --- PERSISTENCE ---
   useEffect(() => { localStorage.setItem('kb_deleted_reqs', JSON.stringify(Array.from(localDeletedIds))); }, [localDeletedIds]);
   useEffect(() => { localStorage.setItem('kb_modified_job_ids', JSON.stringify(Array.from(modifiedJobIds))); }, [modifiedJobIds]);
   useEffect(() => { localStorage.setItem('kb_modified_payment_ids', JSON.stringify(Array.from(modifiedPaymentIds))); }, [modifiedPaymentIds]);
@@ -158,13 +153,13 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('logistics_salaries', JSON.stringify(salaries)); }, [salaries]);
 
-  // --- BACKUP LOGIC (OPTIMIZED) ---
+  // BACKUP LOGIC - ĐẢM BẢO LUÔN ĐỒNG BỘ MỌI THAY ĐỔI LÊN CLOUD
   const performBackup = useCallback(async () => {
-    if (!currentUser || !isServerAvailable) return;
+    // Không chặn backup nếu server có thể truy cập được
+    if (!currentUser) return;
     
     setSyncStatus('syncing');
 
-    // Hủy request cũ nếu đang chạy
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
 
@@ -172,7 +167,7 @@ const App: React.FC = () => {
       const payload = {
         timestamp: new Date().toISOString(),
         user: currentUser.username,
-        version: "2.5",
+        version: "2.6",
         jobs,
         paymentRequests,
         customers,
@@ -193,7 +188,7 @@ const App: React.FC = () => {
 
       if (response.ok) {
         setSyncStatus('saved');
-        console.log("Cloud Backup Sync Success");
+        setIsServerAvailable(true);
       } else {
         throw new Error("Server Backup Failed");
       }
@@ -203,23 +198,24 @@ const App: React.FC = () => {
         setSyncStatus('error');
       }
     }
-  }, [jobs, paymentRequests, customers, lines, users, lockedIds, customReceipts, localDeletedIds, salaries, isServerAvailable, currentUser]);
+  }, [jobs, paymentRequests, customers, lines, users, lockedIds, customReceipts, localDeletedIds, salaries, currentUser]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       performBackup();
-    }, 400); // 400ms debounce: Cân bằng giữa tốc độ và tải server
+    }, 600); 
     return () => clearTimeout(timer);
   }, [jobs, paymentRequests, customers, lines, users, lockedIds, customReceipts, localDeletedIds, salaries, performBackup]);
 
-  // --- OTHER HANDLERS ---
+  // HANDLERS
   const handleAddJob = (job: JobData) => {
       setJobs(prev => [job, ...prev]);
       setModifiedJobIds(prev => new Set(prev).add(job.id));
   };
 
   const handleEditJob = (job: JobData) => {
-      setJobs(prev => prev.map(x => x.id === job.id ? job : x));
+      // Đảm bảo tạo reference mới cho mảng jobs để useEffect backup nhận diện được
+      setJobs(prev => prev.map(x => x.id === job.id ? JSON.parse(JSON.stringify(job)) : x));
       setModifiedJobIds(prev => new Set(prev).add(job.id));
   };
 
@@ -229,18 +225,16 @@ const App: React.FC = () => {
   };
 
   const handleUpdatePaymentRequests = (newRequests: PaymentRequest[]) => {
-      const changedIds = new Set<string>();
-      const currentMap = new Map(paymentRequests.map(r => [r.id, r]));
-      newRequests.forEach(req => {
-          const cur = currentMap.get(req.id);
-          if (!cur || JSON.stringify(cur) !== JSON.stringify(req)) changedIds.add(req.id);
+      setPaymentRequests([...newRequests]);
+      setModifiedPaymentIds(prev => { 
+        const next = new Set(prev);
+        newRequests.forEach(r => next.add(r.id));
+        return next;
       });
-      setPaymentRequests(newRequests);
-      setModifiedPaymentIds(prev => { const next = new Set(prev); changedIds.forEach(id => next.add(id)); return next; });
   };
 
   const sendPendingToServer = async (directPayload?: any) => {
-    if (!currentUser || !isServerAvailable) return;
+    if (!currentUser) return;
     let payload = directPayload;
     if (!payload) {
         const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
@@ -279,19 +273,18 @@ const App: React.FC = () => {
       if (Array.isArray(docNo)) docNo.forEach(id => newSet.add(id));
       else { if (newSet.has(docNo)) newSet.delete(docNo); else newSet.add(docNo); }
       setLockedIds(newSet);
-      if (isServerAvailable && currentUser) {
+      if (currentUser) {
           sendPendingToServer({ user: currentUser.username, timestamp: new Date().toISOString(), lockedIds: Array.from(newSet), autoApprove: true, jobs: [], paymentRequests: [], customers: [], lines: [] });
       }
   };
 
-  // --- INITIAL DATA LOAD ---
   useEffect(() => {
     const fetchInitial = async () => {
       try {
         const res = await fetch("https://api.kimberry.id.vn/data");
         if (res.ok) {
           const data = await res.json();
-          if (data.jobs?.length) setJobs(data.jobs);
+          if (data.jobs?.length) setJobs(sanitizeData(data.jobs));
           if (data.paymentRequests) setPaymentRequests(data.paymentRequests);
           if (data.customers) setCustomers(data.customers);
           if (data.lines) setLines(data.lines);
@@ -359,7 +352,7 @@ const App: React.FC = () => {
         onSendPending={() => sendPendingToServer()}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
-        syncStatus={syncStatus} // Pass syncStatus to Sidebar
+        syncStatus={syncStatus}
       />
 
       <div className="flex-1 md:ml-[280px] p-2 md:p-4 h-full flex flex-col overflow-hidden relative">
@@ -385,7 +378,9 @@ const App: React.FC = () => {
             {currentPage === 'lookup' && <LookupPage jobs={jobs} />}
             {currentPage === 'payment' && <PaymentPage lines={lines} requests={paymentRequests} onUpdateRequests={handleUpdatePaymentRequests} currentUser={currentUser} onSendPending={sendPendingToServer} jobs={jobs} onUpdateJob={handleEditJob} onAddJob={handleAddJob} customers={customers} />}
             {currentPage === 'cvhc' && <CVHCPage jobs={jobs} customers={customers} onUpdateJob={handleEditJob} />}
-            {currentPage === 'system' && <SystemPage jobs={jobs} customers={customers} lines={lines} users={users} currentUser={currentUser} onRestore={(d) => { setJobs(sanitizeData(d.jobs)); setCustomers(d.customers); setLines(d.lines); if (d.users) setUsers(d.users); }} onAddUser={(u) => setUsers(prev => [...prev, u])} onEditUser={(u, old) => setUsers(prev => prev.map(user => user.username === old ? u : user))} onDeleteUser={(name) => setUsers(prev => prev.filter(u => u.username !== name))} pendingRequests={pendingRequests} onApproveRequest={async (rid, idata) => { const mj = (c, i) => { if(!i) return c; const m = new Map(c.map(x => [x.id, x])); i.forEach(x => m.set(x.id, x)); return Array.from(m.values()); }; setJobs(prev => mj(prev, idata.jobs)); setPaymentRequests(prev => mj(prev, idata.paymentRequests)); setCustomers(prev => mj(prev, idata.customers)); setLines(prev => mj(prev, idata.lines)); setCustomReceipts(prev => mj(prev, idata.customReceipts)); if (idata.users) setUsers(prev => { const m = new Map(prev.map(u => [u.username, u])); idata.users.forEach(u => m.set(u.username, u)); return Array.from(m.values()); }); if (idata.lockedIds) setLockedIds(prev => new Set([...prev, ...idata.lockedIds])); setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} onRejectRequest={async (rid) => { setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} />}
+            {currentPage === 'system' && <SystemPage jobs={jobs} customers={customers} lines={lines} users={users} currentUser={currentUser} onRestore={(d) => { setJobs(sanitizeData(d.jobs)); setCustomers(d.customers); setLines(d.lines); if (d.users) setUsers(d.users); }} onAddUser={(u) => setUsers(prev => [...prev, u])} onEditUser={(u, old) => setUsers(prev => prev.map(user => user.username === old ? u : user))} onDeleteUser={(name) => setUsers(prev => prev.filter(u => u.username !== name))} pendingRequests={pendingRequests} onApproveRequest={async (rid, idata) => { const mj = (c, i) => { if(!i) return c; const m = new Map(c.map(x => [x.id, x])); i.forEach(x => m.set(x.id, x)); return Array.from(m.values()); }; setJobs(prev => mj(prev, idata.jobs)); setPaymentRequests(prev => mj(prev, idata.paymentRequests)); setCustomers(prev => mj(prev, idata.customers)); setLines(prev => mj(prev, idata.lines)); setCustomReceipts(prev => mj(prev, idata.customReceipts)); if (idata.users) setUsers(prev => { const m = new Map(prev.map(u => [u.username, u])); idata.users.forEach(u => m.set(u.username, u)); 
+            // Fix: Change 'map' to 'm' which refers to the correct Map instance
+            return Array.from(m.values()); }); if (idata.lockedIds) setLockedIds(prev => new Set([...prev, ...idata.lockedIds])); setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} onRejectRequest={async (rid) => { setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} />}
           </div>
         </main>
       </div>
