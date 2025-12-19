@@ -17,6 +17,7 @@ interface QuickReceiveModalProps {
   allJobs?: JobData[];
   targetExtensionId?: string | null;
   usedDocNos?: string[]; 
+  initialAddedJobs?: JobData[]; // NEW PROP: List of jobs already merged with this receipt
 }
 
 // Reusable DateInput Component
@@ -80,7 +81,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
-  isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, usedDocNos = []
+  isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, usedDocNos = [], initialAddedJobs = []
 }) => {
   const [formData, setFormData] = useState<JobData>(job);
   const [otherSubMode, setOtherSubMode] = useState<'local' | 'deposit'>('local');
@@ -257,10 +258,27 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
 
       setFormData(deepCopyJob);
-      setAddedJobs([]); 
+      setAddedJobs(initialAddedJobs); // INITIALIZE WITH MERGED JOBS
       setInternalTargetId(null);
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
-      setSelectedMergedExtIds(new Set()); // Reset selection
+      
+      // Initialize Merged Extensions Checkboxes
+      const initialExtSet = new Set<string>();
+      if (mode === 'extension' && initialAddedJobs.length > 0) {
+          // We need to find which extensions in the added jobs have the matching DocNo
+          const targetDocNo = deepCopyJob.extensions?.find((e: any) => e.id === targetExtensionId)?.amisDocNo;
+          
+          if (targetDocNo) {
+              initialAddedJobs.forEach(mergedJob => {
+                  (mergedJob.extensions || []).forEach(ext => {
+                      if (ext.amisDocNo === targetDocNo) {
+                          initialExtSet.add(ext.id);
+                      }
+                  });
+              });
+          }
+      }
+      setSelectedMergedExtIds(initialExtSet);
 
       let initialCustId = '';
       if (mode === 'local' || mode === 'other' || mode === 'refund_overpayment') initialCustId = deepCopyJob.customerId;
@@ -375,7 +393,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
       }
     }
-  }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos]);
+  }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos, initialAddedJobs]);
 
   const handleOtherSubModeChange = (subMode: 'local' | 'deposit') => {
       setOtherSubMode(subMode);
