@@ -694,24 +694,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         });
 
         const totalInput = newExtension.amisAmount;
-        let allocatedSoFar = 0;
 
         targetItems.forEach((item, index) => {
-            const isLast = index === targetItems.length - 1;
-            let allocatedAmount = 0;
-
-            if (isLast) {
-                // Last item takes remainder to balance out difference
-                allocatedAmount = totalInput - allocatedSoFar;
-            } else {
-                // Prior items take exact expected amount to clear warnings
-                allocatedAmount = item.ext.total || 0;
-                allocatedSoFar += allocatedAmount;
-            }
-
             // Update Logic
             if (item.isMain) {
-                // Update Main Job (FormData)
+                // Main Job gets the FULL Total Amount for proper AMIS Export
                 const updatedExtensions = (formData.extensions || []).map(e => {
                     if (e.id === item.ext.id) {
                         return {
@@ -720,7 +707,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             invoice: newExtension.invoice,
                             amisDocNo: newExtension.amisDocNo,
                             amisDesc: newExtension.amisDesc,
-                            amisAmount: allocatedAmount // Specific distributed amount
+                            amisAmount: totalInput // SAVE TOTAL AMOUNT
                         };
                     }
                     return e;
@@ -731,14 +718,14 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     additionalReceipts: additionalReceipts 
                 });
             } else {
-                // Update Added Job
+                // Secondary Jobs get UNDEFINED amount (Marked as paid by DocNo link)
                 const updatedAddedJobExtensions = (item.job.extensions || []).map(e => {
                     if (e.id === item.ext.id) {
                         return {
                             ...e,
                             amisDocNo: newExtension.amisDocNo,
                             amisDesc: newExtension.amisDesc,
-                            amisAmount: allocatedAmount // Specific distributed amount
+                            amisAmount: undefined // Secondary jobs don't hold amount
                         };
                     }
                     return e;
@@ -748,7 +735,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         });
 
         // Clear removed/unchecked items logic...
-        // (Similar to previous implementation for clearing unchecked items)
         if (originalGroupDocNo) {
              // 1. Removed Jobs
              removedJobs.forEach(remJob => {
@@ -769,48 +755,33 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                       if (originalGroupDocNo && ext.amisDocNo === originalGroupDocNo && !selectedMergedExtIds.has(ext.id)) {
                           return { ...ext, amisDocNo: '', amisDesc: '', amisAmount: 0 };
                       }
-                      // If it IS selected, it was handled in the main loop above
                       return ext;
                   });
                   // Only save if different from what we might have saved in the main loop? 
-                  // Actually, we should be careful not to overwrite the main loop save.
-                  // The main loop above handles the 'Set Info' case.
-                  // We need to handle the 'Clear Info' case separately or merged.
                   // Ideally, process 'addedJob' once.
+                  // For simplicity in this fix, we assume main loop handled checked items correctly.
              });
         }
 
     } 
     else if (mode === 'local' || mode === 'other' || mode === 'deposit') {
         const isDeposit = mode === 'deposit';
-        const totalInput = amisAmount;
-        let allocatedSoFar = 0;
+        const totalInput = amisAmount; // FULL AMOUNT
 
-        // DISTRIBUTE AMOUNT LOGIC
+        // Update each job in the merged list
         mergedList.forEach((job, index) => {
-            const isLast = index === mergedList.length - 1;
-            let allocatedAmount = 0;
-            const expectedAmount = isDeposit ? (job.thuCuoc || 0) : (job.localChargeTotal || 0);
-
-            if (isLast) {
-                // Last job absorbs the difference (Excess/Deficit)
-                allocatedAmount = totalInput - allocatedSoFar;
-            } else {
-                // Prior jobs get exact expected amount -> No Warning
-                allocatedAmount = expectedAmount;
-                allocatedSoFar += allocatedAmount;
-            }
-
+            const isMainJob = index === 0; // First item is formData (Main)
+            
             const updates: any = {};
             if (isDeposit) {
                 updates.amisDepositDocNo = amisDocNo;
                 updates.amisDepositDesc = amisDesc;
-                updates.amisDepositAmount = allocatedAmount; // Specific amount
+                updates.amisDepositAmount = isMainJob ? totalInput : undefined; // Main gets Total, others get undefined
                 updates.ngayThuCuoc = amisDate;
             } else {
                 updates.amisLcDocNo = amisDocNo;
                 updates.amisLcDesc = amisDesc;
-                updates.amisLcAmount = allocatedAmount; // Specific amount
+                updates.amisLcAmount = isMainJob ? totalInput : undefined; // Main gets Total, others get undefined
                 updates.localChargeDate = amisDate;
             }
 
