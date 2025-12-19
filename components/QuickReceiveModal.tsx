@@ -236,7 +236,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           const extraAmt = extraJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
           
           setAmisDesc(newDesc);
-          setFormData(prev => ({ ...prev, localChargeTotal: mainAmt + extraAmt }));
+          // FIX: Do NOT update formData.localChargeTotal to avoid changing invoice amount
           setAmisAmount(mainAmt + extraAmt);
       }
   };
@@ -446,11 +446,21 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
       if (mode === 'local') {
           currentInvoice = formData.localChargeInvoice || '';
-          currentTotalReceivable = formData.localChargeTotal || 0;
+          
+          // Display total debt of GROUP (Main + Added)
+          const mainDebt = formData.localChargeTotal || 0;
+          const extraDebt = addedJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
+          currentTotalReceivable = mainDebt + extraDebt;
+          
           currentCustomer = formData.customerId || '';
       } else if (mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
-          currentTotalReceivable = formData.localChargeTotal || 0;
+          
+          // Display total debt of GROUP (Main + Added)
+          const mainDebt = formData.localChargeTotal || 0;
+          const extraDebt = addedJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
+          currentTotalReceivable = mainDebt + extraDebt;
+          
           currentCustomer = formData.customerId || '';
       } else if (mode === 'deposit') {
           currentTotalReceivable = formData.thuCuoc || 0;
