@@ -21,6 +21,17 @@ export interface ExtensionData {
 }
 
 // ============================================================
+// REFUND RECORD (HOÀN TIỀN THỪA)
+// ============================================================
+export interface RefundRecord {
+  id: string;
+  date: string;
+  docNo: string;
+  amount: number;
+  desc: string;
+}
+
+// ============================================================
 // CUSTOMER
 // ============================================================
 
@@ -211,6 +222,9 @@ export interface JobData {
 
   // Additional Receipts (Thu nhiều lần)
   additionalReceipts?: AdditionalReceipt[];
+
+  // Refunds (Hoàn tiền thừa)
+  refunds?: RefundRecord[];
 }
 
 // ============================================================
@@ -340,5 +354,6 @@ export const INITIAL_JOB: JobData = {
   ngayThuHoan: '',
 
   extensions: [],
-  additionalReceipts: []
+  additionalReceipts: [],
+  refunds: []
 };

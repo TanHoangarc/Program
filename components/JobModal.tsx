@@ -580,7 +580,90 @@ export const JobModal: React.FC<JobModalProps> = ({
       }
     }
 
-    onSave(formData);
+    // --- AUTO-UPDATE DESCRIPTIONS LOGIC ---
+    let finalJobData = { ...formData };
+    const jobCodePlaceholder = `XXX BL ${finalJobData.jobCode}`;
+
+    if (initialData) {
+        // 1. Local Charge Update
+        const oldLcInv = (initialData.localChargeInvoice || '').trim();
+        const newLcInv = (finalJobData.localChargeInvoice || '').trim();
+
+        if (newLcInv && newLcInv !== oldLcInv) {
+            const updateLcText = (text: string) => {
+                if (!text) return text;
+                let res = text;
+                // 1. Replace Placeholder (XXX BL JOB...)
+                res = res.split(jobCodePlaceholder).join(newLcInv);
+                // 2. Replace Old Invoice if it existed
+                if (oldLcInv) res = res.split(oldLcInv).join(newLcInv);
+                return res;
+            };
+
+            // Update Main Receipt Description
+            if (finalJobData.amisLcDesc) {
+                finalJobData.amisLcDesc = updateLcText(finalJobData.amisLcDesc);
+            }
+            // Update Additional Receipts
+            if (finalJobData.additionalReceipts) {
+                finalJobData.additionalReceipts = finalJobData.additionalReceipts.map(r => {
+                    if ((r.type === 'local' || r.type === 'other') && r.desc) {
+                        return { ...r, desc: updateLcText(r.desc) };
+                    }
+                    return r;
+                });
+            }
+        }
+
+        // 2. Extensions Update
+        if (finalJobData.extensions && initialData.extensions) {
+            finalJobData.extensions = finalJobData.extensions.map(newExt => {
+                const oldExt = initialData.extensions?.find(e => e.id === newExt.id);
+                const oldExtInv = (oldExt ? oldExt.invoice : '').trim();
+                const newExtInv = (newExt.invoice || '').trim();
+
+                if (newExtInv && newExtInv !== oldExtInv) {
+                    const updateExtText = (text: string) => {
+                        if (!text) return text;
+                        let res = text;
+                        // 1. Replace Placeholder
+                        res = res.split(jobCodePlaceholder).join(newExtInv);
+                        // 2. Replace Old Invoice
+                        if (oldExtInv) res = res.split(oldExtInv).join(newExtInv);
+                        return res;
+                    };
+
+                    // Update Main Extension Description
+                    if (newExt.amisDesc) {
+                        newExt.amisDesc = updateExtText(newExt.amisDesc);
+                    }
+                    
+                    // Update Additional Receipts linked to this extension
+                    if (finalJobData.additionalReceipts) {
+                        finalJobData.additionalReceipts = finalJobData.additionalReceipts.map(r => {
+                            if (r.type === 'extension' && r.extensionId === newExt.id && r.desc) {
+                                return { ...r, desc: updateExtText(r.desc) };
+                            }
+                            return r;
+                        });
+                    }
+                }
+                return newExt;
+            });
+        }
+    } else {
+        // Handle New Job creation where placeholders might exist in defaults
+        const newLcInv = (finalJobData.localChargeInvoice || '').trim();
+        if (newLcInv) {
+             const updateLcText = (text: string) => {
+                if (!text) return text;
+                return text.split(jobCodePlaceholder).join(newLcInv);
+            };
+            if (finalJobData.amisLcDesc) finalJobData.amisLcDesc = updateLcText(finalJobData.amisLcDesc);
+        }
+    }
+
+    onSave(finalJobData);
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
@@ -789,6 +872,18 @@ export const JobModal: React.FC<JobModalProps> = ({
                                     </Select>
                                 </div>
                             </div>
+                            {/* Refunds Display */}
+                            {formData.refunds && formData.refunds.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-slate-200">
+                                    <Label>Đã hoàn trả (Refunds):</Label>
+                                    {formData.refunds.map((ref, idx) => (
+                                        <div key={idx} className="flex justify-between text-xs text-red-600 font-medium">
+                                            <span>{ref.docNo} ({formatDateVN(ref.date)})</span>
+                                            <span>-{new Intl.NumberFormat('en-US').format(ref.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Deposit Box */}

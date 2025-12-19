@@ -54,6 +54,7 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
   const summary: BookingSummary = {
     bookingId: firstJob.booking,
     month: firstJob.month,
+    year: firstJob.year,
     line: firstJob.line,
     jobCount: 0,
     totalCost: 0,
@@ -133,6 +134,11 @@ export const generateNextDocNo = (jobs: JobData[], prefix: string, padding: numb
     if (j.extensions) {
       j.extensions.forEach(ext => checkValue(ext.amisDocNo));
     }
+    
+    // Check refunds
+    if (j.refunds) {
+        j.refunds.forEach(r => checkValue(r.docNo));
+    }
   });
 
   // Check extra docs (e.g. Thu Khác, Custom Receipts)
@@ -175,6 +181,7 @@ export const calculatePaymentStatus = (job: JobData): PaymentStatus => {
   // 1. Local Charge
   // Expected: localChargeTotal
   // Collected: amisLcAmount (Lần 1) + Additional Receipts (type='local' or type='other')
+  // Minus: Refunds (Overpayment returned)
   const lcExpected = job.localChargeTotal || 0;
   
   // Nếu chưa có DocNo thì coi như chưa thu lần 1 -> amisLcAmount = 0
@@ -184,7 +191,9 @@ export const calculatePaymentStatus = (job: JobData): PaymentStatus => {
     .filter(r => r.type === 'local') // 'other' thường map vào local charge trong ngữ cảnh này
     .reduce((sum, r) => sum + r.amount, 0);
     
-  const totalCollectedLC = lcMain + lcAdditional;
+  const lcRefunds = (job.refunds || []).reduce((sum, r) => sum + r.amount, 0);
+
+  const totalCollectedLC = lcMain + lcAdditional - lcRefunds;
   const lcDiff = totalCollectedLC - lcExpected;
 
   // 2. Deposit

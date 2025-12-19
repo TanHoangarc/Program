@@ -422,6 +422,35 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         });
 
+        // 5. Chi Hoàn Tiền Thừa (Refund Overpayment)
+        jobs.forEach(j => {
+            if (j.refunds && j.refunds.length > 0) {
+                j.refunds.forEach(ref => {
+                    if (checkMonth(ref.date)) {
+                        rows.push({
+                            jobId: j.id,
+                            type: 'refund_overpayment',
+                            rowId: `refund-op-${ref.id}`,
+                            date: ref.date,
+                            docNo: ref.docNo,
+                            objCode: getCustomerCode(j.customerId),
+                            objName: getCustomerName(j.customerId),
+                            desc: ref.desc,
+                            amount: ref.amount,
+                            reason: 'Chi hoàn tiền thừa',
+                            paymentContent: ref.desc,
+                            paymentAccount: '345673979999',
+                            paymentBank: 'Ngân hàng TMCP Quân đội',
+                            currency: 'VND',
+                            description: ref.desc,
+                            tkNo: '13111', // Debit Receivable
+                            tkCo: '1121', // Credit Bank
+                        });
+                    }
+                });
+            }
+        });
+
         // Sort Ascending by Document Number
         return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     }
@@ -694,6 +723,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setQuickReceiveJob(job);
               setQuickReceiveMode('deposit_refund');
               setIsQuickReceiveOpen(true);
+          } else if (row.type === 'refund_overpayment') {
+              // Edit Refund Overpayment via QuickReceive (similar to deposit refund)
+              // But we should likely pass the refund record?
+              // Currently QuickReceiveModal is bound to Job fields.
+              // For simplicity, we just reopen the job in refund_overpayment mode,
+              // but prepopulating it might be tricky without refactoring QuickReceiveModal deeply.
+              // Let's just open the modal for now.
+              setQuickReceiveJob(job);
+              setQuickReceiveMode('refund_overpayment');
+              setIsQuickReceiveOpen(true);
           } else {
               setSelectedJobForModal(job);
               if (row.type === 'payment_deposit') setPaymentType('deposit');
@@ -779,6 +818,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisDepositRefundDocNo = '';
               updatedJob.amisDepositRefundDesc = '';
               updatedJob.amisDepositRefundDate = '';
+          } else if (row.type === 'refund_overpayment') {
+              // Delete refund record
+              updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo);
           }
           
           onUpdateJob(updatedJob);

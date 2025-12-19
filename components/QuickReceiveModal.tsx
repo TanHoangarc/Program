@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Layers } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Layers, HandCoins } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
-import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
+import { formatDateVN, parseDateVN, generateNextDocNo, calculatePaymentStatus } from '../utils';
 
-export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'extension' | 'other';
+export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'extension' | 'other' | 'refund_overpayment';
 
 interface QuickReceiveModalProps {
   isOpen: boolean;
@@ -263,7 +263,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setSelectedMergedExtIds(new Set()); // Reset selection
 
       let initialCustId = '';
-      if (mode === 'local' || mode === 'other') initialCustId = deepCopyJob.customerId;
+      if (mode === 'local' || mode === 'other' || mode === 'refund_overpayment') initialCustId = deepCopyJob.customerId;
       else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
       else if (mode === 'extension') {
           const exts = deepCopyJob.extensions || [];
@@ -321,6 +321,16 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
           setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
           setAmisAmount(deepCopyJob.thuCuoc || 0); 
+      }
+      else if (mode === 'refund_overpayment') {
+          setAmisDocNo(generateNextDocNo(jobsForCalc, 'UNC'));
+          setAmisDate(new Date().toISOString().split('T')[0]);
+          setAmisDesc(`Hoàn tiền thừa local charge BL ${deepCopyJob.jobCode} (KIM)`);
+          
+          // Auto calculate overpayment
+          const status = calculatePaymentStatus(deepCopyJob);
+          const overpaid = Math.max(0, status.lcDiff);
+          setAmisAmount(overpaid);
       }
       else if (mode === 'extension') {
           const exts = deepCopyJob.extensions || [];
@@ -405,6 +415,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentTotalReceivable = formData.thuCuoc || 0; 
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A';
+      } else if (mode === 'refund_overpayment') {
+          currentTotalReceivable = 0; // Refund is not debt
+          currentCustomer = formData.customerId || '';
+          currentInvoice = 'N/A';
       } else if (mode === 'extension') {
           currentInvoice = newExtension.invoice;
           currentTotalReceivable = newExtension.total;
@@ -457,7 +471,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const updateCustomerData = (val: string) => {
-      if (mode === 'local' || mode === 'other') {
+      if (mode === 'local' || mode === 'other' || mode === 'refund_overpayment') {
           setFormData(prev => ({ ...prev, customerId: val }));
       }
       else if (mode === 'deposit' || mode === 'deposit_refund') setFormData(prev => ({ ...prev, maKhCuocId: val }));
@@ -651,6 +665,17 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             ngayThuHoan: amisDate
         });
     }
+    else if (mode === 'refund_overpayment') {
+        const newRefundRecord = {
+            id: Date.now().toString(),
+            date: amisDate,
+            docNo: amisDocNo,
+            amount: amisAmount,
+            desc: amisDesc
+        };
+        const updatedRefunds = [...(formData.refunds || []), newRefundRecord];
+        onSave({ ...formData, refunds: updatedRefunds });
+    }
     
     onClose();
   };
@@ -769,17 +794,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         case 'deposit': return 'Thu Tiền Cược';
         case 'deposit_refund': return 'Chi Hoàn Cược';
         case 'extension': return 'Thu Tiền Gia Hạn';
+        case 'refund_overpayment': return 'Chi Hoàn Tiền Thừa';
     }
   };
+
+  const isRedTheme = mode === 'deposit_refund' || mode === 'refund_overpayment';
 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200">
         
-        <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center rounded-t-2xl ${mode === 'deposit_refund' ? 'bg-red-50' : 'bg-blue-50'}`}>
+        <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center rounded-t-2xl ${isRedTheme ? 'bg-red-50' : 'bg-blue-50'}`}>
             <div className="flex items-center space-x-3">
-            <div className={`p-2 rounded-lg shadow-sm border ${mode === 'deposit_refund' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
-                {mode === 'deposit_refund' ? <RotateCcw className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+            <div className={`p-2 rounded-lg shadow-sm border ${isRedTheme ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
+                {mode === 'deposit_refund' ? <RotateCcw className="w-5 h-5" /> : mode === 'refund_overpayment' ? <HandCoins className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
             </div>
             <div>
                 <h2 className="text-lg font-bold text-slate-800">{getTitle()}</h2>
@@ -980,7 +1008,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
-                    {mode !== 'deposit' && mode !== 'deposit_refund' && (
+                    {mode !== 'deposit' && mode !== 'deposit_refund' && mode !== 'refund_overpayment' && (
                         <div className={mode === 'other' ? "col-span-2" : ""}>
                             <div className="flex items-center justify-between mb-1.5">
                                 <Label>{invoiceInputMode === 'bl' ? 'Số BL' : 'Số Hóa Đơn (Invoice)'}</Label>
@@ -1006,7 +1034,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                             />
                         </div>
                     )}
-                    {mode !== 'other' && (
+                    {mode !== 'other' && mode !== 'refund_overpayment' && (
                         <div className={mode === 'deposit' || mode === 'deposit_refund' ? "col-span-2" : ""}>
                             <Label>Tổng Phải Thu (Debt)</Label>
                             <div className="p-2.5 bg-slate-100 rounded-lg text-base font-bold text-slate-700 text-right border border-slate-200">
@@ -1018,12 +1046,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             </div>
 
             {/* 3. MAIN PAYMENT RECEIPT (Lần 1) */}
-            <div className="bg-white rounded-xl border-2 border-blue-100 shadow-sm relative overflow-hidden">
-                <div className="bg-blue-50 px-5 py-3 border-b border-blue-100 flex justify-between items-center">
-                    <h3 className="text-sm font-bold text-blue-800 flex items-center uppercase">
-                        <Receipt className="w-4 h-4 mr-2" /> Phiếu Thu Lần 1 (Gốc)
+            <div className={`bg-white rounded-xl border-2 shadow-sm relative overflow-hidden ${isRedTheme ? 'border-red-100' : 'border-blue-100'}`}>
+                <div className={`px-5 py-3 border-b flex justify-between items-center ${isRedTheme ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
+                    <h3 className={`text-sm font-bold flex items-center uppercase ${isRedTheme ? 'text-red-800' : 'text-blue-800'}`}>
+                        <Receipt className="w-4 h-4 mr-2" /> Phiếu Thu/Chi (Gốc)
                     </h3>
-                    <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-bold">MAIN</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${isRedTheme ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'}`}>MAIN</span>
                 </div>
                 
                 <div className="p-5 space-y-4">
@@ -1044,13 +1072,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                     if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value}));
                                     else setAmisDocNo(e.target.value);
                                 }}
-                                className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 ${mode === 'deposit_refund' ? 'text-red-800 focus:ring-red-500' : 'text-blue-800 focus:ring-blue-500'}`}
+                                className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 ${isRedTheme ? 'text-red-800 focus:ring-red-500' : 'text-blue-800 focus:ring-blue-500'}`}
                             />
                         </div>
                     </div>
 
                     <div>
-                        <Label>Số tiền thu (Lần 1)</Label>
+                        <Label>Số tiền {isRedTheme ? 'chi' : 'thu'} (Lần 1)</Label>
                         <div className="relative">
                             <input 
                                 type="text" 
@@ -1060,7 +1088,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                     const val = Number(e.target.value.replace(/,/g, ''));
                                     if (!isNaN(val)) handleAmountChange(val);
                                 }}
-                                className={`w-full pl-4 pr-14 py-2.5 bg-white border border-slate-300 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 text-right ${mode === 'deposit_refund' ? 'text-red-700 focus:ring-red-500' : 'text-blue-700 focus:ring-blue-500'}`}
+                                className={`w-full pl-4 pr-14 py-2.5 bg-white border border-slate-300 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 text-right ${isRedTheme ? 'text-red-700 focus:ring-red-500' : 'text-blue-700 focus:ring-blue-500'}`}
                                 placeholder="0"
                             />
                             <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">VND</span>
@@ -1083,7 +1111,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             </div>
 
             {/* 4. ADDITIONAL RECEIPTS */}
-            {mode !== 'deposit_refund' && (
+            {mode !== 'deposit_refund' && mode !== 'refund_overpayment' && (
             <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase">
@@ -1180,7 +1208,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             </button>
             <button 
                 onClick={handleSubmit} 
-                className={`px-5 py-2.5 rounded-lg text-sm font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100 ${mode === 'deposit_refund' ? 'bg-red-700 hover:bg-red-800' : 'bg-blue-700 hover:bg-blue-800'}`}
+                className={`px-5 py-2.5 rounded-lg text-sm font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100 ${isRedTheme ? 'bg-red-700 hover:bg-red-800' : 'bg-blue-700 hover:bg-blue-800'}`}
             >
             <Save className="w-4 h-4 mr-2" /> Lưu Thay Đổi
             </button>

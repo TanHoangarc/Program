@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // Import createPortal
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, Box, Wallet, RotateCcw, AlertCircle, AlertTriangle, HandCoins } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine, INITIAL_JOB } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -539,6 +539,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                            <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-purple-50 font-medium flex items-center transition-colors"><Anchor className="w-3 h-3 mr-2 text-purple-500" /> Thu Cược</button>
                            <button onClick={() => handleQuickReceive(job, 'deposit_refund')} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-medium flex items-center transition-colors"><RotateCcw className="w-3 h-3 mr-2 text-red-500" /> Hoàn Cược</button>
                            <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-orange-50 font-medium flex items-center transition-colors"><DollarSign className="w-3 h-3 mr-2 text-orange-500" /> Thu Gia Hạn</button>
+                           <button onClick={() => handleQuickReceive(job, 'refund_overpayment')} className="w-full text-left px-4 py-2 text-xs text-orange-600 hover:bg-orange-50 font-medium flex items-center transition-colors"><HandCoins className="w-3 h-3 mr-2 text-orange-500" /> Hoàn Tiền Thừa</button>
                            <div className="border-t border-slate-100 my-1"></div>
                            <button onClick={() => handleDelete(job.id)} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center transition-colors rounded-b-xl"><Trash2 className="w-3 h-3 mr-2" /> Xóa</button>
                          </div>,
