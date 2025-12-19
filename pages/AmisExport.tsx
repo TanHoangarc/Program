@@ -58,6 +58,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
   const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
   const [targetExtensionId, setTargetExtensionId] = useState<string | null>(null);
+  const [quickReceiveMergedJobs, setQuickReceiveMergedJobs] = useState<JobData[]>([]); // NEW STATE
   
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
@@ -681,12 +682,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
+      setQuickReceiveMergedJobs([]); // RESET MERGED JOBS
 
       // MODE THU
       if (mode === 'thu') {
           if (row.type === 'external') {
-               // Load FULL Receipt object using row.jobId (which is the Receipt ID)
-               // Fallback to row.id if jobId missing (e.g. legacy data)
+               // ... external logic ...
                const receiptId = row.jobId || row.id;
                const fullReceipt = customReceipts.find(r => r.id === receiptId);
                
@@ -698,22 +699,39 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                    amisLcDocNo: fullReceipt ? fullReceipt.docNo : row.docNo, 
                    amisLcDesc: fullReceipt ? fullReceipt.desc : row.desc,
                    localChargeTotal: fullReceipt ? fullReceipt.amount : row.amount,
-                   localChargeInvoice: fullReceipt ? fullReceipt.invoice : (row.invoice || ''), // Ensure invoice is loaded
+                   localChargeInvoice: fullReceipt ? fullReceipt.invoice : (row.invoice || ''),
                    customerId: fullReceipt ? fullReceipt.objCode : row.objCode,
                    customerName: fullReceipt ? fullReceipt.objName : row.objName,
-                   additionalReceipts: fullReceipt?.additionalReceipts || [] // Ensure additional receipts are passed
+                   additionalReceipts: fullReceipt?.additionalReceipts || []
                };
                setQuickReceiveJob(dummyJob);
                setQuickReceiveMode('other');
                setIsQuickReceiveOpen(true);
           } else if (job) {
               setQuickReceiveJob(job);
-              if (row.type === 'deposit_thu') setQuickReceiveMode('deposit');
+              if (row.type === 'deposit_thu') {
+                  setQuickReceiveMode('deposit');
+                  // Find merged jobs for Deposit
+                  const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisDepositDocNo === row.docNo);
+                  setQuickReceiveMergedJobs(matchingJobs);
+              }
               else if (row.type === 'ext_thu') {
                   setQuickReceiveMode('extension');
                   setTargetExtensionId(row.extensionId);
+                  // Find merged jobs for Extension (tricky, need to check inside extensions array)
+                  // We filter jobs that have at least one extension with the same DocNo
+                  const matchingJobs = jobs.filter(j => 
+                      j.id !== job.id && 
+                      (j.extensions || []).some(e => e.amisDocNo === row.docNo)
+                  );
+                  setQuickReceiveMergedJobs(matchingJobs);
               }
-              else setQuickReceiveMode('local');
+              else {
+                  setQuickReceiveMode('local');
+                  // Find merged jobs for Local Charge
+                  const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisLcDocNo === row.docNo);
+                  setQuickReceiveMergedJobs(matchingJobs);
+              }
               setIsQuickReceiveOpen(true);
           }
       } 
@@ -722,16 +740,21 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           if (row.type === 'payment_refund') {
               setQuickReceiveJob(job);
               setQuickReceiveMode('deposit_refund');
+              // Find merged jobs for Deposit Refund
+              const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisDepositRefundDocNo === row.docNo);
+              setQuickReceiveMergedJobs(matchingJobs);
               setIsQuickReceiveOpen(true);
           } else if (row.type === 'refund_overpayment') {
-              // Edit Refund Overpayment via QuickReceive (similar to deposit refund)
-              // But we should likely pass the refund record?
-              // Currently QuickReceiveModal is bound to Job fields.
-              // For simplicity, we just reopen the job in refund_overpayment mode,
-              // but prepopulating it might be tricky without refactoring QuickReceiveModal deeply.
-              // Let's just open the modal for now.
               setQuickReceiveJob(job);
               setQuickReceiveMode('refund_overpayment');
+              // Find merged jobs for Refund Overpayment
+              // Assuming refunds can be merged (unlikely in current UI but good for consistency)
+              // Actually refund_overpayment rows are unique per job usually, but if DocNo shared:
+              const matchingJobs = jobs.filter(j => 
+                  j.id !== job.id && 
+                  (j.refunds || []).some(r => r.docNo === row.docNo)
+              );
+              setQuickReceiveMergedJobs(matchingJobs);
               setIsQuickReceiveOpen(true);
           } else {
               setSelectedJobForModal(job);
@@ -1270,6 +1293,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               targetExtensionId={targetExtensionId}
               allJobs={jobs}
               usedDocNos={customDocNos} // Pass used numbers to modal
+              initialAddedJobs={quickReceiveMergedJobs} // Pass pre-filled merged jobs
           />
       )}
 
