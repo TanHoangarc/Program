@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, CloudCheck, CloudUpload, CloudOff } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, CloudCheck, CloudUpload, CloudOff, RefreshCw } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: string;
@@ -11,11 +11,12 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   syncStatus?: 'saved' | 'syncing' | 'error';
+  onForceRefresh?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
   currentPage, onNavigate, currentUser, onLogout, onSendPending,
-  isOpen, onClose, syncStatus = 'saved'
+  isOpen, onClose, syncStatus = 'saved', onForceRefresh
 }) => {
   
   const role = currentUser?.role || 'Guest';
@@ -148,24 +149,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         <div className="relative z-10 p-4 mt-auto border-t border-white/5 bg-black/20 space-y-3">
-          {/* SYNC STATUS INDICATOR */}
-          <div className="flex items-center justify-center px-2 py-1.5 rounded-lg bg-white/5 border border-white/5">
-             {syncStatus === 'syncing' ? (
-                <div className="flex items-center space-x-2 text-blue-300 animate-pulse">
-                   <CloudUpload className="w-3.5 h-3.5" />
-                   <span className="text-[10px] font-bold uppercase tracking-tight">Đang đồng bộ...</span>
-                </div>
-             ) : syncStatus === 'error' ? (
-                <div className="flex items-center space-x-2 text-red-400">
-                   <CloudOff className="w-3.5 h-3.5" />
-                   <span className="text-[10px] font-bold uppercase tracking-tight">Lỗi kết nối</span>
-                </div>
-             ) : (
-                <div className="flex items-center space-x-2 text-teal-400">
-                   <CloudCheck className="w-3.5 h-3.5" />
-                   <span className="text-[10px] font-bold uppercase tracking-tight">Dữ liệu đã lưu</span>
-                </div>
-             )}
+          {/* SYNC STATUS INDICATOR + REFRESH BUTTON */}
+          <div className="flex flex-col space-y-2">
+            <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-white/5 border border-white/5">
+                {syncStatus === 'syncing' ? (
+                    <div className="flex items-center space-x-2 text-blue-300 animate-pulse">
+                    <CloudUpload className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Đang đồng bộ...</span>
+                    </div>
+                ) : syncStatus === 'error' ? (
+                    <div className="flex items-center space-x-2 text-red-400">
+                    <CloudOff className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Lỗi kết nối</span>
+                    </div>
+                ) : (
+                    <div className="flex items-center space-x-2 text-teal-400">
+                    <CloudCheck className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Dữ liệu đã lưu</span>
+                    </div>
+                )}
+                {onForceRefresh && (
+                    <button 
+                        onClick={onForceRefresh}
+                        className="p-1 hover:bg-white/10 rounded transition-colors text-slate-400 hover:text-white"
+                        title="Tải lại dữ liệu mới nhất từ server"
+                    >
+                        <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                    </button>
+                )}
+            </div>
           </div>
 
           {canSendPending && (
@@ -192,4 +204,3 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
-
