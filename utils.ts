@@ -185,18 +185,22 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[]): Payme
   const lcExpected = job.localChargeTotal || 0;
   
   // Determine if main receipt amount (amisLcAmount) is for a merged group
-  // If we have access to allJobs, and amount > expected, check if sum of group matches amount
   let lcMain = job.amisLcDocNo ? (job.amisLcAmount !== undefined ? job.amisLcAmount : job.localChargeTotal) : 0;
 
   if (allJobs && job.amisLcDocNo && job.amisLcAmount !== undefined && job.amisLcAmount > lcExpected) {
       // Potentially a merged payment held by Main Job
-      const groupTotal = allJobs
-          .filter(j => j.amisLcDocNo === job.amisLcDocNo)
-          .reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
+      // Calculate Group Total based on DocNo
+      // CRITICAL: We must use job.localChargeTotal for the *current* job ID to account for unsaved edits in modals
+      // and use j.localChargeTotal for others.
+      const groupTotal = allJobs.reduce((sum, j) => {
+          if (j.amisLcDocNo !== job.amisLcDocNo) return sum;
+          const val = (j.id === job.id) ? (job.localChargeTotal || 0) : (j.localChargeTotal || 0);
+          return sum + val;
+      }, 0);
       
-      // If the collected amount matches the group total expected (within small margin), 
+      // If the collected amount matches the group total expected (within tolerance), 
       // we treat the effective collection for *this* job as equal to its expected, to avoid "Overpayment" warning.
-      if (Math.abs(job.amisLcAmount - groupTotal) < 1000) {
+      if (Math.abs(job.amisLcAmount - groupTotal) < 5000) {
           lcMain = lcExpected;
       }
   }
@@ -219,11 +223,13 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[]): Payme
 
   // Merged Deposit Logic Check
   if (allJobs && job.amisDepositDocNo && job.amisDepositAmount !== undefined && job.amisDepositAmount > depositExpected) {
-      const groupTotal = allJobs
-          .filter(j => j.amisDepositDocNo === job.amisDepositDocNo)
-          .reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+      const groupTotal = allJobs.reduce((sum, j) => {
+          if (j.amisDepositDocNo !== job.amisDepositDocNo) return sum;
+          const val = (j.id === job.id) ? (job.thuCuoc || 0) : (j.thuCuoc || 0);
+          return sum + val;
+      }, 0);
       
-      if (Math.abs(job.amisDepositAmount - groupTotal) < 1000) {
+      if (Math.abs(job.amisDepositAmount - groupTotal) < 5000) {
           depositMain = depositExpected;
       }
   }
@@ -237,8 +243,8 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[]): Payme
 
   // Logic: Mismatch exists if Diff != 0 AND (Expected > 0 OR Collected > 0)
   // We ignore cases where both are 0.
-  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && Math.abs(lcDiff) > 100; // tolerance
-  const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && Math.abs(depositDiff) > 100;
+  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && Math.abs(lcDiff) > 1000; // increased tolerance
+  const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && Math.abs(depositDiff) > 1000;
 
   return {
     lcDiff,
