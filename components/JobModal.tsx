@@ -717,7 +717,8 @@ export const JobModal: React.FC<JobModalProps> = ({
                       codeLowerLongHoang.includes('longhoang') ||
                       codeLowerLongHoang.includes('lhk');
 
-  const paymentStatus = calculatePaymentStatus(formData);
+  // PASS EXISTING JOBS FOR ACCURATE CALCULATION
+  const paymentStatus = calculatePaymentStatus(formData, existingJobs);
 
   if (!isOpen) return null;
 
