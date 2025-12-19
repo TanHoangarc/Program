@@ -58,7 +58,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
   const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
   const [targetExtensionId, setTargetExtensionId] = useState<string | null>(null);
-  const [quickReceiveMergedJobs, setQuickReceiveMergedJobs] = useState<JobData[]>([]); // NEW STATE
+  const [quickReceiveMergedJobs, setQuickReceiveMergedJobs] = useState<JobData[]>([]); 
   
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
@@ -211,11 +211,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       // Process Deposit Groups
       depGroupMap.forEach((groupJobs, docNo) => {
-          // Find if there is a main override amount
           const mainJob = groupJobs.find(j => j.amisDepositAmount !== undefined && j.amisDepositAmount > 0);
           
           if (mainJob) {
-             // Merged Case: Only output the main job
              rows.push({
                  jobId: mainJob.id, type: 'deposit_thu', rowId: `dep-${mainJob.id}`,
                  date: mainJob.ngayThuCuoc, docNo: mainJob.amisDepositDocNo, 
@@ -225,7 +223,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                  tkNo: '1121', tkCo: '1388', 
              });
           } else {
-             // Default Case: Output all
              groupJobs.forEach(j => {
                  rows.push({
                      jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
@@ -245,14 +242,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       const lcAdditionalRows: any[] = [];
 
       jobs.forEach(j => {
-          // Collect Main Receipts
           if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
                const docNo = j.amisLcDocNo;
                if (!lcGroupMap.has(docNo)) lcGroupMap.set(docNo, []);
                lcGroupMap.get(docNo)?.push(j);
           }
           
-          // Collect Additional Receipts (Always distinct)
           (j.additionalReceipts || []).forEach(r => {
              if ((r.type === 'local' || r.type === 'other') && checkMonth(r.date)) {
                  lcAdditionalRows.push({
@@ -267,22 +262,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       // Process LC Groups
       lcGroupMap.forEach((groupJobs, docNo) => {
-          // Find the "Main" job which has the override amount (Total of merge)
-          // The job with 'amisLcAmount' set implies it holds the grouped total.
           const mainJob = groupJobs.find(j => j.amisLcAmount !== undefined);
           
           if (mainJob) {
-              // Merged Case: Only output the main job with the total amount
               rows.push({
                    jobId: mainJob.id, type: 'lc_thu', rowId: `lc-${mainJob.id}`,
                    date: mainJob.localChargeDate, docNo: mainJob.amisLcDocNo, 
                    objCode: getCustomerCode(mainJob.customerId), objName: getCustomerName(mainJob.customerId),
                    desc: mainJob.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${mainJob.localChargeInvoice} (KIM)`, 
-                   amount: mainJob.amisLcAmount, // Total Merged Amount
+                   amount: mainJob.amisLcAmount, 
                    tkNo: '1121', tkCo: '13111',
                });
           } else {
-              // Standard Case: No override found, output all jobs
               groupJobs.forEach(j => {
                    rows.push({
                        jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
@@ -324,9 +315,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
          });
       });
 
-      // Process Extension Groups
       extGroupMap.forEach((items, docNo) => {
-          // Identify Main Extension: has amisAmount set
           const bestItem = items.find(i => i.ext.amisAmount !== undefined);
 
           if (bestItem) {
@@ -335,18 +324,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                   jobId: job.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                   date: ext.invoiceDate, docNo: ext.amisDocNo, 
                   objCode: getCustomerCode(ext.customerId || job.customerId), objName: getCustomerName(ext.customerId || job.customerId),
-                  desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
+                  desc: ext.amisDesc || `Thu tiền của KH theo hoá đơn GH ${ext.invoice}`, 
                   amount: ext.amisAmount || ext.total, 
                   tkNo: '1121', tkCo: '13111',
               });
           } else {
-              // No merge override found, list all
               items.forEach(({ ext, job }) => {
                   rows.push({
                       jobId: job.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                       date: ext.invoiceDate, docNo: ext.amisDocNo, 
                       objCode: getCustomerCode(ext.customerId || job.customerId), objName: getCustomerName(ext.customerId || job.customerId),
-                      desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
+                      desc: ext.amisDesc || `Thu tiền của KH theo hoá đơn GH ${ext.invoice}`, 
                       amount: ext.total, 
                       tkNo: '1121', tkCo: '13111',
                   });
@@ -355,7 +343,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       });
       rows.push(...extAdditionalRows);
 
-      // 4. Thu Khác (External + Multi-Payment of type 'other')
+      // 4. Thu Khác (External)
       customReceipts.forEach(r => {
           if (checkMonth(r.date)) {
               const descUpper = (r.desc || '').toUpperCase();
@@ -390,7 +378,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           }
       });
 
-      // Sort Ascending by Document Number
       return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     } 
     
@@ -457,7 +444,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 processedExtOut.add(j.amisExtensionPaymentDocNo);
                 let amount = 0;
                 
-                // Prioritize the explicit payment amount if saved
                 if (j.amisExtensionPaymentAmount && j.amisExtensionPaymentAmount > 0) {
                     amount = j.amisExtensionPaymentAmount;
                 } else {
@@ -482,8 +468,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         jobs.forEach(j => {
             if (j.amisDepositRefundDocNo && !processedRefunds.has(j.amisDepositRefundDocNo) && checkMonth(j.amisDepositRefundDate)) {
                 processedRefunds.add(j.amisDepositRefundDocNo);
-                
-                // Group refund amount if multiple jobs share the same refund doc
                 const groupJobs = jobs.filter(subJ => subJ.amisDepositRefundDocNo === j.amisDepositRefundDocNo);
                 const totalRefund = groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
 
@@ -530,15 +514,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                             paymentBank: 'Ngân hàng TMCP Quân đội',
                             currency: 'VND',
                             description: ref.desc,
-                            tkNo: '13111', // Debit Receivable
-                            tkCo: '1121', // Credit Bank
+                            tkNo: '13111', 
+                            tkCo: '1121', 
                         });
                     }
                 });
             }
         });
 
-        // Sort Ascending by Document Number
         return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     }
     else if (mode === 'ban') {
@@ -595,7 +578,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             });
         });
 
-        // Sort Ascending by Document Number
         return rows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
     else if (mode === 'mua') {
@@ -757,24 +739,19 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             };
         });
 
-        // Sort Ascending by Document Number
         return finalRows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
 
     return [];
   }, [jobs, mode, filterMonth, customers, customReceipts, lines]); 
 
-  // ... (rest of component remains unchanged)
-  // ...
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
-      setQuickReceiveMergedJobs([]); // RESET MERGED JOBS
+      setQuickReceiveMergedJobs([]); 
 
-      // MODE THU
       if (mode === 'thu') {
           if (row.type === 'external') {
-               // ... external logic ...
                const receiptId = row.jobId || row.id;
                const fullReceipt = customReceipts.find(r => r.id === receiptId);
                
@@ -798,14 +775,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setQuickReceiveJob(job);
               if (row.type === 'deposit_thu') {
                   setQuickReceiveMode('deposit');
-                  // Find merged jobs for Deposit
                   const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisDepositDocNo === row.docNo);
                   setQuickReceiveMergedJobs(matchingJobs);
               }
               else if (row.type === 'ext_thu') {
                   setQuickReceiveMode('extension');
                   setTargetExtensionId(row.extensionId);
-                  // Find merged jobs for Extension
                   const matchingJobs = jobs.filter(j => 
                       j.id !== job.id && 
                       (j.extensions || []).some(e => e.amisDocNo === row.docNo)
@@ -814,14 +789,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               }
               else {
                   setQuickReceiveMode('local');
-                  // Find merged jobs for Local Charge
                   const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisLcDocNo === row.docNo);
                   setQuickReceiveMergedJobs(matchingJobs);
               }
               setIsQuickReceiveOpen(true);
           }
       } 
-      // ... (Rest of handleEdit unchanged) ...
       else if (mode === 'chi' && job) {
           if (row.type === 'payment_refund') {
               setQuickReceiveJob(job);
@@ -918,13 +891,21 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisExtensionPaymentDocNo = '';
               updatedJob.amisExtensionPaymentDesc = '';
               updatedJob.amisExtensionPaymentDate = '';
-              updatedJob.amisExtensionPaymentAmount = 0; // Clear amount
+              updatedJob.amisExtensionPaymentAmount = 0; 
+              // Clear payment status in bookingCostDetails for Demurrage costs
+              if (updatedJob.bookingCostDetails?.extensionCosts) {
+                  updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ec => {
+                      if (ec.amisExtensionPaymentDocNo === row.docNo) {
+                          return { ...ec, amisExtensionPaymentDocNo: '', amisExtensionPaymentDate: '', amisExtensionPaymentAmount: 0 };
+                      }
+                      return ec;
+                  });
+              }
           } else if (row.type === 'payment_refund') {
               updatedJob.amisDepositRefundDocNo = '';
               updatedJob.amisDepositRefundDesc = '';
               updatedJob.amisDepositRefundDate = '';
           } else if (row.type === 'refund_overpayment') {
-              // Delete refund record
               updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo);
           }
           
@@ -955,17 +936,26 @@ export const AmisExport: React.FC<AmisExportProps> = ({
              : [selectedJobForModal]; 
 
           targetJobs.forEach(job => {
-              const updatedJob = { ...job };
+              const updatedJob = JSON.parse(JSON.stringify(job)); // Deep copy
               (updatedJob as any)[docField] = data.docNo;
               (updatedJob as any)[dateField] = data.date;
               
               if (job.id === selectedJobForModal.id) {
                   (updatedJob as any)[descField] = data.paymentContent;
-                  
-                  // Save Specific Amount for Extension if applicable
                   if (paymentType === 'extension' && data.amount > 0) {
                       updatedJob.amisExtensionPaymentAmount = data.amount;
                   }
+              }
+              
+              // NEW: Lock specific extension costs in bookingCostDetails for Demurrage
+              if (paymentType === 'extension' && updatedJob.bookingCostDetails?.extensionCosts) {
+                  updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map((ec: any) => {
+                      const isTarget = data.selectedExtensionId ? ec.id === data.selectedExtensionId : !ec.amisExtensionPaymentDocNo;
+                      if (isTarget) {
+                          return { ...ec, amisExtensionPaymentDocNo: data.docNo, amisExtensionPaymentDate: data.date, amisExtensionPaymentAmount: ec.total };
+                      }
+                      return ec;
+                  });
               }
               
               onUpdateJob(updatedJob);
@@ -1063,21 +1053,21 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             row.getCell(2).value = "Chưa thu tiền"; // B
             row.getCell(3).value = "Không"; // C
             row.getCell(4).value = "Không"; // D
-            row.getCell(6).value = formatDateVN(data.date); // F - Ngày hạch toán
-            row.getCell(7).value = formatDateVN(data.date); // G - Ngày chứng từ
-            row.getCell(8).value = data.docNo; // H - Số chứng từ
-            row.getCell(14).value = data.objCode; // N - Mã khách hàng
-            row.getCell(22).value = data.desc; // V - Diễn giải
+            row.getCell(6).value = formatDateVN(data.date); // F
+            row.getCell(7).value = formatDateVN(data.date); // G
+            row.getCell(8).value = data.docNo; // H
+            row.getCell(14).value = data.objCode; // N
+            row.getCell(22).value = data.desc; // V
             row.getCell(28).value = "VND"; // AB
             row.getCell(30).value = "AGENT FEE"; // AD
             row.getCell(33).value = "Không"; // AG
             row.getCell(36).value = "13112"; // AJ
             row.getCell(37).value = "51111"; // AK
-            row.getCell(39).value = 1; // AM - SL
-            row.getCell(40).value = data.amount; // AN - Đơn giá (Sell)
-            row.getCell(51).value = "0%"; // AY - Thuế GTGT
-            row.getCell(55).value = "33311"; // BC - TK Thuế
-            row.getCell(61).value = data.projectCode; // BI - Mã công trình
+            row.getCell(39).value = 1; // AM
+            row.getCell(40).value = data.amount; // AN
+            row.getCell(51).value = "0%"; // AY
+            row.getCell(55).value = "33311"; // BC
+            row.getCell(61).value = data.projectCode; // BI
         } else if (mode === 'mua') {
             row.getCell(1).value = "Mua hàng trong nước không qua kho"; // A
             row.getCell(2).value = "Chưa thanh toán"; // B
@@ -1098,9 +1088,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             row.getCell(34).value = "3311"; // AH
             row.getCell(35).value = "Lô"; // AI
             row.getCell(36).value = "1"; // AJ
-            row.getCell(37).value = data.netAmount; // AK (Net)
+            row.getCell(37).value = data.netAmount; // AK
             row.getCell(43).value = "5%"; // AQ
-            row.getCell(45).value = data.vatAmount; // AS (VAT)
+            row.getCell(45).value = data.vatAmount; // AS
         }
         
         row.commit();
@@ -1219,11 +1209,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                  </span>
               </button>
 
-              {/* THU KHÁC BUTTON */}
               {mode === 'thu' && (
                   <button 
                     onClick={() => {
-                        // Pass customDocNos to generateNextDocNo to avoid duplicates
                         const nextDocNo = generateNextDocNo(jobs, 'NTTK', 5, customDocNos);
                         const dummyJob = { 
                             ...INITIAL_JOB, 
@@ -1243,7 +1231,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                   </button>
               )}
 
-              {/* BULK LOCK BUTTON */}
               <button 
                   onClick={handleBulkLock}
                   disabled={selectedIds.size === 0}
@@ -1340,14 +1327,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         </div>
       </div>
 
-      {/* QUICK RECEIVE MODAL FOR THU & THU KHAC */}
       {isQuickReceiveOpen && quickReceiveJob && (
           <QuickReceiveModal 
               isOpen={isQuickReceiveOpen}
               onClose={() => setIsQuickReceiveOpen(false)}
               onSave={(updatedJob) => {
                   if (quickReceiveMode === 'other' && onUpdateCustomReceipts) {
-                      // FIX: Look up customer code to ensure correct display
                       const foundCust = customers.find(c => c.id === updatedJob.customerId);
                       const finalObjCode = foundCust ? foundCust.code : updatedJob.customerId;
 
@@ -1359,9 +1344,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                           objCode: finalObjCode, 
                           objName: updatedJob.customerName, 
                           desc: updatedJob.amisLcDesc, 
-                          amount: updatedJob.amisLcAmount !== undefined ? updatedJob.amisLcAmount : updatedJob.localChargeTotal, // FIX: Use amisLcAmount priority
-                          invoice: updatedJob.localChargeInvoice, // FIX: Save Invoice Number
-                          additionalReceipts: updatedJob.additionalReceipts // SAVE ADDITIONAL RECEIPTS
+                          amount: updatedJob.amisLcAmount !== undefined ? updatedJob.amisLcAmount : updatedJob.localChargeTotal, 
+                          invoice: updatedJob.localChargeInvoice, 
+                          additionalReceipts: updatedJob.additionalReceipts 
                       };
                       const exists = customReceipts.findIndex(r => r.id === updatedJob.id);
                       if (exists >= 0) { const updated = [...customReceipts]; updated[exists] = newReceipt; onUpdateCustomReceipts(updated); }
@@ -1374,13 +1359,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               customers={customers}
               targetExtensionId={targetExtensionId}
               allJobs={jobs}
-              usedDocNos={customDocNos} // Pass used numbers to modal
-              initialAddedJobs={quickReceiveMergedJobs} // Pass pre-filled merged jobs
+              usedDocNos={customDocNos} 
+              initialAddedJobs={quickReceiveMergedJobs} 
               onAddCustomer={onAddCustomer || (() => {})}
           />
       )}
 
-      {/* PAYMENT MODAL FOR CHI */}
       {isPaymentModalOpen && selectedJobForModal && (
           <PaymentVoucherModal 
               isOpen={isPaymentModalOpen}
@@ -1392,7 +1376,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           />
       )}
 
-      {/* JOB MODAL FOR LEGACY EDIT */}
       {isJobModalOpen && editingJob && (
           <JobModal 
               isOpen={isJobModalOpen}
@@ -1409,7 +1392,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           />
       )}
 
-      {/* SALES INVOICE MODAL FOR BAN EDIT */}
       {isSalesModalOpen && salesJob && (
           <SalesInvoiceModal 
               isOpen={isSalesModalOpen}
