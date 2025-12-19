@@ -109,8 +109,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     amisDate: '' // Receipt Date
   });
   
-  const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
-  
   // Store Original Doc No for Cleanup logic
   const [originalGroupDocNo, setOriginalGroupDocNo] = useState('');
 
@@ -140,7 +138,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
   const [searchJobCode, setSearchJobCode] = useState('');
   
-  // NEW: Track selected extension IDs for added jobs (Set of strings)
+  // NEW: Track selected extension IDs for added jobs AND main job (Set of strings)
   const [selectedMergedExtIds, setSelectedMergedExtIds] = useState<Set<string>>(new Set());
 
   // Quick Add Customer State
@@ -151,14 +149,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const invoices: string[] = [];
       const missingJobCodes: string[] = [];
 
-      if (mainInvoice && mainInvoice.trim()) {
-          invoices.push(mainInvoice.trim());
-      } else {
-          missingJobCodes.push(formData.jobCode);
-      }
+      // Include Main Job in calculation
+      const allConsideredJobs = [formData, ...extraJobs];
 
-      extraJobs.forEach(j => {
+      allConsideredJobs.forEach((j, idx) => {
           let inv = '';
+          const isMain = idx === 0;
           
           if (isExtension) {
               // Only get invoices from SELECTED extensions
@@ -173,7 +169,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   missingJobCodes.push(j.jobCode);
               }
           } else {
-              inv = j.localChargeInvoice;
+              // Local Charge Logic
+              // For Main Job, use 'mainInvoice' param (which is tied to input), otherwise use job's stored invoice
+              inv = isMain ? mainInvoice : j.localChargeInvoice;
               if (!inv || !inv.trim()) {
                   missingJobCodes.push(j.jobCode);
               }
@@ -212,14 +210,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       let totalAmount = 0;
       
       if (isExtension) {
-          // 1. Main Job Selected Extension
-          if (internalTargetId) {
-              const mainExt = formData.extensions?.find(e => e.id === internalTargetId);
-              if (mainExt) totalAmount += mainExt.total;
-          }
+          // Iterate over ALL jobs (Main + Added) to sum selected extensions
+          const allJobsList = [formData, ...extraJobs];
           
-          // 2. Added Jobs Selected Extensions
-          extraJobs.forEach(j => {
+          allJobsList.forEach(j => {
               (j.extensions || []).forEach(ext => {
                   if (currentSelectedExtIds.has(ext.id)) {
                       totalAmount += ext.total;
@@ -241,7 +235,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           const extraAmt = extraJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
           
           setAmisDesc(newDesc);
-          // FIX: Do NOT update formData.localChargeTotal to avoid changing invoice amount
           setAmisAmount(mainAmt + extraAmt);
       }
   };
@@ -269,7 +262,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
       setFormData(deepCopyJob);
       setAddedJobs(initialAddedJobs); // INITIALIZE WITH MERGED JOBS
-      setInternalTargetId(null);
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
       
       // Initialize Merged Extensions Checkboxes
@@ -283,15 +275,23 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           let targetExt = null;
           if (targetExtensionId) {
               targetExt = deepCopyJob.extensions?.find((e: any) => e.id === targetExtensionId);
+              if (targetExt) initialExtSet.add(targetExt.id); // Add current target to selection
           } else if ((deepCopyJob.extensions || []).length > 0) {
               // Fallback to first extension if simple mode
               targetExt = deepCopyJob.extensions[0];
+              // Don't auto select unless we are sure (user can select manually)
           }
           
           orgDoc = targetExt?.amisDocNo || '';
 
-          if (initialAddedJobs.length > 0 && orgDoc) {
-              // Find matching extensions in added jobs
+          // If editing an existing doc, auto-select all extensions sharing that docNo (Main + Added)
+          if (orgDoc) {
+              // Check Main Job
+              (deepCopyJob.extensions || []).forEach((ext: any) => {
+                  if (ext.amisDocNo === orgDoc) initialExtSet.add(ext.id);
+              });
+              
+              // Check Added Jobs
               initialAddedJobs.forEach(mergedJob => {
                   (mergedJob.extensions || []).forEach(ext => {
                       if (ext.amisDocNo === orgDoc) {
@@ -309,6 +309,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setOriginalGroupDocNo(orgDoc);
       setSelectedMergedExtIds(initialExtSet);
 
+      // Trigger recalculate to set initial amount/description correctly based on selection
+      // We need to wait for formData state, but here we use deepCopyJob as source
+      // Use setTimeout to ensure state is ready or pass directly
+      
       let initialCustId = '';
       if (mode === 'local' || mode === 'other' || mode === 'refund_overpayment') initialCustId = deepCopyJob.customerId;
       else if (mode === 'deposit' || mode === 'deposit_refund') initialCustId = deepCopyJob.maKhCuocId;
@@ -341,7 +345,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
              setAmisDesc(deepCopyJob.amisLcDesc);
           } else {
              const inv = deepCopyJob.localChargeInvoice;
-             // Calculate initial description with potentially merged jobs
              const desc = generateMergedDescription(inv, initialAddedJobs);
              setAmisDesc(desc);
           }
@@ -351,7 +354,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
           setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
           const inv = deepCopyJob.localChargeInvoice || 'XXX';
-          // Use existing desc or default based on detected submode
           if (deepCopyJob.amisLcDesc) {
               setAmisDesc(deepCopyJob.amisLcDesc);
           } else {
@@ -375,7 +377,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setAmisDate(new Date().toISOString().split('T')[0]);
           setAmisDesc(`Hoàn tiền thừa local charge BL ${deepCopyJob.jobCode} (KIM)`);
           
-          // Auto calculate overpayment
           const status = calculatePaymentStatus(deepCopyJob);
           const overpaid = Math.max(0, status.lcDiff);
           setAmisAmount(overpaid);
@@ -391,25 +392,33 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
 
           if (targetExt) {
-             setInternalTargetId(targetExt.id);
-             
              const extInv = targetExt.invoice;
              const defaultDesc = extInv 
                 ? `Thu tiền của KH theo hoá đơn GH ${extInv} (KIM)`
                 : `Thu tiền của KH theo hoá đơn GH XXX BL ${deepCopyJob.jobCode} (KIM)`;
 
+             // Calculate initial total based on initial selection (Main + Added)
+             // We can't use 'recalculateMerge' here easily because state isn't set yet.
+             // Manual calculation for initial state:
+             let initTotal = 0;
+             if (initialExtSet.has(targetExt.id)) initTotal += targetExt.total;
+             initialAddedJobs.forEach(j => {
+                 (j.extensions || []).forEach(e => {
+                     if (initialExtSet.has(e.id)) initTotal += e.total;
+                 });
+             });
+
              setNewExtension({ 
                 customerId: targetExt.customerId || deepCopyJob.customerId || '', 
                 invoice: targetExt.invoice || '', 
                 date: targetExt.invoiceDate || new Date().toISOString().split('T')[0],
-                total: targetExt.total || 0,
+                total: initTotal,
                 amisDocNo: targetExt.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
                 amisDesc: targetExt.amisDesc || defaultDesc,
-                amisAmount: targetExt.amisAmount !== undefined ? targetExt.amisAmount : (targetExt.total || 0),
-                amisDate: targetExt.invoiceDate || new Date().toISOString().split('T')[0] // Default receipt date to invoice date
+                amisAmount: targetExt.amisAmount !== undefined ? targetExt.amisAmount : initTotal,
+                amisDate: targetExt.invoiceDate || new Date().toISOString().split('T')[0]
              });
           } else {
-             setInternalTargetId(null);
              setNewExtension({ 
                customerId: deepCopyJob.customerId || '', 
                invoice: '', 
@@ -446,11 +455,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setOtherSubMode(subMode);
       const invPlaceholder = formData.localChargeInvoice || 'XXX';
       
-      // CRITICAL: Update description keyword for AmisExport.tsx logic
       if (subMode === 'deposit') {
           setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
       } else {
-          // If switching back to local/other, determine format
           if (invoiceInputMode === 'bl') {
               setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${invPlaceholder} (LH MB)`);
           } else {
@@ -467,68 +474,45 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
       if (mode === 'local') {
           currentInvoice = formData.localChargeInvoice || '';
-          
-          // Display total debt of GROUP (Main + Added)
           const mainDebt = formData.localChargeTotal || 0;
           const extraDebt = addedJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
-          
           mainJobReceivable = mainDebt;
           currentTotalReceivable = mainDebt + extraDebt;
-          
           currentCustomer = formData.customerId || '';
       } else if (mode === 'other') {
           currentInvoice = formData.localChargeInvoice || '';
-          
-          // Display total debt of GROUP (Main + Added)
           const mainDebt = formData.localChargeTotal || 0;
           const extraDebt = addedJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
-          
           mainJobReceivable = mainDebt;
           currentTotalReceivable = mainDebt + extraDebt;
-          
           currentCustomer = formData.customerId || '';
       } else if (mode === 'deposit') {
           const mainDebt = formData.thuCuoc || 0;
           const extraDebt = addedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-          
           mainJobReceivable = mainDebt;
           currentTotalReceivable = mainDebt + extraDebt;
-
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A'; 
       } else if (mode === 'deposit_refund') {
           const mainDebt = formData.thuCuoc || 0;
           const extraDebt = addedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-          
           mainJobReceivable = mainDebt;
           currentTotalReceivable = mainDebt + extraDebt;
-
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A';
       } else if (mode === 'refund_overpayment') {
           mainJobReceivable = 0;
-          currentTotalReceivable = 0; // Refund is not debt
+          currentTotalReceivable = 0;
           currentCustomer = formData.customerId || '';
           currentInvoice = 'N/A';
       } else if (mode === 'extension') {
           currentInvoice = newExtension.invoice;
-          // Extension mode handles total in 'total' field of newExtension usually
-          // But here newExtension.total is strictly related to the selected extension(s).
-          // 'newExtension.total' is calculated in recalculateMerge.
-          
-          // Let's rely on newExtension.total as the Group Total for this context
           currentTotalReceivable = newExtension.total;
           
-          // Main Job Part?
-          // recalculateMerge logic: 
-          // totalAmount = (Main Job Selected Ext) + (Added Jobs Selected Exts)
-          
-          // We need to isolate Main Job part.
           let mainPart = 0;
-          if (internalTargetId) {
-              const mainExt = formData.extensions?.find(e => e.id === internalTargetId);
-              if (mainExt) mainPart = mainExt.total;
-          }
+          (formData.extensions || []).forEach(e => {
+              if (selectedMergedExtIds.has(e.id)) mainPart += e.total;
+          });
           mainJobReceivable = mainPart;
           
           currentCustomer = newExtension.customerId;
@@ -544,7 +528,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   // Filter additional receipts relevant to current context
   const relevantAdditionalReceipts = additionalReceipts.filter(r => {
       if (mode === 'extension') {
-          return r.type === 'extension' && r.extensionId === internalTargetId;
+          // If any of the main job's selected extensions are paid, show the receipt?
+          // Simplification: Link to the *first* selected extension ID of Main Job for display
+          // OR show all extension receipts for this job?
+          // Currently, logic ties receipt to `extensionId`.
+          // Let's just show receipts linked to *any* selected extension of the main job.
+          return r.type === 'extension' && r.extensionId && selectedMergedExtIds.has(r.extensionId);
       }
       if (mode === 'local') return r.type === 'local';
       if (mode === 'deposit') return r.type === 'deposit';
@@ -587,13 +576,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       else if (mode === 'extension') setNewExtension(prev => ({ ...prev, customerId: val }));
   };
 
-  // Helper to update description specifically for Other Receipt modes
   const updateOtherDescription = (val: string, inputMode: 'invoice' | 'bl') => {
       const invPlaceholder = val || 'XXX';
       if (otherSubMode === 'deposit') {
           setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
       } else {
-          // Check Input Mode: Invoice vs BL
           if (inputMode === 'bl') {
               setAmisDesc(`Thu tiền của KH theo hoá đơn XXX BL ${invPlaceholder} (LH MB)`);
           } else {
@@ -605,7 +592,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const toggleInvoiceMode = () => {
       const newMode = invoiceInputMode === 'invoice' ? 'bl' : 'invoice';
       setInvoiceInputMode(newMode);
-      // Trigger description update immediately
       updateOtherDescription(formData.localChargeInvoice || '', newMode);
   };
 
@@ -635,11 +621,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       
       const nextDoc = generateNextDocNo(jobsForCalc, 'NTTK', 5, [...extra, ...existingInSession]);
       
+      // For Extension: link to the first selected extension of main job (if any)
+      const firstSelectedExtId = (formData.extensions || []).find(e => selectedMergedExtIds.has(e.id))?.id;
+
       setNewReceipt({
           amount: Math.max(0, remaining),
           date: new Date().toISOString().split('T')[0],
           docNo: nextDoc,
-          desc: mode === 'extension' ? newExtension.amisDesc : amisDesc 
+          desc: mode === 'extension' ? newExtension.amisDesc : amisDesc,
+          extensionId: firstSelectedExtId
       });
   };
 
@@ -653,7 +643,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           docNo: newReceipt.docNo || '',
           desc: newReceipt.desc || '',
           amount: newReceipt.amount || 0,
-          extensionId: mode === 'extension' ? internalTargetId || undefined : undefined
+          extensionId: mode === 'extension' ? newReceipt.extensionId : undefined
       };
 
       setAdditionalReceipts(prev => [...prev, receipt]);
@@ -675,20 +665,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     const mergedList = [formData, ...addedJobs]; // Ordered list: Main -> Added 1 -> Added 2 ...
 
     if (mode === 'extension') {
-        // FLAT LIST LOGIC FOR EXTENSIONS
         // Collect all target extensions across all jobs
         const targetItems: { job: JobData, ext: any, isMain: boolean }[] = [];
         
-        // 1. Add Main Job Extension (if selected)
-        if (internalTargetId) {
-            const ext = formData.extensions?.find(e => e.id === internalTargetId);
-            if (ext) targetItems.push({ job: formData, ext, isMain: true });
-        }
-        // 2. Add Added Jobs Extensions (if selected)
-        addedJobs.forEach(j => {
+        // Iterate ALL jobs in merged list
+        mergedList.forEach((j, idx) => {
+            const isMain = idx === 0;
             (j.extensions || []).forEach(ext => {
                 if (selectedMergedExtIds.has(ext.id)) {
-                    targetItems.push({ job: j, ext, isMain: false });
+                    targetItems.push({ job: j, ext, isMain });
                 }
             });
         });
@@ -749,17 +734,30 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   }
              });
              
-             // 2. Unchecked Extensions in Current Added Jobs
-             addedJobs.forEach(addedJob => {
-                  const updatedExtensions = (addedJob.extensions || []).map(ext => {
+             // 2. Unchecked Extensions in Current Merged List (Main + Added)
+             mergedList.forEach(job => {
+                  const updatedExtensions = (job.extensions || []).map(ext => {
                       if (originalGroupDocNo && ext.amisDocNo === originalGroupDocNo && !selectedMergedExtIds.has(ext.id)) {
                           return { ...ext, amisDocNo: '', amisDesc: '', amisAmount: 0 };
                       }
                       return ext;
                   });
-                  // Only save if different from what we might have saved in the main loop? 
-                  // Ideally, process 'addedJob' once.
-                  // For simplicity in this fix, we assume main loop handled checked items correctly.
+                  // Only save if different from potential previous save
+                  // We can just call save again safely
+                  // Optimization: Only if changed
+                  // For now, simplicity:
+                  // Note: Main job is already handled in the 'targetItems' loop above if checked. 
+                  // If unchecked, it needs clearing here.
+                  
+                  // If checkbox logic is solid, selectedMergedExtIds holds everything we want to PAY.
+                  // Anything NOT in selectedMergedExtIds but HAS originalGroupDocNo should be cleared.
+                  const needsClear = (job.extensions || []).some(ext => 
+                      ext.amisDocNo === originalGroupDocNo && !selectedMergedExtIds.has(ext.id)
+                  );
+                  
+                  if (needsClear) {
+                      onSave({ ...job, extensions: updatedExtensions });
+                  }
              });
         }
 
@@ -861,8 +859,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     id: Date.now().toString(),
                     date: amisDate,
                     docNo: amisDocNo,
-                    amount: 0, // Merged jobs track amount 0 for refunds to avoid double counting? Or strict tracking? 
-                               // For simplicity, let's say only main job tracks amount, others just link docNo for record
+                    amount: 0, 
                     desc: amisDesc
                 };
                 const addedJobRefunds = [...(addedJob.refunds || []), addedRefundRecord];
@@ -895,6 +892,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       if (mode === 'extension') {
           // For Extension: By default select all UNPAID extensions of the added job
           const unpaidExts = (found.extensions || []).filter(e => !e.amisDocNo);
+          
+          if (unpaidExts.length === 0) {
+              alert(`Job ${found.jobCode} không có dòng gia hạn nào chưa thanh toán, nhưng vẫn sẽ thêm vào danh sách.`);
+          }
+
           const newSet = new Set(selectedMergedExtIds);
           unpaidExts.forEach(e => newSet.add(e.id));
           setSelectedMergedExtIds(newSet);
@@ -933,51 +935,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
       setSelectedMergedExtIds(newSet);
       recalculateMerge(newExtension.invoice, addedJobs, newSet);
-  };
-
-  const handleSelectExtensionToPay = (extId: string) => {
-      const jobsForCalc = allJobs || [];
-      const extra = usedDocNos || [];
-      setInternalTargetId(extId || null); // FIX: Ensure null if empty
-
-      if (!extId) {
-          // Reset to default blank state
-          setNewExtension(prev => ({
-              ...prev,
-              invoice: '',
-              total: 0,
-              amisAmount: 0,
-              amisDesc: generateMergedDescription('', addedJobs, true, selectedMergedExtIds)
-          }));
-          // Recalculate based on merged jobs only
-          recalculateMerge('', addedJobs, selectedMergedExtIds);
-          return;
-      }
-
-      const target = formData.extensions?.find(e => e.id === extId);
-      if (target) {
-          // Temporarily set invoice to target invoice to calc description
-          const newDesc = generateMergedDescription(target.invoice, addedJobs, true, selectedMergedExtIds);
-          
-          setNewExtension({
-              customerId: target.customerId || formData.customerId,
-              invoice: target.invoice,
-              date: target.invoiceDate || new Date().toISOString().split('T')[0],
-              total: target.total, // Will be updated by recalculate
-              amisDocNo: target.amisDocNo || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra),
-              amisDesc: target.amisDesc || newDesc,
-              amisAmount: target.amisAmount !== undefined ? target.amisAmount : target.total,
-              amisDate: target.invoiceDate || new Date().toISOString().split('T')[0]
-          });
-          
-          const extCustId = target.customerId || formData.customerId;
-          const extCust = customers.find(c => c.id === extCustId);
-          setCustInputVal(extCust ? extCust.code : '');
-          
-          // Trigger recalculate to add merged amounts
-          // Pass the target invoice
-          recalculateMerge(target.invoice, addedJobs, selectedMergedExtIds);
-      }
   };
 
   const mergedList = useMemo(() => {
@@ -1021,29 +978,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
             <form onSubmit={handleSubmit} className="space-y-6">
             
-            {/* 1. EXTENSION SELECTOR (IF MODE EXTENSION) */}
-            {mode === 'extension' && (formData.extensions?.length || 0) > 0 && (
-                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm">
-                    <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
-                        <ChevronDown className="w-4 h-4" />
-                        Chọn dòng gia hạn
-                    </div>
-                    <select
-                        className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
-                        value={internalTargetId || ''}
-                        onChange={(e) => handleSelectExtensionToPay(e.target.value)}
-                    >
-                        <option value="">+ Tạo mới dòng gia hạn</option>
-                        {formData.extensions?.map(ext => (
-                            <option key={ext.id} value={ext.id}>
-                                [HĐ: {ext.invoice || 'N/A'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND
-                            </option>
-                        ))}
-                    </select>
-                </div>
-            )}
-
-            {/* GROUP JOBS SECTION (VISIBLE FOR LOCAL / OTHER / EXTENSION) */}
+            {/* GROUP JOBS SECTION (VISIBLE FOR LOCAL / OTHER / EXTENSION / REFUND) */}
             {(mode === 'local' || mode === 'other' || mode === 'extension' || mode === 'deposit_refund') && (
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 shadow-sm mb-4">
                     <div className="flex justify-between items-center mb-3">
