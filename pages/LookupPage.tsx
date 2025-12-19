@@ -81,7 +81,8 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
   const isLcPaid = (result && result.bank && result.localChargeDate) || (result && isTCB);
   
   // Calculate Payment Mismatch (Dư/Thiếu)
-  const paymentStatus = result ? calculatePaymentStatus(result) : null;
+  // PASS JOBS ARRAY FOR ACCURATE MERGE CHECK
+  const paymentStatus = result ? calculatePaymentStatus(result, jobs) : null;
   
   // Find ALL paid extensions
   const paidExtensions = useMemo(() => {
