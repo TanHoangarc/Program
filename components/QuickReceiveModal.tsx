@@ -853,6 +853,22 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         };
         const updatedRefunds = [...(formData.refunds || []), newRefundRecord];
         onSave({ ...formData, refunds: updatedRefunds });
+        
+        // Handle merged refund jobs
+        if (addedJobs.length > 0) {
+             addedJobs.forEach(addedJob => {
+                const addedRefundRecord = {
+                    id: Date.now().toString(),
+                    date: amisDate,
+                    docNo: amisDocNo,
+                    amount: 0, // Merged jobs track amount 0 for refunds to avoid double counting? Or strict tracking? 
+                               // For simplicity, let's say only main job tracks amount, others just link docNo for record
+                    desc: amisDesc
+                };
+                const addedJobRefunds = [...(addedJob.refunds || []), addedRefundRecord];
+                onSave({ ...addedJob, refunds: addedJobRefunds });
+            });
+        }
     }
     
     onClose();
