@@ -114,7 +114,7 @@ export interface BookingCostDetails {
 // ============================================================
 export interface AdditionalReceipt {
   id: string;
-  type: 'local' | 'deposit' | 'extension';
+  type: 'local' | 'deposit' | 'extension' | 'other';
   date: string;
   docNo: string;
   desc: string;
