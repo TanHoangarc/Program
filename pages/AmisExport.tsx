@@ -1376,6 +1376,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               allJobs={jobs}
               usedDocNos={customDocNos} // Pass used numbers to modal
               initialAddedJobs={quickReceiveMergedJobs} // Pass pre-filled merged jobs
+              onAddCustomer={onAddCustomer || (() => {})}
           />
       )}
 
