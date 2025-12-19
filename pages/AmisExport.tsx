@@ -183,23 +183,23 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     // --- MODE THU ---
     if (mode === 'thu') {
       const rows: any[] = [];
-      // 1. Thu Cược
+      
+      // 1. Thu Cược (Deduplicated)
+      const depGroupMap = new Map<string, any[]>();
+      const depAdditionalRows: any[] = [];
+
       jobs.forEach(j => {
-         // Main Receipt
+         // Main Receipt Grouping
          if (j.thuCuoc > 0 && j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
-             rows.push({
-                 jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
-                 date: j.ngayThuCuoc, docNo: j.amisDepositDocNo, 
-                 objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
-                 desc: j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`, 
-                 amount: j.amisDepositAmount || j.thuCuoc, // Use override amount if set
-                 tkNo: '1121', tkCo: '1388', 
-             });
+             const docNo = j.amisDepositDocNo;
+             if (!depGroupMap.has(docNo)) depGroupMap.set(docNo, []);
+             depGroupMap.get(docNo)?.push(j);
          }
-         // Additional Receipts (Multi-payment)
+         
+         // Additional Receipts (Distinct)
          (j.additionalReceipts || []).forEach(r => {
              if (r.type === 'deposit' && checkMonth(r.date)) {
-                 rows.push({
+                 depAdditionalRows.push({
                      jobId: j.id, type: 'deposit_thu', rowId: `dep-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
@@ -209,23 +209,49 @@ export const AmisExport: React.FC<AmisExportProps> = ({
          });
       });
 
-      // 2. Thu Local Charge
-      jobs.forEach(j => {
-          // Main Receipt
-          if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
-               rows.push({
-                   jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
-                   date: j.localChargeDate, docNo: j.amisLcDocNo, 
-                   objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
-                   desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
-                   amount: j.amisLcAmount || j.localChargeTotal, // Use override amount if set
-                   tkNo: '1121', tkCo: '13111',
-               });
-          }
-          // Additional Receipts (Multi-payment)
-          (j.additionalReceipts || []).forEach(r => {
-             if (r.type === 'local' && checkMonth(r.date)) {
+      // Process Deposit Groups
+      depGroupMap.forEach((groupJobs, docNo) => {
+          const mainJob = groupJobs.find(j => j.amisDepositAmount !== undefined && j.amisDepositAmount > 0);
+          if (mainJob) {
+             rows.push({
+                 jobId: mainJob.id, type: 'deposit_thu', rowId: `dep-${mainJob.id}`,
+                 date: mainJob.ngayThuCuoc, docNo: mainJob.amisDepositDocNo, 
+                 objCode: getCustomerCode(mainJob.maKhCuocId), objName: getCustomerName(mainJob.maKhCuocId),
+                 desc: mainJob.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${mainJob.jobCode}`, 
+                 amount: mainJob.amisDepositAmount, 
+                 tkNo: '1121', tkCo: '1388', 
+             });
+          } else {
+             groupJobs.forEach(j => {
                  rows.push({
+                     jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
+                     date: j.ngayThuCuoc, docNo: j.amisDepositDocNo, 
+                     objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
+                     desc: j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`, 
+                     amount: j.thuCuoc, 
+                     tkNo: '1121', tkCo: '1388', 
+                 });
+             });
+          }
+      });
+      rows.push(...depAdditionalRows);
+
+      // 2. Thu Local Charge (Deduplicated)
+      const lcGroupMap = new Map<string, any[]>();
+      const lcAdditionalRows: any[] = [];
+
+      jobs.forEach(j => {
+          // Collect Main Receipts
+          if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
+               const docNo = j.amisLcDocNo;
+               if (!lcGroupMap.has(docNo)) lcGroupMap.set(docNo, []);
+               lcGroupMap.get(docNo)?.push(j);
+          }
+          
+          // Collect Additional Receipts
+          (j.additionalReceipts || []).forEach(r => {
+             if ((r.type === 'local' || r.type === 'other') && checkMonth(r.date)) {
+                 lcAdditionalRows.push({
                      jobId: j.id, type: 'lc_thu', rowId: `lc-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
@@ -235,26 +261,55 @@ export const AmisExport: React.FC<AmisExportProps> = ({
          });
       });
 
-      // 3. Thu Extension
+      // Process LC Groups
+      lcGroupMap.forEach((groupJobs, docNo) => {
+          // Find the "Main" job which has the override amount (Total of merge)
+          const mainJob = groupJobs.find(j => j.amisLcAmount !== undefined);
+          
+          if (mainJob) {
+              // Merged Case: Only output the main job with the total amount
+              rows.push({
+                   jobId: mainJob.id, type: 'lc_thu', rowId: `lc-${mainJob.id}`,
+                   date: mainJob.localChargeDate, docNo: mainJob.amisLcDocNo, 
+                   objCode: getCustomerCode(mainJob.customerId), objName: getCustomerName(mainJob.customerId),
+                   desc: mainJob.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${mainJob.localChargeInvoice} (KIM)`, 
+                   amount: mainJob.amisLcAmount, // Total Merged Amount
+                   tkNo: '1121', tkCo: '13111',
+               });
+          } else {
+              // Standard Case: No override found, output all jobs
+              groupJobs.forEach(j => {
+                   rows.push({
+                       jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
+                       date: j.localChargeDate, docNo: j.amisLcDocNo, 
+                       objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
+                       desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
+                       amount: j.localChargeTotal, 
+                       tkNo: '1121', tkCo: '13111',
+                   });
+              });
+          }
+      });
+      rows.push(...lcAdditionalRows);
+
+      // 3. Thu Extension (Deduplicated)
+      const extGroupMap = new Map<string, any[]>();
+      const extAdditionalRows: any[] = [];
+
       jobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
               if (ext.total > 0 && ext.amisDocNo && checkMonth(ext.invoiceDate)) {
-                  rows.push({
-                      jobId: j.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
-                      date: ext.invoiceDate, docNo: ext.amisDocNo, 
-                      objCode: getCustomerCode(ext.customerId || j.customerId), objName: getCustomerName(ext.customerId || j.customerId),
-                      desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
-                      amount: ext.amisAmount || ext.total, 
-                      tkNo: '1121', tkCo: '13111',
-                  });
+                  const docNo = ext.amisDocNo;
+                  if (!extGroupMap.has(docNo)) extGroupMap.set(docNo, []);
+                  extGroupMap.get(docNo)?.push({ ext, job: j });
               }
           });
-          // Additional Receipts for Extension (Multi-payment)
+          
           (j.additionalReceipts || []).forEach(r => {
              if (r.type === 'extension' && checkMonth(r.date)) {
                  const extTarget = (j.extensions || []).find(e => e.id === r.extensionId);
                  const custId = extTarget ? (extTarget.customerId || j.customerId) : j.customerId;
-                 rows.push({
+                 extAdditionalRows.push({
                      jobId: j.id, type: 'ext_thu', extensionId: r.extensionId, rowId: `ext-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(custId), objName: getCustomerName(custId),
@@ -264,29 +319,54 @@ export const AmisExport: React.FC<AmisExportProps> = ({
          });
       });
 
+      // Process Extension Groups
+      extGroupMap.forEach((items, docNo) => {
+          // Identify Main Extension: has amisAmount
+          const bestItem = items.find(i => i.ext.amisAmount !== undefined);
+
+          if (bestItem) {
+              const { ext, job } = bestItem;
+              rows.push({
+                  jobId: job.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
+                  date: ext.invoiceDate, docNo: ext.amisDocNo, 
+                  objCode: getCustomerCode(ext.customerId || job.customerId), objName: getCustomerName(ext.customerId || job.customerId),
+                  desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
+                  amount: ext.amisAmount || ext.total, 
+                  tkNo: '1121', tkCo: '13111',
+              });
+          } else {
+              items.forEach(({ ext, job }) => {
+                  rows.push({
+                      jobId: job.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
+                      date: ext.invoiceDate, docNo: ext.amisDocNo, 
+                      objCode: getCustomerCode(ext.customerId || job.customerId), objName: getCustomerName(ext.customerId || job.customerId),
+                      desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
+                      amount: ext.total, 
+                      tkNo: '1121', tkCo: '13111',
+                  });
+              });
+          }
+      });
+      rows.push(...extAdditionalRows);
+
       // 4. Thu Khác (External + Multi-Payment of type 'other')
       customReceipts.forEach(r => {
           if (checkMonth(r.date)) {
-              // Logic to determine TK Co for External receipts
-              // Check description for keyword 'CƯỢC' or 'DEPOSIT' to assign 1388
               const descUpper = (r.desc || '').toUpperCase();
               const isDeposit = descUpper.includes('CƯỢC') || descUpper.includes('DEPOSIT') || r.type === 'deposit';
               const tkCo = isDeposit ? '1388' : '13111';
               
-              // Main row - ADDED jobId: r.id
               rows.push({ ...r, jobId: r.id, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
 
-              // Additional rows for custom receipts
               if (r.additionalReceipts && Array.isArray(r.additionalReceipts)) {
                   r.additionalReceipts.forEach((ar: any) => {
                       if (checkMonth(ar.date)) {
-                          // Inherit deposit logic based on desc or type
                           const arDescUpper = (ar.desc || '').toUpperCase();
                           const arIsDeposit = ar.type === 'deposit' || arDescUpper.includes('CƯỢC');
                           const arTkCo = arIsDeposit ? '1388' : '13111';
                           
                           rows.push({
-                              jobId: r.id, // Link back to the custom receipt
+                              jobId: r.id, 
                               type: 'external',
                               rowId: `custom-add-${ar.id}`,
                               date: ar.date,
@@ -304,7 +384,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           }
       });
 
-      // Sort Ascending by Document Number (Oldest/Smallest first)
+      // Sort Ascending by Document Number
       return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     } 
     
@@ -678,7 +758,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     return [];
   }, [jobs, mode, filterMonth, customers, customReceipts, lines]); 
 
-  // --- HANDLERS FOR EDIT & DELETE ---
+  // ... (rest of component remains unchanged)
+  // ...
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
@@ -718,8 +799,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               else if (row.type === 'ext_thu') {
                   setQuickReceiveMode('extension');
                   setTargetExtensionId(row.extensionId);
-                  // Find merged jobs for Extension (tricky, need to check inside extensions array)
-                  // We filter jobs that have at least one extension with the same DocNo
+                  // Find merged jobs for Extension
                   const matchingJobs = jobs.filter(j => 
                       j.id !== job.id && 
                       (j.extensions || []).some(e => e.amisDocNo === row.docNo)
@@ -740,16 +820,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           if (row.type === 'payment_refund') {
               setQuickReceiveJob(job);
               setQuickReceiveMode('deposit_refund');
-              // Find merged jobs for Deposit Refund
               const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisDepositRefundDocNo === row.docNo);
               setQuickReceiveMergedJobs(matchingJobs);
               setIsQuickReceiveOpen(true);
           } else if (row.type === 'refund_overpayment') {
               setQuickReceiveJob(job);
               setQuickReceiveMode('refund_overpayment');
-              // Find merged jobs for Refund Overpayment
-              // Assuming refunds can be merged (unlikely in current UI but good for consistency)
-              // Actually refund_overpayment rows are unique per job usually, but if DocNo shared:
               const matchingJobs = jobs.filter(j => 
                   j.id !== job.id && 
                   (j.refunds || []).some(r => r.docNo === row.docNo)
