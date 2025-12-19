@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
-import { MONTHS, TRANSIT_PORTS, BANKS } from '../constants';
+import { MONTHS, TRANSIT_PORTS, BANKS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
 import { CustomerModal } from './CustomerModal';
 
@@ -336,6 +336,7 @@ export const JobModal: React.FC<JobModalProps> = ({
         const parsed = JSON.parse(JSON.stringify(initialData));
         const safeParsed = {
             ...parsed,
+            year: parsed.year || 2025, // Default year fallback
             ngayChiCuoc: String(parsed.ngayChiCuoc || ''),
             ngayChiHoan: String(parsed.ngayChiHoan || ''),
             localChargeDate: String(parsed.localChargeDate || ''),
@@ -662,10 +663,21 @@ export const JobModal: React.FC<JobModalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                     {/* Basic IDs */}
                     <div className="md:col-span-2">
-                        <Label>Tháng</Label>
-                        <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
-                            {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                        </Select>
+                        <Label>Tháng / Năm</Label>
+                        <div className="flex gap-2">
+                            <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode} className="min-w-[70px]">
+                                {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </Select>
+                            <Select 
+                                name="year" 
+                                value={formData.year} 
+                                onChange={(e) => setFormData(prev => ({...prev, year: Number(e.target.value)}))} 
+                                disabled={isViewMode} 
+                                className="min-w-[80px] font-bold text-blue-700"
+                            >
+                                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                            </Select>
+                        </div>
                     </div>
                     <div className="md:col-span-3">
                         <Label>Job Code</Label>
@@ -927,4 +939,3 @@ export const JobModal: React.FC<JobModalProps> = ({
     document.body
   );
 };
-

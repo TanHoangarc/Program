@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
 import { Search, Briefcase, ChevronLeft, ChevronRight, FileSpreadsheet, MoreVertical, ShoppingCart, Filter } from 'lucide-react';
-import { MONTHS } from '../constants';
+import { MONTHS, YEARS } from '../constants';
 import { getPaginationRange } from '../utils';
 import * as XLSX from 'xlsx';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
@@ -13,6 +13,7 @@ interface LhkListProps {
 
 export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); // ADDED
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, searchTerm]);
+  }, [filterMonth, filterYear, searchTerm]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -46,6 +47,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
       const name = (job.customerName || '').toLowerCase();
       const isLhk = name.includes('long hoàng') || name.includes('lhk') || name.includes('long hoang') || name.includes('longhoang');
       
+      const matchesYear = filterYear ? job.year === Number(filterYear) : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
       const matchesSearch = searchTerm ? (
         String(job.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -53,11 +55,14 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
         String(job.hbl || '').toLowerCase().includes(searchTerm.toLowerCase())
       ) : true;
 
-      return isLhk && matchesMonth && matchesSearch;
+      return isLhk && matchesYear && matchesMonth && matchesSearch;
     });
 
-    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
+    // Updated Sorting Logic: Year Desc -> Month Desc -> Booking Asc (Trimmed)
     return filtered.sort((a, b) => {
+        const yearDiff = (b.year || 0) - (a.year || 0);
+        if (yearDiff !== 0) return yearDiff;
+
         // 1. Month Descending
         const monthDiff = Number(b.month) - Number(a.month);
         if (monthDiff !== 0) return monthDiff;
@@ -67,7 +72,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
         const bookingB = String(b.booking || '').trim().toLowerCase();
         return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterMonth, searchTerm]);
+  }, [jobs, filterMonth, filterYear, searchTerm]);
 
   // Pagination Logic
   const totalPages = Math.ceil(lhkJobs.length / ITEMS_PER_PAGE);
@@ -97,8 +102,9 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
 
   // Export Excel Function
   const handleExportExcel = () => {
-    const headers = ['Tháng', 'Job Code', 'Booking', 'HBL', 'Line', 'Cont 20', 'Cont 40', 'Sell'];
+    const headers = ['Năm', 'Tháng', 'Job Code', 'Booking', 'HBL', 'Line', 'Cont 20', 'Cont 40', 'Sell'];
     const rows = lhkJobs.map(job => [
+        job.year,
         job.month,
         job.jobCode,
         job.booking,
@@ -142,7 +148,11 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
               <Filter className="w-4 h-4 mr-2" />
               Bộ lọc
           </div>
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+             <select value={filterYear} onChange={e => setFilterYear(e.target.value)} className="glass-input w-full p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-700">
+                <option value="">Tất cả năm</option>
+                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+             </select>
              <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="glass-input w-full p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Tất cả các tháng</option>
                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -163,7 +173,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng/Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">HBL</th>
@@ -178,7 +188,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
               {paginatedJobs.length > 0 ? (
                 paginatedJobs.map(job => (
                   <tr key={job.id} className="hover:bg-white/40 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-500">T{job.month}</td>
+                    <td className="px-6 py-4 font-medium text-slate-500">T{job.month}/{job.year}</td>
                     <td className="px-6 py-4 font-bold text-blue-700">{job.jobCode}</td>
                     <td className="px-6 py-4 font-mono text-slate-600 text-xs">{job.booking}</td>
                     <td className="px-6 py-4 text-center">

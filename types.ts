@@ -124,6 +124,7 @@ export interface JobData {
 
   // General
   month: string;
+  year: number; // ADDED YEAR FIELD
   jobCode: string;
   booking: string;
   consol: string;
@@ -219,6 +220,7 @@ export interface JobData {
 export interface BookingSummary {
   bookingId: string;
   month: string;
+  year: number; // ADDED YEAR
   line: string;
 
   jobCount: number;
@@ -270,6 +272,17 @@ export interface PaymentRequest {
 }
 
 // ============================================================
+// SALARY RECORD
+// ============================================================
+export interface SalaryRecord {
+  id: string;
+  month: string;
+  year: number;
+  amount: number;
+  note?: string;
+}
+
+// ============================================================
 // USER ACCOUNT
 // ============================================================
 
@@ -287,6 +300,7 @@ export const INITIAL_JOB: JobData = {
   id: '',
 
   month: '1',
+  year: new Date().getFullYear(), // Default current year
   jobCode: '',
   booking: '',
   consol: '',

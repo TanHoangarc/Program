@@ -1,23 +1,27 @@
 
 import React, { useMemo, useState } from 'react';
-import { JobData } from '../types';
+import { JobData, SalaryRecord } from '../types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Package, DollarSign, Wallet, Filter, Ship } from 'lucide-react';
-import { MONTHS } from '../constants';
+import { TrendingUp, Package, DollarSign, Wallet, Filter, Ship, Coins } from 'lucide-react';
+import { MONTHS, YEARS } from '../constants';
 
 interface ReportsProps {
   jobs: JobData[];
+  salaries?: SalaryRecord[];
 }
 
-export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
+export const Reports: React.FC<ReportsProps> = ({ jobs, salaries = [] }) => {
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
 
   const COLORS = ['#2dd4bf', '#3b82f6', '#818cf8', '#c084fc', '#f472b6']; // Teal, Blue, Indigo, Purple, Pink
 
   const filteredJobs = useMemo(() => {
-    if (!filterMonth) return jobs;
-    return jobs.filter(job => job.month === filterMonth);
-  }, [jobs, filterMonth]);
+    let filtered = jobs;
+    if (filterYear) filtered = filtered.filter(job => job.year === Number(filterYear));
+    if (filterMonth) filtered = filtered.filter(job => job.month === filterMonth);
+    return filtered;
+  }, [jobs, filterMonth, filterYear]);
 
   const stats = useMemo(() => {
     const totalProfit = filteredJobs.reduce((acc, job) => acc + job.profit, 0);
@@ -26,8 +30,16 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
     const totalCont40 = filteredJobs.reduce((acc, job) => acc + job.cont40, 0);
     const totalRevenue = filteredJobs.reduce((acc, job) => acc + job.sell, 0);
     const kimberryCost = (totalCont20 * 250000) + (totalCont40 * 500000);
-    return { totalProfit, totalJobs, totalCont20, totalCont40, totalRevenue, kimberryCost };
-  }, [filteredJobs]);
+    
+    // Calculate total salary based on filter
+    const totalSalary = salaries.reduce((acc, s) => {
+        if (filterYear && s.year !== Number(filterYear)) return acc;
+        if (filterMonth && s.month !== filterMonth) return acc;
+        return acc + s.amount;
+    }, 0);
+
+    return { totalProfit, totalJobs, totalCont20, totalCont40, totalRevenue, kimberryCost, totalSalary };
+  }, [filteredJobs, salaries, filterMonth, filterYear]);
 
   const monthlyData = useMemo(() => {
     const grouped: Record<string, { month: string, profit: number, revenue: number }> = {};
@@ -72,6 +84,10 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
         
         <div className="flex items-center space-x-2 glass-panel px-3 py-1.5 rounded-xl">
            <Filter className="w-4 h-4 text-slate-400" />
+           <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="bg-transparent border-none text-sm text-blue-700 font-bold focus:ring-0 outline-none cursor-pointer">
+             <option value="">Tất cả năm</option>
+             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+           </select>
            <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="bg-transparent border-none text-sm text-slate-600 font-medium focus:ring-0 outline-none cursor-pointer">
              <option value="">Tất cả các tháng</option>
              {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -80,19 +96,23 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
       </div>
 
       {/* Top Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-        <StatCard icon={DollarSign} title="Lợi Nhuận" value={formatCurrency(stats.totalProfit)} colorClass="bg-teal-500" gradient="bg-teal-500" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <StatCard icon={DollarSign} title="Tổng Lợi Nhuận Ròng" value={formatCurrency(stats.totalProfit)} colorClass="bg-teal-500" gradient="bg-teal-500" />
+        <StatCard icon={Coins} title="Tổng Chi Phí Lương" value={formatCurrency(stats.totalSalary)} colorClass="bg-yellow-500" gradient="bg-yellow-500" />
+        <StatCard icon={Ship} title="Tổng Chi Phí Kimberry" value={formatCurrency(stats.kimberryCost)} colorClass="bg-pink-500" gradient="bg-pink-500" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <StatCard icon={Wallet} title="Doanh Thu" value={formatCurrency(stats.totalRevenue)} colorClass="bg-blue-500" gradient="bg-blue-500" />
         <StatCard icon={TrendingUp} title="Tổng Job" value={stats.totalJobs.toString()} colorClass="bg-indigo-500" gradient="bg-indigo-500" />
         <StatCard icon={Package} title="Container" value={(stats.totalCont20 + stats.totalCont40).toString()} colorClass="bg-purple-500" gradient="bg-purple-500" />
-        <StatCard icon={Ship} title="Chi Kimberry" value={formatCurrency(stats.kimberryCost)} colorClass="bg-pink-500" gradient="bg-pink-500" />
       </div>
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Chart */}
         <div className="lg:col-span-2 glass-panel p-6 rounded-2xl">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">Biểu đồ tăng trưởng</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-6">Biểu đồ tăng trưởng {filterYear ? `Năm ${filterYear}` : ''}</h3>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={monthlyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>

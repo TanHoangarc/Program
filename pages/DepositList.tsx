@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
 import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight, FileCheck } from 'lucide-react';
-import { MONTHS } from '../constants';
+import { MONTHS, YEARS } from '../constants';
 import { formatDateVN, getPaginationRange, calculateBookingSummary } from '../utils';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
@@ -24,6 +24,7 @@ export const DepositList: React.FC<DepositListProps> = ({
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
   const [filterEntity, setFilterEntity] = useState(''); // Stores Line Name or Customer ID
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); // ADDED
   
   // Custom Autocomplete State for Customer
   const [custSearchTerm, setCustSearchTerm] = useState('');
@@ -40,7 +41,7 @@ export const DepositList: React.FC<DepositListProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus, filterEntity, filterMonth, mode]);
+  }, [filterStatus, filterEntity, filterMonth, filterYear, mode]);
 
   // Derived Lists for Dropdowns
   const uniqueLines = useMemo(() => {
@@ -69,6 +70,7 @@ export const DepositList: React.FC<DepositListProps> = ({
     setFilterStatus('all');
     setFilterEntity('');
     setFilterMonth('');
+    setFilterYear(new Date().getFullYear().toString());
     setCustSearchTerm('');
   };
 
@@ -78,16 +80,19 @@ export const DepositList: React.FC<DepositListProps> = ({
     setShowCustSuggestions(false);
   };
 
-  const hasActiveFilters = filterStatus !== 'all' || filterEntity !== '' || filterMonth !== '';
+  const hasActiveFilters = filterStatus !== 'all' || filterEntity !== '' || filterMonth !== '' || filterYear !== new Date().getFullYear().toString();
 
   // --- LOGIC FOR LINE DEPOSIT (HÃNG TÀU) ---
   const lineDeposits = useMemo(() => {
     if (mode !== 'line') return [];
     
+    // Filter Jobs by Year First
+    const filteredJobs = filterYear ? jobs.filter(j => j.year === Number(filterYear)) : jobs;
+
     const processedBookings = new Set<string>();
     const depositsList: any[] = [];
 
-    jobs.forEach(job => {
+    filteredJobs.forEach(job => {
       if (job.booking && !processedBookings.has(job.booking)) {
         processedBookings.add(job.booking);
         
@@ -107,6 +112,7 @@ export const DepositList: React.FC<DepositListProps> = ({
 
             const item = {
                 month: job.month,
+                year: job.year,
                 booking: job.booking,
                 line: job.line,
                 amount: totalAmt,
@@ -132,7 +138,7 @@ export const DepositList: React.FC<DepositListProps> = ({
     });
 
     return result.sort((a, b) => Number(b.month) - Number(a.month));
-  }, [jobs, mode, filterMonth, filterEntity, filterStatus]);
+  }, [jobs, mode, filterMonth, filterYear, filterEntity, filterStatus]);
 
   // --- LOGIC FOR CUSTOMER DEPOSIT (KHÁCH HÀNG) ---
   const customerDeposits = useMemo(() => {
@@ -141,6 +147,7 @@ export const DepositList: React.FC<DepositListProps> = ({
     let result = jobs.filter(job => job.thuCuoc > 0);
 
     result = result.filter(job => {
+      const matchYear = filterYear ? job.year === Number(filterYear) : true;
       const matchMonth = filterMonth ? job.month === filterMonth : true;
       const matchCustomer = filterEntity ? job.maKhCuocId === filterEntity : true;
       
@@ -148,7 +155,7 @@ export const DepositList: React.FC<DepositListProps> = ({
       if (filterStatus === 'pending') matchStatus = !job.ngayThuHoan;
       if (filterStatus === 'completed') matchStatus = !!job.ngayThuHoan;
 
-      return matchMonth && matchCustomer && matchStatus;
+      return matchYear && matchMonth && matchCustomer && matchStatus;
     });
 
     return result.map(job => {
@@ -156,6 +163,7 @@ export const DepositList: React.FC<DepositListProps> = ({
         return {
           id: job.id,
           month: job.month,
+          year: job.year,
           jobCode: job.jobCode,
           customerCode: customer ? customer.code : 'N/A',
           customerName: customer ? customer.name : 'Unknown',
@@ -168,7 +176,7 @@ export const DepositList: React.FC<DepositListProps> = ({
         };
       })
       .sort((a, b) => Number(b.month) - Number(a.month));
-  }, [jobs, customers, mode, filterMonth, filterEntity, filterStatus]);
+  }, [jobs, customers, mode, filterMonth, filterYear, filterEntity, filterStatus]);
 
   const currentList = mode === 'line' ? lineDeposits : customerDeposits;
   const totalAmount = currentList.reduce((sum, item) => sum + item.amount, 0);
@@ -250,7 +258,16 @@ export const DepositList: React.FC<DepositListProps> = ({
               Bộ lọc
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1 w-full">
+               <select 
+                 value={filterYear} 
+                 onChange={(e) => setFilterYear(e.target.value)}
+                 className="glass-input w-full p-2.5 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-700"
+               >
+                 <option value="">Tất cả năm</option>
+                 {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+               </select>
+
                <select 
                  value={filterMonth} 
                  onChange={(e) => setFilterMonth(e.target.value)}
@@ -328,7 +345,7 @@ export const DepositList: React.FC<DepositListProps> = ({
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng/Năm</th>
                 {mode === 'line' ? (
                   <>
                     <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
@@ -353,7 +370,7 @@ export const DepositList: React.FC<DepositListProps> = ({
                 paginatedList.length > 0 ? (
                   paginatedList.map((item, idx) => (
                     <tr key={idx} className="hover:bg-white/40 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
-                      <td className="px-6 py-4 font-medium text-slate-500">T{item.month}</td>
+                      <td className="px-6 py-4 font-medium text-slate-500">T{item.month}/{item.year}</td>
                       <td className="px-6 py-4 text-blue-700 font-bold">{item.booking}</td>
                       <td className="px-6 py-4 text-slate-600">{item.line}</td>
                       <td className="px-6 py-4 text-right font-bold text-red-600">{formatCurrency(item.amount)}</td>
@@ -379,7 +396,7 @@ export const DepositList: React.FC<DepositListProps> = ({
                 paginatedList.length > 0 ? (
                   paginatedList.map((item) => (
                     <tr key={item.id} className="hover:bg-white/40 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
-                      <td className="px-6 py-4 font-medium text-slate-500">T{item.month}</td>
+                      <td className="px-6 py-4 font-medium text-slate-500">T{item.month}/{item.year}</td>
                       <td className="px-6 py-4 text-blue-700 font-bold">{item.jobCode}</td>
                       <td className="px-6 py-4 text-slate-600 font-mono text-xs">{item.customerCode}</td>
                       <td className="px-6 py-4 text-slate-700 font-medium truncate max-w-xs" title={item.customerName}>{item.customerName}</td>

@@ -828,6 +828,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       }
   };
 
+  // --- BULK LOCK HANDLER ---
+  const handleBulkLock = () => {
+      const idsToLock = Array.from(selectedIds);
+      if (idsToLock.length === 0) return;
+
+      if (window.confirm(`Xác nhận khóa ${idsToLock.length} phiếu đã chọn?`)) {
+          onToggleLock(idsToLock);
+          setSelectedIds(new Set());
+      }
+  };
+
   // --- EXPORT WITH EXCELJS ---
   const handleExport = async () => {
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
@@ -1084,6 +1095,15 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                       <Wallet className="w-5 h-5" /> <span>Thu Khác</span>
                   </button>
               )}
+
+              {/* BULK LOCK BUTTON */}
+              <button 
+                  onClick={handleBulkLock}
+                  disabled={selectedIds.size === 0}
+                  className={`px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg transition-all transform active:scale-95 ${selectedIds.size > 0 ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'}`}
+              >
+                  <Lock className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Khóa (${selectedIds.size})` : 'Khóa'}</span>
+              </button>
 
               <button onClick={handleExport} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95">
                   <FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span>

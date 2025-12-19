@@ -14,11 +14,12 @@ import { Reconciliation } from './pages/Reconciliation';
 import { ProfitReport } from './pages/ProfitReport';
 import { LookupPage } from './pages/LookupPage'; 
 import { PaymentPage } from './pages/PaymentPage'; 
-import { CVHCPage } from './pages/CVHCPage'; // IMPORT CVHCPage
+import { CVHCPage } from './pages/CVHCPage';
+import { SalaryPage } from './pages/SalaryPage'; // IMPORT SalaryPage
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -43,7 +44,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -113,6 +114,11 @@ const App: React.FC = () => {
     let hasDuplicates = false;
 
     const sanitized = data.map(job => {
+      // Default year to 2025 if missing (Data Migration)
+      if (!job.year) {
+          job.year = 2025;
+      }
+
       if (!job.id || seenIds.has(job.id)) {
         hasDuplicates = true;
         const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -148,6 +154,16 @@ const App: React.FC = () => {
     } catch {
         return [];
     }
+  });
+
+  // --- SALARY STATE ---
+  const [salaries, setSalaries] = useState<SalaryRecord[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_salaries');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
   });
 
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
@@ -217,6 +233,11 @@ const App: React.FC = () => {
       });
   };
 
+  // --- SALARY HANDLERS ---
+  const handleUpdateSalaries = (newSalaries: SalaryRecord[]) => {
+      setSalaries(newSalaries);
+  };
+
   // --- DATA SYNC FUNCTIONS ---
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
@@ -263,7 +284,7 @@ const App: React.FC = () => {
             customers: [...customers],
             lines: [...lines],
             customReceipts: [...customReceipts],
-            // Removed lockedIds from default payload to prevent snapshotting
+            salaries: [...salaries] // Include salaries in sync if needed
         };
     } else {
         if (!payload.lockedIds) {
@@ -397,6 +418,7 @@ const App: React.FC = () => {
       const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
+      const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
 
       const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
       if (incLocks.length > 0) {
@@ -412,12 +434,14 @@ const App: React.FC = () => {
       const newCustomers = mergeArrays(customers, incCustomers);
       const newLines = mergeArrays(lines, incLines);
       const newReceipts = mergeArrays(customReceipts, incReceipts);
+      const newSalaries = mergeArrays(salaries, incSalaries);
 
-      setJobs(newJobs);
+      setJobs(sanitizeData(newJobs)); // Ensure years are populated
       setPaymentRequests(newPayments);
       setCustomers(newCustomers);
       setLines(newLines);
       setCustomReceipts(newReceipts);
+      setSalaries(newSalaries);
 
       await handleRejectRequest(requestId);
 
@@ -440,7 +464,7 @@ const App: React.FC = () => {
 
         console.log("SERVER DATA LOADED:", data);
 
-        if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(data.jobs);
+        if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(sanitizeData(data.jobs));
         if (data.paymentRequests && Array.isArray(data.paymentRequests)) setPaymentRequests(data.paymentRequests);
         if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
         if (data.lines && Array.isArray(data.lines)) setLines(data.lines);
@@ -459,6 +483,10 @@ const App: React.FC = () => {
         
         if (data.customReceipts && Array.isArray(data.customReceipts)) {
             setCustomReceipts(data.customReceipts);
+        }
+
+        if (data.salaries && Array.isArray(data.salaries)) {
+            setSalaries(data.salaries);
         }
 
         setIsServerAvailable(true);
@@ -547,7 +575,8 @@ const App: React.FC = () => {
         lines,
         lockedIds: Array.from(lockedIds),
         processedRequestIds: Array.from(localDeletedIds),
-        customReceipts
+        customReceipts,
+        salaries
       };
 
       const controller = new AbortController();
@@ -574,7 +603,7 @@ const App: React.FC = () => {
     }, 2000);
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, isServerAvailable]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -582,6 +611,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_lines_v1", JSON.stringify(lines)); }, [lines]);
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
+  useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
 
   useEffect(() => {
       if (currentPage === 'system' && currentUser?.role === 'Admin') {
@@ -640,7 +670,7 @@ const App: React.FC = () => {
               />
             )}
 
-            {currentPage === 'reports' && <Reports jobs={jobs} />}
+            {currentPage === 'reports' && <Reports jobs={jobs} salaries={salaries} />}
             
             {currentPage === 'booking' && (
                 <BookingList 
@@ -793,6 +823,13 @@ const App: React.FC = () => {
                     jobs={jobs} 
                     customers={customers} 
                     onUpdateJob={handleEditJob} 
+                />
+            )}
+
+            {currentPage === 'salary' && (
+                <SalaryPage 
+                    salaries={salaries}
+                    onUpdateSalaries={handleUpdateSalaries}
                 />
             )}
 

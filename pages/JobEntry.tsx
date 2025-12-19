@@ -7,7 +7,7 @@ import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
 import { calculateBookingSummary, getPaginationRange, formatDateVN, calculatePaymentStatus } from '../utils';
-import { MONTHS } from '../constants';
+import { MONTHS, YEARS } from '../constants';
 import * as XLSX from 'xlsx';
 
 interface JobEntryProps {
@@ -44,6 +44,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   // Filters
   const [filterJobCode, setFilterJobCode] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); // Default to current year
   const [filterMonth, setFilterMonth] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
@@ -75,7 +76,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterJobCode, filterMonth, filterCustomer, filterBooking, filterLine]);
+  }, [filterJobCode, filterYear, filterMonth, filterCustomer, filterBooking, filterLine]);
 
   // Auto-open Job if ID provided
   useEffect(() => {
@@ -168,6 +169,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     const templateJob: JobData = {
       ...INITIAL_JOB, // Reset all fields to default first
       month: job.month,
+      year: job.year,
       booking: job.booking,
       consol: job.consol,
       line: job.line,
@@ -259,9 +261,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       let addedCount = 0; let updatedCount = 0;
       data.forEach((row: any) => {
         const rowJobCode = String(row['Job'] || row['Job Code'] || '');
+        const currentYear = new Date().getFullYear();
         
         const mappedData: Partial<JobData> = {
           month: String(row['Tháng'] || '1'),
+          year: Number(row['Năm'] || currentYear), // IMPORT YEAR
           jobCode: rowJobCode || `IMP-${Date.now()}`,
           booking: String(row['Booking'] || ''),
           consol: String(row['Consol'] || ''),
@@ -306,6 +310,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
       const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
       return {
+        "Năm": job.year,
         "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
@@ -327,21 +332,28 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     let matches = jobs.filter(job => {
       const jCode = String(job.jobCode || '');
       const jBooking = String(job.booking || '');
+      const matchesYear = filterYear ? job.year === Number(filterYear) : true;
       const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
       const matchesLine = filterLine ? job.line === filterLine : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
       const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
       const matchesBooking = filterBooking ? jBooking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
-      return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
+      return matchesYear && matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
     });
     return matches.sort((a, b) => {
+      // 1. Year Descending
+      const yearDiff = (b.year || 0) - (a.year || 0);
+      if (yearDiff !== 0) return yearDiff;
+
+      // 2. Month Descending
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
+      
       const bookingA = String(a.booking || '').toLowerCase();
       const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterJobCode, filterLine, filterMonth, filterCustomer, filterBooking]);
+  }, [jobs, filterJobCode, filterLine, filterYear, filterMonth, filterCustomer, filterBooking]);
 
   const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
   const paginatedJobs = filteredJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -357,7 +369,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     }), { cost: 0, sell: 0, profit: 0, cont20: 0, cont40: 0 });
   }, [filteredJobs]);
 
-  const clearFilters = () => { setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterCustomer(''); setFilterBooking(''); };
+  const clearFilters = () => { setFilterJobCode(''); setFilterLine(''); setFilterYear(new Date().getFullYear().toString()); setFilterMonth(''); setFilterCustomer(''); setFilterBooking(''); };
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   return (
@@ -386,7 +398,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       {/* Filter Bar */}
       <div className="glass-panel p-5 rounded-2xl mb-6 mx-2">
           {/* ... Filters UI ... */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+             <div>
+               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Năm</label>
+               <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="glass-input w-full p-2 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none font-bold text-blue-700">
+                 <option value="">Tất cả</option>
+                 {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+               </select>
+             </div>
              <div>
                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tháng</label>
                <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="glass-input w-full p-2 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none">
@@ -420,7 +439,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                </div>
              </div>
           </div>
-          {(filterMonth || filterCustomer || filterBooking || filterJobCode || filterLine) && (
+          {(filterMonth || filterCustomer || filterBooking || filterJobCode || filterLine || filterYear !== new Date().getFullYear().toString()) && (
             <div className="mt-4 flex justify-end">
               <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-600 flex items-center bg-red-50 px-3 py-1.5 rounded-full border border-red-100"><X className="w-3 h-3 mr-1" /> Xóa bộ lọc</button>
             </div>
@@ -433,7 +452,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng/Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Customer</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
@@ -460,7 +479,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
                   return (
                   <tr key={job.id} className="hover:bg-white/40 cursor-pointer group transition-colors" onClick={(e) => handleRowClick(job, e)}>
-                    <td className="px-6 py-4 text-slate-500">T{job.month}</td>
+                    <td className="px-6 py-4 text-slate-500 font-medium">T{job.month}/{job.year}</td>
                     <td className="px-6 py-4 font-bold text-teal-700 relative">
                         {job.jobCode}
                     </td>

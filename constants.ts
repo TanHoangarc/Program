@@ -1,9 +1,13 @@
+
 import { JobData, Customer, ShippingLine } from './types';
 
 export const MONTHS = Array.from({ length: 12 }, (_, i) => ({
   value: (i + 1).toString(),
   label: `Tháng ${i + 1}`
 }));
+
+// Generate years from 2023 to 2030
+export const YEARS = Array.from({ length: 8 }, (_, i) => 2023 + i);
 
 export const TRANSIT_PORTS = ['HCM', 'HPH'];
 export const BANKS = ['TCB Bank', 'MB Bank'];
@@ -26,7 +30,8 @@ export const MOCK_DATA: JobData[] = [
   {
     id: '1',
     month: '10',
-    jobCode: 'JOB-23-001',
+    year: 2025,
+    jobCode: 'JOB-25-001',
     booking: 'BK123456',
     consol: 'Yes',
     line: 'Maersk',
@@ -49,11 +54,11 @@ export const MOCK_DATA: JobData[] = [
 
     chiPayment: 15000000,
     chiCuoc: 2000000,
-    ngayChiCuoc: '2023-10-05',
-    ngayChiHoan: '2023-10-25',
+    ngayChiCuoc: '2025-10-05',
+    ngayChiHoan: '2025-10-25',
 
     localChargeInvoice: 'INV-001',
-    localChargeDate: '2023-10-06',
+    localChargeDate: '2025-10-06',
     localChargeNet: 20000000,
     localChargeVat: 2000000,
     localChargeTotal: 22000000,
@@ -61,80 +66,18 @@ export const MOCK_DATA: JobData[] = [
 
     maKhCuocId: '1',
     thuCuoc: 2000000,
-    ngayThuCuoc: '2023-10-06',
-    ngayThuHoan: '2023-10-26',
+    ngayThuCuoc: '2025-10-06',
+    ngayThuHoan: '2025-10-26',
 
     extensions: [],
     
     bookingCostDetails: {
-      localCharge: { invoice: 'COST-INV-01', date: '2023-10-01', net: 14000000, vat: 1000000, total: 15000000 },
+      localCharge: { invoice: 'COST-INV-01', date: '2025-10-01', net: 14000000, vat: 1000000, total: 15000000 },
       additionalLocalCharges: [],
       extensionCosts: [],
       deposits: [
-        { id: 'd1', amount: 2000000, dateOut: '2023-10-05', dateIn: '2023-10-25' }
+        { id: 'd1', amount: 2000000, dateOut: '2025-10-05', dateIn: '2025-10-25' }
       ]
-    }
-  },
-  {
-    id: '2',
-    month: '10',
-    jobCode: 'JOB-23-002',
-    booking: 'BK789012',
-    consol: 'No',
-    line: 'Evergreen',
-    customerId: '2',
-    customerName: 'TechGlobal',
-    hbl: '',
-    transit: 'HPH',
-
-    cost: 32000000,
-    sell: 45000000,
-    profit: 13000000,
-    cont20: 0,
-    cont40: 3,
-
-    feeCic: 0,
-    feeKimberry: 0,
-    feePsc: 0,
-    feeEmc: 0,
-    feeOther: 0,
-
-    chiPayment: 30000000,
-    chiCuoc: 5000000,
-    ngayChiCuoc: '2023-10-10',
-    ngayChiHoan: '',
-
-    localChargeInvoice: 'INV-002',
-    localChargeDate: '2023-10-11',
-    localChargeNet: 0,
-    localChargeVat: 0,
-    localChargeTotal: 0,
-    bank: 'MB Bank',
-
-    maKhCuocId: '2',
-    thuCuoc: 5000000,
-    ngayThuCuoc: '2023-10-12',
-    ngayThuHoan: '',
-
-    extensions: [
-      { 
-        id: 'ext1', 
-        customerId: '2', 
-        invoice: 'INV-GH-01',
-        invoiceDate: '2023-10-15',
-        net: 454545,
-        vat: 45455,
-        total: 500000
-      }
-    ],
-
-    bookingCostDetails: {
-      localCharge: { invoice: 'COST-INV-02', date: '2023-10-09', net: 28000000, vat: 2000000, total: 30000000 },
-      additionalLocalCharges: [],
-      extensionCosts: [
-        { id: 'ec1', invoice: 'EXT-COST-01', date: '2023-10-14', net: 200000, vat: 20000, total: 220000 }
-      ],
-      deposits: []
     }
   }
 ];
