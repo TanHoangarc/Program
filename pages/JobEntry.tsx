@@ -473,8 +473,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   const missingInvoice = !job.localChargeInvoice && !isLongHoang;
                   const missingBank = !job.bank;
                   
-                  // Payment Status Check
-                  const paymentStatus = calculatePaymentStatus(job);
+                  // Payment Status Check (PASS ALL JOBS)
+                  const paymentStatus = calculatePaymentStatus(job, jobs);
                   const hasPaymentMismatch = paymentStatus.hasMismatch;
 
                   return (
