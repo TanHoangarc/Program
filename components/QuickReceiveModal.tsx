@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Layers, HandCoins } from 'lucide-react';
 import { JobData, Customer, AdditionalReceipt } from '../types';
@@ -108,6 +108,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   });
   
   const [internalTargetId, setInternalTargetId] = useState<string | null>(null);
+  
+  // Store Original Doc No for Cleanup logic
+  const [originalGroupDocNo, setOriginalGroupDocNo] = useState('');
 
   // --- MULTI-PAYMENT STATE ---
   const [additionalReceipts, setAdditionalReceipts] = useState<AdditionalReceipt[]>([]);
@@ -121,6 +124,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [custInputVal, setCustInputVal] = useState('');
+
+  const filteredCustomers = useMemo(() => {
+    if (!custInputVal) return [];
+    const lower = custInputVal.toLowerCase();
+    return customers.filter(c => 
+        (c.code || '').toLowerCase().includes(lower) || 
+        (c.name || '').toLowerCase().includes(lower)
+    );
+  }, [custInputVal, customers]);
 
   // --- MERGE JOB STATE ---
   const [addedJobs, setAddedJobs] = useState<JobData[]>([]);
@@ -257,20 +269,39 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       
       // Initialize Merged Extensions Checkboxes
       const initialExtSet = new Set<string>();
-      if (mode === 'extension' && initialAddedJobs.length > 0) {
-          // We need to find which extensions in the added jobs have the matching DocNo
-          const targetDocNo = deepCopyJob.extensions?.find((e: any) => e.id === targetExtensionId)?.amisDocNo;
+      
+      // Store Original DocNo for Cleanup Logic later
+      let orgDoc = '';
+
+      if (mode === 'extension') {
+          // Identify which extension is being edited (if any)
+          let targetExt = null;
+          if (targetExtensionId) {
+              targetExt = deepCopyJob.extensions?.find((e: any) => e.id === targetExtensionId);
+          } else if ((deepCopyJob.extensions || []).length > 0) {
+              // Fallback to first extension if simple mode
+              targetExt = deepCopyJob.extensions[0];
+          }
           
-          if (targetDocNo) {
+          orgDoc = targetExt?.amisDocNo || '';
+
+          if (initialAddedJobs.length > 0 && orgDoc) {
+              // Find matching extensions in added jobs
               initialAddedJobs.forEach(mergedJob => {
                   (mergedJob.extensions || []).forEach(ext => {
-                      if (ext.amisDocNo === targetDocNo) {
+                      if (ext.amisDocNo === orgDoc) {
                           initialExtSet.add(ext.id);
                       }
                   });
               });
           }
+      } else if (mode === 'local' || mode === 'other') {
+          orgDoc = deepCopyJob.amisLcDocNo || '';
+      } else if (mode === 'deposit') {
+          orgDoc = deepCopyJob.amisDepositDocNo || '';
       }
+
+      setOriginalGroupDocNo(orgDoc);
       setSelectedMergedExtIds(initialExtSet);
 
       let initialCustId = '';
@@ -572,10 +603,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Save Dates logic: Main Receipt Date maps to specific fields
-    const finalDate = mode === 'extension' ? newExtension.amisDate : amisDate;
+    // Logic: Identify jobs that were removed from the merged list and clear their data
+    const removedJobs = initialAddedJobs.filter(
+        initial => !addedJobs.some(current => current.id === initial.id)
+    );
 
     if (mode === 'extension') {
+      // 1. Save Main Job Extension Update
       let updatedExtensions;
       if (internalTargetId) {
           updatedExtensions = (formData.extensions || []).map(ext => {
@@ -615,10 +649,28 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           additionalReceipts: additionalReceipts 
         });
 
-      // SAVE ADDED JOBS (Specific Extensions)
+      // 2. Clear Removed Jobs' Extensions (Un-merge)
+      if (removedJobs.length > 0 && originalGroupDocNo) {
+          removedJobs.forEach(remJob => {
+              const cleanedExtensions = (remJob.extensions || []).map(ext => {
+                  // Only clear if it was part of this group (docNo matches original)
+                  if (ext.amisDocNo === originalGroupDocNo) {
+                      return { ...ext, amisDocNo: '', amisDesc: '', amisAmount: 0 };
+                  }
+                  return ext;
+              });
+              
+              if (JSON.stringify(cleanedExtensions) !== JSON.stringify(remJob.extensions)) {
+                  onSave({ ...remJob, extensions: cleanedExtensions });
+              }
+          });
+      }
+
+      // 3. Update Added/Remaining Jobs (Merge)
       if (addedJobs.length > 0) {
           addedJobs.forEach(addedJob => {
               const updatedAddedJobExtensions = (addedJob.extensions || []).map(ext => {
+                  // Case A: Checked -> Set Info
                   if (selectedMergedExtIds.has(ext.id)) {
                       return {
                           ...ext,
@@ -627,11 +679,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                           amisAmount: ext.total // Mark as paid
                       };
                   }
+                  // Case B: Not Checked but WAS in this group (Unchecked) -> Clear Info
+                  if (originalGroupDocNo && ext.amisDocNo === originalGroupDocNo) {
+                      return { ...ext, amisDocNo: '', amisDesc: '', amisAmount: 0 };
+                  }
                   return ext;
               });
               
               // Only save if changes made
-              if (updatedAddedJobExtensions !== addedJob.extensions) {
+              if (JSON.stringify(updatedAddedJobExtensions) !== JSON.stringify(addedJob.extensions)) {
                   onSave({ ...addedJob, extensions: updatedAddedJobExtensions });
               }
           });
@@ -639,7 +695,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
     } 
     else if (mode === 'local' || mode === 'other') {
-        // ... (Existing logic for local/other unchanged)
+        // 1. Save Main Job
         onSave({ 
             ...formData, 
             amisLcDocNo: amisDocNo, 
@@ -649,6 +705,17 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             additionalReceipts: additionalReceipts
         });
 
+        // 2. Clear Removed Jobs (Un-merge)
+        removedJobs.forEach(remJob => {
+            onSave({
+                ...remJob,
+                amisLcDocNo: '',
+                amisLcDesc: '',
+                amisLcAmount: 0
+            });
+        });
+
+        // 3. Update Added Jobs (Merge)
         if (addedJobs.length > 0) {
             addedJobs.forEach(addedJob => {
                 onSave({
@@ -659,8 +726,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             });
         }
     }
-    // ... (deposit logic unchanged)
     else if (mode === 'deposit') {
+        // 1. Save Main Job
         onSave({ 
             ...formData, 
             amisDepositDocNo: amisDocNo, 
@@ -669,7 +736,29 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             ngayThuCuoc: amisDate,
             additionalReceipts: additionalReceipts
         });
+
+        // 2. Clear Removed Jobs (Un-merge)
+        removedJobs.forEach(remJob => {
+            onSave({
+                ...remJob,
+                amisDepositDocNo: '',
+                amisDepositDesc: '',
+                amisDepositAmount: 0
+            });
+        });
+
+        // 3. Update Added Jobs (Merge)
+        if (addedJobs.length > 0) {
+            addedJobs.forEach(addedJob => {
+                onSave({
+                    ...addedJob,
+                    amisDepositDocNo: amisDocNo,
+                    amisDepositDesc: amisDesc
+                });
+            });
+        }
     }
+    // ... (rest unchanged)
     else if (mode === 'deposit_refund') {
         onSave({ 
             ...formData, 
@@ -677,6 +766,30 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             amisDepositRefundDesc: amisDesc,
             amisDepositRefundDate: amisDate,
             ngayThuHoan: amisDate
+        });
+        
+        // Handle merged refund jobs
+        if (addedJobs.length > 0) {
+             addedJobs.forEach(addedJob => {
+                onSave({
+                    ...addedJob,
+                    amisDepositRefundDocNo: amisDocNo,
+                    amisDepositRefundDesc: amisDesc,
+                    amisDepositRefundDate: amisDate,
+                    ngayThuHoan: amisDate
+                });
+            });
+        }
+        
+        // Handle removed refund jobs
+        removedJobs.forEach(remJob => {
+            onSave({
+                ...remJob,
+                amisDepositRefundDocNo: '',
+                amisDepositRefundDesc: '',
+                amisDepositRefundDate: '',
+                ngayThuHoan: ''
+            });
         });
     }
     else if (mode === 'refund_overpayment') {
@@ -860,7 +973,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             )}
 
             {/* GROUP JOBS SECTION (VISIBLE FOR LOCAL / OTHER / EXTENSION) */}
-            {(mode === 'local' || mode === 'other' || mode === 'extension') && (
+            {(mode === 'local' || mode === 'other' || mode === 'extension' || mode === 'deposit_refund') && (
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 shadow-sm mb-4">
                     <div className="flex justify-between items-center mb-3">
                         <h3 className="text-xs font-bold text-blue-800 uppercase flex items-center">
@@ -932,7 +1045,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                                 ) : (
                                                     /* LOCAL/OTHER MODE: Just show total */
                                                     <div className="text-right pt-1 font-bold text-slate-700">
-                                                        {new Intl.NumberFormat('en-US').format(j.localChargeTotal || 0)}
+                                                        {new Intl.NumberFormat('en-US').format(mode === 'deposit_refund' ? j.thuCuoc : j.localChargeTotal || 0)}
                                                     </div>
                                                 )}
                                             </td>
