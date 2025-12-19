@@ -93,7 +93,14 @@ const App: React.FC = () => {
   });
 
   // --- LOCKED IDs STATE (Global Sync) ---
-  const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
+  const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
+      try {
+          const saved = localStorage.getItem('kb_locked_ids');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch {
+          return new Set();
+      }
+  });
 
   // Persist tracking states
   useEffect(() => {
@@ -107,6 +114,10 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('kb_modified_payment_ids', JSON.stringify(Array.from(modifiedPaymentIds)));
   }, [modifiedPaymentIds]);
+
+  useEffect(() => {
+      localStorage.setItem('kb_locked_ids', JSON.stringify(Array.from(lockedIds)));
+  }, [lockedIds]);
 
   // Helper: Sanitize Data
   const sanitizeData = (data: JobData[]): JobData[] => {
@@ -284,7 +295,8 @@ const App: React.FC = () => {
             customers: [...customers],
             lines: [...lines],
             customReceipts: [...customReceipts],
-            salaries: [...salaries] // Include salaries in sync if needed
+            salaries: [...salaries], // Include salaries in sync if needed
+            lockedIds: Array.from(lockedIds) // Include lockedIds in manual sync
         };
     } else {
         if (!payload.lockedIds) {
@@ -320,9 +332,8 @@ const App: React.FC = () => {
               
               setModifiedJobIds(new Set());
               setModifiedPaymentIds(new Set());
-          } else {
-              console.log("Auto-sync success");
-          }
+          } 
+          // Auto-sync success log REMOVED
       } else {
           throw new Error(`Server returned ${response.status}`);
       }
@@ -346,18 +357,7 @@ const App: React.FC = () => {
       }
       
       setLockedIds(newSet);
-
-      if (currentUser && isServerAvailable) {
-          const payload = {
-              user: currentUser.username,
-              timestamp: new Date().toISOString(),
-              lockedIds: Array.from(newSet), // Send snapshot ONLY when locking
-              autoApprove: true,
-              jobs: [], paymentRequests: [], customers: [], lines: []
-          };
-          
-          sendPendingToServer(payload).catch(e => console.error("Sync lock failed", e));
-      }
+      // Removed automatic sendPendingToServer call
   };
 
   const handleRejectRequest = async (requestId: string) => {
@@ -392,6 +392,8 @@ const App: React.FC = () => {
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
 
+      // REMOVED LOCKED ID MERGING TO PREVENT RE-LOCKING OF MANUALLY UNLOCKED ITEMS
+      /*
       const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
       if (incLocks.length > 0) {
           setLockedIds(prev => {
@@ -400,6 +402,7 @@ const App: React.FC = () => {
               return newSet;
           });
       }
+      */
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
