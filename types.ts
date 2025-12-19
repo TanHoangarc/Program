@@ -85,11 +85,6 @@ export interface BookingExtensionCost {
   // File attachments
   fileUrl?: string;
   fileName?: string;
-  
-  // AMIS Payment Status (Cost side)
-  amisExtensionPaymentDocNo?: string;
-  amisExtensionPaymentDate?: string;
-  amisExtensionPaymentAmount?: number;
 }
 
 // ============================================================
