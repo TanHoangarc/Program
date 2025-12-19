@@ -211,8 +211,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       // Process Deposit Groups
       depGroupMap.forEach((groupJobs, docNo) => {
+          // Find if there is a main override amount
           const mainJob = groupJobs.find(j => j.amisDepositAmount !== undefined && j.amisDepositAmount > 0);
+          
           if (mainJob) {
+             // Merged Case: Only output the main job
              rows.push({
                  jobId: mainJob.id, type: 'deposit_thu', rowId: `dep-${mainJob.id}`,
                  date: mainJob.ngayThuCuoc, docNo: mainJob.amisDepositDocNo, 
@@ -222,6 +225,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                  tkNo: '1121', tkCo: '1388', 
              });
           } else {
+             // Default Case: Output all
              groupJobs.forEach(j => {
                  rows.push({
                      jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
@@ -236,7 +240,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       });
       rows.push(...depAdditionalRows);
 
-      // 2. Thu Local Charge (Deduplicated)
+      // 2. Thu Local Charge (Deduplicated for Merged Receipts)
       const lcGroupMap = new Map<string, any[]>();
       const lcAdditionalRows: any[] = [];
 
@@ -248,7 +252,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                lcGroupMap.get(docNo)?.push(j);
           }
           
-          // Collect Additional Receipts
+          // Collect Additional Receipts (Always distinct)
           (j.additionalReceipts || []).forEach(r => {
              if ((r.type === 'local' || r.type === 'other') && checkMonth(r.date)) {
                  lcAdditionalRows.push({
@@ -264,6 +268,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // Process LC Groups
       lcGroupMap.forEach((groupJobs, docNo) => {
           // Find the "Main" job which has the override amount (Total of merge)
+          // The job with 'amisLcAmount' set implies it holds the grouped total.
           const mainJob = groupJobs.find(j => j.amisLcAmount !== undefined);
           
           if (mainJob) {
@@ -321,7 +326,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       // Process Extension Groups
       extGroupMap.forEach((items, docNo) => {
-          // Identify Main Extension: has amisAmount
+          // Identify Main Extension: has amisAmount set
           const bestItem = items.find(i => i.ext.amisAmount !== undefined);
 
           if (bestItem) {
@@ -335,6 +340,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                   tkNo: '1121', tkCo: '13111',
               });
           } else {
+              // No merge override found, list all
               items.forEach(({ ext, job }) => {
                   rows.push({
                       jobId: job.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
