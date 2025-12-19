@@ -219,18 +219,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           
       } else {
           // Local/Other Logic (Simple Sum)
-          totalAmount = formData.localChargeTotal || 0;
-          extraJobs.forEach(j => {
-              totalAmount += (j.localChargeTotal || 0);
-          });
-          
-          // For Local/Other, we update form description manually
-          setAmisDesc(newDesc);
-          
-          // Recalculating form total based on merge
+          // Use job (props) for base amount to avoid drift, plus extras
           const mainAmt = job.localChargeTotal || 0; // Original main amount
           const extraAmt = extraJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
           
+          setAmisDesc(newDesc);
           setFormData(prev => ({ ...prev, localChargeTotal: mainAmt + extraAmt }));
           setAmisAmount(mainAmt + extraAmt);
       }
@@ -312,7 +305,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
              setAmisDesc(deepCopyJob.amisLcDesc);
           } else {
              const inv = deepCopyJob.localChargeInvoice;
-             const desc = generateMergedDescription(inv, []);
+             // Calculate initial description with potentially merged jobs
+             const desc = generateMergedDescription(inv, initialAddedJobs);
              setAmisDesc(desc);
           }
       } 
@@ -393,7 +387,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
       }
     }
-  }, [isOpen, job, mode, customers, targetExtensionId, allJobs, usedDocNos, initialAddedJobs]);
+    // IMPORTANT: Exclude `initialAddedJobs` and `allJobs` to prevent reset loops on re-render
+    // Only re-run when modal opens or primary target changes
+  }, [isOpen, job.id, mode, targetExtensionId, customers]);
 
   const handleOtherSubModeChange = (subMode: 'local' | 'deposit') => {
       setOtherSubMode(subMode);
@@ -700,7 +696,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   const handleAddJob = () => {
       if (!allJobs) return;
-      const found = allJobs.find(j => j.jobCode === searchJobCode && j.id !== formData.id);
+      const searchNormalized = searchJobCode.trim().toLowerCase();
+      const found = allJobs.find(j => j.jobCode.trim().toLowerCase() === searchNormalized && j.id !== formData.id);
       
       if (!found) {
           alert("Không tìm thấy Job Code này hoặc Job đang là Job chính!");
