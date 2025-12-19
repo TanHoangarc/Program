@@ -34,10 +34,11 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<{ username: string, role: string } | null>(null);
   const [loginError, setLoginError] = useState('');
-  const [sessionError, setSessionError] = useState('');
   
   const [syncStatus, setSyncStatus] = useState<'saved' | 'syncing' | 'error'>('saved');
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isInitialLoad = useRef(true);
+  const lastSyncTime = useRef<string>("");
 
   const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary'>(() => {
       try {
@@ -153,27 +154,84 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('logistics_salaries', JSON.stringify(salaries)); }, [salaries]);
 
-  // BACKUP LOGIC - ĐẢM BẢO LUÔN ĐỒNG BỘ MỌI THAY ĐỔI LÊN CLOUD
-  const performBackup = useCallback(async () => {
-    // Không chặn backup nếu server có thể truy cập được
+  // FETCH DATA FROM SERVER - FAST SYNC
+  const fetchData = useCallback(async (silent = false, force = false) => {
+    if (!silent) setSyncStatus('syncing');
+    try {
+      const res = await fetch(`https://api.kimberry.id.vn/data?v=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Kiểm tra xem dữ liệu server có thực sự mới hơn không thông qua timestamp
+        if (!force && data.timestamp === lastSyncTime.current) {
+            if (!silent) setSyncStatus('saved');
+            return;
+        }
+
+        const shouldUpdateAll = force || isInitialLoad.current;
+
+        // Cập nhật lương và danh mục (Luôn ưu tiên server)
+        if (data.salaries) setSalaries(data.salaries);
+        if (data.customers) setCustomers(data.customers);
+        if (data.lines) setLines(data.lines);
+        if (data.customReceipts) setCustomReceipts(data.customReceipts);
+        if (data.lockedIds) setLockedIds(new Set(data.lockedIds));
+        if (data.processedRequestIds) setLocalDeletedIds(new Set(data.processedRequestIds));
+
+        // Job và Payment chỉ cập nhật khi máy này không đang gõ dở
+        if (shouldUpdateAll || modifiedJobIds.size === 0) {
+            if (data.jobs) setJobs(sanitizeData(data.jobs));
+        }
+        if (shouldUpdateAll || modifiedPaymentIds.size === 0) {
+            if (data.paymentRequests) setPaymentRequests(data.paymentRequests);
+        }
+        
+        if (data.users) {
+            const m = new Map(users.map(u => [u.username, u]));
+            data.users.forEach((u: UserAccount) => m.set(u.username, u));
+            setUsers(Array.from(m.values()));
+        }
+        
+        lastSyncTime.current = data.timestamp || "";
+        setIsServerAvailable(true);
+        if (!silent) setSyncStatus('saved');
+        isInitialLoad.current = false;
+      }
+    } catch (err) {
+      if (!silent) setSyncStatus('error');
+      setIsServerAvailable(false);
+    }
+  }, [modifiedJobIds, modifiedPaymentIds, users]);
+
+  // High-frequency polling (mỗi 15 giây)
+  useEffect(() => {
+    fetchData(true);
+    const interval = setInterval(() => { 
+        if (!document.hidden) fetchData(true); 
+    }, 15000); 
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // BACKUP LOGIC - SPEED OPTIMIZED
+  const performBackup = useCallback(async (immediate = false) => {
     if (!currentUser) return;
     
+    // Nếu không phải khẩn cấp, đợi debounce
     setSyncStatus('syncing');
-
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
 
     try {
+      const now = new Date().toISOString();
       const payload = {
-        timestamp: new Date().toISOString(),
+        timestamp: now,
         user: currentUser.username,
-        version: "2.6",
-        jobs,
-        paymentRequests,
-        customers,
-        lines,
-        salaries,
-        users,
+        version: "2.9",
+        jobs, paymentRequests, customers, lines, salaries, users,
         lockedIds: Array.from(lockedIds),
         processedRequestIds: Array.from(localDeletedIds),
         customReceipts
@@ -187,41 +245,37 @@ const App: React.FC = () => {
       });
 
       if (response.ok) {
+        lastSyncTime.current = now;
         setSyncStatus('saved');
         setIsServerAvailable(true);
-      } else {
-        throw new Error("Server Backup Failed");
-      }
+      } else { throw new Error("Server Backup Failed"); }
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        console.error("Backup Error:", err);
-        setSyncStatus('error');
-      }
+      if (err.name !== 'AbortError') setSyncStatus('error');
     }
   }, [jobs, paymentRequests, customers, lines, users, lockedIds, customReceipts, localDeletedIds, salaries, currentUser]);
 
+  // Tự động đẩy dữ liệu khi có thay đổi (Debounce 1.5s)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      performBackup();
-    }, 600); 
+    if (isInitialLoad.current) return;
+    const timer = setTimeout(() => { performBackup(); }, 1500); 
     return () => clearTimeout(timer);
   }, [jobs, paymentRequests, customers, lines, users, lockedIds, customReceipts, localDeletedIds, salaries, performBackup]);
 
-  // HANDLERS
+  // HANDLERS (Thêm lệnh đẩy dữ liệu ngay lập tức cho các thao tác quan trọng)
   const handleAddJob = (job: JobData) => {
       setJobs(prev => [job, ...prev]);
       setModifiedJobIds(prev => new Set(prev).add(job.id));
   };
 
   const handleEditJob = (job: JobData) => {
-      // Đảm bảo tạo reference mới cho mảng jobs để useEffect backup nhận diện được
       setJobs(prev => prev.map(x => x.id === job.id ? JSON.parse(JSON.stringify(job)) : x));
       setModifiedJobIds(prev => new Set(prev).add(job.id));
   };
 
-  const handleDeleteJob = (id: string) => {
-      setJobs(prev => prev.filter(x => x.id !== id));
-      setModifiedJobIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+  const handleUpdateSalaries = (newSalaries: SalaryRecord[]) => {
+      setSalaries(newSalaries);
+      // Đẩy khẩn cấp đối với dữ liệu Lương
+      setTimeout(() => performBackup(), 500);
   };
 
   const handleUpdatePaymentRequests = (newRequests: PaymentRequest[]) => {
@@ -239,15 +293,12 @@ const App: React.FC = () => {
     if (!payload) {
         const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
         const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
-        if (jobsToSend.length === 0 && paymentsToSend.length === 0) {
-            alert("Không có thay đổi nào mới để gửi.");
-            return;
-        }
         payload = {
             user: currentUser.username, 
             timestamp: new Date().toISOString(),
             jobs: jobsToSend, 
             paymentRequests: paymentsToSend,
+            salaries,
             customers, lines, customReceipts, users
         };
     }
@@ -258,12 +309,11 @@ const App: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-          if (!directPayload) {
-              alert("Đã gửi dữ liệu duyệt thành công!");
-              setModifiedJobIds(new Set());
-              setModifiedPaymentIds(new Set());
-          }
+      if (res.ok && !directPayload) {
+          alert("Đã gửi dữ liệu duyệt thành công!");
+          setModifiedJobIds(new Set());
+          setModifiedPaymentIds(new Set());
+          fetchData(true, true); // Refresh ngay sau khi gửi
       }
     } catch (err) { console.error("Send pending failed", err); }
   };
@@ -277,31 +327,6 @@ const App: React.FC = () => {
           sendPendingToServer({ user: currentUser.username, timestamp: new Date().toISOString(), lockedIds: Array.from(newSet), autoApprove: true, jobs: [], paymentRequests: [], customers: [], lines: [] });
       }
   };
-
-  useEffect(() => {
-    const fetchInitial = async () => {
-      try {
-        const res = await fetch("https://api.kimberry.id.vn/data");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.jobs?.length) setJobs(sanitizeData(data.jobs));
-          if (data.paymentRequests) setPaymentRequests(data.paymentRequests);
-          if (data.customers) setCustomers(data.customers);
-          if (data.lines) setLines(data.lines);
-          if (data.users) setUsers(prev => {
-              const map = new Map(prev.map(u => [u.username, u]));
-              data.users.forEach((u: UserAccount) => map.set(u.username, u));
-              return Array.from(map.values());
-          });
-          if (data.lockedIds) setLockedIds(new Set(data.lockedIds));
-          if (data.processedRequestIds) setLocalDeletedIds(new Set(data.processedRequestIds));
-          if (data.customReceipts) setCustomReceipts(data.customReceipts);
-          setIsServerAvailable(true);
-        }
-      } catch (err) { setIsServerAvailable(false); }
-    };
-    fetchInitial();
-  }, []);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
@@ -322,7 +347,7 @@ const App: React.FC = () => {
       const storage = remember ? localStorage : sessionStorage;
       storage.setItem('kb_user', JSON.stringify(userData));
       if (user.role === 'Docs') setCurrentPage('lookup'); else setCurrentPage('entry');
-    } else { setLoginError("Thông tin đăng nhập không đúng"); }
+    } else { alert("Thông tin đăng nhập không đúng"); }
   };
 
   const handleLogout = useCallback(() => {
@@ -332,7 +357,7 @@ const App: React.FC = () => {
     localStorage.removeItem('kb_user');
   }, []);
 
-  if (!isAuthenticated) return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
+  if (!isAuthenticated) return <LoginPage onLogin={handleLogin} />;
 
   return (
     <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-slate-50">
@@ -353,13 +378,14 @@ const App: React.FC = () => {
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
         syncStatus={syncStatus}
+        onForceRefresh={() => fetchData(false, true)}
       />
 
       <div className="flex-1 md:ml-[280px] p-2 md:p-4 h-full flex flex-col overflow-hidden relative">
         <main className="flex-1 rounded-2xl md:rounded-3xl overflow-hidden relative shadow-inner h-full flex flex-col bg-white/40 backdrop-blur-3xl border border-white/40">
           <div className="absolute inset-0 bg-white/40 backdrop-blur-3xl border border-white/40 rounded-3xl z-0"></div>
           <div className="relative z-10 h-full overflow-y-auto custom-scrollbar p-2">
-            {currentPage === 'entry' && <JobEntry jobs={jobs} onAddJob={handleAddJob} onEditJob={handleEditJob} onDeleteJob={handleDeleteJob} customers={customers} onAddCustomer={(c) => setCustomers([...customers, c])} lines={lines} onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])} initialJobId={targetJobId} onClearTargetJob={() => setTargetJobId(null)} customReceipts={customReceipts} />}
+            {currentPage === 'entry' && <JobEntry jobs={jobs} onAddJob={handleAddJob} onEditJob={handleEditJob} onDeleteJob={(id) => { setJobs(prev => prev.filter(x => x.id !== id)); setModifiedJobIds(prev => { const next = new Set(prev); next.delete(id); return next; }); }} customers={customers} onAddCustomer={(c) => setCustomers([...customers, c])} lines={lines} onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])} initialJobId={targetJobId} onClearTargetJob={() => setTargetJobId(null)} customReceipts={customReceipts} />}
             {currentPage === 'reports' && <Reports jobs={jobs} />}
             {currentPage === 'booking' && <BookingList jobs={jobs} onEditJob={handleEditJob} initialBookingId={targetBookingId} onClearTargetBooking={() => setTargetBookingId(null)} customers={customers} lines={lines} onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])} onAddCustomer={(c) => setCustomers([...customers, c])} />}
             {currentPage === 'deposit-line' && <DepositList mode="line" jobs={jobs} customers={customers} lines={lines} onEditJob={handleEditJob} onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])} onAddCustomer={(c) => setCustomers([...customers, c])} />}
@@ -370,7 +396,7 @@ const App: React.FC = () => {
             {currentPage === 'amis-ban' && <AmisExport jobs={jobs} customers={customers} mode="ban" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} customReceipts={customReceipts} onUpdateCustomReceipts={setCustomReceipts} />}
             {currentPage === 'amis-mua' && <AmisExport jobs={jobs} customers={customers} mode="mua" onUpdateJob={handleEditJob} lockedIds={lockedIds} onToggleLock={handleToggleLock} customReceipts={customReceipts} onUpdateCustomReceipts={setCustomReceipts} />}
             {currentPage === 'profit' && <ProfitReport jobs={jobs} salaries={salaries} onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} />}
-            {currentPage === 'salary' && <SalaryPage salaries={salaries} onUpdateSalaries={setSalaries} />}
+            {currentPage === 'salary' && <SalaryPage salaries={salaries} onUpdateSalaries={handleUpdateSalaries} />}
             {currentPage === 'data-lines' && <DataManagement mode="lines" data={lines} onAdd={(line) => setLines([...lines, line])} onEdit={(l) => setLines(prev => prev.map(x => x.id === l.id ? l : x))} onDelete={(id) => setLines(prev => prev.filter(l => l.id !== id))} />}
             {currentPage === 'data-customers' && <DataManagement mode="customers" data={customers} onAdd={(c) => setCustomers([...customers, c])} onEdit={(c) => { setCustomers(prev => prev.map(x => x.id === c.id ? c : x)); setJobs(pj => pj.map(j => j.customerId === c.id ? {...j, customerName: c.name} : j)); }} onDelete={(id) => setCustomers(prev => prev.filter(cust => cust.id !== id))} />}
             {currentPage === 'debt' && <DebtManagement jobs={jobs} customers={customers} onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} />}
@@ -378,9 +404,7 @@ const App: React.FC = () => {
             {currentPage === 'lookup' && <LookupPage jobs={jobs} />}
             {currentPage === 'payment' && <PaymentPage lines={lines} requests={paymentRequests} onUpdateRequests={handleUpdatePaymentRequests} currentUser={currentUser} onSendPending={sendPendingToServer} jobs={jobs} onUpdateJob={handleEditJob} onAddJob={handleAddJob} customers={customers} />}
             {currentPage === 'cvhc' && <CVHCPage jobs={jobs} customers={customers} onUpdateJob={handleEditJob} />}
-            {currentPage === 'system' && <SystemPage jobs={jobs} customers={customers} lines={lines} users={users} currentUser={currentUser} onRestore={(d) => { setJobs(sanitizeData(d.jobs)); setCustomers(d.customers); setLines(d.lines); if (d.users) setUsers(d.users); }} onAddUser={(u) => setUsers(prev => [...prev, u])} onEditUser={(u, old) => setUsers(prev => prev.map(user => user.username === old ? u : user))} onDeleteUser={(name) => setUsers(prev => prev.filter(u => u.username !== name))} pendingRequests={pendingRequests} onApproveRequest={async (rid, idata) => { const mj = (c, i) => { if(!i) return c; const m = new Map(c.map(x => [x.id, x])); i.forEach(x => m.set(x.id, x)); return Array.from(m.values()); }; setJobs(prev => mj(prev, idata.jobs)); setPaymentRequests(prev => mj(prev, idata.paymentRequests)); setCustomers(prev => mj(prev, idata.customers)); setLines(prev => mj(prev, idata.lines)); setCustomReceipts(prev => mj(prev, idata.customReceipts)); if (idata.users) setUsers(prev => { const m = new Map(prev.map(u => [u.username, u])); idata.users.forEach(u => m.set(u.username, u)); 
-            // Fix: Change 'map' to 'm' which refers to the correct Map instance
-            return Array.from(m.values()); }); if (idata.lockedIds) setLockedIds(prev => new Set([...prev, ...idata.lockedIds])); setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} onRejectRequest={async (rid) => { setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} />}
+            {currentPage === 'system' && <SystemPage jobs={jobs} customers={customers} lines={lines} users={users} currentUser={currentUser} onRestore={(d) => { setJobs(sanitizeData(d.jobs)); setCustomers(d.customers); setLines(d.lines); if (d.users) setUsers(d.users); }} onAddUser={(u) => setUsers(prev => [...prev, u])} onEditUser={(u, old) => setUsers(prev => prev.map(user => user.username === old ? u : user))} onDeleteUser={(name) => setUsers(prev => prev.filter(u => u.username !== name))} pendingRequests={pendingRequests} onApproveRequest={async (rid, idata) => { const mj = (c, i) => { if(!i) return c; const m = new Map(c.map(x => [x.id, x])); i.forEach(x => m.set(x.id, x)); return Array.from(m.values()); }; setJobs(prev => mj(prev, idata.jobs)); setPaymentRequests(prev => mj(prev, idata.paymentRequests)); if(idata.salaries) setSalaries(idata.salaries); setCustomers(prev => mj(prev, idata.customers)); setLines(prev => mj(prev, idata.lines)); setCustomReceipts(prev => mj(prev, idata.customReceipts)); if (idata.users) setUsers(prev => { const m = new Map(prev.map(u => [u.username, u])); idata.users.forEach(u => m.set(u.username, u)); return Array.from(m.values()); }); if (idata.lockedIds) setLockedIds(prev => new Set([...prev, ...idata.lockedIds])); setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} onRejectRequest={async (rid) => { setPendingRequests(prev => prev.filter(r => r.id !== rid)); try { await fetch(`https://api.kimberry.id.vn/pending/${encodeURIComponent(rid)}`, { method: 'DELETE' }); } catch {} }} />}
           </div>
         </main>
       </div>
@@ -389,4 +413,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
