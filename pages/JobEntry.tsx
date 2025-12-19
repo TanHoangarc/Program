@@ -1,11 +1,11 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, AlertCircle } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
-import { calculateBookingSummary, getPaginationRange, formatDateVN } from '../utils';
+import { calculateBookingSummary, getPaginationRange, formatDateVN, calculatePaymentStatus } from '../utils';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx';
 
@@ -402,10 +402,22 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paginatedJobs.length > 0 ? (
-              paginatedJobs.map((job) => (
+              paginatedJobs.map((job) => {
+                const paymentStatus = calculatePaymentStatus(job, jobs);
+                
+                return (
                 <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
                   <td className="px-6 py-3 text-gray-600">T{job.month}</td>
-                  <td className="px-6 py-3 font-semibold text-blue-700">{job.jobCode}</td>
+                  <td className="px-6 py-3 font-semibold text-blue-700">
+                    <div className="flex items-center gap-2">
+                        {job.jobCode}
+                        {paymentStatus.hasMismatch && (
+                            <div title="Cảnh báo thanh toán" className="text-orange-500">
+                                <AlertCircle className="w-4 h-4" />
+                            </div>
+                        )}
+                    </div>
+                  </td>
                   <td className="px-6 py-3 text-gray-700">
                     <div>{job.customerName}</div>
                     {job.hbl && <div className="text-[10px] text-orange-600 font-medium bg-orange-50 inline-block px-1 rounded border border-orange-100 mt-0.5">{job.hbl}</div>}
@@ -414,7 +426,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   <td className="px-6 py-3 text-gray-500">{job.line}</td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.sell)}</td>
-                  <td className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(job.profit)}</td>
+                  <td className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      {formatCurrency(job.profit)}
+                  </td>
                   <td className="px-6 py-3 text-center">
                     <div className="flex flex-col gap-1 items-center">
                       {job.cont20 > 0 && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded">{job.cont20} x 20'</span>}
@@ -458,7 +472,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                      )}
                   </td>
                 </tr>
-              ))
+              )})
             ) : (
               <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
             )}
