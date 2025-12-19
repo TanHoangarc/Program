@@ -360,34 +360,6 @@ const App: React.FC = () => {
       }
   };
 
-  const fetchPendingRequests = async () => {
-    if (!currentUser || currentUser.role !== "Admin" || !isServerAvailable) return;
-    try {
-        const res = await fetch("https://api.kimberry.id.vn/pending");
-        if (res.ok) {
-            const data = await res.json();
-            const validData = (Array.isArray(data) ? data : []).filter(item => item && typeof item === 'object' && item.id);
-            
-            const serverIdSet = new Set(validData.map(d => d.id));
-            setLocalDeletedIds(prev => {
-                const next = new Set(prev);
-                let changed = false;
-                prev.forEach(id => {
-                    if (!serverIdSet.has(id)) {
-                        next.delete(id);
-                        changed = true;
-                    }
-                });
-                return changed ? next : prev;
-            });
-
-            setPendingRequests(validData.filter(item => !localDeletedIds.has(item.id)));
-        }
-    } catch (e) {
-        console.warn("Failed to fetch pending requests", e);
-    }
-  };
-
   const handleRejectRequest = async (requestId: string) => {
       setPendingRequests(prev => prev.filter(r => r.id !== requestId));
       setLocalDeletedIds(prev => new Set(prev).add(requestId));
@@ -444,7 +416,50 @@ const App: React.FC = () => {
       setSalaries(newSalaries);
 
       await handleRejectRequest(requestId);
+  };
 
+  const fetchPendingRequests = async () => {
+    if (!currentUser || currentUser.role !== "Admin" || !isServerAvailable) return;
+    try {
+        const res = await fetch("https://api.kimberry.id.vn/pending");
+        if (res.ok) {
+            const data = await res.json();
+            const validData = (Array.isArray(data) ? data : []).filter(item => item && typeof item === 'object' && item.id);
+            
+            const serverIdSet = new Set(validData.map(d => d.id));
+            setLocalDeletedIds(prev => {
+                const next = new Set(prev);
+                let changed = false;
+                prev.forEach(id => {
+                    if (!serverIdSet.has(id)) {
+                        next.delete(id);
+                        changed = true;
+                    }
+                });
+                return changed ? next : prev;
+            });
+
+            // Filter out items already processed/deleted locally
+            const activeRequests = validData.filter(item => !localDeletedIds.has(item.id));
+            
+            const manualReviewRequests: any[] = [];
+
+            // AUTO APPROVE HANDLING
+            for (const req of activeRequests) {
+                const realData = req.data || req.payload || req;
+                if (realData.autoApprove) {
+                    // Automatically approve and merge!
+                    await handleApproveRequest(req.id, realData);
+                } else {
+                    manualReviewRequests.push(req);
+                }
+            }
+
+            setPendingRequests(manualReviewRequests);
+        }
+    } catch (e) {
+        console.warn("Failed to fetch pending requests", e);
+    }
   };
 
   useEffect(() => {
@@ -613,18 +628,21 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
 
+  // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
   useEffect(() => {
-      if (currentPage === 'system' && currentUser?.role === 'Admin') {
-          fetchPendingRequests();
+      if (currentUser?.role === 'Admin' && isServerAvailable) {
+          fetchPendingRequests(); // Initial fetch
+          const interval = setInterval(fetchPendingRequests, 15000); // Poll every 15s
+          return () => clearInterval(interval);
       }
-  }, [currentPage, currentUser]);
+  }, [currentUser, isServerAvailable]); // Removed currentPage dependency
 
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
 
   return (
     <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-slate-50">
-      
+      {/* ... (Rest of JSX remains unchanged) ... */}
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200 z-30 shrink-0 sticky top-0">
          <div className="flex items-center space-x-2">
