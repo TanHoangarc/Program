@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { JobData, BookingSummary, BookingCostDetails, Customer, ShippingLine } from '../types';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
-import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag, Search, AlertCircle, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, Edit, Anchor, DollarSign, Banknote, ShoppingBag, Search, AlertCircle } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
@@ -26,7 +26,6 @@ export const BookingList: React.FC<BookingListProps> = ({
 }) => {
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [filterYear, setFilterYear] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -58,23 +57,12 @@ export const BookingList: React.FC<BookingListProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, filterBooking, filterYear]);
-
-  const uniqueYears = useMemo(() => {
-    const years = new Set<number>();
-    years.add(new Date().getFullYear());
-    jobs.forEach(j => { if (j.year) years.add(j.year); });
-    return Array.from(years).sort((a, b) => b - a);
-  }, [jobs]);
+  }, [filterMonth, filterBooking]);
 
   const bookingData = useMemo(() => {
     const bookingIds = Array.from(new Set(jobs.map(j => j.booking).filter((b): b is string => !!b)));
     let summaries = bookingIds.map((id: string) => calculateBookingSummary(jobs, id)).filter((b): b is BookingSummary => !!b);
     
-    if (filterYear) {
-      summaries = summaries.filter(s => String(s.year) === filterYear);
-    }
-
     if (filterMonth) {
       summaries = summaries.filter(s => s.month === filterMonth);
     }
@@ -85,13 +73,8 @@ export const BookingList: React.FC<BookingListProps> = ({
       summaries = summaries.filter(s => String(s.bookingId || '').toLowerCase().includes(searchLower));
     }
 
-    return summaries.sort((a, b) => {
-        // Sort by Year Descending, then Month Descending
-        const yearDiff = (b.year || new Date().getFullYear()) - (a.year || new Date().getFullYear());
-        if (yearDiff !== 0) return yearDiff;
-        return Number(b.month) - Number(a.month);
-    });
-  }, [jobs, filterMonth, filterBooking, filterYear]);
+    return summaries.sort((a, b) => Number(b.month) - Number(a.month));
+  }, [jobs, filterMonth, filterBooking]);
 
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
   const paginatedData = bookingData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -196,7 +179,7 @@ export const BookingList: React.FC<BookingListProps> = ({
       // Save data back to jobs in the booking
       if (targetBookingForPayment) {
           targetBookingForPayment.jobs.forEach(job => {
-              const updatedJob = { ...job, year: job.year || new Date().getFullYear() };
+              const updatedJob = { ...job };
               
               if (paymentType === 'local') {
                   updatedJob.amisPaymentDocNo = data.docNo;
@@ -287,18 +270,6 @@ export const BookingList: React.FC<BookingListProps> = ({
            </div>
 
            <div className="glass-panel px-4 py-2 flex items-center space-x-2 rounded-lg text-slate-700">
-               <Calendar className="w-4 h-4 text-slate-500" />
-               <select
-                  value={filterYear}
-                  onChange={(e) => setFilterYear(e.target.value)}
-                  className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none cursor-pointer min-w-[100px] text-slate-700"
-               >
-                 <option value="">Tất cả các năm</option>
-                 {uniqueYears.map(y => <option key={y} value={y.toString()}>Năm {y}</option>)}
-               </select>
-           </div>
-
-           <div className="glass-panel px-4 py-2 flex items-center space-x-2 rounded-lg text-slate-700">
                <Filter className="w-4 h-4 text-slate-500" />
                <select
                   value={filterMonth}
@@ -317,7 +288,6 @@ export const BookingList: React.FC<BookingListProps> = ({
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider w-16">Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Line</th>
@@ -343,21 +313,10 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
                 const diff = actualNet - target;
                 
-                // Logic: 
-                // 1. Check if invoice is required (hasInvoice !== false) AND file is missing.
-                // 2. OR check if "No Invoice" mode is enabled (hasInvoice === false).
-                const hasInvoice = booking.costDetails.localCharge.hasInvoice !== false;
-                const hasFile = !!booking.costDetails.localCharge.fileUrl;
-                const isNoInvoice = booking.costDetails.localCharge.hasInvoice === false;
-
-                const showAlert = (hasInvoice && !hasFile) || isNoInvoice;
-                let alertTitle = "";
-                if (isNoInvoice) alertTitle = "Đang ở chế độ 'Chưa HĐ'";
-                else if (!hasFile) alertTitle = "Thiếu file đính kèm hóa đơn";
+                const missingInvoiceInfo = !booking.costDetails.localCharge.invoice || !booking.costDetails.localCharge.date;
 
                 return (
                   <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
-                    <td className="px-6 py-4 font-bold text-slate-500">{booking.year}</td>
                     <td className="px-6 py-4 font-medium text-slate-500" onClick={() => setSelectedBooking(booking)}>Tháng {booking.month}</td>
                     <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => setSelectedBooking(booking)}>{booking.bookingId}</td>
                     <td className="px-6 py-4 text-slate-600">{booking.line}</td>
@@ -374,8 +333,8 @@ export const BookingList: React.FC<BookingListProps> = ({
                        </div>
                     </td>
                     <td className="px-2 py-4 text-center">
-                        {showAlert && (
-                            <div title={alertTitle} className="flex justify-center cursor-help">
+                        {missingInvoiceInfo && (
+                            <div title="Thiếu thông tin hóa đơn đầu vào" className="flex justify-center">
                                 <AlertCircle className="w-4 h-4 text-purple-600" />
                             </div>
                         )}
@@ -404,7 +363,7 @@ export const BookingList: React.FC<BookingListProps> = ({
             {bookingData.length > 0 && (
               <tfoot className="bg-white/30 border-t border-white/40 font-bold text-slate-800 text-xs uppercase">
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
+                  <td colSpan={4} className="px-6 py-4 text-right">Tổng cộng (Tất cả):</td>
                   <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                   <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                   <td className={`px-6 py-4 text-right ${totals.diff !== 0 ? 'text-orange-600' : 'text-slate-400'}`}>{formatCurrency(totals.diff)}</td>
@@ -456,25 +415,25 @@ export const BookingList: React.FC<BookingListProps> = ({
           <PurchaseInvoiceModal 
              isOpen={purchaseModalOpen}
              onClose={() => setPurchaseModalOpen(false)}
-             onSave={handleSavePurchase}
              booking={targetBookingForPurchase}
-             lines={lines}
+             onSave={handleSavePurchase}
           />
       )}
 
-      {/* Job Modal */}
+      {/* Job Modal for Editing/Viewing via BookingDetail */}
       {isJobModalOpen && (
-          <JobModal 
-              isOpen={isJobModalOpen}
-              onClose={() => setIsJobModalOpen(false)}
-              onSave={handleSaveJob}
-              initialData={editingJob}
-              customers={customers}
-              lines={lines}
-              onAddLine={onAddLine}
-              onViewBookingDetails={() => {}}
-              onAddCustomer={onAddCustomer}
-          />
+        <JobModal
+            isOpen={isJobModalOpen}
+            onClose={() => setIsJobModalOpen(false)}
+            onSave={handleSaveJob}
+            initialData={editingJob}
+            customers={customers}
+            lines={lines}
+            onAddLine={onAddLine}
+            onViewBookingDetails={() => {}} // No need to re-open booking from here
+            existingJobs={jobs}
+            onAddCustomer={onAddCustomer} // Added
+        />
       )}
     </div>
   );

@@ -26,7 +26,6 @@ export const MOCK_DATA: JobData[] = [
   {
     id: '1',
     month: '10',
-    year: 2023,
     jobCode: 'JOB-23-001',
     booking: 'BK123456',
     consol: 'Yes',
@@ -79,7 +78,6 @@ export const MOCK_DATA: JobData[] = [
   {
     id: '2',
     month: '10',
-    year: 2023,
     jobCode: 'JOB-23-002',
     booking: 'BK789012',
     consol: 'No',

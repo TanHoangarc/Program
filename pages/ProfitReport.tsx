@@ -1,45 +1,30 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { JobData, SalaryRecord } from '../types';
-import { BadgeDollarSign, Search, ExternalLink, ChevronLeft, ChevronRight, Coins, Percent, Calendar } from 'lucide-react';
+import { JobData } from '../types';
+import { BadgeDollarSign, Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS } from '../constants';
 import { getPaginationRange } from '../utils';
 
 interface ProfitReportProps {
   jobs: JobData[];
-  salaries: SalaryRecord[];
   onViewJob?: (jobId: string) => void;
 }
 
-export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onViewJob }) => {
-  const currentYear = new Date().getFullYear();
+export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, onViewJob }) => {
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState<number>(currentYear);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, filterYear, searchTerm]);
-
-  // Extract unique years
-  const uniqueYears = useMemo(() => {
-      const years = new Set<number>();
-      years.add(currentYear);
-      jobs.forEach(j => { if (j.year) years.add(j.year); });
-      salaries.forEach(s => { if (s.year) years.add(s.year); });
-      return Array.from(years).sort((a, b) => b - a);
-  }, [jobs, salaries, currentYear]);
+  }, [filterMonth, searchTerm]);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
-  // 1. Process Job Data
   const profitData = useMemo(() => {
-    let filtered = jobs.filter(j => j.year === filterYear);
-    
+    let filtered = jobs;
     if (filterMonth) filtered = filtered.filter(j => j.month === filterMonth);
-    
     if (searchTerm) {
         filtered = filtered.filter(j => 
             String(j.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -54,10 +39,12 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
                        (job.feePsc || 0) + 
                        (job.feeOther || 0);
 
+      // Map to view fields
+      // Kimberry (Tổng Phí): Sum of fees
+      // Profit: Job Profit
       return {
         id: job.id,
         month: job.month,
-        year: job.year,
         jobCode: job.jobCode,
         booking: job.booking,
         totalProfit: job.profit,
@@ -65,6 +52,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
       };
     });
 
+    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
     return mapped.sort((a, b) => {
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
@@ -72,65 +60,10 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
       const bookingB = String(b.booking || '').trim().toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterMonth, filterYear, searchTerm]);
+  }, [jobs, filterMonth, searchTerm]);
 
-  // 2. Statistics Calculation
   const totalNetProfit = profitData.reduce((acc, p) => acc + p.totalProfit, 0);
   const totalFees = profitData.reduce((acc, p) => acc + p.fees, 0);
-
-  // 3. Salary Calculation (Filtered by Year AND Month)
-  const totalSalary = useMemo(() => {
-      let filteredSalaries = salaries.filter(s => s.year === filterYear);
-      if (filterMonth) filteredSalaries = filteredSalaries.filter(s => s.month === filterMonth);
-      return filteredSalaries.reduce((sum, s) => sum + s.amount, 0);
-  }, [salaries, filterMonth, filterYear]);
-
-  // 4. VAT Calculation
-  const totalVAT = useMemo(() => {
-      let filteredJobs = jobs.filter(j => j.year === filterYear);
-      if (filterMonth) filteredJobs = filteredJobs.filter(j => j.month === filterMonth);
-      
-      if (searchTerm) {
-          filteredJobs = filteredJobs.filter(j => 
-              String(j.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-              String(j.booking || '').toLowerCase().includes(searchTerm.toLowerCase())
-          );
-      }
-
-      // A. Revenue VAT (Sum of ALL jobs)
-      const totalRevenueLC = filteredJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
-      const revenueVAT = totalRevenueLC - (totalRevenueLC / 1.08);
-
-      // B. Expense VAT (Unique per Booking)
-      const processedBookings = new Set<string>();
-      let totalExpenseVAT = 0;
-
-      filteredJobs.forEach(job => {
-          if (job.booking) {
-              if (!processedBookings.has(job.booking)) {
-                  processedBookings.add(job.booking);
-                  // Add Expense VAT from Booking Details (Once per booking)
-                  const details = job.bookingCostDetails;
-                  if (details) {
-                      const lcVat = details.localCharge.vat || 0;
-                      // Also consider Additional LC VAT if relevant
-                      const addVat = (details.additionalLocalCharges || []).reduce((s, a) => s + (a.vat || 0), 0);
-                      totalExpenseVAT += (lcVat + addVat);
-                  }
-              }
-          } else {
-              // Standalone job (no booking ID) -> Treat as unique expense
-              const details = job.bookingCostDetails;
-              if (details) {
-                  const lcVat = details.localCharge.vat || 0;
-                  const addVat = (details.additionalLocalCharges || []).reduce((s, a) => s + (a.vat || 0), 0);
-                  totalExpenseVAT += (lcVat + addVat);
-              }
-          }
-      });
-
-      return revenueVAT - totalExpenseVAT;
-  }, [jobs, filterMonth, filterYear, searchTerm]);
 
   // Pagination Logic
   const totalPages = Math.ceil(profitData.length / ITEMS_PER_PAGE);
@@ -147,53 +80,33 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
             </div>
             <h1 className="text-3xl font-bold">Báo Cáo Lợi Nhuận</h1>
           </div>
-          <p className="text-slate-500 ml-11">Phân tích lợi nhuận, chi phí và thuế năm {filterYear}</p>
+          <p className="text-slate-500 ml-11">Phân tích lợi nhuận và các khoản phí</p>
         </div>
         
-        <div className="flex space-x-3">
-           <div className="flex items-center space-x-2 glass-panel px-3 py-1.5 rounded-lg border border-slate-200">
-               <Calendar className="w-4 h-4 text-slate-400" />
-               <select value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="bg-transparent border-none text-sm text-slate-700 font-bold focus:ring-0 outline-none cursor-pointer">
-                 {uniqueYears.map(y => <option key={y} value={y}>Năm {y}</option>)}
-               </select>
-           </div>
-
-           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border border-slate-200 rounded-lg text-sm min-w-[130px] outline-none focus:ring-2 focus:ring-green-500">
+        <div className="flex space-x-4">
+           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded text-sm min-w-[150px]">
              <option value="">Tất cả tháng</option>
              {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
            </select>
-           
            <div className="relative">
               <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
               <input 
                 type="text" placeholder="Tìm kiếm..." 
                 value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                className="pl-8 p-2 border border-slate-200 rounded-lg text-sm w-64 outline-none focus:ring-2 focus:ring-green-500"
+                className="pl-8 p-2 border rounded text-sm w-64"
               />
            </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-         <div className="bg-green-50 border border-green-200 p-6 rounded-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10"><BadgeDollarSign className="w-12 h-12 text-green-700" /></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+         <div className="bg-green-50 border border-green-200 p-6 rounded-xl">
             <h3 className="text-green-800 font-bold uppercase text-xs mb-2">Tổng Lợi Nhuận Ròng</h3>
-            <div className="text-2xl lg:text-3xl font-bold text-green-700">{formatCurrency(totalNetProfit)}</div>
+            <div className="text-3xl font-bold text-green-700">{formatCurrency(totalNetProfit)}</div>
          </div>
-         <div className="bg-purple-50 border border-purple-200 p-6 rounded-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10"><BadgeDollarSign className="w-12 h-12 text-purple-700" /></div>
+         <div className="bg-purple-50 border border-purple-200 p-6 rounded-xl">
             <h3 className="text-purple-800 font-bold uppercase text-xs mb-2">Tổng Các Khoản Phí</h3>
-            <div className="text-2xl lg:text-3xl font-bold text-purple-700">{formatCurrency(totalFees)}</div>
-         </div>
-         <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10"><Coins className="w-12 h-12 text-yellow-700" /></div>
-            <h3 className="text-yellow-800 font-bold uppercase text-xs mb-2">Tổng Lương</h3>
-            <div className="text-2xl lg:text-3xl font-bold text-yellow-700">{formatCurrency(totalSalary)}</div>
-         </div>
-         <div className="bg-blue-50 border border-blue-200 p-6 rounded-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10"><Percent className="w-12 h-12 text-blue-700" /></div>
-            <h3 className="text-blue-800 font-bold uppercase text-xs mb-2">Tổng VAT (Thu - Chi)</h3>
-            <div className="text-2xl lg:text-3xl font-bold text-blue-700">{formatCurrency(totalVAT)}</div>
+            <div className="text-3xl font-bold text-purple-700">{formatCurrency(totalFees)}</div>
          </div>
       </div>
 
@@ -202,8 +115,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
               <tr>
-                <th className="px-6 py-4 w-16">Năm</th>
-                <th className="px-6 py-4 w-20">Tháng</th>
+                <th className="px-6 py-4">Tháng</th>
                 <th className="px-6 py-4">Job Code</th>
                 <th className="px-6 py-4">Booking</th>
                 <th className="px-6 py-4 text-right">Tổng Phí (Fees)</th>
@@ -215,7 +127,6 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
              {paginatedData.length > 0 ? (
                 paginatedData.map(item => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                     <td className="px-6 py-4 font-bold text-slate-500">{item.year}</td>
                      <td className="px-6 py-4 text-gray-500">T{item.month}</td>
                      <td 
                         className="px-6 py-4 font-bold text-blue-700 cursor-pointer hover:underline"
@@ -237,7 +148,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries, onVi
                   </tr>
                 ))
              ) : (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Không tìm thấy dữ liệu</td></tr>
              )}
             </tbody>
           </table>

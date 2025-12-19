@@ -21,18 +21,6 @@ export interface ExtensionData {
 }
 
 // ============================================================
-// SALARY (LƯƠNG)
-// ============================================================
-
-export interface SalaryRecord {
-  id: string;
-  month: string; // "1", "2"... "12"
-  year: number;
-  amount: number;
-  note?: string;
-}
-
-// ============================================================
 // CUSTOMER
 // ============================================================
 
@@ -136,7 +124,6 @@ export interface JobData {
 
   // General
   month: string;
-  year: number; // NEW FIELD
   jobCode: string;
   booking: string;
   consol: string;
@@ -195,12 +182,6 @@ export interface JobData {
   amisLcDesc?: string;
   amisLcAmount?: number; // Actual collected amount for the main slip (Partial Payment 1)
 
-  // NEW: AMIS Fields for Local Charge Refund (Hoàn tiền Local Charge dư cho khách)
-  amisLcRefundDocNo?: string;
-  amisLcRefundDesc?: string;
-  amisLcRefundDate?: string;
-  amisLcRefundAmount?: number;
-
   // Payment In (Deposit - Thu)
   maKhCuocId: string;
   thuCuoc: number;
@@ -238,7 +219,6 @@ export interface JobData {
 export interface BookingSummary {
   bookingId: string;
   month: string;
-  year: number; // NEW FIELD
   line: string;
 
   jobCount: number;
@@ -307,7 +287,6 @@ export const INITIAL_JOB: JobData = {
   id: '',
 
   month: '1',
-  year: new Date().getFullYear(), // Default current year
   jobCode: '',
   booking: '',
   consol: '',

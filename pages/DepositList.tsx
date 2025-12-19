@@ -107,7 +107,6 @@ export const DepositList: React.FC<DepositListProps> = ({
 
             const item = {
                 month: job.month,
-                year: job.year || new Date().getFullYear(),
                 booking: job.booking,
                 line: job.line,
                 amount: totalAmt,
@@ -132,12 +131,7 @@ export const DepositList: React.FC<DepositListProps> = ({
       return matchMonth && matchLine && matchStatus;
     });
 
-    // Sort by Year Desc, Month Desc
-    return result.sort((a, b) => {
-        const yearDiff = (b.year) - (a.year);
-        if (yearDiff !== 0) return yearDiff;
-        return Number(b.month) - Number(a.month);
-    });
+    return result.sort((a, b) => Number(b.month) - Number(a.month));
   }, [jobs, mode, filterMonth, filterEntity, filterStatus]);
 
   // --- LOGIC FOR CUSTOMER DEPOSIT (KHÁCH HÀNG) ---
@@ -162,7 +156,6 @@ export const DepositList: React.FC<DepositListProps> = ({
         return {
           id: job.id,
           month: job.month,
-          year: job.year || new Date().getFullYear(),
           jobCode: job.jobCode,
           customerCode: customer ? customer.code : 'N/A',
           customerName: customer ? customer.name : 'Unknown',
@@ -174,11 +167,7 @@ export const DepositList: React.FC<DepositListProps> = ({
           cvhcFileName: job.cvhcFileName
         };
       })
-      .sort((a, b) => {
-          const yearDiff = (b.year) - (a.year);
-          if (yearDiff !== 0) return yearDiff;
-          return Number(b.month) - Number(a.month);
-      });
+      .sort((a, b) => Number(b.month) - Number(a.month));
   }, [jobs, customers, mode, filterMonth, filterEntity, filterStatus]);
 
   const currentList = mode === 'line' ? lineDeposits : customerDeposits;
@@ -339,7 +328,6 @@ export const DepositList: React.FC<DepositListProps> = ({
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider w-16">Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
                 {mode === 'line' ? (
                   <>
@@ -365,7 +353,6 @@ export const DepositList: React.FC<DepositListProps> = ({
                 paginatedList.length > 0 ? (
                   paginatedList.map((item, idx) => (
                     <tr key={idx} className="hover:bg-white/40 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
-                      <td className="px-6 py-4 font-bold text-slate-500">{item.year}</td>
                       <td className="px-6 py-4 font-medium text-slate-500">T{item.month}</td>
                       <td className="px-6 py-4 text-blue-700 font-bold">{item.booking}</td>
                       <td className="px-6 py-4 text-slate-600">{item.line}</td>
@@ -386,13 +373,12 @@ export const DepositList: React.FC<DepositListProps> = ({
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
                 )
               ) : (
                 paginatedList.length > 0 ? (
                   paginatedList.map((item) => (
                     <tr key={item.id} className="hover:bg-white/40 transition-colors cursor-pointer" onClick={() => handleRowClick(item)}>
-                      <td className="px-6 py-4 font-bold text-slate-500">{item.year}</td>
                       <td className="px-6 py-4 font-medium text-slate-500">T{item.month}</td>
                       <td className="px-6 py-4 text-blue-700 font-bold">{item.jobCode}</td>
                       <td className="px-6 py-4 text-slate-600 font-mono text-xs">{item.customerCode}</td>
@@ -430,14 +416,14 @@ export const DepositList: React.FC<DepositListProps> = ({
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={10} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
                 )
               )}
             </tbody>
             {currentList.length > 0 && (
                 <tfoot className="bg-white/30 font-bold text-slate-800 uppercase text-xs border-t border-white/40">
                 <tr>
-                    <td colSpan={mode === 'line' ? 4 : 5} className="px-6 py-4 text-right">Tổng Cộng:</td>
+                    <td colSpan={mode === 'line' ? 3 : 4} className="px-6 py-4 text-right">Tổng Cộng:</td>
                     <td className="px-6 py-4 text-right text-base text-red-600">{formatCurrency(totalAmount)}</td>
                     <td colSpan={4}></td>
                 </tr>

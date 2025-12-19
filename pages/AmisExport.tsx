@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
-import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, RotateCcw } from 'lucide-react';
+import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx'; 
 import ExcelJS from 'exceljs'; 
@@ -178,50 +178,27 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       return (date.getMonth() + 1).toString() === filterMonth;
   };
 
-  // --- HELPER FOR GROUPING ---
-  const addToGroupMap = (map: Map<string, any>, item: any) => {
-      const key = `${item.type}_${item.docNo}`;
-      if (map.has(key)) {
-          const existing = map.get(key);
-          existing.amount += item.amount;
-          // Keep the description that is longer as it likely contains merged info
-          if (item.desc && item.desc.length > existing.desc.length) {
-              existing.desc = item.desc;
-          }
-          // Preserve main Job ID link if the existing one was a "child" or "add" row
-          if (!existing.jobId && item.jobId) existing.jobId = item.jobId;
-          if (existing.rowId.includes('add') && !item.rowId.includes('add')) {
-              existing.jobId = item.jobId;
-              existing.rowId = item.rowId;
-          }
-      } else {
-          map.set(key, { ...item });
-      }
-  };
-
   const exportData = useMemo(() => {
     // --- MODE THU ---
     if (mode === 'thu') {
-      const groupMap = new Map<string, any>();
-
+      const rows: any[] = [];
       // 1. Thu Cược
       jobs.forEach(j => {
          // Main Receipt
-         if (j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
-             const amt = j.amisDepositAmount !== undefined ? j.amisDepositAmount : j.thuCuoc;
-             addToGroupMap(groupMap, {
+         if (j.thuCuoc > 0 && j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
+             rows.push({
                  jobId: j.id, type: 'deposit_thu', rowId: `dep-${j.id}`,
                  date: j.ngayThuCuoc, docNo: j.amisDepositDocNo, 
                  objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
                  desc: j.amisDepositDesc || `Thu tiền khách hàng CƯỢC BL ${j.jobCode}`, 
-                 amount: amt, 
+                 amount: j.amisDepositAmount || j.thuCuoc, // Use override amount if set
                  tkNo: '1121', tkCo: '1388', 
              });
          }
          // Additional Receipts (Multi-payment)
          (j.additionalReceipts || []).forEach(r => {
              if (r.type === 'deposit' && checkMonth(r.date)) {
-                 addToGroupMap(groupMap, {
+                 rows.push({
                      jobId: j.id, type: 'deposit_thu', rowId: `dep-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(j.maKhCuocId), objName: getCustomerName(j.maKhCuocId),
@@ -234,21 +211,20 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // 2. Thu Local Charge
       jobs.forEach(j => {
           // Main Receipt
-          if (j.amisLcDocNo && checkMonth(j.localChargeDate)) {
-               const amt = j.amisLcAmount !== undefined ? j.amisLcAmount : j.localChargeTotal;
-               addToGroupMap(groupMap, {
+          if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
+               rows.push({
                    jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
                    date: j.localChargeDate, docNo: j.amisLcDocNo, 
                    objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
                    desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
-                   amount: amt,
+                   amount: j.amisLcAmount || j.localChargeTotal, // Use override amount if set
                    tkNo: '1121', tkCo: '13111',
                });
           }
           // Additional Receipts (Multi-payment)
           (j.additionalReceipts || []).forEach(r => {
              if (r.type === 'local' && checkMonth(r.date)) {
-                 addToGroupMap(groupMap, {
+                 rows.push({
                      jobId: j.id, type: 'lc_thu', rowId: `lc-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
@@ -261,14 +237,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // 3. Thu Extension
       jobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
-              if (ext.amisDocNo && checkMonth(ext.invoiceDate)) {
-                  const amt = ext.amisAmount !== undefined ? ext.amisAmount : ext.total;
-                  addToGroupMap(groupMap, {
+              if (ext.total > 0 && ext.amisDocNo && checkMonth(ext.invoiceDate)) {
+                  rows.push({
                       jobId: j.id, type: 'ext_thu', extensionId: ext.id, rowId: `ext-${ext.id}`,
                       date: ext.invoiceDate, docNo: ext.amisDocNo, 
                       objCode: getCustomerCode(ext.customerId || j.customerId), objName: getCustomerName(ext.customerId || j.customerId),
                       desc: ext.amisDesc || `Thu tiền khách hàng theo hoá đơn GH ${ext.invoice}`, 
-                      amount: amt, 
+                      amount: ext.amisAmount || ext.total, 
                       tkNo: '1121', tkCo: '13111',
                   });
               }
@@ -278,7 +253,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
              if (r.type === 'extension' && checkMonth(r.date)) {
                  const extTarget = (j.extensions || []).find(e => e.id === r.extensionId);
                  const custId = extTarget ? (extTarget.customerId || j.customerId) : j.customerId;
-                 addToGroupMap(groupMap, {
+                 rows.push({
                      jobId: j.id, type: 'ext_thu', extensionId: r.extensionId, rowId: `ext-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
                      objCode: getCustomerCode(custId), objName: getCustomerName(custId),
@@ -291,21 +266,26 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // 4. Thu Khác (External + Multi-Payment of type 'other')
       customReceipts.forEach(r => {
           if (checkMonth(r.date)) {
+              // Logic to determine TK Co for External receipts
+              // Check description for keyword 'CƯỢC' or 'DEPOSIT' to assign 1388
               const descUpper = (r.desc || '').toUpperCase();
               const isDeposit = descUpper.includes('CƯỢC') || descUpper.includes('DEPOSIT') || r.type === 'deposit';
               const tkCo = isDeposit ? '1388' : '13111';
               
-              addToGroupMap(groupMap, { ...r, jobId: r.id, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
+              // Main row - ADDED jobId: r.id
+              rows.push({ ...r, jobId: r.id, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
 
+              // Additional rows for custom receipts
               if (r.additionalReceipts && Array.isArray(r.additionalReceipts)) {
                   r.additionalReceipts.forEach((ar: any) => {
                       if (checkMonth(ar.date)) {
+                          // Inherit deposit logic based on desc or type
                           const arDescUpper = (ar.desc || '').toUpperCase();
                           const arIsDeposit = ar.type === 'deposit' || arDescUpper.includes('CƯỢC');
                           const arTkCo = arIsDeposit ? '1388' : '13111';
                           
-                          addToGroupMap(groupMap, {
-                              jobId: r.id, 
+                          rows.push({
+                              jobId: r.id, // Link back to the custom receipt
                               type: 'external',
                               rowId: `custom-add-${ar.id}`,
                               date: ar.date,
@@ -323,7 +303,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           }
       });
 
-      const rows = Array.from(groupMap.values());
+      // Sort Ascending by Document Number (Oldest/Smallest first)
       return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     } 
     
@@ -389,6 +369,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             if (j.amisExtensionPaymentDocNo && !processedExtOut.has(j.amisExtensionPaymentDocNo) && checkMonth(j.amisExtensionPaymentDate)) {
                 processedExtOut.add(j.amisExtensionPaymentDocNo);
                 let amount = 0;
+                
+                // Prioritize the explicit payment amount if saved
                 if (j.amisExtensionPaymentAmount && j.amisExtensionPaymentAmount > 0) {
                     amount = j.amisExtensionPaymentAmount;
                 } else {
@@ -413,38 +395,34 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         jobs.forEach(j => {
             if (j.amisDepositRefundDocNo && !processedRefunds.has(j.amisDepositRefundDocNo) && checkMonth(j.amisDepositRefundDate)) {
                 processedRefunds.add(j.amisDepositRefundDocNo);
+                
+                // Group refund amount if multiple jobs share the same refund doc
                 const groupJobs = jobs.filter(subJ => subJ.amisDepositRefundDocNo === j.amisDepositRefundDocNo);
                 const totalRefund = groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
 
                 rows.push({
-                     jobId: j.id, type: 'payment_refund', rowId: `pay-ref-${j.id}`, 
-                     date: j.amisDepositRefundDate || todayStr, docNo: j.amisDepositRefundDocNo,
-                     objCode: getCustomerCode(j.maKhCuocId || j.customerId), objName: getCustomerName(j.maKhCuocId || j.customerId), 
-                     desc: j.amisDepositRefundDesc, amount: totalRefund,
-                     reason: 'Chi hoàn cược', paymentContent: j.amisDepositRefundDesc, paymentAccount: '345673979999', paymentBank: 'Ngân hàng TMCP Quân đội',
-                     currency: 'VND', description: j.amisDepositRefundDesc, tkNo: '1388', tkCo: '1121',
+                     jobId: j.id, 
+                     type: 'payment_refund', 
+                     rowId: `pay-ref-${j.id}`, 
+                     date: j.amisDepositRefundDate || todayStr, 
+                     docNo: j.amisDepositRefundDocNo,
+                     objCode: getCustomerCode(j.maKhCuocId || j.customerId), 
+                     objName: getCustomerName(j.maKhCuocId || j.customerId), 
+                     desc: j.amisDepositRefundDesc, 
+                     amount: totalRefund,
+                     reason: 'Chi hoàn cược', 
+                     paymentContent: j.amisDepositRefundDesc, 
+                     paymentAccount: '345673979999', 
+                     paymentBank: 'Ngân hàng TMCP Quân đội',
+                     currency: 'VND', 
+                     description: j.amisDepositRefundDesc, 
+                     tkNo: '1388', 
+                     tkCo: '1121',
                 });
             }
         });
 
-        // 5. Chi Hoàn Local Charge (Local Charge Refund to Customer)
-        const processedLcRefunds = new Set<string>();
-        jobs.forEach(j => {
-            if (j.amisLcRefundDocNo && !processedLcRefunds.has(j.amisLcRefundDocNo) && checkMonth(j.amisLcRefundDate)) {
-                processedLcRefunds.add(j.amisLcRefundDocNo);
-                const totalRefund = j.amisLcRefundAmount || 0;
-
-                rows.push({
-                     jobId: j.id, type: 'lc_refund', rowId: `pay-lc-ref-${j.id}`, 
-                     date: j.amisLcRefundDate || todayStr, docNo: j.amisLcRefundDocNo,
-                     objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId), 
-                     desc: j.amisLcRefundDesc, amount: totalRefund,
-                     reason: 'Chi khác', paymentContent: j.amisLcRefundDesc, paymentAccount: '345673979999', paymentBank: 'Ngân hàng TMCP Quân đội',
-                     currency: 'VND', description: j.amisLcRefundDesc, tkNo: '13111', tkCo: '1121',
-                });
-            }
-        });
-
+        // Sort Ascending by Document Number
         return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     }
     else if (mode === 'ban') {
@@ -452,76 +430,221 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         let validJobs = jobs.filter(j => {
             const hasSell = j.sell > 0;
             const name = (j.customerName || '').toLowerCase();
-            return hasSell && (name.includes('long hoàng') || name.includes('lhk') || name.includes('long hoang') || name.includes('longhoang'));
+            const isLhk = name.includes('long hoàng') || name.includes('lhk') || name.includes('long hoang') || name.includes('longhoang');
+            return hasSell && isLhk;
         });
+
         if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
+
         validJobs.sort((a, b) => {
             const monthDiff = Number(a.month) - Number(b.month); 
             if (monthDiff !== 0) return monthDiff;
-            return String(a.booking || '').trim().toLowerCase().localeCompare(String(b.booking || '').trim().toLowerCase());
+            const bookingA = String(a.booking || '').trim().toLowerCase();
+            const bookingB = String(b.booking || '').trim().toLowerCase();
+            return bookingA.localeCompare(bookingB);
         });
+
         const bookingToDocNoMap = new Map<string, string>();
         let currentDocNum = 1;
         const currentYear = new Date().getFullYear();
+
         validJobs.forEach(j => {
             const bookingKey = String(j.booking || '').trim();
-            let docNo = bookingKey && bookingToDocNoMap.has(bookingKey) ? bookingToDocNoMap.get(bookingKey)! : `BH${String(currentDocNum++).padStart(5, '0')}`;
-            if (bookingKey && !bookingToDocNoMap.has(bookingKey)) bookingToDocNoMap.set(bookingKey, docNo);
+            let docNo = '';
+
+            if (bookingKey && bookingToDocNoMap.has(bookingKey)) {
+                docNo = bookingToDocNoMap.get(bookingKey)!;
+            } else {
+                docNo = `BH${String(currentDocNum).padStart(5, '0')}`;
+                if (bookingKey) {
+                    bookingToDocNoMap.set(bookingKey, docNo);
+                }
+                currentDocNum++;
+            }
+
             const yy = currentYear.toString().slice(-2);
             const mm = (j.month || '01').padStart(2, '0');
             const projectCode = `K${yy}${mm}${j.jobCode}`;
+            
             const monthInt = parseInt(j.month || '1', 10);
-            const dateStr = `${currentYear}-${String(monthInt).padStart(2, '0')}-${String(Math.min(30, new Date(currentYear, monthInt, 0).getDate())).padStart(2, '0')}`;
-            rows.push({ jobId: j.id, type: 'ban', rowId: `ban-${j.id}`, date: dateStr, docNo: docNo, objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId), desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''}`, amount: j.sell, projectCode: projectCode });
+            const daysInMonth = new Date(currentYear, monthInt, 0).getDate(); 
+            const targetDay = Math.min(30, daysInMonth);
+            const dateStr = `${currentYear}-${String(monthInt).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+
+            rows.push({
+                jobId: j.id, type: 'ban', rowId: `ban-${j.id}`,
+                date: dateStr, docNo: docNo, objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
+                desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''}`,
+                amount: j.sell, projectCode: projectCode
+            });
         });
+
+        // Sort Ascending by Document Number
         return rows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
     else if (mode === 'mua') {
         const rawItems: any[] = [];
         const processedBookings = new Set<string>();
+        
         jobs.forEach(j => {
             if (filterMonth && j.month !== filterMonth) return;
+
             if (j.booking) {
                 if (processedBookings.has(j.booking)) return;
                 processedBookings.add(j.booking);
+
                 const details = j.bookingCostDetails;
                 if (!details) return;
+
                 const lineObj = lines.find(l => l.code === j.line);
                 const supplierName = lineObj ? lineObj.name : j.line;
                 const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
+
                 const lc = details.localCharge;
-                let lcTotal = lc.hasInvoice === false ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
-                let lcNet = lc.hasInvoice === false ? Math.round(lcTotal / 1.05) : (lc.net || 0);
-                if (lcTotal > 0) rawItems.push({ jobId: j.id, date: lc.date || new Date().toISOString().split('T')[0], invoice: lc.invoice || '', desc: `Mua hàng của ${supplierName} BILL ${j.booking}`, supplierCode: j.line, supplierName, itemName: defaultItemName, netAmount: lcNet, vatAmount: lcTotal - lcNet, amount: lcTotal, costType: 'Local charge', sortDate: new Date(lc.date || '1970-01-01').getTime() });
-                if (details.additionalLocalCharges) details.additionalLocalCharges.forEach(add => {
-                    let aTotal = add.hasInvoice === false ? (add.total || 0) : ((add.net || 0) + (add.vat || 0));
-                    let aNet = add.hasInvoice === false ? Math.round(aTotal / 1.05) : (add.net || 0);
-                    if (aTotal > 0) rawItems.push({ jobId: j.id, date: add.date || new Date().toISOString().split('T')[0], invoice: add.invoice || '', desc: `Chi phí khác của ${supplierName} BILL ${j.booking}`, supplierCode: j.line, supplierName, itemName: defaultItemName, netAmount: aNet, vatAmount: aTotal - aNet, amount: aTotal, costType: 'Local charge', sortDate: new Date(add.date || '1970-01-01').getTime() });
-                });
-                if (details.extensionCosts) details.extensionCosts.forEach(ext => {
-                    if (ext.total > 0) {
-                        const eNet = ext.net || Math.round(ext.total / 1.05);
-                        rawItems.push({ jobId: j.id, date: ext.date || new Date().toISOString().split('T')[0], invoice: ext.invoice || '', desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`, supplierCode: j.line, supplierName, itemName: 'Phí phát sinh', netAmount: eNet, vatAmount: ext.total - eNet, amount: ext.total, costType: 'Demurrage', sortDate: new Date(ext.date || '1970-01-01').getTime() });
-                    }
-                });
-            } else if (j.cost > 0) {
-                const lineObj = lines.find(l => l.code === j.line);
-                const supplierName = lineObj ? lineObj.name : j.line;
-                const net = Math.round(j.cost / 1.05);
-                rawItems.push({ jobId: j.id, date: new Date().toISOString().split('T')[0], invoice: '', desc: `Mua hàng của ${supplierName} Job ${j.jobCode}`, supplierCode: j.line, supplierName, itemName: lineObj?.itemName || 'Phí Local Charge', netAmount: net, vatAmount: j.cost - net, amount: j.cost, costType: 'Local charge', sortDate: Date.now() });
+                let lcNet = 0, lcVat = 0, lcTotal = 0;
+
+                if (lc.hasInvoice === false) {
+                    lcTotal = lc.total || 0;
+                    lcNet = Math.round(lcTotal / 1.05);
+                    lcVat = lcTotal - lcNet;
+                } else {
+                    lcNet = lc.net || 0;
+                    lcVat = lc.vat || 0;
+                    lcTotal = lcNet + lcVat;
+                }
+
+                if (lcTotal > 0) {
+                    rawItems.push({
+                        jobId: j.id,
+                        date: lc.date || new Date().toISOString().split('T')[0],
+                        invoice: lc.invoice || '',
+                        desc: `Mua hàng của ${supplierName} BILL ${j.booking}`,
+                        supplierCode: j.line,
+                        supplierName: supplierName,
+                        itemName: defaultItemName,
+                        netAmount: lcNet,
+                        vatAmount: lcVat,
+                        amount: lcTotal,
+                        costType: 'Local charge',
+                        sortDate: new Date(lc.date || '1970-01-01').getTime()
+                    });
+                }
+
+                if (details.additionalLocalCharges) {
+                    details.additionalLocalCharges.forEach(add => {
+                        let aNet = 0, aVat = 0, aTotal = 0;
+                        if (add.hasInvoice === false) {
+                            aTotal = add.total || 0;
+                            aNet = Math.round(aTotal / 1.05);
+                            aVat = aTotal - aNet;
+                        } else {
+                            aNet = add.net || 0;
+                            aVat = add.vat || 0;
+                            aTotal = aNet + aVat;
+                        }
+
+                        if (aTotal > 0) {
+                            rawItems.push({
+                                jobId: j.id,
+                                date: add.date || new Date().toISOString().split('T')[0],
+                                invoice: add.invoice || '',
+                                desc: `Chi phí khác của ${supplierName} BILL ${j.booking}`,
+                                supplierCode: j.line,
+                                supplierName: supplierName,
+                                itemName: defaultItemName,
+                                netAmount: aNet,
+                                vatAmount: aVat,
+                                amount: aTotal,
+                                costType: 'Local charge',
+                                sortDate: new Date(add.date || '1970-01-01').getTime()
+                            });
+                        }
+                    });
+                }
+
+                if (details.extensionCosts) {
+                    details.extensionCosts.forEach(ext => {
+                        if (ext.total > 0) {
+                            const eNet = ext.net || Math.round(ext.total / 1.05);
+                            const eVat = ext.vat || (ext.total - eNet);
+                            rawItems.push({
+                                jobId: j.id,
+                                date: ext.date || new Date().toISOString().split('T')[0],
+                                invoice: ext.invoice || '',
+                                desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`,
+                                supplierCode: j.line,
+                                supplierName: supplierName,
+                                itemName: 'Phí phát sinh',
+                                netAmount: eNet,
+                                vatAmount: eVat,
+                                amount: ext.total,
+                                costType: 'Demurrage',
+                                sortDate: new Date(ext.date || '1970-01-01').getTime()
+                            });
+                        }
+                    });
+                }
+
+            } else {
+                if (j.cost > 0) {
+                    const lineObj = lines.find(l => l.code === j.line);
+                    const supplierName = lineObj ? lineObj.name : j.line;
+                    const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
+                    
+                    const total = j.cost;
+                    const net = Math.round(total / 1.05);
+                    const vat = total - net;
+
+                    rawItems.push({
+                        jobId: j.id,
+                        date: new Date().toISOString().split('T')[0],
+                        invoice: '',
+                        desc: `Mua hàng của ${supplierName} Job ${j.jobCode}`,
+                        supplierCode: j.line,
+                        supplierName: supplierName,
+                        itemName: defaultItemName,
+                        netAmount: net,
+                        vatAmount: vat,
+                        amount: total,
+                        costType: 'Local charge',
+                        sortDate: Date.now() 
+                    });
+                }
             }
         });
+
         rawItems.sort((a, b) => a.sortDate - b.sortDate);
+
         const invoiceToDocMap = new Map<string, string>();
         let currentDocNum = 1;
+        
         const finalRows = rawItems.map(item => {
             const groupKey = item.invoice ? item.invoice.trim().toUpperCase() : `NO_INV_${item.jobId}_${Math.random()}`;
-            let docNo = item.invoice && invoiceToDocMap.has(groupKey) ? invoiceToDocMap.get(groupKey)! : `MH${String(currentDocNum++).padStart(5, '0')}`;
-            if (item.invoice && !invoiceToDocMap.has(groupKey)) invoiceToDocMap.set(groupKey, docNo);
-            return { ...item, type: 'mua', rowId: `mua-${item.jobId}-${docNo}-${Math.random()}`, docNo, invoiceNo: item.invoice, objCode: item.supplierCode, objName: item.supplierName };
+            
+            let docNo = '';
+            if (item.invoice && invoiceToDocMap.has(groupKey)) {
+                docNo = invoiceToDocMap.get(groupKey)!;
+            } else {
+                docNo = `MH${String(currentDocNum).padStart(5, '0')}`;
+                if (item.invoice) invoiceToDocMap.set(groupKey, docNo);
+                currentDocNum++;
+            }
+
+            return {
+                ...item,
+                type: 'mua',
+                rowId: `mua-${item.jobId}-${docNo}-${Math.random()}`,
+                docNo,
+                invoiceNo: item.invoice,
+                objCode: item.supplierCode,
+                objName: item.supplierName
+            };
         });
+
+        // Sort Ascending by Document Number
         return finalRows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
+
     return [];
   }, [jobs, mode, filterMonth, customers, customReceipts, lines]); 
 
@@ -529,25 +652,47 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
+
+      // MODE THU
       if (mode === 'thu') {
           if (row.type === 'external') {
+               // Load FULL Receipt object using row.jobId (which is the Receipt ID)
+               // Fallback to row.id if jobId missing (e.g. legacy data)
                const receiptId = row.jobId || row.id;
                const fullReceipt = customReceipts.find(r => r.id === receiptId);
-               setQuickReceiveJob({ ...INITIAL_JOB, id: fullReceipt ? fullReceipt.id : receiptId, jobCode: 'THU-KHAC', localChargeDate: fullReceipt ? fullReceipt.date : row.date, amisLcDocNo: fullReceipt ? fullReceipt.docNo : row.docNo, amisLcDesc: fullReceipt ? fullReceipt.desc : row.desc, localChargeTotal: fullReceipt ? fullReceipt.amount : row.amount, localChargeInvoice: fullReceipt ? fullReceipt.invoice : (row.invoice || ''), customerId: fullReceipt ? fullReceipt.objCode : row.objCode, customerName: fullReceipt ? fullReceipt.objName : row.objName, additionalReceipts: fullReceipt?.additionalReceipts || [] });
+               
+               const dummyJob = { 
+                   ...INITIAL_JOB, 
+                   id: fullReceipt ? fullReceipt.id : receiptId, 
+                   jobCode: 'THU-KHAC', 
+                   localChargeDate: fullReceipt ? fullReceipt.date : row.date, 
+                   amisLcDocNo: fullReceipt ? fullReceipt.docNo : row.docNo, 
+                   amisLcDesc: fullReceipt ? fullReceipt.desc : row.desc,
+                   localChargeTotal: fullReceipt ? fullReceipt.amount : row.amount,
+                   localChargeInvoice: fullReceipt ? fullReceipt.invoice : (row.invoice || ''), // Ensure invoice is loaded
+                   customerId: fullReceipt ? fullReceipt.objCode : row.objCode,
+                   customerName: fullReceipt ? fullReceipt.objName : row.objName,
+                   additionalReceipts: fullReceipt?.additionalReceipts || [] // Ensure additional receipts are passed
+               };
+               setQuickReceiveJob(dummyJob);
                setQuickReceiveMode('other');
                setIsQuickReceiveOpen(true);
           } else if (job) {
               setQuickReceiveJob(job);
               if (row.type === 'deposit_thu') setQuickReceiveMode('deposit');
-              else if (row.type === 'ext_thu') { setQuickReceiveMode('extension'); setTargetExtensionId(row.extensionId); }
+              else if (row.type === 'ext_thu') {
+                  setQuickReceiveMode('extension');
+                  setTargetExtensionId(row.extensionId);
+              }
               else setQuickReceiveMode('local');
               setIsQuickReceiveOpen(true);
           }
       } 
+      // ... (Rest of handleEdit unchanged) ...
       else if (mode === 'chi' && job) {
-          if (row.type === 'payment_refund' || row.type === 'lc_refund') {
+          if (row.type === 'payment_refund') {
               setQuickReceiveJob(job);
-              setQuickReceiveMode(row.type === 'payment_refund' ? 'deposit_refund' : 'local_refund');
+              setQuickReceiveMode('deposit_refund');
               setIsQuickReceiveOpen(true);
           } else {
               setSelectedJobForModal(job);
@@ -557,8 +702,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setIsPaymentModalOpen(true);
           }
       }
-      else if (mode === 'ban' && job) { setSalesJob(job); setSalesInitialData({ docNo: row.docNo, date: row.date, docDate: row.date, amount: row.amount, description: row.desc, projectCode: row.projectCode }); setIsSalesModalOpen(true); }
-      else if (mode === 'mua' && job) { setEditingJob(job); setIsJobModalOpen(true); }
+      else if (mode === 'ban' && job) {
+          setSalesJob(job);
+          setSalesInitialData({
+              docNo: row.docNo, date: row.date, docDate: row.date, amount: row.amount, description: row.desc, projectCode: row.projectCode
+          });
+          setIsSalesModalOpen(true);
+      }
+      else if (mode === 'mua' && job) {
+          setEditingJob(job);
+          setIsJobModalOpen(true);
+      }
   };
 
   const handleSaveJobEdit = (updatedJob: JobData, newCustomer?: Customer) => {
@@ -567,72 +721,310 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       setIsJobModalOpen(false);
   };
 
-  const handleSaveSales = (data: any) => { setIsSalesModalOpen(false); };
+  const handleSaveSales = (data: any) => {
+      setIsSalesModalOpen(false);
+  };
 
   const handleDelete = (row: any) => {
-      if (!window.confirm("Bạn có chắc muốn xóa chứng từ này khỏi danh sách AMIS?")) return;
-      if (row.type === 'external' && onUpdateCustomReceipts) { onUpdateCustomReceipts(customReceipts.filter(r => r.id !== row.id)); return; }
+      if (!window.confirm("Bạn có chắc muốn xóa chứng từ này khỏi danh sách AMIS? (Dữ liệu gốc vẫn giữ, chỉ xóa số chứng từ)")) return;
+      
+      if (row.type === 'external' && onUpdateCustomReceipts) {
+          const newR = customReceipts.filter(r => r.id !== row.id);
+          onUpdateCustomReceipts(newR);
+          return;
+      }
+
       const job = jobs.find(j => j.id === row.jobId);
       if (job && onUpdateJob) {
           const updatedJob = { ...job };
-          if (row.type === 'deposit_thu') { if (row.rowId.includes('add')) updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId); else { updatedJob.amisDepositDocNo = ''; updatedJob.amisDepositDesc = ''; updatedJob.amisDepositAmount = 0; } }
-          else if (row.type === 'lc_thu') { if (row.rowId.includes('add')) updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId); else { updatedJob.amisLcDocNo = ''; updatedJob.amisLcDesc = ''; updatedJob.amisLcAmount = 0; } }
-          else if (row.type === 'ext_thu') { if (row.rowId.includes('add')) updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId); else updatedJob.extensions = (updatedJob.extensions || []).map(e => e.id === row.extensionId ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0 } : e); }
-          else if (row.type === 'payment_chi') { updatedJob.amisPaymentDocNo = ''; updatedJob.amisPaymentDesc = ''; updatedJob.amisPaymentDate = ''; }
-          else if (row.type === 'payment_deposit') { updatedJob.amisDepositOutDocNo = ''; updatedJob.amisDepositOutDesc = ''; updatedJob.amisDepositOutDate = ''; }
-          else if (row.type === 'payment_ext') { updatedJob.amisExtensionPaymentDocNo = ''; updatedJob.amisExtensionPaymentDesc = ''; updatedJob.amisExtensionPaymentDate = ''; updatedJob.amisExtensionPaymentAmount = 0; }
-          else if (row.type === 'payment_refund') { updatedJob.amisDepositRefundDocNo = ''; updatedJob.amisDepositRefundDesc = ''; updatedJob.amisDepositRefundDate = ''; }
-          else if (row.type === 'lc_refund') { updatedJob.amisLcRefundDocNo = ''; updatedJob.amisLcRefundDesc = ''; updatedJob.amisLcRefundDate = ''; updatedJob.amisLcRefundAmount = 0; }
+          
+          if (row.type === 'deposit_thu') {
+              if (row.rowId.includes('add')) {
+                  updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId);
+              } else {
+                  updatedJob.amisDepositDocNo = '';
+                  updatedJob.amisDepositDesc = '';
+                  updatedJob.amisDepositAmount = 0;
+              }
+          } else if (row.type === 'lc_thu') {
+              if (row.rowId.includes('add')) {
+                  updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId);
+              } else {
+                  updatedJob.amisLcDocNo = '';
+                  updatedJob.amisLcDesc = '';
+                  updatedJob.amisLcAmount = 0;
+              }
+          } else if (row.type === 'ext_thu') {
+              if (row.rowId.includes('add')) {
+                  updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId);
+              } else {
+                  updatedJob.extensions = (updatedJob.extensions || []).map(e => 
+                      e.id === row.extensionId ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0 } : e
+                  );
+              }
+          } else if (row.type === 'payment_chi') {
+              updatedJob.amisPaymentDocNo = '';
+              updatedJob.amisPaymentDesc = '';
+              updatedJob.amisPaymentDate = '';
+          } else if (row.type === 'payment_deposit') {
+              updatedJob.amisDepositOutDocNo = '';
+              updatedJob.amisDepositOutDesc = '';
+              updatedJob.amisDepositOutDate = '';
+          } else if (row.type === 'payment_ext') {
+              updatedJob.amisExtensionPaymentDocNo = '';
+              updatedJob.amisExtensionPaymentDesc = '';
+              updatedJob.amisExtensionPaymentDate = '';
+              updatedJob.amisExtensionPaymentAmount = 0; // Clear amount
+          } else if (row.type === 'payment_refund') {
+              updatedJob.amisDepositRefundDocNo = '';
+              updatedJob.amisDepositRefundDesc = '';
+              updatedJob.amisDepositRefundDate = '';
+          }
+          
           onUpdateJob(updatedJob);
       }
   };
 
   const handleSavePayment = (data: any) => {
       if (selectedJobForModal && onUpdateJob) {
-          let fields = { doc: 'amisPaymentDocNo', desc: 'amisPaymentDesc', date: 'amisPaymentDate' };
-          if (paymentType === 'deposit') fields = { doc: 'amisDepositOutDocNo', desc: 'amisDepositOutDesc', date: 'amisDepositOutDate' };
-          else if (paymentType === 'extension') fields = { doc: 'amisExtensionPaymentDocNo', desc: 'amisExtensionPaymentDesc', date: 'amisExtensionPaymentDate' };
-          const targetJobs = selectedJobForModal[fields.doc as keyof JobData] ? jobs.filter(j => j[fields.doc as keyof JobData] === selectedJobForModal[fields.doc as keyof JobData]) : [selectedJobForModal];
+          let docField: keyof JobData = 'amisPaymentDocNo';
+          let descField: keyof JobData = 'amisPaymentDesc';
+          let dateField: keyof JobData = 'amisPaymentDate';
+
+          if (paymentType === 'deposit') {
+              docField = 'amisDepositOutDocNo';
+              descField = 'amisDepositOutDesc';
+              dateField = 'amisDepositOutDate';
+          } else if (paymentType === 'extension') {
+              docField = 'amisExtensionPaymentDocNo';
+              descField = 'amisExtensionPaymentDesc';
+              dateField = 'amisExtensionPaymentDate';
+          }
+
+          const oldDocNo = selectedJobForModal[docField];
+          
+          const targetJobs = (oldDocNo && typeof oldDocNo === 'string')
+             ? jobs.filter(j => j[docField] === oldDocNo) 
+             : [selectedJobForModal]; 
+
           targetJobs.forEach(job => {
-              const updatedJob = { ...job, [fields.doc]: data.docNo, [fields.date]: data.date };
-              if (job.id === selectedJobForModal.id) { (updatedJob as any)[fields.desc] = data.paymentContent; if (paymentType === 'extension' && data.amount > 0) updatedJob.amisExtensionPaymentAmount = data.amount; }
+              const updatedJob = { ...job };
+              (updatedJob as any)[docField] = data.docNo;
+              (updatedJob as any)[dateField] = data.date;
+              
+              if (job.id === selectedJobForModal.id) {
+                  (updatedJob as any)[descField] = data.paymentContent;
+                  
+                  // Save Specific Amount for Extension if applicable
+                  if (paymentType === 'extension' && data.amount > 0) {
+                      updatedJob.amisExtensionPaymentAmount = data.amount;
+                  }
+              }
+              
               onUpdateJob(updatedJob);
           });
+
           setIsPaymentModalOpen(false);
       }
   };
 
+  // --- EXPORT WITH EXCELJS ---
   const handleExport = async () => {
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
-    if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel."); return; }
+    if (rowsToExport.length === 0) {
+        alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.");
+        return;
+    }
+
     const workbook = new ExcelJS.Workbook();
-    if (templateBuffer) await workbook.xlsx.load(templateBuffer);
-    else workbook.addWorksheet("Amis Export");
+
+    if (templateBuffer) {
+        await workbook.xlsx.load(templateBuffer);
+    } else {
+        workbook.addWorksheet("Amis Export");
+    }
+
     const worksheet = workbook.getWorksheet(1);
     if (!worksheet) return;
+
     const START_ROW = 9;
     const styleRow = templateBuffer ? worksheet.getRow(START_ROW) : null;
+
     rowsToExport.forEach((data, index) => {
         const currentRowIndex = START_ROW + index;
         const row = worksheet.getRow(currentRowIndex);
-        if (styleRow && currentRowIndex > START_ROW) { for(let i = 1; i <= styleRow.cellCount; i++) { const sourceCell = styleRow.getCell(i); const targetCell = row.getCell(i); targetCell.style = sourceCell.style; if (sourceCell.border) targetCell.border = sourceCell.border; if (sourceCell.fill) targetCell.fill = sourceCell.fill; if (sourceCell.font) targetCell.font = sourceCell.font; if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment; } row.height = styleRow.height; }
-        if (mode === 'thu') { row.getCell(1).value = formatDateVN(data.date); row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = data.docNo; row.getCell(4).value = data.objCode; row.getCell(5).value = data.objName; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội (MB)"; row.getCell(9).value = "Thu khác"; row.getCell(10).value = data.desc; row.getCell(12).value = "VND"; row.getCell(14).value = data.desc; row.getCell(15).value = data.tkNo; row.getCell(16).value = data.tkCo; row.getCell(17).value = data.amount; row.getCell(19).value = data.objCode; }
-        else if (mode === 'chi') { row.getCell(1).value = "Ủy nhiệm chi"; row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = formatDateVN(data.date); row.getCell(4).value = data.docNo; row.getCell(5).value = "Chi khác"; row.getCell(6).value = data.paymentContent || data.desc; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội"; row.getCell(9).value = data.objCode; row.getCell(10).value = data.objName; row.getCell(19).value = "VND"; row.getCell(21).value = data.paymentContent || data.desc; row.getCell(22).value = data.tkNo; row.getCell(23).value = data.tkCo; row.getCell(24).value = data.amount; row.getCell(26).value = data.objCode; }
-        else if (mode === 'ban') { row.getCell(1).value = "Bán hàng hóa trong nước"; row.getCell(2).value = "Chưa thu tiền"; row.getCell(3).value = "Không"; row.getCell(4).value = "Không"; row.getCell(6).value = formatDateVN(data.date); row.getCell(7).value = formatDateVN(data.date); row.getCell(8).value = data.docNo; row.getCell(14).value = data.objCode; row.getCell(22).value = data.desc; row.getCell(28).value = "VND"; row.getCell(30).value = "AGENT FEE"; row.getCell(33).value = "Không"; row.getCell(36).value = "13112"; row.getCell(37).value = "51111"; row.getCell(39).value = 1; row.getCell(40).value = data.amount; row.getCell(51).value = "0%"; row.getCell(55).value = "33311"; row.getCell(61).value = data.projectCode; }
-        else if (mode === 'mua') { row.getCell(1).value = "Mua hàng trong nước không qua kho"; row.getCell(2).value = "Chưa thanh toán"; row.getCell(3).value = "Nhận kèm hóa đơn"; row.getCell(4).value = formatDateVN(data.date); row.getCell(5).value = formatDateVN(data.date); row.getCell(6).value = "1"; row.getCell(7).value = data.docNo; row.getCell(10).value = data.invoiceNo; row.getCell(11).value = formatDateVN(data.date); row.getCell(14).value = data.objCode; row.getCell(19).value = data.desc; row.getCell(26).value = "VND"; row.getCell(28).value = "LCC"; row.getCell(29).value = data.itemName; row.getCell(30).value = "Không"; row.getCell(33).value = "63211"; row.getCell(34).value = "3311"; row.getCell(35).value = "Lô"; row.getCell(36).value = "1"; row.getCell(37).value = data.netAmount; row.getCell(43).value = "5%"; row.getCell(45).value = data.vatAmount; }
+
+        if (styleRow && currentRowIndex > START_ROW) {
+             for(let i = 1; i <= styleRow.cellCount; i++) {
+                 const sourceCell = styleRow.getCell(i);
+                 const targetCell = row.getCell(i);
+                 targetCell.style = sourceCell.style;
+                 if (sourceCell.border) targetCell.border = sourceCell.border;
+                 if (sourceCell.fill) targetCell.fill = sourceCell.fill;
+                 if (sourceCell.font) targetCell.font = sourceCell.font;
+                 if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment;
+             }
+             row.height = styleRow.height;
+        }
+
+        if (mode === 'thu') {
+            row.getCell(1).value = formatDateVN(data.date);
+            row.getCell(2).value = formatDateVN(data.date);
+            row.getCell(3).value = data.docNo;
+            row.getCell(4).value = data.objCode;
+            row.getCell(5).value = data.objName;
+            row.getCell(7).value = "345673979999";
+            row.getCell(8).value = "Ngân hàng TMCP Quân đội (MB)";
+            row.getCell(9).value = "Thu khác";
+            row.getCell(10).value = data.desc;
+            row.getCell(12).value = "VND";
+            row.getCell(14).value = data.desc;
+            row.getCell(15).value = data.tkNo;
+            row.getCell(16).value = data.tkCo;
+            row.getCell(17).value = data.amount;
+            row.getCell(19).value = data.objCode;
+        } else if (mode === 'chi') {
+            row.getCell(1).value = "Ủy nhiệm chi";
+            row.getCell(2).value = formatDateVN(data.date);
+            row.getCell(3).value = formatDateVN(data.date);
+            row.getCell(4).value = data.docNo;
+            row.getCell(5).value = "Chi khác";
+            row.getCell(6).value = data.paymentContent || data.desc;
+            row.getCell(7).value = "345673979999";
+            row.getCell(8).value = "Ngân hàng TMCP Quân đội";
+            row.getCell(9).value = data.objCode;
+            row.getCell(10).value = data.objName;
+            row.getCell(19).value = "VND";
+            row.getCell(21).value = data.paymentContent || data.desc;
+            row.getCell(22).value = data.tkNo;
+            row.getCell(23).value = data.tkCo;
+            row.getCell(24).value = data.amount;
+            row.getCell(26).value = data.objCode;
+        } else if (mode === 'ban') {
+            row.getCell(1).value = "Bán hàng hóa trong nước"; // A
+            row.getCell(2).value = "Chưa thu tiền"; // B
+            row.getCell(3).value = "Không"; // C
+            row.getCell(4).value = "Không"; // D
+            row.getCell(6).value = formatDateVN(data.date); // F - Ngày hạch toán
+            row.getCell(7).value = formatDateVN(data.date); // G - Ngày chứng từ
+            row.getCell(8).value = data.docNo; // H - Số chứng từ
+            row.getCell(14).value = data.objCode; // N - Mã khách hàng
+            row.getCell(22).value = data.desc; // V - Diễn giải
+            row.getCell(28).value = "VND"; // AB
+            row.getCell(30).value = "AGENT FEE"; // AD
+            row.getCell(33).value = "Không"; // AG
+            row.getCell(36).value = "13112"; // AJ
+            row.getCell(37).value = "51111"; // AK
+            row.getCell(39).value = 1; // AM - SL
+            row.getCell(40).value = data.amount; // AN - Đơn giá (Sell)
+            row.getCell(51).value = "0%"; // AY - Thuế GTGT
+            row.getCell(55).value = "33311"; // BC - TK Thuế
+            row.getCell(61).value = data.projectCode; // BI - Mã công trình
+        } else if (mode === 'mua') {
+            row.getCell(1).value = "Mua hàng trong nước không qua kho"; // A
+            row.getCell(2).value = "Chưa thanh toán"; // B
+            row.getCell(3).value = "Nhận kèm hóa đơn"; // C
+            row.getCell(4).value = formatDateVN(data.date); // D
+            row.getCell(5).value = formatDateVN(data.date); // E
+            row.getCell(6).value = "1"; // F
+            row.getCell(7).value = data.docNo; // G
+            row.getCell(10).value = data.invoiceNo; // J
+            row.getCell(11).value = formatDateVN(data.date); // K
+            row.getCell(14).value = data.objCode; // N
+            row.getCell(19).value = data.desc; // S
+            row.getCell(26).value = "VND"; // Z
+            row.getCell(28).value = "LCC"; // AB
+            row.getCell(29).value = data.itemName; // AC
+            row.getCell(30).value = "Không"; // AD
+            row.getCell(33).value = "63211"; // AG
+            row.getCell(34).value = "3311"; // AH
+            row.getCell(35).value = "Lô"; // AI
+            row.getCell(36).value = "1"; // AJ
+            row.getCell(37).value = data.netAmount; // AK (Net)
+            row.getCell(43).value = "5%"; // AQ
+            row.getCell(45).value = data.vatAmount; // AS (VAT)
+        }
+        
         row.commit();
     });
+
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = mode === 'thu' ? "Phieuthu.xlsx" : (mode === 'chi' ? "Phieuchi.xlsx" : (mode === 'ban' ? "Banhang.xlsx" : "Muahang.xlsx"));
-    try { const formData = new FormData(); formData.append("file", new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), fileName); formData.append("targetDir", "E:\\ServerData"); const response = await axios.post(`${BACKEND_URL}/save-excel`, formData); if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`); else throw new Error(); } catch { const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const url = window.URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url); }
-    if (selectedIds.size > 0) onToggleLock(Array.from(selectedIds));
+    const fileNameMap: Record<string, string> = {
+      thu: "Phieuthu.xlsx",
+      chi: "Phieuchi.xlsx",
+      ban: "Banhang.xlsx",
+      mua: "Muahang.xlsx"
+    };
+    const fileName = fileNameMap[mode] || `Export_${mode}.xlsx`;
+
+    try {
+        const formData = new FormData();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        formData.append("file", blob, fileName);
+        formData.append("targetDir", "E:\\ServerData");
+
+        const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, {
+            headers: { "Content-Type": "multipart/form-data" }
+        });
+        
+        if (response.data?.success) {
+            alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`);
+        } else {
+            throw new Error(response.data?.message || "Server did not confirm save.");
+        }
+
+    } catch (err) {
+        console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = fileName;
+        anchor.click();
+        window.URL.revokeObjectURL(url);
+    }
+
+    const idsToLock = Array.from(selectedIds);
+    if (idsToLock.length > 0) {
+        onToggleLock(idsToLock);
+    }
+
     setSelectedIds(new Set());
   };
 
+  const titles = { thu: 'Phiếu Thu Tiền', chi: 'Phiếu Chi Tiền', ban: 'Phiếu Bán Hàng', mua: 'Phiếu Mua Hàng' };
   const unlockedCount = exportData.filter(r => !lockedIds.has(r.docNo)).length;
+  const isAllSelected = unlockedCount > 0 && selectedIds.size === unlockedCount;
+
+  const handleSelectAll = () => {
+    const unlockedRows = exportData.filter(r => !lockedIds.has(r.docNo));
+    if (selectedIds.size === unlockedRows.length && unlockedRows.length > 0) setSelectedIds(new Set());
+    else {
+        const newSet = new Set<string>();
+        unlockedRows.forEach(r => newSet.add(r.docNo));
+        setSelectedIds(newSet);
+    }
+  };
+
+  const handleSelectRow = (id: string) => {
+    if (lockedIds.has(id)) return;
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedIds(newSet);
+  };
+
+  const handleCopy = (text: string, id: string) => {
+      navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1000);
+  };
+
   return (
     <div className="p-8 max-w-full">
       <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
+
+      {/* Header */}
       <div className="mb-6">
         <div className="flex items-center space-x-3 text-slate-800 mb-2">
            <div className={`p-2 rounded-lg ${mode === 'chi' ? 'bg-red-100 text-red-700' : mode === 'ban' ? 'bg-purple-100 text-purple-700' : mode === 'mua' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -640,7 +1032,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
            </div>
            <h1 className="text-3xl font-bold">Xuất Dữ Liệu AMIS</h1>
         </div>
-        <p className="text-slate-500 ml-11 mb-4">Kết xuất dữ liệu kế toán: <span className="font-bold text-blue-600">{mode === 'thu' ? 'Phiếu Thu' : (mode === 'chi' ? 'Phiếu Chi' : (mode === 'ban' ? 'Phiếu Bán Hàng' : 'Phiếu Mua Hàng'))}</span></p>
+        <p className="text-slate-500 ml-11 mb-4">Kết xuất dữ liệu kế toán: <span className="font-bold text-blue-600">{titles[mode]}</span></p>
+        
+        {/* Toolbar */}
         <div className="glass-panel p-4 rounded-xl shadow-sm border border-white/40 flex justify-between items-center sticky top-0 z-20">
            <div className="flex items-center space-x-4">
               <div className="flex items-center text-slate-500 font-medium"><Filter className="w-4 h-4 mr-2" /> Lọc tháng:</div>
@@ -650,23 +1044,62 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               </select>
            </div>
            <div className="flex space-x-2">
-              <button onClick={() => fileInputRef.current?.click()} disabled={isUploadingTemplate} className="glass-panel hover:bg-white/80 px-4 py-2 rounded-lg flex items-center space-x-2 text-slate-700 transition-colors">
-                 {isUploadingTemplate ? <Loader2 className="w-5 h-5 animate-spin text-blue-500" /> : (templateBuffer ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />)} 
-                 <span className="flex flex-col items-start text-xs"><span className="font-bold">{templateBuffer ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>{templateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{templateName}</span>}</span>
+              <button 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={isUploadingTemplate}
+                className="glass-panel hover:bg-white/80 px-4 py-2 rounded-lg flex items-center space-x-2 text-slate-700 transition-colors"
+                title="Tải file mẫu từ máy tính lên server"
+              >
+                 {isUploadingTemplate ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                 ) : (
+                    templateBuffer ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />
+                 )} 
+                 <span className="flex flex-col items-start text-xs">
+                    <span className="font-bold">{templateBuffer ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>
+                    {templateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{templateName}</span>}
+                 </span>
               </button>
+
+              {/* THU KHÁC BUTTON */}
               {mode === 'thu' && (
-                  <button onClick={() => { const nextDocNo = generateNextDocNo(jobs, 'NTTK', 5, customDocNos); setQuickReceiveJob({ ...INITIAL_JOB, id: `EXT-${Date.now()}`, jobCode: 'THU-KHAC', localChargeDate: new Date().toISOString().split('T')[0], amisLcDocNo: nextDocNo, amisLcDesc: 'Thu tiền khác' }); setQuickReceiveMode('other'); setIsQuickReceiveOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-md transform active:scale-95 transition-all"><Wallet className="w-5 h-5" /> <span>Thu Khác</span></button>
+                  <button 
+                    onClick={() => {
+                        // Pass customDocNos to generateNextDocNo to avoid duplicates
+                        const nextDocNo = generateNextDocNo(jobs, 'NTTK', 5, customDocNos);
+                        const dummyJob = { 
+                            ...INITIAL_JOB, 
+                            id: `EXT-${Date.now()}`, 
+                            jobCode: 'THU-KHAC', 
+                            localChargeDate: new Date().toISOString().split('T')[0], 
+                            amisLcDocNo: nextDocNo, 
+                            amisLcDesc: 'Thu tiền khác' 
+                        };
+                        setQuickReceiveJob(dummyJob);
+                        setQuickReceiveMode('other');
+                        setIsQuickReceiveOpen(true);
+                    }} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-md transition-all transform active:scale-95"
+                  >
+                      <Wallet className="w-5 h-5" /> <span>Thu Khác</span>
+                  </button>
               )}
-              <button onClick={handleExport} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transform active:scale-95 transition-all"><FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span></button>
+
+              <button onClick={handleExport} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95">
+                  <FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span>
+              </button>
            </div>
         </div>
       </div>
+
       <div className="glass-panel rounded-2xl shadow-sm border border-white/40 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-700 font-bold border-b border-white/30 uppercase text-xs">
               <tr>
-                <th className="px-6 py-3 w-10 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300" checked={unlockedCount > 0 && selectedIds.size === unlockedCount} onChange={() => { if (selectedIds.size === unlockedCount) setSelectedIds(new Set()); else { const newSet = new Set<string>(); exportData.filter(r => !lockedIds.has(r.docNo)).forEach(r => newSet.add(r.docNo)); setSelectedIds(newSet); } }} /></th>
+                <th className="px-6 py-3 w-10 text-center">
+                    <input type="checkbox" className="w-4 h-4 rounded border-gray-300" checked={isAllSelected} onChange={handleSelectAll} />
+                </th>
                 <th className="px-6 py-3 w-10 text-center">Khóa</th>
                 <th className="px-6 py-3">Ngày CT</th>
                 <th className="px-6 py-3">Số CT</th>
@@ -683,28 +1116,141 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                    const isLocked = lockedIds.has(row.docNo);
                    const isSelected = selectedIds.has(row.docNo);
                    const rowKey = row.rowId || `${row.type}-${row.docNo}-${idx}`;
+                   
                    return (
                    <tr key={rowKey} className={`${isLocked ? 'bg-slate-100/50 text-gray-500' : 'hover:bg-white/30'} ${isSelected ? 'bg-blue-50/50' : ''}`}>
-                      <td className="px-6 py-3 text-center"><input type="checkbox" checked={isSelected} onChange={() => { if (isLocked) return; const newSet = new Set(selectedIds); if (newSet.has(row.docNo)) newSet.delete(row.docNo); else newSet.add(row.docNo); setSelectedIds(newSet); }} disabled={isLocked} className="w-4 h-4 rounded border-gray-300" /></td>
-                      <td className="px-6 py-3 text-center"><button onClick={() => { onToggleLock(row.docNo); const newS = new Set(selectedIds); newS.delete(row.docNo); setSelectedIds(newS); }} className="text-gray-400 hover:text-blue-600">{isLocked ? <Lock className="w-4 h-4 text-orange-500" /> : <Unlock className="w-4 h-4 opacity-30" />}</button></td>
+                      <td className="px-6 py-3 text-center">
+                          <input type="checkbox" checked={isSelected} onChange={() => handleSelectRow(row.docNo)} disabled={isLocked} className="w-4 h-4 rounded border-gray-300" />
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                           <button onClick={() => { onToggleLock(row.docNo); const newS = new Set(selectedIds); newS.delete(row.docNo); setSelectedIds(newS); }} className="text-gray-400 hover:text-blue-600">
+                              {isLocked ? <Lock className="w-4 h-4 text-orange-500" /> : <Unlock className="w-4 h-4 opacity-30" />}
+                           </button>
+                      </td>
                       <td className="px-6 py-3">{formatDateVN(row.date)}</td>
                       <td className={`px-6 py-3 font-medium ${isLocked ? 'text-gray-600' : 'text-blue-600'}`}>{row.docNo}</td>
                       <td className="px-6 py-3">{row.objCode}</td>
-                      <td className="px-6 py-3 max-w-xs group relative"><div className="flex items-center justify-between"><span className="truncate mr-2" title={row.desc}>{row.desc}</span><button onClick={() => { navigator.clipboard.writeText(row.desc); setCopiedId(`desc-${rowKey}`); setTimeout(() => setCopiedId(null), 1000); }} className="text-slate-300 hover:text-blue-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">{copiedId === `desc-${rowKey}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}</button></div></td>
-                      <td className="px-6 py-3 text-right font-medium group relative"><div className="flex items-center justify-end"><span className="mr-2">{formatCurrency(row.amount)}</span><button onClick={() => { navigator.clipboard.writeText(row.amount.toString()); setCopiedId(`amt-${rowKey}`); setTimeout(() => setCopiedId(null), 1000); }} className="text-slate-300 hover:text-blue-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">{copiedId === `amt-${rowKey}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}</button></div></td>
-                      {mode === 'mua' && <td className="px-6 py-3 text-slate-500 text-xs italic">{row.costType}</td>}
-                      <td className="px-6 py-3 text-center">{!isLocked && <div className="flex justify-center space-x-2"><button onClick={() => handleEdit(row)} className="text-gray-400 hover:text-blue-500 p-1.5"><Edit3 className="w-4 h-4" /></button><button onClick={() => handleDelete(row)} className="text-gray-400 hover:text-red-500 p-1.5"><Trash2 className="w-4 h-4" /></button></div>}</td>
+                      
+                      <td className="px-6 py-3 max-w-xs group relative">
+                          <div className="flex items-center justify-between">
+                              <span className="truncate mr-2" title={row.desc}>{row.desc}</span>
+                              <button onClick={() => handleCopy(row.desc, `desc-${rowKey}`)} className="text-slate-300 hover:text-blue-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {copiedId === `desc-${rowKey}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                          </div>
+                      </td>
+
+                      <td className="px-6 py-3 text-right font-medium group relative">
+                          <div className="flex items-center justify-end">
+                              <span className="mr-2">{formatCurrency(row.amount)}</span>
+                              <button onClick={() => handleCopy(row.amount.toString(), `amt-${rowKey}`)} className="text-slate-300 hover:text-blue-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {copiedId === `amt-${rowKey}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                          </div>
+                      </td>
+                      
+                      {mode === 'mua' && (
+                          <td className="px-6 py-3 text-slate-500 text-xs italic">
+                              {row.costType}
+                          </td>
+                      )}
+                      
+                      <td className="px-6 py-3 text-center">
+                          {!isLocked && (
+                              <div className="flex justify-center space-x-2">
+                                  <button onClick={() => handleEdit(row)} className="text-gray-400 hover:text-blue-500 p-1.5"><Edit3 className="w-4 h-4" /></button>
+                                  <button onClick={() => handleDelete(row)} className="text-gray-400 hover:text-red-500 p-1.5"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                          )}
+                      </td>
                    </tr>
                  )})
-              ) : (<tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu phù hợp</td></tr>)}
+              ) : (
+                <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu phù hợp</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
-      {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={(updatedJob) => { if (quickReceiveMode === 'other' && onUpdateCustomReceipts) { const foundCust = customers.find(c => c.id === updatedJob.customerId); const finalObjCode = foundCust ? foundCust.code : updatedJob.customerId; const newReceipt = { id: updatedJob.id, type: 'external', date: updatedJob.localChargeDate, docNo: updatedJob.amisLcDocNo, objCode: finalObjCode, objName: updatedJob.customerName, desc: updatedJob.amisLcDesc, amount: updatedJob.amisLcAmount !== undefined ? updatedJob.amisLcAmount : updatedJob.localChargeTotal, invoice: updatedJob.localChargeInvoice, additionalReceipts: updatedJob.additionalReceipts }; const exists = customReceipts.findIndex(r => r.id === updatedJob.id); if (exists >= 0) { const updated = [...customReceipts]; updated[exists] = newReceipt; onUpdateCustomReceipts(updated); } else onUpdateCustomReceipts([...customReceipts, newReceipt]); } else if (onUpdateJob) onUpdateJob(updatedJob); setIsQuickReceiveOpen(false); }} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} targetExtensionId={targetExtensionId} allJobs={jobs} usedDocNos={customDocNos} />}
-      {isPaymentModalOpen && selectedJobForModal && <PaymentVoucherModal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} onSave={handleSavePayment} job={selectedJobForModal} type={paymentType} allJobs={jobs} />}
-      {isJobModalOpen && editingJob && <JobModal isOpen={isJobModalOpen} onClose={() => setIsJobModalOpen(false)} onSave={handleSaveJobEdit} initialData={editingJob} customers={customers} lines={lines} onAddLine={onAddLine || (() => {})} onAddCustomer={onAddCustomer || (() => {})} onViewBookingDetails={() => {}} isViewMode={false} existingJobs={jobs} />}
-      {isSalesModalOpen && salesJob && <SalesInvoiceModal isOpen={isSalesModalOpen} onClose={() => setIsSalesModalOpen(false)} onSave={handleSaveSales} job={salesJob} initialData={salesInitialData} />}
+
+      {/* QUICK RECEIVE MODAL FOR THU & THU KHAC */}
+      {isQuickReceiveOpen && quickReceiveJob && (
+          <QuickReceiveModal 
+              isOpen={isQuickReceiveOpen}
+              onClose={() => setIsQuickReceiveOpen(false)}
+              onSave={(updatedJob) => {
+                  if (quickReceiveMode === 'other' && onUpdateCustomReceipts) {
+                      // FIX: Look up customer code to ensure correct display
+                      const foundCust = customers.find(c => c.id === updatedJob.customerId);
+                      const finalObjCode = foundCust ? foundCust.code : updatedJob.customerId;
+
+                      const newReceipt = { 
+                          id: updatedJob.id, 
+                          type: 'external', 
+                          date: updatedJob.localChargeDate, 
+                          docNo: updatedJob.amisLcDocNo, 
+                          objCode: finalObjCode, 
+                          objName: updatedJob.customerName, 
+                          desc: updatedJob.amisLcDesc, 
+                          amount: updatedJob.amisLcAmount !== undefined ? updatedJob.amisLcAmount : updatedJob.localChargeTotal, // FIX: Use amisLcAmount priority
+                          invoice: updatedJob.localChargeInvoice, // FIX: Save Invoice Number
+                          additionalReceipts: updatedJob.additionalReceipts // SAVE ADDITIONAL RECEIPTS
+                      };
+                      const exists = customReceipts.findIndex(r => r.id === updatedJob.id);
+                      if (exists >= 0) { const updated = [...customReceipts]; updated[exists] = newReceipt; onUpdateCustomReceipts(updated); }
+                      else onUpdateCustomReceipts([...customReceipts, newReceipt]);
+                  } else if (onUpdateJob) onUpdateJob(updatedJob);
+                  setIsQuickReceiveOpen(false);
+              }}
+              job={quickReceiveJob}
+              mode={quickReceiveMode}
+              customers={customers}
+              targetExtensionId={targetExtensionId}
+              allJobs={jobs}
+              usedDocNos={customDocNos} // Pass used numbers to modal
+          />
+      )}
+
+      {/* PAYMENT MODAL FOR CHI */}
+      {isPaymentModalOpen && selectedJobForModal && (
+          <PaymentVoucherModal 
+              isOpen={isPaymentModalOpen}
+              onClose={() => setIsPaymentModalOpen(false)}
+              onSave={handleSavePayment}
+              job={selectedJobForModal}
+              type={paymentType}
+              allJobs={jobs}
+          />
+      )}
+
+      {/* JOB MODAL FOR LEGACY EDIT */}
+      {isJobModalOpen && editingJob && (
+          <JobModal 
+              isOpen={isJobModalOpen}
+              onClose={() => setIsJobModalOpen(false)}
+              onSave={handleSaveJobEdit}
+              initialData={editingJob}
+              customers={customers}
+              lines={lines}
+              onAddLine={onAddLine || (() => {})}
+              onAddCustomer={onAddCustomer || (() => {})}
+              onViewBookingDetails={() => {}}
+              isViewMode={false}
+              existingJobs={jobs}
+          />
+      )}
+
+      {/* SALES INVOICE MODAL FOR BAN EDIT */}
+      {isSalesModalOpen && salesJob && (
+          <SalesInvoiceModal 
+              isOpen={isSalesModalOpen}
+              onClose={() => setIsSalesModalOpen(false)}
+              onSave={handleSaveSales}
+              job={salesJob}
+              initialData={salesInitialData}
+          />
+      )}
+
     </div>
   );
 };

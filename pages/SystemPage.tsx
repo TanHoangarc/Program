@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
 import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt } from 'lucide-react';
@@ -10,8 +9,7 @@ interface SystemPageProps {
   lines: ShippingLine[];
   users: UserAccount[];
   currentUser: { username: string, role: string } | null;
-  // Fix: Added users property to the onRestore data object to match usage in App.tsx
-  onRestore: (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[], users?: UserAccount[] }) => void;
+  onRestore: (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[] }) => void;
   onAddUser: (user: UserAccount) => void;
   onEditUser: (user: UserAccount, originalUsername: string) => void;
   onDeleteUser: (username: string) => void;
@@ -345,3 +343,4 @@ export const SystemPage: React.FC<SystemPageProps> = ({
     </div>
   );
 };
+

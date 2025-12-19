@@ -345,7 +345,6 @@ export const JobModal: React.FC<JobModalProps> = ({
         return { 
           ...INITIAL_JOB, 
           ...safeParsed,
-          year: safeParsed.year || new Date().getFullYear(), // Ensure year exists
           extensions: Array.isArray(safeParsed.extensions) ? safeParsed.extensions : [],
           bookingCostDetails: safeParsed.bookingCostDetails || undefined
         };
@@ -662,17 +661,6 @@ export const JobModal: React.FC<JobModalProps> = ({
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                     {/* Basic IDs */}
-                    <div className="md:col-span-1">
-                        <Label>Năm</Label>
-                        <Input 
-                            type="number" 
-                            name="year" 
-                            value={formData.year} 
-                            onChange={(e) => setFormData(prev => ({...prev, year: Number(e.target.value)}))} 
-                            readOnly={isViewMode} 
-                            className="text-center font-bold text-slate-700" 
-                        />
-                    </div>
                     <div className="md:col-span-2">
                         <Label>Tháng</Label>
                         <Select name="month" value={formData.month} onChange={handleChange} disabled={isViewMode}>
@@ -688,7 +676,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             </button>
                         </div>
                     </div>
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-3">
                         <Label>Booking</Label>
                         <div className="flex items-center gap-1">
                             <Input name="booking" value={formData.booking} onChange={handleChange} readOnly={isViewMode} />

@@ -134,7 +134,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
     const rect = e.currentTarget.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const menuHeightEstimate = 380; // Updated height for new item
+    const menuHeightEstimate = 320; // Increased height for new item
     
     // Calculate position: Align right edge of menu with right edge of button
     // Menu width is w-48 (12rem = 192px)
@@ -162,10 +162,12 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleDuplicate = (job: JobData) => {
+    // Create a template based on the requirement:
+    // Keep: Month, Booking, Consol, Line, Transit
+    // Reset: All other fields (Job Code, Customer, Financials, etc.)
     const templateJob: JobData = {
       ...INITIAL_JOB, // Reset all fields to default first
       month: job.month,
-      year: job.year, // Keep year
       booking: job.booking,
       consol: job.consol,
       line: job.line,
@@ -257,11 +259,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       let addedCount = 0; let updatedCount = 0;
       data.forEach((row: any) => {
         const rowJobCode = String(row['Job'] || row['Job Code'] || '');
-        const rowYear = Number(row['Năm'] || row['Year']);
         
         const mappedData: Partial<JobData> = {
           month: String(row['Tháng'] || '1'),
-          year: !isNaN(rowYear) && rowYear > 2000 ? rowYear : new Date().getFullYear(),
           jobCode: rowJobCode || `IMP-${Date.now()}`,
           booking: String(row['Booking'] || ''),
           consol: String(row['Consol'] || ''),
@@ -306,7 +306,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
       const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
       return {
-        "Năm": job.year,
         "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
@@ -336,15 +335,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
     });
     return matches.sort((a, b) => {
-      // 1. Year Descending
-      const yearDiff = (b.year || new Date().getFullYear()) - (a.year || new Date().getFullYear());
-      if (yearDiff !== 0) return yearDiff;
-
-      // 2. Month Descending
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
-      
-      // 3. Booking Ascending
       const bookingA = String(a.booking || '').toLowerCase();
       const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
@@ -393,6 +385,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
       {/* Filter Bar */}
       <div className="glass-panel p-5 rounded-2xl mb-6 mx-2">
+          {/* ... Filters UI ... */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
              <div>
                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tháng</label>
@@ -429,7 +422,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           </div>
           {(filterMonth || filterCustomer || filterBooking || filterJobCode || filterLine) && (
             <div className="mt-4 flex justify-end">
-              <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-700 flex items-center bg-red-50 px-3 py-1.5 rounded-full border border-red-100"><X className="w-3 h-3 mr-1" /> Xóa bộ lọc</button>
+              <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-600 flex items-center bg-red-50 px-3 py-1.5 rounded-full border border-red-100"><X className="w-3 h-3 mr-1" /> Xóa bộ lọc</button>
             </div>
           )}
       </div>
@@ -440,7 +433,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider w-16">Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Customer</th>
@@ -468,7 +460,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
                   return (
                   <tr key={job.id} className="hover:bg-white/40 cursor-pointer group transition-colors" onClick={(e) => handleRowClick(job, e)}>
-                    <td className="px-6 py-4 text-slate-500 font-bold">{job.year}</td>
                     <td className="px-6 py-4 text-slate-500">T{job.month}</td>
                     <td className="px-6 py-4 font-bold text-teal-700 relative">
                         {job.jobCode}
@@ -526,7 +517,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                            <button onClick={() => handleEdit(job)} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-blue-50 flex items-center transition-colors"><Edit2 className="w-3 h-3 mr-2 text-blue-500" /> Chỉnh sửa</button>
                            <div className="border-t border-slate-100 my-1"></div>
                            <button onClick={() => handleQuickReceive(job, 'local')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-indigo-50 font-medium flex items-center transition-colors"><FileText className="w-3 h-3 mr-2 text-indigo-500" /> Thu Local Charge</button>
-                           <button onClick={() => handleQuickReceive(job, 'local_refund')} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-medium flex items-center transition-colors"><RotateCcw className="w-3 h-3 mr-2 text-red-500" /> Hoàn Local Charge</button>
                            <button onClick={() => handleQuickReceive(job, 'deposit')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-purple-50 font-medium flex items-center transition-colors"><Anchor className="w-3 h-3 mr-2 text-purple-500" /> Thu Cược</button>
                            <button onClick={() => handleQuickReceive(job, 'deposit_refund')} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-medium flex items-center transition-colors"><RotateCcw className="w-3 h-3 mr-2 text-red-500" /> Hoàn Cược</button>
                            <button onClick={() => handleQuickReceive(job, 'extension')} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-orange-50 font-medium flex items-center transition-colors"><DollarSign className="w-3 h-3 mr-2 text-orange-500" /> Thu Gia Hạn</button>
@@ -539,14 +529,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                   </tr>
                 )})
               ) : (
-                <tr><td colSpan={12} className="px-6 py-12 text-center text-gray-400 font-light">Không tìm thấy dữ liệu phù hợp</td></tr>
+                <tr><td colSpan={11} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu phù hợp</td></tr>
               )}
             </tbody>
             {/* Footer Totals */}
             {filteredJobs.length > 0 && (
               <tfoot className="bg-white/30 border-t border-white/40 font-bold text-slate-800 text-xs uppercase">
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-right">Tổng cộng:</td>
+                  <td colSpan={5} className="px-6 py-4 text-right">Tổng cộng:</td>
                   <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totals.cost)}</td>
                   <td className="px-6 py-4 text-right text-blue-600">{formatCurrency(totals.sell)}</td>
                   <td className={`px-6 py-4 text-right ${totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(totals.profit)}</td>

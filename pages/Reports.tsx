@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { JobData } from '../types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Package, DollarSign, Wallet, Filter, Ship, Calendar } from 'lucide-react';
+import { TrendingUp, Package, DollarSign, Wallet, Filter, Ship } from 'lucide-react';
 import { MONTHS } from '../constants';
 
 interface ReportsProps {
@@ -10,29 +10,14 @@ interface ReportsProps {
 }
 
 export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
-  const currentYear = new Date().getFullYear();
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState<number>(currentYear);
 
   const COLORS = ['#2dd4bf', '#3b82f6', '#818cf8', '#c084fc', '#f472b6']; // Teal, Blue, Indigo, Purple, Pink
 
-  // Extract unique years from jobs
-  const uniqueYears = useMemo(() => {
-      const years = new Set<number>();
-      years.add(currentYear); // Always include current year
-      jobs.forEach(j => {
-          if (j.year) years.add(j.year);
-      });
-      return Array.from(years).sort((a, b) => b - a);
-  }, [jobs, currentYear]);
-
   const filteredJobs = useMemo(() => {
-    return jobs.filter(job => {
-        const matchYear = job.year === filterYear;
-        const matchMonth = filterMonth ? job.month === filterMonth : true;
-        return matchYear && matchMonth;
-    });
-  }, [jobs, filterMonth, filterYear]);
+    if (!filterMonth) return jobs;
+    return jobs.filter(job => job.month === filterMonth);
+  }, [jobs, filterMonth]);
 
   const stats = useMemo(() => {
     const totalProfit = filteredJobs.reduce((acc, job) => acc + job.profit, 0);
@@ -45,21 +30,13 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
   }, [filteredJobs]);
 
   const monthlyData = useMemo(() => {
-    // Initialize all months with 0
     const grouped: Record<string, { month: string, profit: number, revenue: number }> = {};
-    for (let i = 1; i <= 12; i++) {
-        grouped[i.toString()] = { month: i.toString(), profit: 0, revenue: 0 };
-    }
-
-    // Aggregate data based on filtered jobs (which are already filtered by Year)
     filteredJobs.forEach(job => {
       const m = job.month;
-      if (grouped[m]) {
-          grouped[m].profit += job.profit;
-          grouped[m].revenue += job.sell;
-      }
+      if (!grouped[m]) grouped[m] = { month: m, profit: 0, revenue: 0 };
+      grouped[m].profit += job.profit;
+      grouped[m].revenue += job.sell;
     });
-    
     return Object.values(grouped).sort((a, b) => Number(a.month) - Number(b.month));
   }, [filteredJobs]);
 
@@ -90,24 +67,15 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
       <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Tổng quan hiệu suất kinh doanh năm {filterYear}</p>
+          <p className="text-slate-500 mt-1">Tổng quan hiệu suất kinh doanh</p>
         </div>
         
-        <div className="flex items-center space-x-3">
-           <div className="flex items-center space-x-2 glass-panel px-3 py-1.5 rounded-xl">
-               <Calendar className="w-4 h-4 text-slate-400" />
-               <select value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="bg-transparent border-none text-sm text-slate-700 font-bold focus:ring-0 outline-none cursor-pointer">
-                 {uniqueYears.map(y => <option key={y} value={y}>Năm {y}</option>)}
-               </select>
-           </div>
-
-           <div className="flex items-center space-x-2 glass-panel px-3 py-1.5 rounded-xl">
-               <Filter className="w-4 h-4 text-slate-400" />
-               <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="bg-transparent border-none text-sm text-slate-600 font-medium focus:ring-0 outline-none cursor-pointer min-w-[100px]">
-                 <option value="">Cả năm</option>
-                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-               </select>
-           </div>
+        <div className="flex items-center space-x-2 glass-panel px-3 py-1.5 rounded-xl">
+           <Filter className="w-4 h-4 text-slate-400" />
+           <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="bg-transparent border-none text-sm text-slate-600 font-medium focus:ring-0 outline-none cursor-pointer">
+             <option value="">Tất cả các tháng</option>
+             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+           </select>
         </div>
       </div>
 
@@ -124,7 +92,7 @@ export const Reports: React.FC<ReportsProps> = ({ jobs }) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Chart */}
         <div className="lg:col-span-2 glass-panel p-6 rounded-2xl">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">Biểu đồ tăng trưởng ({filterYear})</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-6">Biểu đồ tăng trưởng</h3>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={monthlyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>

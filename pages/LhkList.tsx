@@ -56,17 +56,13 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
       return isLhk && matchesMonth && matchesSearch;
     });
 
-    // Updated Sorting Logic: Year Desc -> Month Desc -> Booking Asc (Trimmed)
+    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
     return filtered.sort((a, b) => {
-        // 1. Year Descending
-        const yearDiff = (b.year || new Date().getFullYear()) - (a.year || new Date().getFullYear());
-        if (yearDiff !== 0) return yearDiff;
-
-        // 2. Month Descending
+        // 1. Month Descending
         const monthDiff = Number(b.month) - Number(a.month);
         if (monthDiff !== 0) return monthDiff;
 
-        // 3. Booking Ascending
+        // 2. Booking Ascending
         const bookingA = String(a.booking || '').trim().toLowerCase();
         const bookingB = String(b.booking || '').trim().toLowerCase();
         return bookingA.localeCompare(bookingB);
@@ -101,9 +97,8 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
 
   // Export Excel Function
   const handleExportExcel = () => {
-    const headers = ['Năm', 'Tháng', 'Job Code', 'Booking', 'HBL', 'Line', 'Cont 20', 'Cont 40', 'Sell'];
+    const headers = ['Tháng', 'Job Code', 'Booking', 'HBL', 'Line', 'Cont 20', 'Cont 40', 'Sell'];
     const rows = lhkJobs.map(job => [
-        job.year,
         job.month,
         job.jobCode,
         job.booking,
@@ -168,7 +163,6 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
-                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider w-16">Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Booking</th>
@@ -184,7 +178,6 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
               {paginatedJobs.length > 0 ? (
                 paginatedJobs.map(job => (
                   <tr key={job.id} className="hover:bg-white/40 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-500">{job.year}</td>
                     <td className="px-6 py-4 font-medium text-slate-500">T{job.month}</td>
                     <td className="px-6 py-4 font-bold text-blue-700">{job.jobCode}</td>
                     <td className="px-6 py-4 font-mono text-slate-600 text-xs">{job.booking}</td>
@@ -217,14 +210,14 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={10} className="text-center py-12 text-slate-400 font-light">Không tìm thấy Job LHK nào</td></tr>
+                <tr><td colSpan={9} className="text-center py-12 text-slate-400 font-light">Không tìm thấy Job LHK nào</td></tr>
               )}
             </tbody>
             {/* Added Footer */}
             {lhkJobs.length > 0 && (
                 <tfoot className="bg-white/30 font-bold text-slate-800 text-xs uppercase border-t border-white/40">
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 text-right">Tổng Cộng:</td>
+                    <td colSpan={5} className="px-6 py-4 text-right">Tổng Cộng:</td>
                     <td className="px-6 py-4 text-center">{totals.cont20}</td>
                     <td className="px-6 py-4 text-center">{totals.cont40}</td>
                     <td className="px-6 py-4 text-right text-blue-700 text-sm">{formatCurrency(totals.sell)}</td>
