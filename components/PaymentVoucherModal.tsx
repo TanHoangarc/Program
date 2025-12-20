@@ -92,13 +92,13 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   // Xác định số chứng từ hiện tại để lọc các dòng phí thuộc chính chứng từ này khi sửa
   const currentDocNo = useMemo(() => {
-    if (type === 'extension' && job?.amisExtensionPaymentDocNo) return job.amisExtensionPaymentDocNo;
-    if (type === 'deposit' && job?.amisDepositOutDocNo) return job.amisDepositOutDocNo;
-    if (type === 'local' && job?.amisPaymentDocNo) return job.amisPaymentDocNo;
+    if (type === 'extension') return job?.amisExtensionPaymentDocNo || '';
+    if (type === 'deposit') return job?.amisDepositOutDocNo || '';
+    if (type === 'local') return job?.amisPaymentDocNo || '';
     return '';
   }, [job, type]);
 
-  // Get list of available extensions based on input (Job or Booking)
+  // Lấy danh sách phí gia hạn khả dụng
   const availableExtensions = useMemo(() => {
       if (type !== 'extension') return [];
       
@@ -109,14 +109,21 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           list = job.bookingCostDetails?.extensionCosts || [];
       }
       
-      // LỌC DÒNG ĐÃ CHI: 
-      // Chỉ hiển thị những dòng chưa có amisDocNo HOẶC dòng đang thuộc chính phiếu này (khi chỉnh sửa)
+      // LỌC: Chưa có amisDocNo HOẶC đang thuộc phiếu hiện tại
       return list.filter(item => 
         item.total > 0 && (!item.amisDocNo || item.amisDocNo === currentDocNo)
       );
   }, [booking, job, type, currentDocNo]);
 
-  // Helper to generate description
+  // Helper tính tổng tiền gộp các dòng đang thuộc phiếu này
+  const totalMergedAmount = useMemo(() => {
+    return availableExtensions.reduce((sum, ext) => {
+        if (ext.amisDocNo === currentDocNo) return sum + ext.total;
+        return sum;
+    }, 0);
+  }, [availableExtensions, currentDocNo]);
+
+  // Helper tạo diễn giải
   const generateDescription = (prefix: string, specificInvoice?: string) => {
       let jobCodes = '';
       let bkNumber = '';
@@ -128,11 +135,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           bkNumber = job.booking;
           if (allJobs && job.booking) {
               const siblings = allJobs.filter(j => j.booking === job.booking);
-              if (siblings.length > 0) {
-                  jobCodes = siblings.map(j => j.jobCode).filter(Boolean).join('+');
-              } else {
-                  jobCodes = job.jobCode;
-              }
+              jobCodes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean).join('+') : job.jobCode;
           } else {
               jobCodes = job.jobCode;
           }
@@ -161,14 +164,12 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       if (type === 'local') {
           initialData.tkNo = '3311'; 
           if (job?.amisPaymentDocNo) {
-              // CHỈNH SỬA
               initialData.docNo = job.amisPaymentDocNo;
               initialData.paymentContent = job.amisPaymentDesc || '';
               initialData.date = job.amisPaymentDate || today;
               initialData.amount = job.chiPayment || 0;
               initialData.receiverName = job.line;
           } else {
-              // TẠO MỚI
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
               if (booking) {
                 const summary = booking.costDetails.localCharge;
@@ -185,14 +186,12 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       else if (type === 'deposit') {
           initialData.tkNo = '1388';
           if (job?.amisDepositOutDocNo) {
-              // CHỈNH SỬA
               initialData.docNo = job.amisDepositOutDocNo;
               initialData.paymentContent = job.amisDepositOutDesc || '';
               initialData.date = job.amisDepositOutDate || today;
               initialData.amount = job.chiCuoc || 0;
               initialData.receiverName = job.line;
           } else {
-              // TẠO MỚI
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
               if (booking) {
                   const depTotal = booking.costDetails.deposits.reduce((s,d) => s+d.amount, 0);
@@ -210,23 +209,33 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           initialData.tkNo = '13111';
           
           if (job?.amisExtensionPaymentDocNo) {
-              // CHỈNH SỬA: Hiện phiếu cũ đã lập
+              // CHỈNH SỬA
               initialData.docNo = job.amisExtensionPaymentDocNo;
               initialData.paymentContent = job.amisExtensionPaymentDesc || '';
               initialData.date = job.amisExtensionPaymentDate || today;
               initialData.amount = job.amisExtensionPaymentAmount || 0;
               initialData.receiverName = job.line;
               
-              // Tìm dòng gia hạn đang được chọn trong phiếu này
-              const currentExt = job.bookingCostDetails?.extensionCosts.find(e => e.amisDocNo === job.amisExtensionPaymentDocNo);
-              if (currentExt) setSelectedExtensionId(currentExt.id);
+              // KHÔI PHỤC SELECTION:
+              // Tìm các dòng gia hạn thuộc phiếu chi này
+              const list = booking?.costDetails.extensionCosts || job?.bookingCostDetails?.extensionCosts || [];
+              const belongingExts = list.filter(e => e.amisDocNo === job?.amisExtensionPaymentDocNo);
+              
+              if (belongingExts.length > 1) {
+                  setSelectedExtensionId('merge_all');
+              } else if (belongingExts.length === 1) {
+                  setSelectedExtensionId(belongingExts[0].id);
+              } else {
+                  setSelectedExtensionId('');
+              }
           } else {
-              // TẠO MỚI: Luôn đề xuất số UNC mới
+              // TẠO MỚI
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
               initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
               initialData.amount = 0; 
               if (booking) initialData.receiverName = booking.line;
               else if (job) initialData.receiverName = job.line;
+              setSelectedExtensionId('');
           }
       }
 
@@ -234,7 +243,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     }
   }, [isOpen, job, booking, type, allJobs]);
 
-  // Handle Extension Selection
+  // Xử lý chọn dòng phí
   const handleSelectExtension = (extId: string) => {
       setSelectedExtensionId(extId);
       
@@ -247,12 +256,22 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           return;
       }
 
+      if (extId === 'merge_all') {
+          // Tổng tiền các dòng chưa chi
+          const totalUnpaid = availableExtensions.reduce((s, e) => s + e.total, 0);
+          setFormData(prev => ({
+              ...prev,
+              amount: totalUnpaid,
+              paymentContent: generateDescription("Chi gộp tiền cho ncc GH lô")
+          }));
+          return;
+      }
+
       const targetExt = availableExtensions.find(e => e.id === extId);
       if (targetExt) {
           setFormData(prev => ({
               ...prev,
               amount: targetExt.total,
-              // Tự động cập nhật nội dung chi dựa trên số HĐ hoặc số BL
               paymentContent: generateDescription("Chi tiền cho ncc GH lô", targetExt.invoice)
           }));
       }
@@ -304,28 +323,28 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
             <form onSubmit={handleSubmit} className="space-y-5">
                 
-                {/* Extension Selector - Only visible for 'extension' type */}
+                {/* Lựa chọn dòng phí gia hạn */}
                 {type === 'extension' && availableExtensions.length > 0 && (
                     <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm animate-in fade-in slide-in-from-top-2">
                         <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
                             <ChevronDown className="w-4 h-4" />
-                            Chọn dòng chi phí gia hạn để chi
+                            Chọn phiếu gia hạn để chi
                         </div>
                         <select
-                            className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
+                            className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-bold focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
                             value={selectedExtensionId}
                             onChange={(e) => handleSelectExtension(e.target.value)}
                         >
-                            <option value="">-- Chọn dòng chi phí --</option>
+                            <option value="">-- Chọn riêng từng dòng --</option>
+                            <option value="merge_all" className="font-bold text-blue-700">
+                                -- Chi gộp tất cả ({new Intl.NumberFormat('en-US').format(availableExtensions.reduce((s,e)=>s+e.total, 0))} VND) --
+                            </option>
                             {availableExtensions.map(ext => (
                                 <option key={ext.id} value={ext.id}>
-                                    [HĐ: {ext.invoice || 'Chưa có số'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND (Ngày: {formatDateVN(ext.date)})
+                                    [HĐ: {ext.invoice || 'N/A'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND (Ngày: {formatDateVN(ext.date)})
                                 </option>
                             ))}
                         </select>
-                        {availableExtensions.length === 0 && (
-                          <div className="text-[10px] text-orange-600 mt-2 italic">Tất cả các dòng phí gia hạn của Booking này đã được lập phiếu chi.</div>
-                        )}
                     </div>
                 )}
 
@@ -380,7 +399,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                          <Label>Diễn giải chi tiết</Label>
                          <textarea 
                             name="paymentContent" 
-                            rows={2}
+                            rows={3}
                             value={formData.paymentContent} 
                             onChange={handleChange}
                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 resize-none" 
@@ -427,10 +446,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                            />
                       </div>
                    </div>
-                </div>
-
-                <div className="text-xs text-slate-500 px-3 py-2 bg-white rounded-lg border border-slate-200 shadow-sm italic">
-                   * Mặc định: TK Nợ {formData.tkNo}, TK Có 1121, Ngân hàng TMCP Quân đội.
                 </div>
 
             </form>
