@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
+import { JobData, Customer, ShippingLine, INITIAL_JOB, BookingExtensionCost } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx'; 
@@ -795,14 +795,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setQuickReceiveJob(job);
               if (row.type === 'deposit_thu') {
                   setQuickReceiveMode('deposit');
-                  // Find merged jobs for Deposit
                   const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisDepositDocNo === row.docNo);
                   setQuickReceiveMergedJobs(matchingJobs);
               }
               else if (row.type === 'ext_thu') {
                   setQuickReceiveMode('extension');
                   setTargetExtensionId(row.extensionId);
-                  // Find merged jobs for Extension
                   const matchingJobs = jobs.filter(j => 
                       j.id !== job.id && 
                       (j.extensions || []).some(e => e.amisDocNo === row.docNo)
@@ -811,7 +809,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               }
               else {
                   setQuickReceiveMode('local');
-                  // Find merged jobs for Local Charge
                   const matchingJobs = jobs.filter(j => j.id !== job.id && j.amisLcDocNo === row.docNo);
                   setQuickReceiveMergedJobs(matchingJobs);
               }
@@ -914,8 +911,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisExtensionPaymentDocNo = '';
               updatedJob.amisExtensionPaymentDesc = '';
               updatedJob.amisExtensionPaymentDate = '';
-              updatedJob.amisExtensionPaymentAmount = 0; // Clear amount
-              // Cũng xóa amisDocNo trong cost details
+              updatedJob.amisExtensionPaymentAmount = 0; 
               if (updatedJob.bookingCostDetails) {
                 updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
                   ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo
@@ -926,7 +922,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisDepositRefundDesc = '';
               updatedJob.amisDepositRefundDate = '';
           } else if (row.type === 'refund_overpayment') {
-              // Delete refund record
               updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo);
           }
           
@@ -964,14 +959,20 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               if (job.id === selectedJobForModal.id) {
                   (updatedJob as any)[descField] = data.paymentContent;
                   
-                  // Save Specific Amount for Extension if applicable
                   if (paymentType === 'extension') {
                       updatedJob.amisExtensionPaymentAmount = data.amount;
                       
-                      // Cập nhật amisDocNo cho dòng chi phí gia hạn cụ thể
-                      if (data.selectedExtensionId && updatedJob.bookingCostDetails) {
+                      // Cập nhật amisDocNo cho các dòng phí gia hạn
+                      if (updatedJob.bookingCostDetails) {
                           updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
-                              if (ext.id === data.selectedExtensionId) {
+                              // CASE 1: Chọn gộp tất cả
+                              if (data.selectedExtensionId === 'merge_all') {
+                                  if (!ext.amisDocNo || ext.amisDocNo === oldDocNo) {
+                                      return { ...ext, amisDocNo: data.docNo };
+                                  }
+                              } 
+                              // CASE 2: Chọn một dòng cụ thể
+                              else if (ext.id === data.selectedExtensionId) {
                                   return { ...ext, amisDocNo: data.docNo };
                               }
                               return ext;
