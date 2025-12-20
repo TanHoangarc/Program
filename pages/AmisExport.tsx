@@ -287,7 +287,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                    rows.push({
                        jobId: j.id, type: 'lc_thu', rowId: `lc-${j.id}`,
                        date: j.localChargeDate, docNo: j.amisLcDocNo, 
-                       objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
+                       objCode: getCustomerCode(mainJob.customerId), objName: getCustomerName(mainJob.customerId),
                        desc: j.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${j.localChargeInvoice} (KIM)`, 
                        amount: j.localChargeTotal, 
                        tkNo: '1121', tkCo: '13111',
@@ -764,8 +764,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     return [];
   }, [jobs, mode, filterMonth, customers, customReceipts, lines]); 
 
-  // ... (rest of component remains unchanged)
-  // ...
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
@@ -774,7 +772,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       // MODE THU
       if (mode === 'thu') {
           if (row.type === 'external') {
-               // ... external logic ...
                const receiptId = row.jobId || row.id;
                const fullReceipt = customReceipts.find(r => r.id === receiptId);
                
@@ -821,7 +818,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setIsQuickReceiveOpen(true);
           }
       } 
-      // ... (Rest of handleEdit unchanged) ...
       else if (mode === 'chi' && job) {
           if (row.type === 'payment_refund') {
               setQuickReceiveJob(job);
@@ -919,6 +915,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisExtensionPaymentDesc = '';
               updatedJob.amisExtensionPaymentDate = '';
               updatedJob.amisExtensionPaymentAmount = 0; // Clear amount
+              // Cũng xóa amisDocNo trong cost details
+              if (updatedJob.bookingCostDetails) {
+                updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
+                  ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo
+                }));
+              }
           } else if (row.type === 'payment_refund') {
               updatedJob.amisDepositRefundDocNo = '';
               updatedJob.amisDepositRefundDesc = '';
@@ -963,8 +965,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                   (updatedJob as any)[descField] = data.paymentContent;
                   
                   // Save Specific Amount for Extension if applicable
-                  if (paymentType === 'extension' && data.amount > 0) {
+                  if (paymentType === 'extension') {
                       updatedJob.amisExtensionPaymentAmount = data.amount;
+                      
+                      // Cập nhật amisDocNo cho dòng chi phí gia hạn cụ thể
+                      if (data.selectedExtensionId && updatedJob.bookingCostDetails) {
+                          updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
+                              if (ext.id === data.selectedExtensionId) {
+                                  return { ...ext, amisDocNo: data.docNo };
+                              }
+                              return ext;
+                          });
+                      }
                   }
               }
               

@@ -28,6 +28,7 @@ const DEFAULT_USERS: UserAccount[] = [
   { username: 'Kimberrystaff', pass: 'Jwckim@124#', role: 'Staff' },
   { username: 'Kimberrymanager', pass: 'Jwckim@125#', role: 'Manager' },
   { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' }
+  { username: 'Admin', pass: 'Admin123', role: 'Admin' }
 ];
 
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';

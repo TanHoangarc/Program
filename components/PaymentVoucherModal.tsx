@@ -90,6 +90,14 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   const [selectedExtensionId, setSelectedExtensionId] = useState<string>('');
 
+  // Xác định số chứng từ hiện tại để lọc các dòng phí thuộc chính chứng từ này khi sửa
+  const currentDocNo = useMemo(() => {
+    if (type === 'extension' && job?.amisExtensionPaymentDocNo) return job.amisExtensionPaymentDocNo;
+    if (type === 'deposit' && job?.amisDepositOutDocNo) return job.amisDepositOutDocNo;
+    if (type === 'local' && job?.amisPaymentDocNo) return job.amisPaymentDocNo;
+    return '';
+  }, [job, type]);
+
   // Get list of available extensions based on input (Job or Booking)
   const availableExtensions = useMemo(() => {
       if (type !== 'extension') return [];
@@ -98,12 +106,15 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       if (booking) {
           list = booking.costDetails.extensionCosts || [];
       } else if (job) {
-          // If viewing a single job, try to get extensions from its booking details first
-          // fallback to job specific extensions if structure differs
           list = job.bookingCostDetails?.extensionCosts || [];
       }
-      return list;
-  }, [booking, job, type]);
+      
+      // LỌC DÒNG ĐÃ CHI: 
+      // Chỉ hiển thị những dòng chưa có amisDocNo HOẶC dòng đang thuộc chính phiếu này (khi chỉnh sửa)
+      return list.filter(item => 
+        item.total > 0 && (!item.amisDocNo || item.amisDocNo === currentDocNo)
+      );
+  }, [booking, job, type, currentDocNo]);
 
   // Helper to generate description
   const generateDescription = (prefix: string, specificInvoice?: string) => {
@@ -148,100 +159,78 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       };
 
       if (type === 'local') {
-          // Local Charge Payment
           initialData.tkNo = '3311'; 
-          initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
-          
-          if (booking) {
-             const summary = booking.costDetails.localCharge;
-             initialData.amount = summary.hasInvoice ? (summary.net + summary.vat) : summary.total;
-             initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
-             initialData.receiverName = booking.line;
-          } else if (job) {
-             initialData.amount = job.chiPayment || 0; 
-             initialData.receiverName = job.line;
-             
-             if (job.amisPaymentDocNo) {
-                 initialData.docNo = job.amisPaymentDocNo;
-                 initialData.paymentContent = job.amisPaymentDesc || '';
-                 initialData.date = job.amisPaymentDate || today;
-             } else {
-                 initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
-             }
+          if (job?.amisPaymentDocNo) {
+              // CHỈNH SỬA
+              initialData.docNo = job.amisPaymentDocNo;
+              initialData.paymentContent = job.amisPaymentDesc || '';
+              initialData.date = job.amisPaymentDate || today;
+              initialData.amount = job.chiPayment || 0;
+              initialData.receiverName = job.line;
+          } else {
+              // TẠO MỚI
+              initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
+              if (booking) {
+                const summary = booking.costDetails.localCharge;
+                initialData.amount = summary.hasInvoice ? (summary.net + summary.vat) : summary.total;
+                initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
+                initialData.receiverName = booking.line;
+              } else if (job) {
+                initialData.amount = job.chiPayment || 0; 
+                initialData.receiverName = job.line;
+                initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
+              }
           }
       } 
       else if (type === 'deposit') {
-          // Chi Cược (Deposit Out)
           initialData.tkNo = '1388';
-          initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
-          
-          if (booking) {
-              const depTotal = booking.costDetails.deposits.reduce((s,d) => s+d.amount, 0);
-              initialData.amount = depTotal;
-              initialData.paymentContent = generateDescription("Chi tiền cược lô");
-              initialData.receiverName = booking.line;
-          } else if (job) {
+          if (job?.amisDepositOutDocNo) {
+              // CHỈNH SỬA
+              initialData.docNo = job.amisDepositOutDocNo;
+              initialData.paymentContent = job.amisDepositOutDesc || '';
+              initialData.date = job.amisDepositOutDate || today;
               initialData.amount = job.chiCuoc || 0;
               initialData.receiverName = job.line;
-              
-              if (job.amisDepositOutDocNo) {
-                  initialData.docNo = job.amisDepositOutDocNo;
-                  initialData.paymentContent = job.amisDepositOutDesc || '';
-                  initialData.date = job.amisDepositOutDate || today;
-              } else {
+          } else {
+              // TẠO MỚI
+              initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
+              if (booking) {
+                  const depTotal = booking.costDetails.deposits.reduce((s,d) => s+d.amount, 0);
+                  initialData.amount = depTotal;
+                  initialData.paymentContent = generateDescription("Chi tiền cược lô");
+                  initialData.receiverName = booking.line;
+              } else if (job) {
+                  initialData.amount = job.chiCuoc || 0;
+                  initialData.receiverName = job.line;
                   initialData.paymentContent = generateDescription("Chi tiền cược lô");
               }
           }
       }
       else if (type === 'extension') {
-          // Chi Gia Hạn (Extension Out)
           initialData.tkNo = '13111';
-          initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
           
-          // Check if previous payment exists
-          const existingDoc = booking 
-            ? booking.jobs[0]?.amisExtensionPaymentDocNo
-            : job?.amisExtensionPaymentDocNo;
-            
-          const existingDesc = booking
-            ? booking.jobs[0]?.amisExtensionPaymentDesc
-            : job?.amisExtensionPaymentDesc;
-            
-          const existingDate = booking
-            ? booking.jobs[0]?.amisExtensionPaymentDate
-            : job?.amisExtensionPaymentDate;
-            
-          // PREFER SAVED AMOUNT if available, otherwise calculate total
-          const savedAmount = booking
-            ? booking.jobs.reduce((s, j) => s + (j.amisExtensionPaymentAmount || 0), 0) // Sum of parts if split, but usually it's one
-            : job?.amisExtensionPaymentAmount;
-
-          if (existingDoc) {
-              initialData.docNo = existingDoc;
-              initialData.paymentContent = existingDesc || '';
-              initialData.date = existingDate || today;
+          if (job?.amisExtensionPaymentDocNo) {
+              // CHỈNH SỬA: Hiện phiếu cũ đã lập
+              initialData.docNo = job.amisExtensionPaymentDocNo;
+              initialData.paymentContent = job.amisExtensionPaymentDesc || '';
+              initialData.date = job.amisExtensionPaymentDate || today;
+              initialData.amount = job.amisExtensionPaymentAmount || 0;
+              initialData.receiverName = job.line;
+              
+              // Tìm dòng gia hạn đang được chọn trong phiếu này
+              const currentExt = job.bookingCostDetails?.extensionCosts.find(e => e.amisDocNo === job.amisExtensionPaymentDocNo);
+              if (currentExt) setSelectedExtensionId(currentExt.id);
           } else {
+              // TẠO MỚI: Luôn đề xuất số UNC mới
+              initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC');
               initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
-          }
-
-          if (savedAmount && savedAmount > 0) {
-              initialData.amount = savedAmount;
-          } else {
-              // Fallback to total cost
-              if (booking) {
-                  const extTotal = booking.costDetails.extensionCosts.reduce((s,e) => s+e.total, 0);
-                  initialData.amount = extTotal;
-                  initialData.receiverName = booking.line;
-              } else if (job) {
-                  const extTotal = (job.bookingCostDetails?.extensionCosts || []).reduce((s,e) => s+e.total, 0);
-                  initialData.amount = extTotal;
-                  initialData.receiverName = job.line;
-              }
+              initialData.amount = 0; 
+              if (booking) initialData.receiverName = booking.line;
+              else if (job) initialData.receiverName = job.line;
           }
       }
 
       setFormData(initialData);
-      setSelectedExtensionId(''); // Reset selection on open
     }
   }, [isOpen, job, booking, type, allJobs]);
 
@@ -250,31 +239,20 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       setSelectedExtensionId(extId);
       
       if (!extId) {
-          // Revert to Total
-          if (booking) {
-              const total = booking.costDetails.extensionCosts.reduce((s,e) => s+e.total, 0);
-              setFormData(prev => ({ 
-                  ...prev, 
-                  amount: total,
-                  paymentContent: generateDescription("Chi tiền cho ncc GH lô")
-              }));
-          } else if (job) {
-              const total = (job.bookingCostDetails?.extensionCosts || []).reduce((s,e) => s+e.total, 0);
-              setFormData(prev => ({ 
-                  ...prev, 
-                  amount: total,
-                  paymentContent: generateDescription("Chi tiền cho ncc GH lô")
-              }));
-          }
+          setFormData(prev => ({ 
+              ...prev, 
+              amount: 0,
+              paymentContent: generateDescription("Chi tiền cho ncc GH lô")
+          }));
           return;
       }
 
-      // Pick Specific Extension
       const targetExt = availableExtensions.find(e => e.id === extId);
       if (targetExt) {
           setFormData(prev => ({
               ...prev,
               amount: targetExt.total,
+              // Tự động cập nhật nội dung chi dựa trên số HĐ hoặc số BL
               paymentContent: generateDescription("Chi tiền cho ncc GH lô", targetExt.invoice)
           }));
       }
@@ -295,7 +273,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Include selectedExtensionId in the payload
     onSave({
         ...formData,
         selectedExtensionId: selectedExtensionId || undefined
@@ -332,20 +309,23 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                     <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm animate-in fade-in slide-in-from-top-2">
                         <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
                             <ChevronDown className="w-4 h-4" />
-                            Chọn phiếu gia hạn để chi
+                            Chọn dòng chi phí gia hạn để chi
                         </div>
                         <select
                             className="w-full p-2.5 bg-white border border-orange-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none text-slate-700"
                             value={selectedExtensionId}
                             onChange={(e) => handleSelectExtension(e.target.value)}
                         >
-                            <option value="">-- Chi gộp tất cả ({new Intl.NumberFormat('en-US').format(availableExtensions.reduce((s,e)=>s+e.total, 0))} VND) --</option>
+                            <option value="">-- Chọn dòng chi phí --</option>
                             {availableExtensions.map(ext => (
                                 <option key={ext.id} value={ext.id}>
                                     [HĐ: {ext.invoice || 'Chưa có số'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND (Ngày: {formatDateVN(ext.date)})
                                 </option>
                             ))}
                         </select>
+                        {availableExtensions.length === 0 && (
+                          <div className="text-[10px] text-orange-600 mt-2 italic">Tất cả các dòng phí gia hạn của Booking này đã được lập phiếu chi.</div>
+                        )}
                     </div>
                 )}
 

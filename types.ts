@@ -82,6 +82,7 @@ export interface BookingExtensionCost {
   vat: number;
   total: number;
   hasInvoice?: boolean;
+  amisDocNo?: string; // Bổ sung để theo dõi phiếu chi đã gán
   // File attachments
   fileUrl?: string;
   fileName?: string;
