@@ -196,29 +196,11 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
               } else if (paymentType === 'extension') {
-                  const oldDocNo = updatedJob.amisExtensionPaymentDocNo;
-                  
                   updatedJob.amisExtensionPaymentDocNo = data.docNo;
                   updatedJob.amisExtensionPaymentDesc = data.paymentContent;
                   updatedJob.amisExtensionPaymentDate = data.date;
                   if (data.amount > 0) {
                       updatedJob.amisExtensionPaymentAmount = data.amount;
-                  }
-                  
-                  // Update inner extension costs based on selection
-                  if (updatedJob.bookingCostDetails) {
-                      updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
-                          const isSelected = data.selectedExtensionId === 'merge_all' || ext.id === data.selectedExtensionId;
-                          const wasLinked = ext.amisDocNo === oldDocNo;
-                          
-                          if (isSelected) {
-                              return { ...ext, amisDocNo: data.docNo };
-                          } else if (wasLinked) {
-                              // If it was linked to the old doc but is NOT selected in the new save -> Unlink it
-                              return { ...ext, amisDocNo: '' };
-                          }
-                          return ext;
-                      });
                   }
               }
               onEditJob(updatedJob);
