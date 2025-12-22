@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, DollarSign, Calendar, CreditCard, User, FileText, ChevronDown } from 'lucide-react';
+import { X, Save, DollarSign, Calendar, CreditCard, User, FileText, ChevronDown, Lock } from 'lucide-react';
 import { JobData, BookingSummary, BookingExtensionCost } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
 
@@ -98,30 +98,46 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     return '';
   }, [job, type]);
 
-  // Lấy danh sách phí gia hạn khả dụng
-  const availableExtensions = useMemo(() => {
+  // Lấy TOÀN BỘ danh sách phí gia hạn (kể cả đã chi)
+  const fullExtensionList = useMemo(() => {
       if (type !== 'extension') return [];
       
       let list: BookingExtensionCost[] = [];
+      
+      // PRIORITY 1: Direct Booking Prop (Most reliable if coming from BookingList)
       if (booking) {
           list = booking.costDetails.extensionCosts || [];
-      } else if (job) {
+      } 
+      // PRIORITY 2: Calculate from All Jobs (Reliable if coming from AmisExport/JobEntry)
+      else if (job && allJobs && job.booking) {
+          // Find all jobs for this booking to gather all extension costs
+          const siblings = allJobs.filter(j => j.booking === job.booking);
+          if (siblings.length > 0) {
+              // Grab from the first job that has extension costs (assuming sync)
+              const bestJob = siblings.find(j => j.bookingCostDetails?.extensionCosts?.length > 0) || siblings[0];
+              list = bestJob.bookingCostDetails?.extensionCosts || [];
+          } else {
+              list = job.bookingCostDetails?.extensionCosts || [];
+          }
+      }
+      // PRIORITY 3: Fallback to single job
+      else if (job) {
           list = job.bookingCostDetails?.extensionCosts || [];
       }
       
-      // LỌC: Chưa có amisDocNo HOẶC đang thuộc phiếu hiện tại
-      return list.filter(item => 
-        item.total > 0 && (!item.amisDocNo || item.amisDocNo === currentDocNo)
-      );
-  }, [booking, job, type, currentDocNo]);
+      // Show ALL items, even paid ones (we disable them in UI)
+      return list.filter(item => item.total > 0);
+  }, [booking, job, type, allJobs]);
+
+  // Lấy danh sách có thể chi (Chưa chi hoặc thuộc phiếu hiện tại) để tính Merge All
+  const mergeableExtensions = useMemo(() => {
+      return fullExtensionList.filter(item => !item.amisDocNo || item.amisDocNo === currentDocNo);
+  }, [fullExtensionList, currentDocNo]);
 
   // Helper tính tổng tiền gộp các dòng đang thuộc phiếu này
   const totalMergedAmount = useMemo(() => {
-    return availableExtensions.reduce((sum, ext) => {
-        if (ext.amisDocNo === currentDocNo) return sum + ext.total;
-        return sum;
-    }, 0);
-  }, [availableExtensions, currentDocNo]);
+    return mergeableExtensions.reduce((sum, ext) => sum + ext.total, 0);
+  }, [mergeableExtensions]);
 
   // Helper tạo diễn giải
   const generateDescription = (prefix: string, specificInvoice?: string) => {
@@ -218,7 +234,15 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               
               // KHÔI PHỤC SELECTION:
               // Tìm các dòng gia hạn thuộc phiếu chi này
-              const list = booking?.costDetails.extensionCosts || job?.bookingCostDetails?.extensionCosts || [];
+              // Must use the same logic as fullExtensionList to be consistent
+              let list: BookingExtensionCost[] = [];
+              if (booking) list = booking.costDetails.extensionCosts || [];
+              else if (job && allJobs && job.booking) {
+                  const sibs = allJobs.filter(j => j.booking === job.booking);
+                  const best = sibs.find(j => j.bookingCostDetails?.extensionCosts?.length > 0) || sibs[0];
+                  list = best?.bookingCostDetails?.extensionCosts || [];
+              } else if (job) list = job.bookingCostDetails?.extensionCosts || [];
+
               const belongingExts = list.filter(e => e.amisDocNo === job?.amisExtensionPaymentDocNo);
               
               if (belongingExts.length > 1) {
@@ -258,7 +282,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
       if (extId === 'merge_all') {
           // Tổng tiền các dòng chưa chi
-          const totalUnpaid = availableExtensions.reduce((s, e) => s + e.total, 0);
+          const totalUnpaid = mergeableExtensions.reduce((s, e) => s + e.total, 0);
           setFormData(prev => ({
               ...prev,
               amount: totalUnpaid,
@@ -267,7 +291,8 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           return;
       }
 
-      const targetExt = availableExtensions.find(e => e.id === extId);
+      // Use fullExtensionList to find target
+      const targetExt = fullExtensionList.find(e => e.id === extId);
       if (targetExt) {
           setFormData(prev => ({
               ...prev,
@@ -324,7 +349,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-5">
                 
                 {/* Lựa chọn dòng phí gia hạn */}
-                {type === 'extension' && availableExtensions.length > 0 && (
+                {type === 'extension' && fullExtensionList.length > 0 && (
                     <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm animate-in fade-in slide-in-from-top-2">
                         <div className="flex items-center gap-2 mb-2 text-orange-800 font-bold text-sm">
                             <ChevronDown className="w-4 h-4" />
@@ -336,14 +361,25 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                             onChange={(e) => handleSelectExtension(e.target.value)}
                         >
                             <option value="">-- Chọn riêng từng dòng --</option>
-                            <option value="merge_all" className="font-bold text-blue-700">
-                                -- Chi gộp tất cả ({new Intl.NumberFormat('en-US').format(availableExtensions.reduce((s,e)=>s+e.total, 0))} VND) --
-                            </option>
-                            {availableExtensions.map(ext => (
-                                <option key={ext.id} value={ext.id}>
-                                    [HĐ: {ext.invoice || 'N/A'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND (Ngày: {formatDateVN(ext.date)})
+                            {mergeableExtensions.length > 0 && (
+                                <option value="merge_all" className="font-bold text-blue-700">
+                                    -- Chi gộp tất cả còn lại ({new Intl.NumberFormat('en-US').format(totalMergedAmount)} VND) --
                                 </option>
-                            ))}
+                            )}
+                            {fullExtensionList.map(ext => {
+                                const isPaid = !!ext.amisDocNo && ext.amisDocNo !== currentDocNo;
+                                return (
+                                    <option 
+                                        key={ext.id} 
+                                        value={ext.id} 
+                                        disabled={isPaid} 
+                                        className={isPaid ? "text-gray-400 bg-gray-50 italic" : "text-slate-700"}
+                                    >
+                                        {isPaid ? `(Đã chi: ${ext.amisDocNo}) - ` : ''} 
+                                        [HĐ: {ext.invoice || 'N/A'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND (Ngày: {formatDateVN(ext.date)})
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
                 )}

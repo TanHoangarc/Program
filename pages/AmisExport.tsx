@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, INITIAL_JOB, BookingExtensionCost } from '../types';
-import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search } from 'lucide-react';
+import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search, CalendarX } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx'; 
 import ExcelJS from 'exceljs'; 
@@ -75,6 +75,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [salesInitialData, setSalesInitialData] = useState<any>(null);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // CLEAR DATE STATE
+  const [showClearDate, setShowClearDate] = useState(false);
+  const [clearTargetDate, setClearTargetDate] = useState(new Date().toISOString().split('T')[0]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentTemplateFileName = TEMPLATE_MAP[mode] || "AmisTemplate.xlsx";
@@ -181,6 +185,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   };
 
   const exportData = useMemo(() => {
+    // ... (This part remains unchanged, just ensuring structure integrity)
     let rows: any[] = [];
 
     // --- MODE THU ---
@@ -397,6 +402,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     
     // --- MODE CHI ---
     else if (mode === 'chi') {
+        // ... (Chi mode logic same as original file)
         rows = [];
         const processedDocNos = new Set<string>();
         const todayStr = new Date().toISOString().split('T')[0];
@@ -539,6 +545,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         });
     }
+    // ... (Ban and Mua modes from original)
     else if (mode === 'ban') {
         rows = [];
         let validJobs = jobs.filter(j => {
@@ -594,6 +601,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         });
     }
     else if (mode === 'mua') {
+        // ... (Mua logic unchanged)
         const rawItems: any[] = [];
         const processedBookings = new Set<string>();
         
@@ -764,6 +772,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   }, [jobs, mode, filterMonth, filterDesc, customers, customReceipts, lines]); 
 
+  // ... (handleEdit, handleSaveJobEdit, handleSaveSales, handleDelete remain same)
+  
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
@@ -999,6 +1009,143 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       }
   };
 
+  const handleCopy = (text: string, id: string) => {
+      navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1000);
+  };
+
+  // --- CLEAR BY DATE HANDLER ---
+  const handleClearByDate = () => {
+      if (!clearTargetDate) return;
+      if (!window.confirm(`CẢNH BÁO: Hành động này sẽ XÓA TOÀN BỘ số chứng từ và số tiền đã ghi nhận trong ngày ${formatDateVN(clearTargetDate)}.\n\nBạn có chắc chắn muốn tiếp tục?`)) return;
+
+      let updatedCount = 0;
+
+      // 1. Process JOBS
+      jobs.forEach(job => {
+          let changed = false;
+          const updatedJob = { ...job };
+
+          // MODE THU
+          if (mode === 'thu') {
+              // Local Charge
+              if (updatedJob.localChargeDate === clearTargetDate && updatedJob.amisLcDocNo) {
+                  updatedJob.amisLcDocNo = '';
+                  updatedJob.amisLcDesc = '';
+                  updatedJob.amisLcAmount = 0;
+                  changed = true;
+              }
+              // Deposit
+              if (updatedJob.ngayThuCuoc === clearTargetDate && updatedJob.amisDepositDocNo) {
+                  updatedJob.amisDepositDocNo = '';
+                  updatedJob.amisDepositDesc = '';
+                  updatedJob.amisDepositAmount = 0;
+                  changed = true;
+              }
+              // Extensions
+              if (updatedJob.extensions && updatedJob.extensions.length > 0) {
+                  updatedJob.extensions = updatedJob.extensions.map(ext => {
+                      // Check invoiceDate or amisDate. 
+                      // In QuickReceive, we sync amisDate to invoiceDate.
+                      if (ext.invoiceDate === clearTargetDate && ext.amisDocNo) {
+                          changed = true;
+                          return { ...ext, amisDocNo: '', amisDesc: '', amisAmount: 0 };
+                      }
+                      return ext;
+                  });
+              }
+              // Additional Receipts
+              if (updatedJob.additionalReceipts && updatedJob.additionalReceipts.length > 0) {
+                  const keep = updatedJob.additionalReceipts.filter(r => r.date !== clearTargetDate);
+                  if (keep.length !== updatedJob.additionalReceipts.length) {
+                      updatedJob.additionalReceipts = keep;
+                      changed = true;
+                  }
+              }
+          } 
+          // MODE CHI
+          else if (mode === 'chi') {
+              // Payment Local
+              if (updatedJob.amisPaymentDate === clearTargetDate && updatedJob.amisPaymentDocNo) {
+                  updatedJob.amisPaymentDocNo = '';
+                  updatedJob.amisPaymentDesc = '';
+                  updatedJob.amisPaymentDate = '';
+                  changed = true;
+              }
+              // Deposit Out
+              if (updatedJob.amisDepositOutDate === clearTargetDate && updatedJob.amisDepositOutDocNo) {
+                  updatedJob.amisDepositOutDocNo = '';
+                  updatedJob.amisDepositOutDesc = '';
+                  updatedJob.amisDepositOutDate = '';
+                  changed = true;
+              }
+              // Extension Out
+              if (updatedJob.amisExtensionPaymentDate === clearTargetDate && updatedJob.amisExtensionPaymentDocNo) {
+                  updatedJob.amisExtensionPaymentDocNo = '';
+                  updatedJob.amisExtensionPaymentDesc = '';
+                  updatedJob.amisExtensionPaymentDate = '';
+                  updatedJob.amisExtensionPaymentAmount = 0;
+                  // Unlink inner extension costs
+                  if (updatedJob.bookingCostDetails) {
+                      updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
+                          ...e, amisDocNo: e.amisDocNo === updatedJob.amisExtensionPaymentDocNo ? '' : e.amisDocNo
+                      }));
+                  }
+                  changed = true;
+              }
+              // Refund Deposit
+              if (updatedJob.amisDepositRefundDate === clearTargetDate && updatedJob.amisDepositRefundDocNo) {
+                  updatedJob.amisDepositRefundDocNo = '';
+                  updatedJob.amisDepositRefundDesc = '';
+                  updatedJob.amisDepositRefundDate = '';
+                  changed = true;
+              }
+              // Refunds Overpayment
+              if (updatedJob.refunds && updatedJob.refunds.length > 0) {
+                  const keep = updatedJob.refunds.filter(r => r.date !== clearTargetDate);
+                  if (keep.length !== updatedJob.refunds.length) {
+                      updatedJob.refunds = keep;
+                      changed = true;
+                  }
+              }
+          }
+
+          if (changed && onUpdateJob) {
+              onUpdateJob(updatedJob);
+              updatedCount++;
+          }
+      });
+
+      // 2. Process CUSTOM RECEIPTS (Only THU)
+      if (mode === 'thu' && onUpdateCustomReceipts && customReceipts) {
+          let customChanged = false;
+          // Filter out main custom receipts on that date
+          const filteredMain = customReceipts.filter(r => r.date !== clearTargetDate);
+          
+          // Filter additional receipts inside remaining custom receipts
+          const finalCustomReceipts = filteredMain.map(r => {
+              if (r.additionalReceipts && r.additionalReceipts.length > 0) {
+                  const newAdd = r.additionalReceipts.filter((ar: any) => ar.date !== clearTargetDate);
+                  if (newAdd.length !== r.additionalReceipts.length) {
+                      return { ...r, additionalReceipts: newAdd };
+                  }
+              }
+              return r;
+          });
+
+          // Check if anything changed
+          if (JSON.stringify(finalCustomReceipts) !== JSON.stringify(customReceipts)) {
+              onUpdateCustomReceipts(finalCustomReceipts);
+              customChanged = true;
+          }
+          if (customChanged) updatedCount++;
+      }
+
+      alert(`Đã xóa dữ liệu phiếu của ${updatedCount} đối tượng trong ngày ${formatDateVN(clearTargetDate)}.`);
+      setShowClearDate(false);
+  };
+
   // --- EXPORT WITH EXCELJS ---
   const handleExport = async () => {
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
@@ -1185,12 +1332,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     setSelectedIds(newSet);
   };
 
-  const handleCopy = (text: string, id: string) => {
-      navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 1000);
-  };
-
   return (
     <div className="p-8 max-w-full">
       <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
@@ -1276,6 +1417,36 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               >
                   <Lock className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Khóa (${selectedIds.size})` : 'Khóa'}</span>
               </button>
+
+              {/* CLEAR BY DATE BUTTON (THU/CHI ONLY) */}
+              {(mode === 'thu' || mode === 'chi') && (
+                  <div className="relative">
+                      {!showClearDate ? (
+                          <button 
+                              onClick={() => setShowClearDate(true)}
+                              className="bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 px-4 py-2 rounded-lg flex items-center space-x-2 shadow-sm transition-all"
+                              title="Xóa phiếu theo ngày"
+                          >
+                              <CalendarX className="w-5 h-5" />
+                          </button>
+                      ) : (
+                          <div className="flex items-center bg-white border border-red-200 rounded-lg p-1 shadow-lg animate-in fade-in zoom-in-95 absolute top-0 right-0 z-50">
+                              <input 
+                                  type="date" 
+                                  value={clearTargetDate}
+                                  onChange={(e) => setClearTargetDate(e.target.value)}
+                                  className="text-xs border-none focus:ring-0 text-slate-700 font-bold bg-transparent"
+                              />
+                              <button onClick={handleClearByDate} className="bg-red-600 text-white p-1.5 rounded ml-1 hover:bg-red-700" title="Xác nhận xóa">
+                                  <Trash2 className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => setShowClearDate(false)} className="text-slate-400 hover:text-slate-600 p-1.5 ml-1">
+                                  <X className="w-4 h-4" />
+                              </button>
+                          </div>
+                      )}
+                  </div>
+              )}
 
               <button onClick={handleExport} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95">
                   <FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span>
