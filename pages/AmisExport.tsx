@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, INITIAL_JOB, BookingExtensionCost } from '../types';
-import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check } from 'lucide-react';
+import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx'; 
 import ExcelJS from 'exceljs'; 
@@ -45,6 +45,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts 
 }) => {
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterDesc, setFilterDesc] = useState(''); // NEW: Search Description
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Template State
@@ -180,9 +181,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   };
 
   const exportData = useMemo(() => {
+    let rows: any[] = [];
+
     // --- MODE THU ---
     if (mode === 'thu') {
-      const rows: any[] = [];
+      rows = [];
       
       // 1. Thu Cược (Deduplicated)
       const depGroupMap = new Map<string, any[]>();
@@ -390,13 +393,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           }
       });
 
-      // Sort Ascending by Document Number
-      return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     } 
     
     // --- MODE CHI ---
     else if (mode === 'chi') {
-        const rows: any[] = [];
+        rows = [];
         const processedDocNos = new Set<string>();
         const todayStr = new Date().toISOString().split('T')[0];
 
@@ -537,12 +538,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 });
             }
         });
-
-        // Sort Ascending by Document Number
-        return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
     }
     else if (mode === 'ban') {
-        const rows: any[] = [];
+        rows = [];
         let validJobs = jobs.filter(j => {
             const hasSell = j.sell > 0;
             const name = (j.customerName || '').toLowerCase();
@@ -594,9 +592,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 amount: j.sell, projectCode: projectCode
             });
         });
-
-        // Sort Ascending by Document Number
-        return rows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
     else if (mode === 'mua') {
         const rawItems: any[] = [];
@@ -734,7 +729,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         const invoiceToDocMap = new Map<string, string>();
         let currentDocNum = 1;
         
-        const finalRows = rawItems.map(item => {
+        rows = rawItems.map(item => {
             const groupKey = item.invoice ? item.invoice.trim().toUpperCase() : `NO_INV_${item.jobId}_${Math.random()}`;
             
             let docNo = '';
@@ -756,13 +751,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 objName: item.supplierName
             };
         });
-
-        // Sort Ascending by Document Number
-        return finalRows.sort((a, b) => a.docNo.localeCompare(b.docNo));
     }
 
-    return [];
-  }, [jobs, mode, filterMonth, customers, customReceipts, lines]); 
+    // --- FILTER BY DESCRIPTION ---
+    if (filterDesc) {
+        const lower = filterDesc.toLowerCase();
+        rows = rows.filter(r => (r.desc || '').toLowerCase().includes(lower));
+    }
+
+    // Sort Ascending by Document Number
+    return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
+
+  }, [jobs, mode, filterMonth, filterDesc, customers, customReceipts, lines]); 
 
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
@@ -1209,10 +1209,22 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         <div className="glass-panel p-4 rounded-xl shadow-sm border border-white/40 flex justify-between items-center sticky top-0 z-20">
            <div className="flex items-center space-x-4">
               <div className="flex items-center text-slate-500 font-medium"><Filter className="w-4 h-4 mr-2" /> Lọc tháng:</div>
-              <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="p-2 glass-input rounded-lg text-sm w-48 focus:ring-0 outline-none">
+              <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="p-2 glass-input rounded-lg text-sm w-32 focus:ring-0 outline-none">
                 <option value="">Tất cả</option>
                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
+              
+              {/* Search Description */}
+              <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Tìm diễn giải..." 
+                    value={filterDesc}
+                    onChange={(e) => setFilterDesc(e.target.value)}
+                    className="pl-9 pr-4 py-2 glass-input rounded-lg text-sm w-48 focus:ring-0 outline-none"
+                  />
+              </div>
            </div>
            <div className="flex space-x-2">
               <button 
