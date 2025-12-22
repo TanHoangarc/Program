@@ -923,9 +923,29 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               updatedJob.amisExtensionPaymentDate = '';
               updatedJob.amisExtensionPaymentAmount = 0; 
               if (updatedJob.bookingCostDetails) {
-                updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
-                  ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo
-                }));
+                updatedJob.bookingCostDetails = {
+                    ...updatedJob.bookingCostDetails,
+                    extensionCosts: updatedJob.bookingCostDetails.extensionCosts.map(e => ({
+                      ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo
+                    }))
+                };
+              }
+              
+              // Sync Siblings
+              if (updatedJob.booking) {
+                  const siblings = jobs.filter(j => j.booking === updatedJob.booking && j.id !== updatedJob.id);
+                  siblings.forEach(sib => {
+                      const updatedSib = { ...sib };
+                      if (updatedSib.bookingCostDetails) {
+                          updatedSib.bookingCostDetails = {
+                              ...updatedSib.bookingCostDetails,
+                              extensionCosts: updatedSib.bookingCostDetails.extensionCosts.map(e => ({
+                                  ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo
+                              }))
+                          };
+                          onUpdateJob(updatedSib);
+                      }
+                  });
               }
           } else if (row.type === 'payment_refund') {
               updatedJob.amisDepositRefundDocNo = '';
@@ -1082,16 +1102,40 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               }
               // Extension Out
               if (updatedJob.amisExtensionPaymentDate === clearTargetDate && updatedJob.amisExtensionPaymentDocNo) {
+                  const docNoToClear = updatedJob.amisExtensionPaymentDocNo; // Capture ID
+
                   updatedJob.amisExtensionPaymentDocNo = '';
                   updatedJob.amisExtensionPaymentDesc = '';
                   updatedJob.amisExtensionPaymentDate = '';
                   updatedJob.amisExtensionPaymentAmount = 0;
+                  
                   // Unlink inner extension costs
                   if (updatedJob.bookingCostDetails) {
-                      updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
-                          ...e, amisDocNo: e.amisDocNo === updatedJob.amisExtensionPaymentDocNo ? '' : e.amisDocNo
-                      }));
+                      updatedJob.bookingCostDetails = {
+                          ...updatedJob.bookingCostDetails,
+                          extensionCosts: updatedJob.bookingCostDetails.extensionCosts.map(e => ({
+                              ...e, amisDocNo: e.amisDocNo === docNoToClear ? '' : e.amisDocNo
+                          }))
+                      };
                   }
+                  
+                  // Sync Siblings
+                  if (updatedJob.booking) {
+                      const siblings = jobs.filter(j => j.booking === updatedJob.booking && j.id !== updatedJob.id);
+                      siblings.forEach(sib => {
+                          const updatedSib = { ...sib };
+                          if (updatedSib.bookingCostDetails) {
+                              updatedSib.bookingCostDetails = {
+                                  ...updatedSib.bookingCostDetails,
+                                  extensionCosts: updatedSib.bookingCostDetails.extensionCosts.map(e => ({
+                                      ...e, amisDocNo: e.amisDocNo === docNoToClear ? '' : e.amisDocNo
+                                  }))
+                              };
+                              onUpdateJob(updatedSib);
+                          }
+                      });
+                  }
+
                   changed = true;
               }
               // Refund Deposit
