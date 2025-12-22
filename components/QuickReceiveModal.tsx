@@ -474,7 +474,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         amisDesc: newExtension.amisDesc,
                         amisAmount: isMain && ext.id === (job.extensions?.find(e => selectedMergedExtIds.has(e.id))?.id) ? newExtension.amisAmount : undefined,
                         customerId: isMain ? newExtension.customerId : ext.customerId,
-                        invoice: isMain ? newExtension.invoice : ext.invoice
+                        invoice: isMain ? newExtension.invoice : ext.invoice,
+                        invoiceDate: newExtension.amisDate, // Fixed: Update invoiceDate
+                        amisDate: newExtension.amisDate,    // Fixed: Update amisDate
+                        date: newExtension.amisDate         // Fixed: Update date
                     };
                 }
                 return ext;
