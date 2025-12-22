@@ -142,7 +142,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       }
       
       const invoicePart = specificInvoice ? ` hóa đơn ${specificInvoice}` : '';
-      return `${prefix} ${jobCodes} BL ${bkNumber}${invoicePart} (kimberry)`;
+      return `${prefix} BL ${bkNumber}${invoicePart} (kimberry)(GIA HẠN)`;
   };
 
   useEffect(() => {
@@ -184,7 +184,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           }
       } 
       else if (type === 'deposit') {
-          initialData.tkNo = '1388';
+          initialData.tkNo = '3311';
           if (job?.amisDepositOutDocNo) {
               initialData.docNo = job.amisDepositOutDocNo;
               initialData.paymentContent = job.amisDepositOutDesc || '';
@@ -206,7 +206,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           }
       }
       else if (type === 'extension') {
-          initialData.tkNo = '13111';
+          initialData.tkNo = '3311';
           
           if (job?.amisExtensionPaymentDocNo) {
               // CHỈNH SỬA
