@@ -98,6 +98,16 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     return '';
   }, [job, type]);
 
+  // Valid Doc Nos Set (Header level) to detect ghosts
+  const validExtensionDocNos = useMemo(() => {
+      if (!allJobs) return new Set<string>();
+      const set = new Set<string>();
+      allJobs.forEach(j => {
+          if (j.amisExtensionPaymentDocNo) set.add(j.amisExtensionPaymentDocNo);
+      });
+      return set;
+  }, [allJobs]);
+
   // Lấy TOÀN BỘ danh sách phí gia hạn (kể cả đã chi)
   const fullExtensionList = useMemo(() => {
       if (type !== 'extension') return [];
@@ -131,8 +141,13 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   // Lấy danh sách có thể chi (Chưa chi hoặc thuộc phiếu hiện tại) để tính Merge All
   const mergeableExtensions = useMemo(() => {
-      return fullExtensionList.filter(item => !item.amisDocNo || item.amisDocNo === currentDocNo);
-  }, [fullExtensionList, currentDocNo]);
+      return fullExtensionList.filter(item => {
+          if (!item.amisDocNo) return true; // Unpaid
+          if (item.amisDocNo === currentDocNo) return true; // Currently editing
+          if (!validExtensionDocNos.has(item.amisDocNo)) return true; // Ghost lock -> Treat as mergeable
+          return false;
+      });
+  }, [fullExtensionList, currentDocNo, validExtensionDocNos]);
 
   // Helper tính tổng tiền gộp các dòng đang thuộc phiếu này
   const totalMergedAmount = useMemo(() => {
@@ -145,20 +160,39 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       let bkNumber = '';
 
       if (booking) {
-          jobCodes = booking.jobs.map(j => j.jobCode).filter(Boolean).join('+');
+          // Deduplicate job codes
+          const codes = Array.from(new Set(booking.jobs.map(j => j.jobCode).filter(Boolean)));
+          jobCodes = codes.join('+');
           bkNumber = booking.bookingId;
       } else if (job) {
           bkNumber = job.booking;
           if (allJobs && job.booking) {
               const siblings = allJobs.filter(j => j.booking === job.booking);
-              jobCodes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean).join('+') : job.jobCode;
+              const codes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean) : [job.jobCode];
+              jobCodes = Array.from(new Set(codes)).join('+');
           } else {
               jobCodes = job.jobCode;
           }
       }
       
       const invoicePart = specificInvoice ? ` hóa đơn ${specificInvoice}` : '';
-      return `${prefix} BL ${bkNumber}${invoicePart} (kimberry)(GIA HẠN)`;
+      
+      if (type === 'local') {
+          // Format: Chi tiền cho ncc lô job1+job2... BL ... (Kimberry)
+          return `Chi tiền cho ncc lô ${jobCodes} BL ${bkNumber}${invoicePart} (Kimberry)`;
+      } 
+      else if (type === 'extension') {
+          // Format: Chi tiền cho ncc lô BL ... (Kimberry)(GIA HẠN)
+          // Handle "Chi gộp" prefix
+          let startPhrase = "Chi tiền cho ncc lô";
+          if (prefix.toLowerCase().includes("gộp")) {
+              startPhrase = "Chi gộp tiền cho ncc lô";
+          }
+          return `${startPhrase} BL ${bkNumber}${invoicePart} (Kimberry)(GIA HẠN)`;
+      }
+      
+      // Default (Deposit etc)
+      return `${prefix} ${jobCodes} BL ${bkNumber}${invoicePart} (Kimberry)`;
   };
 
   useEffect(() => {
@@ -232,9 +266,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               initialData.amount = job.amisExtensionPaymentAmount || 0;
               initialData.receiverName = job.line;
               
-              // KHÔI PHỤC SELECTION:
-              // Tìm các dòng gia hạn thuộc phiếu chi này
-              // Must use the same logic as fullExtensionList to be consistent
               let list: BookingExtensionCost[] = [];
               if (booking) list = booking.costDetails.extensionCosts || [];
               else if (job && allJobs && job.booking) {
@@ -291,7 +322,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           return;
       }
 
-      // Use fullExtensionList to find target
       const targetExt = fullExtensionList.find(e => e.id === extId);
       if (targetExt) {
           setFormData(prev => ({
@@ -367,15 +397,18 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                                 </option>
                             )}
                             {fullExtensionList.map(ext => {
-                                const isPaid = !!ext.amisDocNo && ext.amisDocNo !== currentDocNo;
+                                // Enhanced isPaid check: must have docNo AND that docNo must exist in a header somewhere
+                                const isPhantom = !!ext.amisDocNo && !validExtensionDocNos.has(ext.amisDocNo);
+                                const isPaid = !!ext.amisDocNo && !isPhantom && ext.amisDocNo !== currentDocNo;
+                                
                                 return (
                                     <option 
                                         key={ext.id} 
                                         value={ext.id} 
                                         disabled={isPaid} 
-                                        className={isPaid ? "text-gray-400 bg-gray-50 italic" : "text-slate-700"}
+                                        className={isPaid ? "text-gray-400 bg-gray-50 italic" : (isPhantom ? "text-red-600 font-bold" : "text-slate-700")}
                                     >
-                                        {isPaid ? `(Đã chi: ${ext.amisDocNo}) - ` : ''} 
+                                        {isPaid ? `(Đã chi: ${ext.amisDocNo}) - ` : (isPhantom ? `(Lỗi: ${ext.amisDocNo}) - ` : '')} 
                                         [HĐ: {ext.invoice || 'N/A'}] - {new Intl.NumberFormat('en-US').format(ext.total)} VND (Ngày: {formatDateVN(ext.date)})
                                     </option>
                                 );
