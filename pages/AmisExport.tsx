@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { JobData, Customer, ShippingLine, INITIAL_JOB, BookingExtensionCost } from '../types';
+import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx'; 
@@ -8,7 +8,6 @@ import ExcelJS from 'exceljs';
 import { formatDateVN, calculateBookingSummary, parseDateVN, generateNextDocNo } from '../utils';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
-import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
 import { JobModal } from '../components/JobModal';
 import axios from 'axios';
@@ -384,6 +383,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     else if (mode === 'chi') {
         rows = [];
         const processedDocNos = new Set<string>();
+        const processedExtensionIds = new Set<string>(); // FIX: Track unique extension IDs to prevent duplicate rows
         const todayStr = new Date().toISOString().split('T')[0];
 
         // 1. Chi Payment (Local Charge Out)
@@ -444,8 +444,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             // Priority: Check bookingCostDetails.extensionCosts
             if (j.bookingCostDetails?.extensionCosts) {
                 j.bookingCostDetails.extensionCosts.forEach(ext => {
+                    // PREVENT DUPLICATION: If this extension ID was already processed (from a sibling job), skip it.
+                    if (processedExtensionIds.has(ext.id)) {
+                        hasDetailedExtensions = true; 
+                        return;
+                    }
+
                     if (ext.amisDocNo && checkMonth(ext.amisDate)) {
                         hasDetailedExtensions = true;
+                        processedExtensionIds.add(ext.id);
+
                         rows.push({
                              jobId: j.id, 
                              type: 'payment_ext', 
