@@ -139,17 +139,17 @@ const AttachmentRow = ({
 
     return (
         <div className="col-span-12 mt-1 px-3 py-1.5 bg-slate-50/50 rounded border border-slate-200 border-dashed flex items-center justify-between">
-            <div className="flex items-center gap-2">
-                <Paperclip className="w-3 h-3 text-slate-400" />
+            <div className="flex items-center gap-2 overflow-hidden">
+                <Paperclip className="w-3 h-3 text-slate-400 shrink-0" />
                 {fileUrl ? (
-                    <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline font-medium flex items-center">
+                    <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline font-medium flex items-center truncate">
                         {fileName || "Xem file đính kèm"}
                     </a>
                 ) : (
                     <span className="text-[10px] text-slate-400 italic">Chưa có file đính kèm</span>
                 )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
                 {!fileUrl && (
                     <button 
                         type="button"
@@ -495,8 +495,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
             {/* LEFT COLUMN: SYSTEM DATA & COSTS (65%) */}
             <div className="w-full md:w-[65%] flex flex-col overflow-y-auto p-4 space-y-4 custom-scrollbar border-r border-slate-200">
                 
-                {/* 1. SYSTEM TABLE */}
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                {/* 1. SYSTEM TABLE - FIXED: Shrink 0 */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col shrink-0">
                     <div className="overflow-auto max-h-[400px] custom-scrollbar relative">
                         <table className="w-full text-xs text-left border-collapse">
                             <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
@@ -561,8 +561,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     </div>
                 </div>
 
-                {/* 2. LOCAL CHARGE (Input) */}
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                {/* 2. LOCAL CHARGE (Input) - FIXED: Shrink 0 */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative shrink-0">
                     <SectionHeader 
                         icon={FileText} 
                         title="Local Charge (Invoice Chi)" 
@@ -653,8 +653,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     </div>
                 </div>
 
-                {/* 3. EXTENSIONS (Input) */}
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex-1">
+                {/* 3. EXTENSIONS (Input) - FIXED: Shrink 0 */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm shrink-0">
                     <SectionHeader 
                         icon={Copy} 
                         title="Gia Hạn" 
