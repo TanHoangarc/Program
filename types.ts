@@ -82,7 +82,12 @@ export interface BookingExtensionCost {
   vat: number;
   total: number;
   hasInvoice?: boolean;
-  amisDocNo?: string; // Bổ sung để theo dõi phiếu chi đã gán
+  
+  // Payment Info (Chi)
+  amisDocNo?: string; 
+  amisDesc?: string; // Added: Diễn giải chi
+  amisDate?: string; // Added: Ngày chi
+
   // File attachments
   fileUrl?: string;
   fileName?: string;
@@ -176,7 +181,7 @@ export interface JobData {
   amisDepositOutDesc?: string;
   amisDepositOutDate?: string;
 
-  // AMIS Fields for Extension Payment (Chi Gia Hạn)
+  // AMIS Fields for Extension Payment (Chi Gia Hạn) - Now primarily used as fallback or main ref
   amisExtensionPaymentDocNo?: string;
   amisExtensionPaymentDesc?: string;
   amisExtensionPaymentDate?: string;

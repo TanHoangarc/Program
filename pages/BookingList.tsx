@@ -182,9 +182,21 @@ export const BookingList: React.FC<BookingListProps> = ({
   };
   
   const handleSavePayment = (data: any) => {
-      // Save data back to jobs in the booking
       if (targetBookingForPayment) {
-          targetBookingForPayment.jobs.forEach(job => {
+          // Identify all jobs to update
+          let jobsToUpdate = [...targetBookingForPayment.jobs];
+          
+          // Add Merged Jobs if any (Extension only)
+          if (data.addedJobIds && data.addedJobIds.length > 0) {
+              const extraJobs = jobs.filter(j => data.addedJobIds.includes(j.id));
+              jobsToUpdate.push(...extraJobs);
+          }
+          
+          // Deduplicate just in case
+          jobsToUpdate = Array.from(new Set(jobsToUpdate.map(j => j.id)))
+              .map(id => jobsToUpdate.find(j => j.id === id)!);
+
+          jobsToUpdate.forEach(job => {
               const updatedJob = { ...job };
               
               if (paymentType === 'local') {
@@ -199,8 +211,34 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisExtensionPaymentDocNo = data.docNo;
                   updatedJob.amisExtensionPaymentDesc = data.paymentContent;
                   updatedJob.amisExtensionPaymentDate = data.date;
-                  if (data.amount > 0) {
-                      updatedJob.amisExtensionPaymentAmount = data.amount;
+                  updatedJob.amisExtensionPaymentAmount = data.amount;
+                  
+                  // Update specific extension lines based on selection array
+                  if (updatedJob.bookingCostDetails && updatedJob.bookingCostDetails.extensionCosts) {
+                      const oldDocNo = job.amisExtensionPaymentDocNo; // Capture previous DocNo state
+                      
+                      updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
+                          // Case 1: ID is in selection -> Update with NEW data
+                          if (data.selectedExtensionIds && data.selectedExtensionIds.includes(ext.id)) {
+                              return {
+                                  ...ext,
+                                  amisDocNo: data.docNo,
+                                  amisDesc: data.paymentContent,
+                                  amisDate: data.date
+                              };
+                          } 
+                          // Case 2: ID NOT in selection, BUT it had the same DocNo as before (Was part of this voucher, now unchecked) -> Clear it
+                          else if (oldDocNo && ext.amisDocNo === oldDocNo) {
+                              return {
+                                  ...ext,
+                                  amisDocNo: '',
+                                  amisDesc: '',
+                                  amisDate: ''
+                              };
+                          }
+                          // Case 3: Other items (locked or unrelated) -> Keep as is
+                          return ext;
+                      });
                   }
               }
               onEditJob(updatedJob);
@@ -361,7 +399,7 @@ export const BookingList: React.FC<BookingListProps> = ({
                          <div className="absolute right-8 top-0 mt-0 w-60 glass-panel bg-white/95 rounded-xl shadow-xl border border-white/20 z-[60] py-1 text-left animate-in fade-in zoom-in-95 duration-100">
                            <div className="px-3 py-2 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Thao tác Booking</div>
                            <button onClick={() => handleMenuAction(booking, 'view')} className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-teal-50 flex items-center transition-colors"><Eye className="w-4 h-4 mr-2.5 text-teal-500" /> Xem chi tiết</button>
-                           <button onClick={() => handleMenuAction(booking, 'edit')} className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-blue-50 flex items-center transition-colors"><Edit className="w-4 h-4 mr-2.5 text-blue-500" /> Chỉnh sửa</button>
+                           <button onClick={() => handleMenuAction(booking, 'edit')} className="w-full text-left px-4 py-2.5 text-slate-700 hover:bg-blue-50 flex items-center transition-colors"><Edit className="w-4 h-4 mr-2.5 text-blue-500" /> Chỉnh sửa</button>
                            <div className="border-t border-slate-100 my-1"></div>
                            <button onClick={() => handleMenuAction(booking, 'payment-lc')} className="w-full text-left px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium"><Banknote className="w-4 h-4 mr-2.5" /> Phiếu chi Local Charge</button>
                            <button onClick={() => handleMenuAction(booking, 'payment-deposit')} className="w-full text-left px-4 py-2.5 text-xs text-indigo-600 hover:bg-indigo-50 flex items-center transition-colors font-medium"><Anchor className="w-4 h-4 mr-2.5" /> Chi Cược (Deposit)</button>
