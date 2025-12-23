@@ -219,6 +219,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               const initialSet = new Set<string>();
               let total = 0;
               allExtensions.forEach(e => {
+                  // Only select items that match the EXACT DocNo we are editing
                   if (e.amisDocNo === targetDocNo) {
                       initialSet.add(e.id);
                       total += e.total;
@@ -267,6 +268,8 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
   };
 
   const handleAmountChange = (val: number) => {
+    // For extension, amount is calculated from checkboxes, don't allow manual override via this handler if caught here
+    if (type === 'extension') return; 
     setFormData(prev => ({ ...prev, amount: val }));
   };
 
@@ -478,7 +481,9 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                                    const val = Number(e.target.value.replace(/,/g, ''));
                                    if (!isNaN(val)) handleAmountChange(val);
                                }}
-                               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-red-600 text-right focus:outline-none focus:ring-2 focus:ring-red-500"
+                               // Lock amount input for extension type to force calculation from checkboxes
+                               readOnly={type === 'extension'}
+                               className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-red-600 text-right focus:outline-none focus:ring-2 focus:ring-red-500 ${type === 'extension' ? 'bg-slate-100 cursor-not-allowed text-slate-500' : 'bg-white'}`}
                            />
                       </div>
                    </div>
