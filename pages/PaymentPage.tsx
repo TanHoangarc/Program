@@ -13,6 +13,7 @@ import {
 import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
 import { formatDateVN } from '../utils';
+import { CustomerModal } from '../components/CustomerModal';
 
 interface PaymentPageProps {
   lines: ShippingLine[];
@@ -24,6 +25,7 @@ interface PaymentPageProps {
   onUpdateJob?: (job: JobData) => void;
   onAddJob?: (job: JobData) => void; 
   customers?: Customer[];
+  onAddCustomer?: (customer: Customer) => void;
 }
 
 // BACKEND API (Cloudflare Tunnel)
@@ -56,12 +58,14 @@ const CustomerRowInput = ({
     value, 
     customers, 
     onSelect, 
-    onChange 
+    onChange,
+    onAdd
 }: { 
     value: string; 
     customers: Customer[]; 
     onSelect: (id: string, name: string) => void;
     onChange: (text: string) => void;
+    onAdd?: () => void;
 }) => {
     const [showDropdown, setShowDropdown] = useState(false);
     
@@ -75,7 +79,7 @@ const CustomerRowInput = ({
     }, [value, customers, showDropdown]);
 
     return (
-        <div className="relative">
+        <div className="relative flex gap-1">
             <input 
                 type="text" 
                 value={value}
@@ -88,8 +92,19 @@ const CustomerRowInput = ({
                 placeholder="Chọn KH"
                 className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm font-medium text-slate-700"
             />
+            {onAdd && (
+                <button 
+                    type="button"
+                    onClick={onAdd}
+                    className="p-1.5 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
+                    title="Thêm khách hàng mới"
+                >
+                    <Plus className="w-3.5 h-3.5" />
+                </button>
+            )}
+            
             {showDropdown && (
-                <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded shadow-xl max-h-60 overflow-y-auto mt-1 left-0">
+                <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded shadow-xl max-h-60 overflow-y-auto mt-8 left-0">
                     {filtered.length > 0 ? (
                         filtered.map(c => (
                             <li 
@@ -122,7 +137,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   jobs,
   onUpdateJob,
   onAddJob,
-  customers = []
+  customers = [],
+  onAddCustomer
 }) => {
 
   // ----------------- STATES -----------------
@@ -145,6 +161,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const [convertData, setConvertData] = useState<ConvertJobData>({
       month: '1', booking: '', line: '', consol: '', transit: 'HCM', jobRows: []
   });
+  
+  // --- QUICK ADD CUSTOMER IN CONVERT MODAL ---
+  const [quickAddRowId, setQuickAddRowId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uncInputRef = useRef<HTMLInputElement>(null);
@@ -496,6 +515,21 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               return updatedRow;
           })
       }));
+  };
+
+  // --- QUICK CUSTOMER ADD ---
+  const handleOpenQuickAddCustomer = (rowId: string) => {
+      setQuickAddRowId(rowId);
+  };
+
+  const handleSaveQuickCustomer = (newCustomer: Customer) => {
+      if (onAddCustomer) onAddCustomer(newCustomer);
+      
+      if (quickAddRowId) {
+          handleJobRowChange(quickAddRowId, 'customerId', newCustomer.id);
+          handleJobRowChange(quickAddRowId, 'customerName', newCustomer.name);
+      }
+      setQuickAddRowId(null);
   };
 
   const handleSaveConvert = () => {
@@ -1236,6 +1270,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                         handleJobRowChange(row.id, 'customerId', id);
                                                         handleJobRowChange(row.id, 'customerName', name);
                                                     }}
+                                                    onAdd={() => handleOpenQuickAddCustomer(row.id)}
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
@@ -1316,6 +1351,13 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         </div>,
         document.body
       )}
+
+      {/* Customer Modal for Quick Add */}
+      <CustomerModal 
+          isOpen={!!quickAddRowId} 
+          onClose={() => setQuickAddRowId(null)} 
+          onSave={handleSaveQuickCustomer} 
+      />
 
     </div>
   );
