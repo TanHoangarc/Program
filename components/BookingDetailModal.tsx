@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2 } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 
@@ -119,6 +119,63 @@ const SectionHeader = ({ icon: Icon, title, rightContent, color = "text-slate-70
   </div>
 );
 
+// --- ATTACHMENT ROW COMPONENT ---
+const AttachmentRow = ({ 
+    hasInvoice, 
+    fileUrl, 
+    fileName, 
+    onUpload, 
+    onDelete, 
+    isUploading 
+}: { 
+    hasInvoice?: boolean, 
+    fileUrl?: string, 
+    fileName?: string, 
+    onUpload: () => void, 
+    onDelete: () => void,
+    isUploading: boolean
+}) => {
+    if (hasInvoice === false) return null; // Don't show if "Chưa HĐ"
+
+    return (
+        <div className="col-span-12 mt-1 px-3 py-1.5 bg-slate-50/50 rounded border border-slate-200 border-dashed flex items-center justify-between">
+            <div className="flex items-center gap-2">
+                <Paperclip className="w-3 h-3 text-slate-400" />
+                {fileUrl ? (
+                    <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline font-medium flex items-center">
+                        {fileName || "Xem file đính kèm"}
+                    </a>
+                ) : (
+                    <span className="text-[10px] text-slate-400 italic">Chưa có file đính kèm</span>
+                )}
+            </div>
+            <div className="flex items-center gap-2">
+                {!fileUrl && (
+                    <button 
+                        type="button"
+                        onClick={onUpload}
+                        disabled={isUploading}
+                        className="text-[10px] bg-white border border-slate-300 px-2 py-0.5 rounded hover:bg-blue-50 text-slate-600 flex items-center transition-colors disabled:opacity-50"
+                    >
+                        {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3 mr-1" />}
+                        {isUploading ? "Uploading..." : "Đính kèm"}
+                    </button>
+                )}
+                {fileUrl && (
+                    <button 
+                        type="button" 
+                        onClick={onDelete} 
+                        className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-white"
+                        title="Xóa file"
+                    >
+                        <Trash2 className="w-3 h-3"/>
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
 export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, onViewJob }) => {
 
   const [localCharge, setLocalCharge] = useState({
@@ -139,8 +196,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // FILE UPLOAD
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // FILE UPLOAD STATE
+  const [uploadTarget, setUploadTarget] = useState<{ type: 'MAIN' | 'ADDITIONAL', id?: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -151,7 +208,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalLocalChargeRevenue = booking.jobs.reduce((s, j) => s + j.localChargeTotal, 0);
   const totalAdditionalLocalChargeNet = additionalLocalCharges.reduce((s, i) => s + (i.net || 0), 0);
   
-  // Calculate Total Amount (Net + VAT) for additional charges
   const totalAdditionalLocalChargeTotalAmount = additionalLocalCharges.reduce((s, i) => s + (i.net || 0) + (i.vat || 0), 0);
 
   const totalExtensionCost = extensionCosts.reduce((s, i) => s + i.total, 0);
@@ -159,7 +215,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalDepositCost = deposits.reduce((s, d) => s + d.amount, 0);
   const systemTotalSell = booking.jobs.reduce((s, j) => s + j.sell, 0);
   
-  // Calculate Target (System Cost)
   const systemTotalAdjustedCost = booking.jobs.reduce((s, j) => {
     const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
     const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
@@ -178,12 +233,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const summaryGrandTotalExpense = summaryAmountExpense + summaryExtensionExpense + totalDepositCost;
   const summaryProfit = summaryGrandTotalRevenue - summaryGrandTotalExpense;
   
-  // totalActualNet used for target comparison (Net vs Net)
   const totalActualNet = localCharge.hasInvoice
       ? (localCharge.net || 0) + totalAdditionalLocalChargeNet
       : (localCharge.total || 0) + totalAdditionalLocalChargeNet;
 
-  // totalActualTotal used for display (Net + VAT)
   const totalActualTotal = localCharge.hasInvoice
       ? (localCharge.net || 0) + (localCharge.vat || 0) + totalAdditionalLocalChargeTotalAmount
       : (localCharge.total || 0) + totalAdditionalLocalChargeTotalAmount;
@@ -302,46 +355,66 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const handleUpdateDeposit = (id: string, field: keyof BookingDeposit, val: any) => setDeposits(prev => prev.map(item => item.id === id ? { ...item, [field]: val } : item));
   const handleRemoveDeposit = (id: string) => setDeposits(prev => prev.filter(d => d.id !== id));
 
-  // --- FILE UPLOAD ---
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); };
-  
-  const handleUploadFile = async () => {
-      if (!selectedFile || !localCharge.invoice) { 
-          alert("Vui lòng nhập số Hóa đơn trước khi upload file."); 
-          return; 
+  // --- FILE UPLOAD HANDLERS ---
+  const handleUploadClick = (target: { type: 'MAIN' | 'ADDITIONAL', id?: string }) => {
+      setUploadTarget(target);
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+          fileInputRef.current.click();
       }
-      
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !uploadTarget) return;
+
+      // VALIDATE IF INVOICE EXISTS
+      let invoiceNo = '';
+      let dateStr = '';
+
+      if (uploadTarget.type === 'MAIN') {
+          invoiceNo = localCharge.invoice;
+          dateStr = localCharge.date;
+      } else {
+          const item = additionalLocalCharges.find(i => i.id === uploadTarget.id);
+          invoiceNo = item?.invoice || '';
+          dateStr = item?.date || '';
+      }
+
+      if (!invoiceNo) {
+          alert("Vui lòng nhập số Hóa đơn cho dòng này trước khi upload file.");
+          return;
+      }
+
       setIsUploading(true);
 
       try {
-          const dateStr = localCharge.date || new Date().toISOString().split('T')[0];
-          const [year, month, day] = dateStr.split('-'); 
+          const date = dateStr || new Date().toISOString().split('T')[0];
+          const [year, month, day] = date.split('-'); 
           const folderPath = `Invoice/${year}.${month}`;
           
-          // Naming Convention: Line.Booking.Invoice.dd.mm.yyyy.ext
-          const ext = selectedFile.name.split('.').pop();
+          const ext = file.name.split('.').pop();
           const safeLine = (booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
           const safeBooking = (booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
-          const safeInvoice = localCharge.invoice.replace(/[^a-zA-Z0-9]/g, '');
+          const safeInvoice = invoiceNo.replace(/[^a-zA-Z0-9]/g, '');
           
           const fileName = `${safeLine}.${safeBooking}.${safeInvoice}.${day}.${month}.${year}.${ext}`;
 
           const formData = new FormData();
           formData.append("folderPath", folderPath);
           formData.append("fileName", fileName);
-          formData.append("file", selectedFile);
+          formData.append("file", file);
 
           const response = await axios.post(`${BACKEND_URL}/upload-file`, formData);
           
           if (response.data && response.data.success) {
               const fileUrl = `${BACKEND_URL}/uploads/${folderPath}/${fileName}`;
               
-              setLocalCharge(prev => ({
-                  ...prev, 
-                  fileUrl: fileUrl, 
-                  fileName: fileName
-              }));
-              setSelectedFile(null);
+              if (uploadTarget.type === 'MAIN') {
+                  setLocalCharge(prev => ({ ...prev, fileUrl: fileUrl, fileName: fileName }));
+              } else {
+                  setAdditionalLocalCharges(prev => prev.map(i => i.id === uploadTarget.id ? { ...i, fileUrl: fileUrl, fileName: fileName } : i));
+              }
               alert("Upload thành công!");
           } else {
               throw new Error(response.data?.message || "Upload failed");
@@ -352,10 +425,19 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           alert("Có lỗi khi upload file. Vui lòng thử lại.");
       } finally {
           setIsUploading(false);
+          setUploadTarget(null);
       }
   };
 
-  const handleDeleteFile = () => { if(window.confirm("Xóa file?")) setLocalCharge(prev => ({...prev, fileUrl: '', fileName: ''})); };
+  const handleDeleteFile = (target: { type: 'MAIN' | 'ADDITIONAL', id?: string }) => { 
+      if(!window.confirm("Xóa file đính kèm?")) return;
+      
+      if (target.type === 'MAIN') {
+          setLocalCharge(prev => ({ ...prev, fileUrl: '', fileName: '' }));
+      } else {
+          setAdditionalLocalCharges(prev => prev.map(i => i.id === target.id ? { ...i, fileUrl: '', fileName: '' } : i));
+      }
+  };
 
   const copyColumn = (type: 'sell' | 'cost' | 'vat' | 'project') => {
     const values = booking.jobs.map(job => {
@@ -375,6 +457,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      {/* Hidden File Input used by all attachment rows */}
+      <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+
       <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden border border-white/50 animate-in zoom-in-95 duration-200">
 
         {/* ================= HEADER ================= */}
@@ -402,7 +487,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
             {/* LEFT COLUMN: SYSTEM DATA & COSTS (65%) */}
             <div className="w-full md:w-[65%] flex flex-col overflow-y-auto p-4 space-y-4 custom-scrollbar border-r border-slate-200">
                 
-                {/* 1. SYSTEM TABLE (Source Data) */}
+                {/* 1. SYSTEM TABLE */}
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                     <div className="overflow-auto max-h-[400px] custom-scrollbar relative">
                         <table className="w-full text-xs text-left border-collapse">
@@ -476,7 +561,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-red-600" 
                         rightContent={
                             <div className="flex items-center gap-3">
-                                {/* SYNC BUTTON (TEAL SQUARE) */}
+                                {/* SYNC BUTTON */}
                                 {!localCharge.hasInvoice && (
                                     <button 
                                         onClick={handleSyncLocalCharge}
@@ -486,7 +571,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                         <RefreshCw className="w-4 h-4" />
                                     </button>
                                 )}
-                                {/* VIEW BUTTON (BLUE SQUARE) */}
+                                {/* VIEW BUTTON */}
                                 {localCharge.hasInvoice && (
                                     <button 
                                         onClick={handleViewPaymentInvoice}
@@ -510,6 +595,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         }
                     />
                     
+                    {/* MAIN LOCAL CHARGE ROW */}
                     <div className="grid grid-cols-12 gap-3 mb-2">
                         <div className="col-span-3"><Label>Số HĐ</Label><Input value={localCharge.invoice} onChange={(e) => handleLocalChargeChange("invoice", e.target.value)} placeholder={!localCharge.hasInvoice ? "Tham chiếu" : ""} /></div>
                         <div className="col-span-3"><Label>Ngày</Label><DateInput value={localCharge.date} onChange={(e) => handleLocalChargeChange("date", e.target.value)} /></div>
@@ -521,38 +607,42 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         ) : (
                             <div className="col-span-6"><Label>Tổng tiền (Tạm tính)</Label><MoneyInput name="total" value={localCharge.total} onChange={(n, v) => handleLocalChargeChange(n as any, v)} className="bg-red-50 text-red-700 font-bold" /></div>
                         )}
+                        
+                        {/* ATTACHMENT ROW FOR MAIN LC */}
+                        <AttachmentRow 
+                            hasInvoice={localCharge.hasInvoice}
+                            fileUrl={localCharge.fileUrl}
+                            fileName={localCharge.fileName}
+                            onUpload={() => handleUploadClick({ type: 'MAIN' })}
+                            onDelete={() => handleDeleteFile({ type: 'MAIN' })}
+                            isUploading={isUploading && uploadTarget?.type === 'MAIN'}
+                        />
                     </div>
 
-                    {/* Additional LCs */}
+                    {/* ADDITIONAL LOCAL CHARGES */}
                     {additionalLocalCharges.map(item => (
-                        <div key={item.id} className="grid grid-cols-12 gap-3 mt-2 items-center bg-slate-50 p-2 rounded border border-slate-100 group relative">
+                        <div key={item.id} className="grid grid-cols-12 gap-3 mt-3 items-center bg-slate-50 p-2 rounded border border-slate-100 group relative">
                             <div className="col-span-3"><Input value={item.invoice} onChange={(e) => handleUpdateAdditionalLC(item.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs" /></div>
                             <div className="col-span-3"><DateInput value={item.date} onChange={(e) => handleUpdateAdditionalLC(item.id, "date", e.target.value)} className="h-7" /></div>
                             <div className="col-span-3"><MoneyInput value={item.net} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "net", v)} className="h-7" /></div>
                             <div className="col-span-2"><MoneyInput value={item.vat} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "vat", v)} className="h-7" /></div>
                             <button onClick={() => handleRemoveAdditionalLC(item.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
+                            
+                            {/* ATTACHMENT ROW FOR ADDITIONAL LC */}
+                            <AttachmentRow 
+                                hasInvoice={item.hasInvoice !== false} // Default true unless explicitly false
+                                fileUrl={item.fileUrl}
+                                fileName={item.fileName}
+                                onUpload={() => handleUploadClick({ type: 'ADDITIONAL', id: item.id })}
+                                onDelete={() => handleDeleteFile({ type: 'ADDITIONAL', id: item.id })}
+                                isUploading={isUploading && uploadTarget?.type === 'ADDITIONAL' && uploadTarget?.id === item.id}
+                            />
                         </div>
                     ))}
 
-                    {/* File Upload Mini */}
-                    {localCharge.hasInvoice && (
-                        <div className="mt-3 flex items-center justify-between bg-slate-50 rounded border border-slate-200 px-3 py-1.5">
-                            {localCharge.fileUrl ? (
-                                <div className="flex items-center gap-2 text-xs text-green-700">
-                                    <Check className="w-3.5 h-3.5" /> 
-                                    <a href={localCharge.fileUrl} target="_blank" className="hover:underline font-medium truncate max-w-[200px]">{localCharge.fileName}</a>
-                                    <button onClick={handleDeleteFile} className="text-slate-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5"/></button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
-                                    <button onClick={() => fileInputRef.current?.click()} className="text-[10px] bg-white border px-2 py-1 rounded hover:bg-slate-100 flex items-center text-slate-600"><FileUp className="w-3 h-3 mr-1"/> {selectedFile ? selectedFile.name : "Đính kèm HĐ"}</button>
-                                    {selectedFile && <button onClick={handleUploadFile} disabled={isUploading} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">{isUploading ? "..." : "Upload"}</button>}
-                                </div>
-                            )}
-                            <div className="text-[10px] text-slate-400">Total Invoice: <strong className={totalActualNet !== systemTotalAdjustedCost ? "text-red-600" : "text-green-600"}>{formatMoney(totalActualTotal)}</strong> / Target: {formatMoney(systemTotalAdjustedCost)}</div>
-                        </div>
-                    )}
+                    <div className="mt-3 flex items-center justify-end">
+                        <div className="text-[10px] text-slate-400">Total Invoice: <strong className={totalActualNet !== systemTotalAdjustedCost ? "text-red-600" : "text-green-600"}>{formatMoney(totalActualTotal)}</strong> / Target: {formatMoney(systemTotalAdjustedCost)}</div>
+                    </div>
                 </div>
 
                 {/* 3. EXTENSIONS (Input) */}
@@ -591,7 +681,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-indigo-600" 
                         rightContent={
                             <div className="flex items-center gap-2">
-                                {/* SYNC BUTTON (PURPLE SQUARE) */}
+                                {/* SYNC BUTTON */}
                                 <button 
                                     onClick={handleSyncDeposit}
                                     className="text-indigo-600 p-1.5 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
@@ -682,4 +772,3 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     document.body
   );
 };
-
