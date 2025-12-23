@@ -174,7 +174,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           }
       } 
       else if (type === 'deposit') {
-          initialData.tkNo = '1388';
+          initialData.tkNo = '3311';
           if (initialDocNo || job?.amisDepositOutDocNo) {
               const doc = initialDocNo || job?.amisDepositOutDocNo;
               initialData.docNo = doc!;
@@ -197,7 +197,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           }
       }
       else if (type === 'extension') {
-          initialData.tkNo = '13111';
+          initialData.tkNo = '3311';
           
           // Determine if we are Editing (Specific DocNo passed) or Creating New
           const targetDocNo = initialDocNo; 
