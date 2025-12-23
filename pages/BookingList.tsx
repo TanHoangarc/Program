@@ -357,7 +357,18 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const actualNet = (booking.costDetails.localCharge.net || 0) + addNet;
                 const diff = actualNet - target;
                 
-                const missingInvoiceInfo = !booking.costDetails.localCharge.invoice || !booking.costDetails.localCharge.date;
+                const lc = booking.costDetails.localCharge;
+                const missingLcFile = (lc.hasInvoice !== false) && !lc.fileUrl;
+                
+                const missingAddLcFile = (booking.costDetails.additionalLocalCharges || []).some(
+                    item => (item.hasInvoice !== false) && !item.fileUrl
+                );
+
+                const missingExtFile = (booking.costDetails.extensionCosts || []).some(
+                    item => !item.fileUrl
+                );
+
+                const hasMissingFile = missingLcFile || missingAddLcFile || missingExtFile;
 
                 return (
                   <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
@@ -377,8 +388,8 @@ export const BookingList: React.FC<BookingListProps> = ({
                        </div>
                     </td>
                     <td className="px-2 py-4 text-center">
-                        {missingInvoiceInfo && (
-                            <div title="Thiếu thông tin hóa đơn đầu vào" className="flex justify-center">
+                        {hasMissingFile && (
+                            <div title="Thiếu file đính kèm Hóa đơn (Local Charge / Gia hạn)" className="flex justify-center">
                                 <AlertCircle className="w-4 h-4 text-purple-600" />
                             </div>
                         )}
