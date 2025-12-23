@@ -197,7 +197,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // FILE UPLOAD STATE
-  const [uploadTarget, setUploadTarget] = useState<{ type: 'MAIN' | 'ADDITIONAL', id?: string } | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<{ type: 'MAIN' | 'ADDITIONAL' | 'EXTENSION', id?: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -356,7 +356,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const handleRemoveDeposit = (id: string) => setDeposits(prev => prev.filter(d => d.id !== id));
 
   // --- FILE UPLOAD HANDLERS ---
-  const handleUploadClick = (target: { type: 'MAIN' | 'ADDITIONAL', id?: string }) => {
+  const handleUploadClick = (target: { type: 'MAIN' | 'ADDITIONAL' | 'EXTENSION', id?: string }) => {
       setUploadTarget(target);
       if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -375,8 +375,12 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       if (uploadTarget.type === 'MAIN') {
           invoiceNo = localCharge.invoice;
           dateStr = localCharge.date;
-      } else {
+      } else if (uploadTarget.type === 'ADDITIONAL') {
           const item = additionalLocalCharges.find(i => i.id === uploadTarget.id);
+          invoiceNo = item?.invoice || '';
+          dateStr = item?.date || '';
+      } else if (uploadTarget.type === 'EXTENSION') {
+          const item = extensionCosts.find(i => i.id === uploadTarget.id);
           invoiceNo = item?.invoice || '';
           dateStr = item?.date || '';
       }
@@ -412,8 +416,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
               
               if (uploadTarget.type === 'MAIN') {
                   setLocalCharge(prev => ({ ...prev, fileUrl: fileUrl, fileName: fileName }));
-              } else {
+              } else if (uploadTarget.type === 'ADDITIONAL') {
                   setAdditionalLocalCharges(prev => prev.map(i => i.id === uploadTarget.id ? { ...i, fileUrl: fileUrl, fileName: fileName } : i));
+              } else if (uploadTarget.type === 'EXTENSION') {
+                  setExtensionCosts(prev => prev.map(i => i.id === uploadTarget.id ? { ...i, fileUrl: fileUrl, fileName: fileName } : i));
               }
               alert("Upload thành công!");
           } else {
@@ -429,13 +435,15 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       }
   };
 
-  const handleDeleteFile = (target: { type: 'MAIN' | 'ADDITIONAL', id?: string }) => { 
+  const handleDeleteFile = (target: { type: 'MAIN' | 'ADDITIONAL' | 'EXTENSION', id?: string }) => { 
       if(!window.confirm("Xóa file đính kèm?")) return;
       
       if (target.type === 'MAIN') {
           setLocalCharge(prev => ({ ...prev, fileUrl: '', fileName: '' }));
-      } else {
+      } else if (target.type === 'ADDITIONAL') {
           setAdditionalLocalCharges(prev => prev.map(i => i.id === target.id ? { ...i, fileUrl: '', fileName: '' } : i));
+      } else if (target.type === 'EXTENSION') {
+          setExtensionCosts(prev => prev.map(i => i.id === target.id ? { ...i, fileUrl: '', fileName: '' } : i));
       }
   };
 
@@ -655,12 +663,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     />
                     <div className="space-y-2">
                         {extensionCosts.map(ext => (
-                            <div key={ext.id} className="grid grid-cols-12 gap-2 items-center bg-orange-50/30 p-2 rounded border border-orange-100 group relative">
-                                <div className="col-span-3"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white" /></div>
-                                <div className="col-span-3"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7" /></div>
-                                <div className="col-span-3"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} className="h-7 bg-white" /></div>
-                                <div className="col-span-3"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} className="h-7 bg-white" /></div>
-                                <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
+                            <div key={ext.id} className="bg-orange-50/30 p-2 rounded border border-orange-100 group relative mb-2">
+                                <div className="grid grid-cols-12 gap-2 items-center">
+                                    <div className="col-span-3"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white" /></div>
+                                    <div className="col-span-3"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7" /></div>
+                                    <div className="col-span-3"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} className="h-7 bg-white" /></div>
+                                    <div className="col-span-3"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} className="h-7 bg-white" /></div>
+                                    <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
+                                </div>
+                                
+                                {/* ATTACHMENT ROW FOR EXTENSION */}
+                                <AttachmentRow 
+                                    hasInvoice={true} 
+                                    fileUrl={ext.fileUrl}
+                                    fileName={ext.fileName}
+                                    onUpload={() => handleUploadClick({ type: 'EXTENSION', id: ext.id })}
+                                    onDelete={() => handleDeleteFile({ type: 'EXTENSION', id: ext.id })}
+                                    isUploading={isUploading && uploadTarget?.type === 'EXTENSION' && uploadTarget?.id === ext.id}
+                                />
                             </div>
                         ))}
                         {extensionCosts.length === 0 && <div className="text-center text-xs text-slate-400 italic py-2">Chưa có hóa đơn gia hạn</div>}
