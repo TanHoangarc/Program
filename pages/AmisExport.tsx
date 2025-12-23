@@ -437,79 +437,68 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         });
 
         // 3. Chi Gia Hạn (Extension Out - Detailed)
-        const extPaymentGroups = new Map<string, { 
-            docNo: string, date: string, desc: string, amount: number, jobIds: Set<string>, line: string, id: string
-        }>();
-
+        // LIST INDIVIDUAL LINES INSTEAD OF GROUPING BY DOC NO
         jobs.forEach(j => {
+            let hasDetailedExtensions = false;
+
             // Priority: Check bookingCostDetails.extensionCosts
             if (j.bookingCostDetails?.extensionCosts) {
                 j.bookingCostDetails.extensionCosts.forEach(ext => {
                     if (ext.amisDocNo && checkMonth(ext.amisDate)) {
-                        const docNo = ext.amisDocNo;
-                        if (!extPaymentGroups.has(docNo)) {
-                            extPaymentGroups.set(docNo, {
-                                docNo,
-                                date: ext.amisDate || todayStr,
-                                desc: ext.amisDesc || '',
-                                amount: 0,
-                                jobIds: new Set(),
-                                line: j.line,
-                                id: ext.id
-                            });
-                        }
-                        const group = extPaymentGroups.get(docNo)!;
-                        group.amount += ext.total;
-                        group.jobIds.add(j.id);
-                        if (!group.desc && ext.amisDesc) group.desc = ext.amisDesc;
-                        if (ext.amisDate) group.date = ext.amisDate;
+                        hasDetailedExtensions = true;
+                        rows.push({
+                             jobId: j.id, 
+                             type: 'payment_ext', 
+                             rowId: `pay-ext-${ext.id}`, 
+                             date: ext.amisDate || todayStr, 
+                             docNo: ext.amisDocNo,
+                             objCode: j.line, 
+                             objName: '', 
+                             desc: ext.amisDesc || `Chi phí gia hạn HĐ ${ext.invoice}`, 
+                             amount: ext.total, // DETAILED AMOUNT (Per line)
+                             reason: 'Chi khác', 
+                             paymentContent: ext.amisDesc, 
+                             paymentAccount: '345673979999', 
+                             paymentBank: 'Ngân hàng TMCP Quân đội',
+                             currency: 'VND', 
+                             description: ext.amisDesc, 
+                             tkNo: '13111', 
+                             tkCo: '1121',
+                        });
                     }
                 });
             }
             
-            // Fallback: Check Job Level fields (Legacy) if no extension costs detail with docNo
-            if (j.amisExtensionPaymentDocNo && checkMonth(j.amisExtensionPaymentDate)) {
-                 if (!extPaymentGroups.has(j.amisExtensionPaymentDocNo)) {
-                     let amount = j.amisExtensionPaymentAmount || 0;
-                     if (amount === 0 && j.booking) {
-                        const summary = calculateBookingSummary(jobs, j.booking);
-                        if (summary) amount = (summary.costDetails.extensionCosts || []).reduce((s,e) => s+e.total, 0);
-                     }
-                     if (amount > 0) {
-                         extPaymentGroups.set(j.amisExtensionPaymentDocNo, {
-                             docNo: j.amisExtensionPaymentDocNo,
-                             date: j.amisExtensionPaymentDate || todayStr,
-                             desc: j.amisExtensionPaymentDesc || '',
-                             amount,
-                             jobIds: new Set([j.id]),
-                             line: j.line,
-                             id: j.id
-                         });
-                     }
+            // Fallback: Check Job Level fields (Legacy) if no extension costs detail with docNo matches
+            if (!hasDetailedExtensions && j.amisExtensionPaymentDocNo && checkMonth(j.amisExtensionPaymentDate)) {
+                 let amount = j.amisExtensionPaymentAmount || 0;
+                 if (amount === 0 && j.booking) {
+                    const summary = calculateBookingSummary(jobs, j.booking);
+                    if (summary) amount = (summary.costDetails.extensionCosts || []).reduce((s,e) => s+e.total, 0);
+                 }
+                 
+                 if (amount > 0) {
+                     rows.push({
+                         jobId: j.id, 
+                         type: 'payment_ext', 
+                         rowId: `pay-ext-legacy-${j.id}`, 
+                         date: j.amisExtensionPaymentDate || todayStr, 
+                         docNo: j.amisExtensionPaymentDocNo,
+                         objCode: j.line, 
+                         objName: '', 
+                         desc: j.amisExtensionPaymentDesc || '', 
+                         amount: amount, // TOTAL (Legacy fallback)
+                         reason: 'Chi khác', 
+                         paymentContent: j.amisExtensionPaymentDesc, 
+                         paymentAccount: '345673979999', 
+                         paymentBank: 'Ngân hàng TMCP Quân đội',
+                         currency: 'VND', 
+                         description: j.amisExtensionPaymentDesc, 
+                         tkNo: '13111', 
+                         tkCo: '1121',
+                    });
                  }
             }
-        });
-
-        extPaymentGroups.forEach(group => {
-             rows.push({
-                 jobId: Array.from(group.jobIds)[0], 
-                 type: 'payment_ext', 
-                 rowId: `pay-ext-${group.docNo}`, 
-                 date: group.date, 
-                 docNo: group.docNo,
-                 objCode: group.line, 
-                 objName: '', 
-                 desc: group.desc, 
-                 amount: group.amount,
-                 reason: 'Chi khác', 
-                 paymentContent: group.desc, 
-                 paymentAccount: '345673979999', 
-                 paymentBank: 'Ngân hàng TMCP Quân đội',
-                 currency: 'VND', 
-                 description: group.desc, 
-                 tkNo: '13111', 
-                 tkCo: '1121',
-            });
         });
 
         // 4. Chi Hoàn Cược (Deposit Refund to Customer)
