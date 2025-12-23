@@ -64,7 +64,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
   const [selectedJobForModal, setSelectedJobForModal] = useState<JobData | null>(null);
-  const [editingDocNo, setEditingDocNo] = useState<string | undefined>(undefined); // Added for Extension Edit
+  const [paymentModalInitialDocNo, setPaymentModalInitialDocNo] = useState<string | undefined>(undefined);
 
   // Job Modal for Legacy Editing
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
@@ -80,7 +80,6 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentTemplateFileName = TEMPLATE_MAP[mode] || "AmisTemplate.xlsx";
 
-  // ... (keeping existing useEffects and helpers) ...
   // COLLECT ALL USED DOC NOS from Custom Receipts AND Additional Receipts
   const customDocNos = useMemo(() => {
       const customs = customReceipts.map(r => r.docNo).filter(Boolean);
@@ -182,13 +181,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       return (date.getMonth() + 1).toString() === filterMonth;
   };
 
-  // ... (exportData logic kept the same) ...
   const exportData = useMemo(() => {
     let rows: any[] = [];
 
     // --- MODE THU ---
     if (mode === 'thu') {
       rows = [];
+      
       // 1. Thu Cược (Deduplicated)
       const depGroupMap = new Map<string, any[]>();
       const depAdditionalRows: any[] = [];
@@ -239,7 +238,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       });
       rows.push(...depAdditionalRows);
 
-      // 2. Thu Local Charge
+      // 2. Thu Local Charge (Deduplicated for Merged Receipts)
       const lcGroupMap = new Map<string, any[]>();
       const lcAdditionalRows: any[] = [];
 
@@ -264,13 +263,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       lcGroupMap.forEach((groupJobs, docNo) => {
           const mainJob = groupJobs.find(j => j.amisLcAmount !== undefined);
+          
           if (mainJob) {
               rows.push({
                    jobId: mainJob.id, type: 'lc_thu', rowId: `lc-${mainJob.id}`,
                    date: mainJob.localChargeDate, docNo: mainJob.amisLcDocNo, 
                    objCode: getCustomerCode(mainJob.customerId), objName: getCustomerName(mainJob.customerId),
                    desc: mainJob.amisLcDesc || `Thu tiền khách hàng theo hoá đơn ${mainJob.localChargeInvoice} (KIM)`, 
-                   amount: mainJob.amisLcAmount,
+                   amount: mainJob.amisLcAmount, // Total Merged Amount
                    tkNo: '1121', tkCo: '13111',
                });
           } else {
@@ -288,7 +288,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       });
       rows.push(...lcAdditionalRows);
 
-      // 3. Thu Extension
+      // 3. Thu Extension (Deduplicated)
       const extGroupMap = new Map<string, any[]>();
       const extAdditionalRows: any[] = [];
 
@@ -317,6 +317,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       extGroupMap.forEach((items, docNo) => {
           const bestItem = items.find(i => i.ext.amisAmount !== undefined);
+
           if (bestItem) {
               const { ext, job } = bestItem;
               rows.push({
@@ -348,16 +349,28 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               const descUpper = (r.desc || '').toUpperCase();
               const isDeposit = descUpper.includes('CƯỢC') || descUpper.includes('DEPOSIT') || r.type === 'deposit';
               const tkCo = isDeposit ? '1388' : '13111';
+              
               rows.push({ ...r, jobId: r.id, type: 'external', rowId: `custom-${r.id}`, tkNo: '1121', tkCo });
-              if (r.additionalReceipts) {
+
+              if (r.additionalReceipts && Array.isArray(r.additionalReceipts)) {
                   r.additionalReceipts.forEach((ar: any) => {
                       if (checkMonth(ar.date)) {
                           const arDescUpper = (ar.desc || '').toUpperCase();
                           const arIsDeposit = ar.type === 'deposit' || arDescUpper.includes('CƯỢC');
+                          const arTkCo = arIsDeposit ? '1388' : '13111';
+                          
                           rows.push({
-                              jobId: r.id, type: 'external', rowId: `custom-add-${ar.id}`,
-                              date: ar.date, docNo: ar.docNo, objCode: r.objCode, objName: r.objName, desc: ar.desc, amount: ar.amount,
-                              tkNo: '1121', tkCo: arIsDeposit ? '1388' : '13111'
+                              jobId: r.id, 
+                              type: 'external',
+                              rowId: `custom-add-${ar.id}`,
+                              date: ar.date,
+                              docNo: ar.docNo,
+                              objCode: r.objCode,
+                              objName: r.objName,
+                              desc: ar.desc,
+                              amount: ar.amount,
+                              tkNo: '1121',
+                              tkCo: arTkCo
                           });
                       }
                   });
@@ -366,6 +379,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       });
 
     } 
+    
     // --- MODE CHI ---
     else if (mode === 'chi') {
         rows = [];
@@ -453,7 +467,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 });
             }
             
-            // Fallback: Legacy Job Level
+            // Fallback: Check Job Level fields (Legacy) if no extension costs detail with docNo
             if (j.amisExtensionPaymentDocNo && checkMonth(j.amisExtensionPaymentDate)) {
                  if (!extPaymentGroups.has(j.amisExtensionPaymentDocNo)) {
                      let amount = j.amisExtensionPaymentAmount || 0;
@@ -785,7 +799,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
       setQuickReceiveMergedJobs([]); 
-      setEditingDocNo(row.docNo); // Capture specific DocNo for Edit Context
+      setPaymentModalInitialDocNo(undefined); // Reset
 
       if (mode === 'thu') {
           if (row.type === 'external') {
@@ -850,6 +864,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               setIsQuickReceiveOpen(true);
           } else {
               setSelectedJobForModal(job);
+              setPaymentModalInitialDocNo(row.docNo); // Pass the exact docNo being edited
               if (row.type === 'payment_deposit') setPaymentType('deposit');
               else if (row.type === 'payment_ext') setPaymentType('extension');
               else setPaymentType('local');
@@ -969,10 +984,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               dateField = 'amisExtensionPaymentDate';
           }
 
-          const oldDocNo = selectedJobForModal[docField];
+          const oldDocNo = paymentModalInitialDocNo || selectedJobForModal[docField];
           
+          // Determine target jobs. If creating new (no oldDocNo), just selectedJob.
+          // If editing (oldDocNo exists), find all jobs sharing that docNo.
           const targetJobs = (oldDocNo && typeof oldDocNo === 'string')
-             ? jobs.filter(j => j[docField] === oldDocNo) 
+             ? jobs.filter(j => {
+                 if (paymentType === 'extension') {
+                     // Check if ANY extension within job has this docNo
+                     return j.bookingCostDetails?.extensionCosts.some(e => e.amisDocNo === oldDocNo) || j.amisExtensionPaymentDocNo === oldDocNo;
+                 }
+                 return j[docField] === oldDocNo;
+             }) 
              : [selectedJobForModal]; 
 
           targetJobs.forEach(job => {
@@ -984,24 +1007,21 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               }
               
               if (job.id === selectedJobForModal.id) {
-                  if (paymentType !== 'extension') {
-                      (updatedJob as any)[descField] = data.paymentContent;
-                  }
+                  (updatedJob as any)[descField] = data.paymentContent;
                   
                   if (paymentType === 'extension') {
-                      // Fallback legacy update
-                      updatedJob.amisExtensionPaymentDocNo = data.docNo;
-                      updatedJob.amisExtensionPaymentDesc = data.paymentContent;
-                      updatedJob.amisExtensionPaymentDate = data.date;
+                      // Legacy field update
                       updatedJob.amisExtensionPaymentAmount = data.amount;
+                      updatedJob.amisExtensionPaymentDocNo = data.docNo;
+                      updatedJob.amisExtensionPaymentDate = data.date;
+                      updatedJob.amisExtensionPaymentDesc = data.paymentContent;
                       
                       // Handle detailed extension cost updates
                       if (updatedJob.bookingCostDetails) {
-                          // The DocNo we are editing is passed via editingDocNo state (set from handleEdit)
-                          const currentEditingDoc = editingDocNo; 
+                          const docNoToEdit = paymentModalInitialDocNo; // The DocNo we started editing
                           
                           updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
-                              // Case 1: Selected in checkbox list -> update to new values
+                              // Case 1: Selected in checkbox list -> update to new DocNo
                               if (data.selectedExtensionIds && data.selectedExtensionIds.includes(ext.id)) {
                                   return { 
                                       ...ext, 
@@ -1010,8 +1030,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                                       amisDate: data.date 
                                   };
                               }
-                              // Case 2: Not selected, but HAD the docNo we were editing -> Clear it (User unchecked it)
-                              else if (currentEditingDoc && ext.amisDocNo === currentEditingDoc) {
+                              // Case 2: Not selected, but HAD the old DocNo (was part of this group, now removed) -> clear it
+                              else if (docNoToEdit && ext.amisDocNo === docNoToEdit) {
                                   return {
                                       ...ext,
                                       amisDocNo: '',
@@ -1024,30 +1044,27 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                           });
                       }
                   }
-              } else if (paymentType === 'extension' && job.bookingCostDetails) {
-                  // For other jobs in the group (if editing a group via legacy field)
-                  // Generally AmisExport edits line-by-line or grouped by DocNo.
-                  // If we rely on DocNo grouping, we should update matching extensions.
-                  const currentEditingDoc = editingDocNo;
-                  updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
-                      if (currentEditingDoc && ext.amisDocNo === currentEditingDoc) {
-                           // If this job was part of the group, and we changed the DocNo in the modal...
-                           // But wait, the modal returns selected IDs. 
-                           // If this job wasn't the main one, we might not have its extension IDs in the selection list if the modal only showed the main job's extensions?
-                           // Actually PaymentVoucherModal loads extensions from Booking or Job. 
-                           // If editing from AmisExport, we usually edit a single Job's context or a Booking context.
-                           // For safety, let's assume granular updates on the selected job only for now unless we implement full group editing.
-                           return ext;
-                      }
-                      return ext;
-                  });
+              } else if (paymentType === 'extension') {
+                  // For sibling jobs in the same group (if we are editing a multi-job voucher)
+                  // We need to apply the update logic to their extensions too
+                   if (updatedJob.bookingCostDetails) {
+                          const docNoToEdit = paymentModalInitialDocNo; 
+                          updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
+                              if (data.selectedExtensionIds && data.selectedExtensionIds.includes(ext.id)) {
+                                  return { ...ext, amisDocNo: data.docNo, amisDesc: data.paymentContent, amisDate: data.date };
+                              }
+                              else if (docNoToEdit && ext.amisDocNo === docNoToEdit) {
+                                  return { ...ext, amisDocNo: '', amisDesc: '', amisDate: '' };
+                              }
+                              return ext;
+                          });
+                   }
               }
               
               onUpdateJob(updatedJob);
           });
 
           setIsPaymentModalOpen(false);
-          setEditingDocNo(undefined);
       }
   };
 
@@ -1468,12 +1485,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       {isPaymentModalOpen && selectedJobForModal && (
           <PaymentVoucherModal 
               isOpen={isPaymentModalOpen}
-              onClose={() => { setIsPaymentModalOpen(false); setEditingDocNo(undefined); }}
+              onClose={() => setIsPaymentModalOpen(false)}
               onSave={handleSavePayment}
               job={selectedJobForModal}
               type={paymentType}
               allJobs={jobs}
-              initialDocNo={editingDocNo}
+              initialDocNo={paymentModalInitialDocNo}
           />
       )}
 

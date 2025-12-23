@@ -160,12 +160,11 @@ export const BookingList: React.FC<BookingListProps> = ({
         setPaymentModalOpen(true);
     } 
     else if (action === 'payment-ext') {
-        // Validation: Check if extension costs exist and total > 0
+        // Validation: Check if extension costs exist
         const extensionCosts = booking.costDetails.extensionCosts || [];
-        const totalExtAmount = extensionCosts.reduce((sum, item) => sum + item.total, 0);
         
-        if (extensionCosts.length === 0 || totalExtAmount === 0) {
-            if (window.confirm("Booking này chưa có thông tin Gia Hạn (hoặc tổng tiền = 0). Bạn có muốn mở chi tiết Booking để cập nhật không?")) {
+        if (extensionCosts.length === 0) {
+            if (window.confirm("Booking này chưa có thông tin Gia Hạn. Bạn có muốn mở chi tiết Booking để thêm không?")) {
                 setSelectedBooking(booking);
             }
             return;
@@ -196,31 +195,40 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
               } else if (paymentType === 'extension') {
-                  // Legacy fallback (Job Level) - Optional: only set if it's the *first* extension payment or if we want to track "latest"
-                  // To avoid overwriting a previous voucher code on the job-level field when creating a second voucher, 
-                  // we only set it if it's empty, OR we just let it be the "last used" one.
-                  // For true multi-voucher support, relying on the line-item `amisDocNo` below is key.
+                  // For extensions, we primarily use the detailed structure in bookingCostDetails.
+                  // We can update the legacy Job fields as a "last used" reference, but core logic is in details.
                   updatedJob.amisExtensionPaymentDocNo = data.docNo;
                   updatedJob.amisExtensionPaymentDesc = data.paymentContent;
                   updatedJob.amisExtensionPaymentDate = data.date;
-                  updatedJob.amisExtensionPaymentAmount = data.amount;
                   
                   // Update specific extension lines based on selection array
                   if (updatedJob.bookingCostDetails && updatedJob.bookingCostDetails.extensionCosts) {
+                      const currentDocNo = data.docNo; // The DocNo being created/edited
                       
                       updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
-                          // Case 1: ID is in selection -> Update with NEW voucher data
+                          // Case 1: This specific extension ID was selected in the modal
                           if (data.selectedExtensionIds && data.selectedExtensionIds.includes(ext.id)) {
                               return {
                                   ...ext,
-                                  amisDocNo: data.docNo,
+                                  amisDocNo: currentDocNo,
                                   amisDesc: data.paymentContent,
                                   amisDate: data.date
                               };
                           } 
-                          // Case 2: ID NOT in selection.
-                          // If we are creating a *new* voucher (Lần 2), we should NOT clear extensions paid by Lần 1 (UNC...xx).
-                          // So we simply return `ext` unchanged.
+                          // Case 2: This extension was NOT selected, but it was previously assigned to this specific DocNo.
+                          // It means the user deselected it. We must clear it.
+                          // IMPORTANT: We only clear if `amisDocNo` matched what we started editing (or creating).
+                          // Since we usually create new or edit specific, if we are in "Create New" mode, originalDocNo is undefined.
+                          // If we are in "Edit" mode, originalDocNo matches the voucher we opened.
+                          else if (data.originalDocNo && ext.amisDocNo === data.originalDocNo) {
+                              return {
+                                  ...ext,
+                                  amisDocNo: '',
+                                  amisDesc: '',
+                                  amisDate: ''
+                              };
+                          }
+                          // Case 3: Other items (locked or unrelated) -> Keep as is
                           return ext;
                       });
                   }
@@ -443,8 +451,6 @@ export const BookingList: React.FC<BookingListProps> = ({
              type={paymentType}
              onSave={handleSavePayment}
              allJobs={jobs}
-             // For creation, we don't pass initialDocNo, allowing user to create NEW voucher (Lần n)
-             initialDocNo={undefined}
           />
       )}
 

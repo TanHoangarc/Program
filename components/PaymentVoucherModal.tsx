@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, User, FileText, Check, Lock, AlertCircle } from 'lucide-react';
 import { JobData, BookingSummary, BookingExtensionCost } from '../types';
-import { formatDateVN, parseDateVN, generateNextDocNo } from '../utils';
+import { formatDateVN, parseDateVN, generateNextDocNo, calculateBookingSummary } from '../utils';
 
 interface PaymentVoucherModalProps {
   isOpen: boolean;
@@ -13,7 +13,7 @@ interface PaymentVoucherModalProps {
   booking?: BookingSummary;
   type: 'local' | 'deposit' | 'extension';
   allJobs?: JobData[];
-  initialDocNo?: string; // NEW: Specific DocNo being edited (if any)
+  initialDocNo?: string; // Critical: The specific DocNo being edited (if any)
 }
 
 const DateInput = ({ 
@@ -91,24 +91,28 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   const [selectedExtensionIds, setSelectedExtensionIds] = useState<Set<string>>(new Set());
 
-  // Determine the editing context (Are we editing an existing voucher?)
-  const editingDocNo = useMemo(() => {
-    // If initialDocNo is passed explicitly (from AmisExport), use it.
-    if (initialDocNo) return initialDocNo;
-    // Otherwise fallback (legacy logic, mainly for single job edits if needed, but risky for multiple vouchers)
-    if (type === 'extension') return job?.amisExtensionPaymentDocNo || '';
-    if (type === 'deposit') return job?.amisDepositOutDocNo || '';
-    if (type === 'local') return job?.amisPaymentDocNo || '';
-    return '';
-  }, [job, type, initialDocNo]);
-
-  // Get all relevant extension costs
+  // RE-CALCULATE EXTENSIONS FROM ALLJOBS TO ENSURE FRESHNESS
+  // This fixes the issue where 'booking' prop might be stale when opening from lists
   const allExtensions = useMemo(() => {
       if (type !== 'extension') return [];
+      
+      // Try to get fresh data from allJobs if available
+      if (allJobs && allJobs.length > 0) {
+          if (booking) {
+              const freshSummary = calculateBookingSummary(allJobs, booking.bookingId);
+              return freshSummary?.costDetails.extensionCosts || [];
+          }
+          if (job) {
+              const freshJob = allJobs.find(j => j.id === job.id);
+              return freshJob?.bookingCostDetails?.extensionCosts || [];
+          }
+      }
+
+      // Fallback to props
       if (booking) return booking.costDetails.extensionCosts || [];
       if (job) return job.bookingCostDetails?.extensionCosts || [];
       return [];
-  }, [booking, job, type]);
+  }, [booking, job, type, allJobs]);
 
   // Generate default description
   const generateDescription = (prefix: string) => {
@@ -148,12 +152,13 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
       if (type === 'local') {
           initialData.tkNo = '3311'; 
-          if (job?.amisPaymentDocNo) {
-              initialData.docNo = job.amisPaymentDocNo;
-              initialData.paymentContent = job.amisPaymentDesc || '';
-              initialData.date = job.amisPaymentDate || today;
-              initialData.amount = job.chiPayment || 0;
-              initialData.receiverName = job.line;
+          if (initialDocNo || job?.amisPaymentDocNo) {
+              const doc = initialDocNo || job?.amisPaymentDocNo;
+              initialData.docNo = doc!;
+              initialData.paymentContent = job?.amisPaymentDesc || '';
+              initialData.date = job?.amisPaymentDate || today;
+              initialData.amount = job?.chiPayment || 0;
+              initialData.receiverName = job?.line || '';
           } else {
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
               if (booking) {
@@ -170,12 +175,13 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       } 
       else if (type === 'deposit') {
           initialData.tkNo = '1388';
-          if (job?.amisDepositOutDocNo) {
-              initialData.docNo = job.amisDepositOutDocNo;
-              initialData.paymentContent = job.amisDepositOutDesc || '';
-              initialData.date = job.amisDepositOutDate || today;
-              initialData.amount = job.chiCuoc || 0;
-              initialData.receiverName = job.line;
+          if (initialDocNo || job?.amisDepositOutDocNo) {
+              const doc = initialDocNo || job?.amisDepositOutDocNo;
+              initialData.docNo = doc!;
+              initialData.paymentContent = job?.amisDepositOutDesc || '';
+              initialData.date = job?.amisDepositOutDate || today;
+              initialData.amount = job?.chiCuoc || 0;
+              initialData.receiverName = job?.line || '';
           } else {
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
               if (booking) {
@@ -192,23 +198,28 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       }
       else if (type === 'extension') {
           initialData.tkNo = '13111';
-          const extensions = booking?.costDetails.extensionCosts || job?.bookingCostDetails?.extensionCosts || [];
-          const currentEditingDocNo = initialDocNo || (job?.amisExtensionPaymentDocNo);
+          
+          // Determine if we are Editing (Specific DocNo passed) or Creating New
+          const targetDocNo = initialDocNo; 
 
-          if (currentEditingDocNo) {
-              // EDIT MODE: Find existing data from *one* of the items that match this DocNo
-              const sampleExt = extensions.find(e => e.amisDocNo === currentEditingDocNo);
+          if (targetDocNo) {
+              // EDIT MODE
+              initialData.docNo = targetDocNo;
               
-              initialData.docNo = currentEditingDocNo;
-              initialData.paymentContent = sampleExt?.amisDesc || (job?.amisExtensionPaymentDesc || '');
-              initialData.date = sampleExt?.amisDate || (job?.amisExtensionPaymentDate || today);
-              initialData.receiverName = (booking ? booking.line : job?.line) || '';
+              const refExt = allExtensions.find(e => e.amisDocNo === targetDocNo);
+              if (refExt) {
+                  initialData.paymentContent = refExt.amisDesc || '';
+                  initialData.date = refExt.amisDate || today;
+              } else {
+                  initialData.paymentContent = job?.amisExtensionPaymentDesc || '';
+                  initialData.date = job?.amisExtensionPaymentDate || today;
+              }
+              initialData.receiverName = job?.line || booking?.line || '';
               
-              // Select ONLY extensions belonging to THIS specific voucher
               const initialSet = new Set<string>();
               let total = 0;
-              extensions.forEach(e => {
-                  if (e.amisDocNo === currentEditingDocNo) {
+              allExtensions.forEach(e => {
+                  if (e.amisDocNo === targetDocNo) {
                       initialSet.add(e.id);
                       total += e.total;
                   }
@@ -217,28 +228,20 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               initialData.amount = total;
 
           } else {
-              // CREATE MODE (New Lần n)
+              // CREATE MODE
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
               initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
-              initialData.receiverName = (booking ? booking.line : job?.line) || '';
+              if (booking) initialData.receiverName = booking.line;
+              else if (job) initialData.receiverName = job.line;
               
-              // Default select all UNPAID extensions
-              const initialSet = new Set<string>();
-              let total = 0;
-              extensions.forEach(e => {
-                  if (!e.amisDocNo) {
-                      initialSet.add(e.id);
-                      total += e.total;
-                  }
-              });
-              setSelectedExtensionIds(initialSet);
-              initialData.amount = total;
+              setSelectedExtensionIds(new Set());
+              initialData.amount = 0; 
           }
       }
 
       setFormData(initialData);
     }
-  }, [isOpen, job, booking, type, allJobs, initialDocNo]);
+  }, [isOpen, job, booking, type, allJobs, initialDocNo, allExtensions]);
 
   const handleToggleExtension = (extId: string, isChecked: boolean) => {
       const newSet = new Set(selectedExtensionIds);
@@ -247,7 +250,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       
       setSelectedExtensionIds(newSet);
 
-      // Recalculate amount
       const total = allExtensions.reduce((sum, ext) => {
           if (newSet.has(ext.id)) return sum + ext.total;
           return sum;
@@ -272,7 +274,8 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     e.preventDefault();
     onSave({
         ...formData,
-        selectedExtensionIds: Array.from(selectedExtensionIds)
+        selectedExtensionIds: Array.from(selectedExtensionIds),
+        originalDocNo: initialDocNo // Pass this to identify what we are editing
     });
     onClose();
   };
@@ -309,13 +312,17 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                         </h3>
                         <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
                             {allExtensions.map((ext, idx) => {
-                                // Logic: Locked if it has a DocNo AND that DocNo is NOT the one we are currently editing
-                                // If editingDocNo matches ext.amisDocNo, it's allowed (edit mode).
-                                // If editingDocNo is empty (create mode), any item with amisDocNo is locked.
-                                const isPaid = !!ext.amisDocNo;
-                                const isCurrentVoucher = isPaid && ext.amisDocNo === editingDocNo;
-                                const isLocked = isPaid && !isCurrentVoucher;
+                                // STRICT LOCKING LOGIC:
+                                const ownerDocNo = ext.amisDocNo;
                                 
+                                // Determine if this specific item is locked
+                                // If initialDocNo is set (Edit Mode): Locked if it belongs to ANOTHER DocNo.
+                                // If initialDocNo is undefined (Create Mode): Locked if it belongs to ANY DocNo.
+                                const isLocked = !!ownerDocNo && (initialDocNo ? ownerDocNo !== initialDocNo : true);
+                                
+                                // Determine if this item is currently part of THIS voucher (for styling)
+                                const isCurrentVoucher = !!ownerDocNo && ownerDocNo === initialDocNo;
+
                                 return (
                                     <label 
                                         key={ext.id} 
@@ -353,8 +360,13 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                                                     {new Intl.NumberFormat('en-US').format(ext.total)} VND
                                                 </div>
                                                 {isLocked && (
-                                                    <div className="text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100 inline-block mt-0.5" title={ext.amisDocNo}>
-                                                        Đã lập: {ext.amisDocNo}
+                                                    <div className="text-[10px] text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100 inline-block mt-0.5" title={`Đã chi ở phiếu ${ownerDocNo}`}>
+                                                        Đã lập: {ownerDocNo}
+                                                    </div>
+                                                )}
+                                                {isCurrentVoucher && !isLocked && (
+                                                    <div className="text-[10px] text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded border border-green-100 inline-block mt-0.5">
+                                                        Đang sửa
                                                     </div>
                                                 )}
                                             </div>
