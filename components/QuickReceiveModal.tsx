@@ -258,6 +258,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               (deepCopyJob.extensions || []).forEach((ext: any) => {
                   if (!ext.amisDocNo) initialExtSet.add(ext.id);
               });
+
+              // FIX: Default customer to extension's customer if available
+              if (initialExtSet.size > 0) {
+                  const firstExtId = Array.from(initialExtSet)[0];
+                  targetExt = (deepCopyJob.extensions || []).find((e: any) => e.id === firstExtId);
+              }
           }
 
           setOriginalGroupDocNo(orgDoc);
