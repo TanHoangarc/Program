@@ -1,11 +1,11 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
-import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search } from 'lucide-react';
+import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS } from '../constants';
 import * as XLSX from 'xlsx'; 
 import ExcelJS from 'exceljs'; 
-import { formatDateVN, calculateBookingSummary, parseDateVN, generateNextDocNo } from '../utils';
+import { formatDateVN, calculateBookingSummary, parseDateVN, generateNextDocNo, getPaginationRange } from '../utils';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
@@ -46,6 +46,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [filterMonth, setFilterMonth] = useState('');
   const [filterDesc, setFilterDesc] = useState(''); 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   // Template State
   const [templateBuffer, setTemplateBuffer] = useState<ArrayBuffer | null>(null);
@@ -103,7 +107,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [mode, filterMonth]);
+    setCurrentPage(1); // Reset page on filter change
+  }, [mode, filterMonth, filterDesc]);
 
   useEffect(() => {
     const loadTemplate = async () => {
@@ -788,9 +793,27 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         rows = rows.filter(r => (r.desc || '').toLowerCase().includes(lower));
     }
 
-    return rows.sort((a, b) => (a.docNo || '').localeCompare(b.docNo || ''));
+    return rows.sort((a, b) => {
+        const isLockedA = lockedIds.has(a.docNo);
+        const isLockedB = lockedIds.has(b.docNo);
 
-  }, [jobs, mode, filterMonth, filterDesc, customers, customReceipts, lines]); 
+        // 1. Unlocked first
+        if (isLockedA !== isLockedB) return isLockedA ? 1 : -1;
+        
+        // 2. DocNo
+        const docCompare = (a.docNo || '').localeCompare(b.docNo || '');
+        if (docCompare !== 0) return docCompare;
+
+        // 3. Date
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+  }, [jobs, mode, filterMonth, filterDesc, customers, customReceipts, lines, lockedIds]); 
+
+  // Pagination Logic
+  const totalPages = Math.ceil(exportData.length / ITEMS_PER_PAGE);
+  const paginatedData = exportData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const paginationRange = getPaginationRange(currentPage, totalPages);
 
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
@@ -1377,8 +1400,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/20">
-              {exportData.length > 0 ? (
-                 exportData.map((row: any, idx) => {
+              {paginatedData.length > 0 ? (
+                 paginatedData.map((row: any, idx) => {
                    const isLocked = lockedIds.has(row.docNo);
                    const isSelected = selectedIds.has(row.docNo);
                    const rowKey = row.rowId || `${row.type}-${row.docNo}-${idx}`;
@@ -1437,6 +1460,52 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-white/40 bg-white/30 flex justify-between items-center text-xs text-slate-600">
+            <div>
+              Trang {currentPage} / {totalPages} (Tổng {exportData.length} dòng)
+            </div>
+            <div className="flex space-x-1.5">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <div className="flex space-x-1">
+                 {getPaginationRange(currentPage, totalPages).map((page, idx) => (
+                    page === '...' ? (
+                      <span key={`dots-${idx}`} className="px-2 py-1.5 text-slate-400">...</span>
+                    ) : (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page as number)}
+                        className={`px-3 py-1.5 rounded-lg border border-white/60 font-medium transition-colors ${
+                          currentPage === page
+                            ? 'bg-teal-600 text-white border-teal-600 shadow-md'
+                            : 'bg-white/40 hover:bg-white/80 text-slate-700'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    )
+                 ))}
+              </div>
+
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg border border-white/60 hover:bg-white/60 disabled:opacity-50 transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* QUICK RECEIVE MODAL FOR THU & THU KHAC */}
