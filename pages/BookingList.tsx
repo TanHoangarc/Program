@@ -182,21 +182,9 @@ export const BookingList: React.FC<BookingListProps> = ({
   };
   
   const handleSavePayment = (data: any) => {
+      // Save data back to jobs in the booking
       if (targetBookingForPayment) {
-          // Identify all jobs to update
-          let jobsToUpdate = [...targetBookingForPayment.jobs];
-          
-          // Add Merged Jobs if any (Extension only)
-          if (data.addedJobIds && data.addedJobIds.length > 0) {
-              const extraJobs = jobs.filter(j => data.addedJobIds.includes(j.id));
-              jobsToUpdate.push(...extraJobs);
-          }
-          
-          // Deduplicate just in case
-          jobsToUpdate = Array.from(new Set(jobsToUpdate.map(j => j.id)))
-              .map(id => jobsToUpdate.find(j => j.id === id)!);
-
-          jobsToUpdate.forEach(job => {
+          targetBookingForPayment.jobs.forEach(job => {
               const updatedJob = { ...job };
               
               if (paymentType === 'local') {
@@ -208,6 +196,8 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
               } else if (paymentType === 'extension') {
+                  // Legacy fallback (Job Level) - Keep tracking "last used" or clear if all deselected?
+                  // We update it to the current docNo if we selected something, or keep it.
                   updatedJob.amisExtensionPaymentDocNo = data.docNo;
                   updatedJob.amisExtensionPaymentDesc = data.paymentContent;
                   updatedJob.amisExtensionPaymentDate = data.date;

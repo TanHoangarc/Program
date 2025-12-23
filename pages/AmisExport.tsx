@@ -983,31 +983,17 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
           const oldDocNo = selectedJobForModal[docField];
           
-          // Identify targets: current selected + any merged ones
-          let targetJobs = (oldDocNo && typeof oldDocNo === 'string')
+          const targetJobs = (oldDocNo && typeof oldDocNo === 'string')
              ? jobs.filter(j => j[docField] === oldDocNo) 
              : [selectedJobForModal]; 
-
-          // Add newly added jobs from modal
-          if (data.addedJobIds && data.addedJobIds.length > 0) {
-              const extraJobs = jobs.filter(j => data.addedJobIds.includes(j.id));
-              targetJobs.push(...extraJobs);
-          }
-          
-          // Deduplicate
-          targetJobs = Array.from(new Set(targetJobs.map(j => j.id)))
-              .map(id => targetJobs.find(j => j.id === id)!);
 
           targetJobs.forEach(job => {
               const updatedJob = { ...job };
               (updatedJob as any)[docField] = data.docNo;
               (updatedJob as any)[dateField] = data.date;
               
-              // Only update description on the MAIN job (the one opened) or keep it consistent?
-              // Usually we want description on all.
-              // if (job.id === selectedJobForModal.id) {
+              if (job.id === selectedJobForModal.id) {
                   (updatedJob as any)[descField] = data.paymentContent;
-              // }
                   
                   if (paymentType === 'extension') {
                       updatedJob.amisExtensionPaymentAmount = data.amount;
@@ -1039,6 +1025,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                           });
                       }
                   }
+              }
               
               onUpdateJob(updatedJob);
           });
