@@ -586,8 +586,8 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     if (initialData) {
         // 1. Local Charge Update
-        const oldLcInv = (initialData.localChargeInvoice || '').trim();
-        const newLcInv = (finalJobData.localChargeInvoice || '').trim();
+        const oldLcInv = String(initialData.localChargeInvoice || '').trim();
+        const newLcInv = String(finalJobData.localChargeInvoice || '').trim();
 
         if (newLcInv && newLcInv !== oldLcInv) {
             const updateLcText = (text: string) => {
@@ -619,8 +619,8 @@ export const JobModal: React.FC<JobModalProps> = ({
         if (finalJobData.extensions && initialData.extensions) {
             finalJobData.extensions = finalJobData.extensions.map(newExt => {
                 const oldExt = initialData.extensions?.find(e => e.id === newExt.id);
-                const oldExtInv = (oldExt ? oldExt.invoice : '').trim();
-                const newExtInv = (newExt.invoice || '').trim();
+                const oldExtInv = String(oldExt ? oldExt.invoice : '').trim();
+                const newExtInv = String(newExt.invoice || '').trim();
 
                 if (newExtInv && newExtInv !== oldExtInv) {
                     const updateExtText = (text: string) => {
