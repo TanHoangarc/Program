@@ -1,11 +1,12 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
-import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight, FileCheck } from 'lucide-react';
+import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight, FileCheck, Upload, Loader2 } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
 import { formatDateVN, getPaginationRange, calculateBookingSummary } from '../utils';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
+import axios from 'axios';
 
 interface DepositListProps {
   mode: 'line' | 'customer';
@@ -16,6 +17,8 @@ interface DepositListProps {
   onAddLine: (line: string) => void;
   onAddCustomer: (customer: Customer) => void;
 }
+
+const BACKEND_URL = "https://api.kimberry.id.vn";
 
 export const DepositList: React.FC<DepositListProps> = ({ 
     mode, jobs, customers, lines, onEditJob, onAddLine, onAddCustomer 
@@ -38,6 +41,11 @@ export const DepositList: React.FC<DepositListProps> = ({
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
+
+  // Upload State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [targetJobIdForUpload, setTargetJobIdForUpload] = useState<string | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -81,6 +89,63 @@ export const DepositList: React.FC<DepositListProps> = ({
   };
 
   const hasActiveFilters = filterStatus !== 'all' || filterEntity !== '' || filterMonth !== '' || filterYear !== new Date().getFullYear().toString();
+
+  // --- UPLOAD HANDLERS ---
+  const handleUploadClick = (jobId: string) => {
+      setTargetJobIdForUpload(jobId);
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+          fileInputRef.current.click();
+      }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !targetJobIdForUpload) return;
+
+      const job = jobs.find(j => j.id === targetJobIdForUpload);
+      if (!job) return;
+
+      setUploadingId(targetJobIdForUpload);
+
+      try {
+          const safeJobCode = job.jobCode.replace(/[^a-zA-Z0-9-_]/g, '');
+          const ext = file.name.split('.').pop();
+          const fileName = `CVHC_BL_${safeJobCode}_${Date.now()}.${ext}`;
+
+          const formData = new FormData();
+          formData.append("fileName", fileName); 
+          formData.append("file", file);
+
+          const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+          });
+
+          if (res.data && res.data.success) {
+              let uploadedUrl = res.data.cvhcUrl;
+              if (uploadedUrl && !uploadedUrl.startsWith('http')) {
+                  uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
+              }
+
+              const updatedJob = { 
+                  ...job, 
+                  cvhcUrl: uploadedUrl,
+                  cvhcFileName: res.data.fileName || fileName
+              };
+              
+              onEditJob(updatedJob);
+              alert("Upload CVHC thành công!");
+          } else {
+              throw new Error(res.data?.message || "Upload failed");
+          }
+      } catch (err) {
+          console.error("Upload Error:", err);
+          alert("Có lỗi xảy ra khi upload file. Vui lòng thử lại.");
+      } finally {
+          setUploadingId(null);
+          setTargetJobIdForUpload(null);
+      }
+  };
 
   // --- LOGIC FOR LINE DEPOSIT (HÃNG TÀU) ---
   const lineDeposits = useMemo(() => {
@@ -227,6 +292,8 @@ export const DepositList: React.FC<DepositListProps> = ({
 
   return (
     <div className="w-full h-full pb-10">
+      <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="*/*" />
+
       <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6 px-2">
         <div className="flex items-center space-x-3 text-slate-800">
           {mode === 'line' ? (
@@ -415,7 +482,9 @@ export const DepositList: React.FC<DepositListProps> = ({
                         )}
                       </td>
                       <td className="px-6 py-4 text-center">
-                          {item.cvhcUrl ? (
+                          {uploadingId === item.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-slate-400 mx-auto" />
+                          ) : item.cvhcUrl ? (
                               <button 
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -427,7 +496,16 @@ export const DepositList: React.FC<DepositListProps> = ({
                                   <FileCheck className="w-4 h-4" />
                               </button>
                           ) : (
-                              <span className="text-slate-300">-</span>
+                              <button 
+                                  onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleUploadClick(item.id);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition-colors flex items-center justify-center mx-auto border border-red-200"
+                                  title="Upload CVHC"
+                              >
+                                  <Upload className="w-4 h-4" />
+                              </button>
                           )}
                       </td>
                     </tr>
