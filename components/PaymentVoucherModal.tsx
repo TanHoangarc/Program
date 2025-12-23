@@ -13,6 +13,7 @@ interface PaymentVoucherModalProps {
   booking?: BookingSummary;
   type: 'local' | 'deposit' | 'extension';
   allJobs?: JobData[];
+  initialDocNo?: string; // NEW: Specific DocNo being edited (if any)
 }
 
 const DateInput = ({ 
@@ -75,7 +76,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
-  isOpen, onClose, onSave, job, booking, type, allJobs
+  isOpen, onClose, onSave, job, booking, type, allJobs, initialDocNo
 }) => {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -92,11 +93,14 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   // Determine the editing context (Are we editing an existing voucher?)
   const editingDocNo = useMemo(() => {
+    // If initialDocNo is passed explicitly (from AmisExport), use it.
+    if (initialDocNo) return initialDocNo;
+    // Otherwise fallback (legacy logic, mainly for single job edits if needed, but risky for multiple vouchers)
     if (type === 'extension') return job?.amisExtensionPaymentDocNo || '';
     if (type === 'deposit') return job?.amisDepositOutDocNo || '';
     if (type === 'local') return job?.amisPaymentDocNo || '';
     return '';
-  }, [job, type]);
+  }, [job, type, initialDocNo]);
 
   // Get all relevant extension costs
   const allExtensions = useMemo(() => {
@@ -189,19 +193,22 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       else if (type === 'extension') {
           initialData.tkNo = '13111';
           const extensions = booking?.costDetails.extensionCosts || job?.bookingCostDetails?.extensionCosts || [];
-          
-          if (job?.amisExtensionPaymentDocNo) {
-              // EDIT MODE
-              initialData.docNo = job.amisExtensionPaymentDocNo;
-              initialData.paymentContent = job.amisExtensionPaymentDesc || '';
-              initialData.date = job.amisExtensionPaymentDate || today;
-              initialData.receiverName = job.line;
+          const currentEditingDocNo = initialDocNo || (job?.amisExtensionPaymentDocNo);
+
+          if (currentEditingDocNo) {
+              // EDIT MODE: Find existing data from *one* of the items that match this DocNo
+              const sampleExt = extensions.find(e => e.amisDocNo === currentEditingDocNo);
               
-              // Select extensions belonging to this voucher
+              initialData.docNo = currentEditingDocNo;
+              initialData.paymentContent = sampleExt?.amisDesc || (job?.amisExtensionPaymentDesc || '');
+              initialData.date = sampleExt?.amisDate || (job?.amisExtensionPaymentDate || today);
+              initialData.receiverName = (booking ? booking.line : job?.line) || '';
+              
+              // Select ONLY extensions belonging to THIS specific voucher
               const initialSet = new Set<string>();
               let total = 0;
               extensions.forEach(e => {
-                  if (e.amisDocNo === job.amisExtensionPaymentDocNo) {
+                  if (e.amisDocNo === currentEditingDocNo) {
                       initialSet.add(e.id);
                       total += e.total;
                   }
@@ -210,11 +217,10 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               initialData.amount = total;
 
           } else {
-              // CREATE MODE
+              // CREATE MODE (New Lần n)
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
               initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
-              if (booking) initialData.receiverName = booking.line;
-              else if (job) initialData.receiverName = job.line;
+              initialData.receiverName = (booking ? booking.line : job?.line) || '';
               
               // Default select all UNPAID extensions
               const initialSet = new Set<string>();
@@ -232,7 +238,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
       setFormData(initialData);
     }
-  }, [isOpen, job, booking, type, allJobs]);
+  }, [isOpen, job, booking, type, allJobs, initialDocNo]);
 
   const handleToggleExtension = (extId: string, isChecked: boolean) => {
       const newSet = new Set(selectedExtensionIds);
@@ -303,8 +309,12 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                         </h3>
                         <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
                             {allExtensions.map((ext, idx) => {
-                                // Locked if it has a DocNo AND that DocNo is NOT the one we are currently editing
-                                const isLocked = !!ext.amisDocNo && ext.amisDocNo !== editingDocNo;
+                                // Logic: Locked if it has a DocNo AND that DocNo is NOT the one we are currently editing
+                                // If editingDocNo matches ext.amisDocNo, it's allowed (edit mode).
+                                // If editingDocNo is empty (create mode), any item with amisDocNo is locked.
+                                const isPaid = !!ext.amisDocNo;
+                                const isCurrentVoucher = isPaid && ext.amisDocNo === editingDocNo;
+                                const isLocked = isPaid && !isCurrentVoucher;
                                 
                                 return (
                                     <label 
@@ -343,7 +353,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                                                     {new Intl.NumberFormat('en-US').format(ext.total)} VND
                                                 </div>
                                                 {isLocked && (
-                                                    <div className="text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100 inline-block mt-0.5">
+                                                    <div className="text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100 inline-block mt-0.5" title={ext.amisDocNo}>
                                                         Đã lập: {ext.amisDocNo}
                                                     </div>
                                                 )}

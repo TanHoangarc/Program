@@ -196,8 +196,10 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
               } else if (paymentType === 'extension') {
-                  // Legacy fallback (Job Level) - Keep tracking "last used" or clear if all deselected?
-                  // We update it to the current docNo if we selected something, or keep it.
+                  // Legacy fallback (Job Level) - Optional: only set if it's the *first* extension payment or if we want to track "latest"
+                  // To avoid overwriting a previous voucher code on the job-level field when creating a second voucher, 
+                  // we only set it if it's empty, OR we just let it be the "last used" one.
+                  // For true multi-voucher support, relying on the line-item `amisDocNo` below is key.
                   updatedJob.amisExtensionPaymentDocNo = data.docNo;
                   updatedJob.amisExtensionPaymentDesc = data.paymentContent;
                   updatedJob.amisExtensionPaymentDate = data.date;
@@ -205,10 +207,9 @@ export const BookingList: React.FC<BookingListProps> = ({
                   
                   // Update specific extension lines based on selection array
                   if (updatedJob.bookingCostDetails && updatedJob.bookingCostDetails.extensionCosts) {
-                      const oldDocNo = job.amisExtensionPaymentDocNo; // Capture previous DocNo state
                       
                       updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(ext => {
-                          // Case 1: ID is in selection -> Update with NEW data
+                          // Case 1: ID is in selection -> Update with NEW voucher data
                           if (data.selectedExtensionIds && data.selectedExtensionIds.includes(ext.id)) {
                               return {
                                   ...ext,
@@ -217,16 +218,9 @@ export const BookingList: React.FC<BookingListProps> = ({
                                   amisDate: data.date
                               };
                           } 
-                          // Case 2: ID NOT in selection, BUT it had the same DocNo as before (Was part of this voucher, now unchecked) -> Clear it
-                          else if (oldDocNo && ext.amisDocNo === oldDocNo) {
-                              return {
-                                  ...ext,
-                                  amisDocNo: '',
-                                  amisDesc: '',
-                                  amisDate: ''
-                              };
-                          }
-                          // Case 3: Other items (locked or unrelated) -> Keep as is
+                          // Case 2: ID NOT in selection.
+                          // If we are creating a *new* voucher (Lần 2), we should NOT clear extensions paid by Lần 1 (UNC...xx).
+                          // So we simply return `ext` unchanged.
                           return ext;
                       });
                   }
@@ -449,6 +443,8 @@ export const BookingList: React.FC<BookingListProps> = ({
              type={paymentType}
              onSave={handleSavePayment}
              allJobs={jobs}
+             // For creation, we don't pass initialDocNo, allowing user to create NEW voucher (Lần n)
+             initialDocNo={undefined}
           />
       )}
 
