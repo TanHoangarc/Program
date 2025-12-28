@@ -1,8 +1,8 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { JobData } from '../types';
-import { Scale, Search, ChevronLeft, ChevronRight } from 'lucide-react';
-import { MONTHS } from '../constants';
+import { Scale, Search, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { MONTHS, YEARS } from '../constants';
 import { getPaginationRange } from '../utils';
 
 interface ReconciliationProps {
@@ -11,19 +11,27 @@ interface ReconciliationProps {
 
 export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, searchTerm]);
+  }, [filterMonth, filterYear, searchTerm]);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   const reconData = useMemo(() => {
     let filtered = jobs;
+    
+    // Filter by Year
+    if (filterYear) filtered = filtered.filter(j => j.year === Number(filterYear));
+    
+    // Filter by Month
     if (filterMonth) filtered = filtered.filter(j => j.month === filterMonth);
+    
+    // Search
     if (searchTerm) {
         filtered = filtered.filter(j => 
             String(j.jobCode || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -57,6 +65,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
       return {
         id: job.id,
         month: job.month,
+        year: job.year,
         jobCode: job.jobCode,
         booking: job.booking,
         realCost,
@@ -68,8 +77,11 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
       };
     });
 
-    // Updated Sorting Logic: Month Desc -> Booking Asc (Trimmed)
+    // Updated Sorting Logic: Year Desc -> Month Desc -> Booking Asc (Trimmed)
     return mapped.sort((a, b) => {
+      const yearDiff = (b.year || 0) - (a.year || 0);
+      if (yearDiff !== 0) return yearDiff;
+      
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
 
@@ -77,7 +89,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
       const bookingB = String(b.booking || '').trim().toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterMonth, searchTerm]);
+  }, [jobs, filterMonth, filterYear, searchTerm]);
 
   // Pagination Logic
   const totalPages = Math.ceil(reconData.length / ITEMS_PER_PAGE);
@@ -97,24 +109,36 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
           <p className="text-sm text-slate-500 ml-11">So sánh dữ liệu hệ thống (System) và dữ liệu kế toán (Invoice)</p>
         </div>
         
-        <div className="flex space-x-3 glass-panel px-4 py-2 rounded-xl">
-           <select 
-             value={filterMonth} 
-             onChange={e => setFilterMonth(e.target.value)} 
-             className="bg-transparent text-sm font-medium text-slate-700 outline-none min-w-[120px]"
-           >
-             <option value="">Tất cả tháng</option>
-             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-           </select>
-           <div className="w-px bg-slate-300"></div>
-           <div className="relative">
-              <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center space-x-3 glass-panel px-4 py-2 rounded-xl">
+             <Filter className="w-4 h-4 text-slate-400" />
+             <select 
+               value={filterYear} 
+               onChange={e => setFilterYear(e.target.value)} 
+               className="bg-transparent text-sm font-bold text-blue-700 outline-none min-w-[80px] cursor-pointer"
+             >
+               <option value="">Tất cả năm</option>
+               {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+             </select>
+             <div className="w-px h-4 bg-slate-300"></div>
+             <select 
+               value={filterMonth} 
+               onChange={e => setFilterMonth(e.target.value)} 
+               className="bg-transparent text-sm font-medium text-slate-700 outline-none min-w-[120px] cursor-pointer"
+             >
+               <option value="">Tất cả các tháng</option>
+               {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+             </select>
+          </div>
+          
+          <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
-                type="text" placeholder="Tìm kiếm..." 
+                type="text" placeholder="Tìm kiếm mã Job, Booking..." 
                 value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                className="pl-6 bg-transparent text-sm outline-none w-48 text-slate-700 placeholder-slate-400"
+                className="pl-10 pr-4 py-2.5 glass-input rounded-xl text-sm w-56 outline-none focus:ring-2 focus:ring-teal-500"
               />
-           </div>
+          </div>
         </div>
       </div>
 
@@ -123,6 +147,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
           <table className="w-full text-sm text-left">
             <thead className="bg-white/40 text-slate-600 border-b border-white/40">
               <tr>
+                <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tháng/Năm</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Job Code</th>
                 
                 {/* Cost Header Group */}
@@ -140,6 +165,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
               {paginatedData.length > 0 ? (
                 paginatedData.map(item => (
                   <tr key={item.id} className="hover:bg-white/40 transition-colors">
+                    <td className="px-6 py-4 text-slate-400 font-medium">T{item.month}/{item.year}</td>
                     <td className="px-6 py-4 font-bold text-slate-700">{item.jobCode}</td>
                     
                     {/* Cost Side */}
@@ -158,7 +184,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={7} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
+                <tr><td colSpan={8} className="text-center py-12 text-slate-400 font-light">Không có dữ liệu phù hợp</td></tr>
               )}
             </tbody>
           </table>
@@ -180,7 +206,7 @@ export const Reconciliation: React.FC<ReconciliationProps> = ({ jobs }) => {
               </button>
               
               <div className="flex space-x-1">
-                 {paginationRange.map((page, idx) => (
+                 {getPaginationRange(currentPage, totalPages).map((page, idx) => (
                     page === '...' ? (
                       <span key={`dots-${idx}`} className="px-2 py-1.5 text-slate-400">...</span>
                     ) : (
