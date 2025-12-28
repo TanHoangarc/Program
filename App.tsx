@@ -645,7 +645,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-slate-50">
-      {/* ... (Rest of JSX remains unchanged) ... */}
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200 z-30 shrink-0 sticky top-0">
          <div className="flex items-center space-x-2">
@@ -783,7 +782,11 @@ const App: React.FC = () => {
             )}
 
             {currentPage === 'profit' && (
-              <ProfitReport jobs={jobs} onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} />
+              <ProfitReport 
+                jobs={jobs} 
+                salaries={salaries}
+                onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} 
+              />
             )}
 
             {currentPage === 'data-lines' && (
