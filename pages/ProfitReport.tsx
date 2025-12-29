@@ -77,20 +77,31 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries = [],
   }, [filteredJobs, searchTerm]);
 
   const stats = useMemo(() => {
-    // 1. Profit & Fees
+    // 1. Profit & Fees & Sell (Include ALL filtered jobs)
     const totalNetProfit = profitData.reduce((acc, p) => acc + p.totalProfit, 0);
     const totalFees = profitData.reduce((acc, p) => acc + p.fees, 0);
     const totalSell = profitData.reduce((acc, p) => acc + p.totalSell, 0);
 
+    // Helper: Check for Long Hoang Logistics
+    const isLhk = (name?: string) => {
+        const n = (name || '').toLowerCase();
+        return n.includes('long hoàng') || n.includes('lhk') || n.includes('long hoang') || n.includes('longhoang');
+    };
+
     // 2. Output VAT (Thuế đầu ra)
-    // Formula: 8% of totalSell + 8% of totalExtensionRevenue
-    // Note: job.extensions[].total is VAT inclusive (108%)
-    const totalExtRevenue = filteredJobs.reduce((acc, job) => 
+    // Formula: 8% of Taxable Sell + 8% of Taxable Extension Revenue
+    // EXCLUDE Long Hoang Logistics from VAT calculation
+    
+    const taxableJobs = filteredJobs.filter(j => !isLhk(j.customerName));
+
+    const taxableSell = taxableJobs.reduce((acc, job) => acc + (job.sell || 0), 0);
+    
+    const taxableExtRevenue = taxableJobs.reduce((acc, job) => 
         acc + (job.extensions || []).reduce((s, ext) => s + (ext.total || 0), 0)
     , 0);
     
-    const outputVatFromSell = totalSell * 0.08;
-    const outputVatFromExt = totalExtRevenue > 0 ? (totalExtRevenue / 1.08 * 0.08) : 0;
+    const outputVatFromSell = taxableSell * 0.08;
+    const outputVatFromExt = taxableExtRevenue > 0 ? (taxableExtRevenue / 1.08 * 0.08) : 0;
     const totalOutputVat = outputVatFromSell + outputVatFromExt;
 
     // 3. Input VAT (Thuế đầu vào - Local Charge + Extension Cost)
@@ -158,7 +169,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries = [],
             </div>
             <h1 className="text-3xl font-bold tracking-tight">Báo Cáo Lợi Nhuận</h1>
           </div>
-          <p className="text-slate-500 ml-11">Phân tích lợi nhuận, chi phí lương và thuế VAT</p>
+          <p className="text-slate-500 ml-11">Phân tích lợi nhuận, chi phí lương và thuế VAT (Đã loại trừ LHK khỏi VAT ra)</p>
         </div>
         
         <div className="flex items-center gap-3">
