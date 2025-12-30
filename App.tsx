@@ -600,7 +600,8 @@ const App: React.FC = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      await fetch("https://api.kimberry.id.vn/backup", {
+      // --- CHANGED ENDPOINT HERE ---
+      await fetch("https://api.kimberry.id.vn/data/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
