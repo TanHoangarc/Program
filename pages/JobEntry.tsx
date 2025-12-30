@@ -25,7 +25,7 @@ interface JobEntryProps {
 
 export const JobEntry: React.FC<JobEntryProps> = ({ 
   jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine,
-  initialJobId, onClearTargetJob
+  initialJobId, onClearTargetJob, customReceipts = []
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
@@ -83,6 +83,32 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       }
     }
   }, [initialJobId, jobs, onClearTargetJob]);
+
+  // --- CALCULATE USED DOC NOS (For Auto-Increment) ---
+  const usedDocNos = useMemo(() => {
+      const list: string[] = [];
+      
+      // 1. From Custom Receipts (Thu Khác)
+      if (customReceipts) {
+          customReceipts.forEach(r => {
+              if (r.docNo) list.push(r.docNo);
+              if (r.additionalReceipts) {
+                  r.additionalReceipts.forEach((ar: any) => { if(ar.docNo) list.push(ar.docNo); });
+              }
+          });
+      }
+
+      // 2. From Jobs (Additional Receipts)
+      // Note: Main Job DocNos are checked automatically by the utility function via the 'jobs' array.
+      // However, additional receipts nested inside jobs are NOT checked automatically, so we collect them here.
+      jobs.forEach(j => {
+          if (j.additionalReceipts) {
+              j.additionalReceipts.forEach(r => { if (r.docNo) list.push(r.docNo); });
+          }
+      });
+
+      return list;
+  }, [customReceipts, jobs]);
 
   const handleAddNew = () => {
     setEditingJob(null);
@@ -564,7 +590,19 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       )}
       
       {viewingBooking && <BookingDetailModal booking={viewingBooking} onClose={() => setViewingBooking(null)} onSave={handleSaveBookingDetails} zIndex="z-[60]" />}
-      {isQuickReceiveOpen && quickReceiveJob && <QuickReceiveModal isOpen={isQuickReceiveOpen} onClose={() => setIsQuickReceiveOpen(false)} onSave={handleSaveQuickReceive} job={quickReceiveJob} mode={quickReceiveMode} customers={customers} onAddCustomer={onAddCustomer} allJobs={jobs} />}
+      {isQuickReceiveOpen && quickReceiveJob && (
+        <QuickReceiveModal 
+            isOpen={isQuickReceiveOpen} 
+            onClose={() => setIsQuickReceiveOpen(false)} 
+            onSave={handleSaveQuickReceive} 
+            job={quickReceiveJob} 
+            mode={quickReceiveMode} 
+            customers={customers} 
+            onAddCustomer={onAddCustomer} 
+            allJobs={jobs} 
+            usedDocNos={usedDocNos} // PASSING THE CALCULATED DOC NOS HERE
+        />
+      )}
     </div>
   );
 };
