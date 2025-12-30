@@ -888,7 +888,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                       <span>{req.booking}</span>
                       {currentUser?.role === 'Admin' && (
                         <button 
-                          onClick={() => copyToClipboard(`LONG HOANG PAYMENT BL ${req.booking} MST 0316113070`, `bk-${req.id}`)}
+                          onClick={() => {
+                              const typeStr = req.type === 'Deposit' ? 'CUOC' : req.type === 'Demurrage' ? 'GH' : 'PAYMENT';
+                              copyToClipboard(`LONG HOANG ${typeStr} BL ${req.booking} MST 0316113070`, `bk-${req.id}`);
+                          }}
                           className={`p-1 rounded-full transition-colors ${copiedId === `bk-${req.id}` ? 'text-green-600 bg-green-50' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
                           title="Copy nội dung chuyển khoản"
                         >
