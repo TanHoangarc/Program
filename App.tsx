@@ -619,7 +619,7 @@ const App: React.FC = () => {
     
     const timeoutId = setTimeout(() => {
         autoBackup();
-    }, 2000);
+    }, 500); // <-- OPTIMIZED: Reduced to 500ms since server write is async
 
     return () => clearTimeout(timeoutId);
   }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, isServerAvailable]);
