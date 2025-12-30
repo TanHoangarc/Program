@@ -119,27 +119,22 @@ const App: React.FC = () => {
       localStorage.setItem('kb_locked_ids', JSON.stringify(Array.from(lockedIds)));
   }, [lockedIds]);
 
-  // Helper: Sanitize Data
+  // Helper: Sanitize Data (CORRECTED TO REMOVE DUPLICATES)
   const sanitizeData = (data: JobData[]): JobData[] => {
-    const seenIds = new Set<string>();
-    let hasDuplicates = false;
-
-    const sanitized = data.map(job => {
-      // Default year to 2025 if missing (Data Migration)
-      if (!job.year) {
-          job.year = 2025;
-      }
-
-      if (!job.id || seenIds.has(job.id)) {
-        hasDuplicates = true;
-        const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        return { ...job, id: newId };
-      }
-      seenIds.add(job.id);
-      return job;
+    // Use Map to keep the LAST entry for each ID, effectively deduplicating
+    const uniqueMap = new Map<string, JobData>();
+    
+    data.forEach(job => {
+        if (job.id) {
+            // Default year to 2025 if missing (Data Migration)
+            if (!job.year) {
+                job.year = 2025;
+            }
+            uniqueMap.set(job.id, job);
+        }
     });
-    if (hasDuplicates) console.warn("Fixed duplicate IDs");
-    return sanitized;
+
+    return Array.from(uniqueMap.values());
   };
 
   // --- MAIN DATA STATE ---
