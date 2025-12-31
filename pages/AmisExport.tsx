@@ -623,7 +623,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             rows.push({
                 jobId: j.id, type: 'ban', rowId: `ban-${j.id}`,
                 date: dateStr, docNo: docNo, objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
-                desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''}`,
+                desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''} (không xuất hoá đơn)`,
                 amount: j.sell, projectCode: projectCode
             });
         });
@@ -1177,7 +1177,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             row.getCell(6).value = formatDateVN(data.date); // F - Ngày hạch toán
             row.getCell(7).value = formatDateVN(data.date); // G - Ngày chứng từ
             row.getCell(8).value = data.docNo; // H - Số chứng từ
-            row.getCell(14).value = data.objCode; // N - Mã khách hàng
+            row.getCell(14).value = "LONGHOANGKIMBERRY"; // N - Mã khách hàng
             row.getCell(22).value = data.desc; // V - Diễn giải
             row.getCell(28).value = "VND"; // AB
             row.getCell(30).value = "AGENT FEE"; // AD
@@ -1186,7 +1186,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             row.getCell(37).value = "51111"; // AK
             row.getCell(39).value = 1; // AM - SL
             row.getCell(40).value = data.amount; // AN - Đơn giá (Sell)
-            row.getCell(51).value = "0%"; // AY - Thuế GTGT
+            row.getCell(51).value = "0"; // AY - Thuế GTGT
             row.getCell(55).value = "33311"; // BC - TK Thuế
             row.getCell(61).value = data.projectCode; // BI - Mã công trình
         } else if (mode === 'mua') {
