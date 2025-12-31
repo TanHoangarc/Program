@@ -93,7 +93,7 @@ export const SalesInvoiceModal: React.FC<SalesInvoiceModalProps> = ({
     tkNo: '13112',
     tkCo: '51111',
     quantity: 1,
-    vatRate: '0%',
+    vatRate: '0',
     tkVat: '33311',
     projectCode: ''
   });
