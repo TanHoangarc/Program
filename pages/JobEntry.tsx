@@ -6,7 +6,7 @@ import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
 import { calculateBookingSummary, getPaginationRange, formatDateVN, calculatePaymentStatus } from '../utils';
-import { MONTHS } from '../constants';
+import { MONTHS, YEARS } from '../constants';
 import * as XLSX from 'xlsx';
 
 interface JobEntryProps {
@@ -41,6 +41,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Filters
   const [filterJobCode, setFilterJobCode] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
   const [filterLine, setFilterLine] = useState('');
@@ -62,7 +63,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterJobCode, filterMonth, filterCustomer, filterBooking, filterLine]);
+  }, [filterJobCode, filterMonth, filterYear, filterCustomer, filterBooking, filterLine]);
 
   // Auto-open Job if ID provided
   useEffect(() => {
@@ -277,11 +278,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
       const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
       return {
-        "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
+        "Năm": job.year,
+        "Tháng": job.month, 
+        "Job Code": job.jobCode, 
+        "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
         "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
-        "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '', // SAFE CHECK
+        "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '', 
         "Thu Cược": job.thuCuoc,
         "Ngày Thu Cược": formatDateVN(job.ngayThuCuoc),
         "Ngày Thu Hoàn": formatDateVN(job.ngayThuHoan),
@@ -302,24 +306,29 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       
       const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
       const matchesLine = filterLine ? job.line === filterLine : true;
+      const matchesYear = filterYear ? job.year === Number(filterYear) : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
       const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
       const matchesBooking = filterBooking ? jBooking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
-      return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking;
+      return matchesJobCode && matchesLine && matchesYear && matchesMonth && matchesCustomer && matchesBooking;
     });
 
     // Sort: Month Descending -> Booking Ascending
     return matches.sort((a, b) => {
-      // 1. Month Descending
+      // 1. Year Descending
+      const yearDiff = (b.year || 0) - (a.year || 0);
+      if (yearDiff !== 0) return yearDiff;
+
+      // 2. Month Descending
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
       
-      // 2. Booking Ascending (Group jobs by booking)
+      // 3. Booking Ascending (Group jobs by booking)
       const bookingA = String(a.booking || '').toLowerCase();
       const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterJobCode, filterLine, filterMonth, filterCustomer, filterBooking]);
+  }, [jobs, filterJobCode, filterLine, filterYear, filterMonth, filterCustomer, filterBooking]);
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
@@ -338,7 +347,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   }, [filteredJobs]);
 
   const clearFilters = () => {
-    setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterCustomer(''); setFilterBooking('');
+    setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterYear(new Date().getFullYear().toString()); setFilterCustomer(''); setFilterBooking('');
   };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -368,7 +377,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
       {/* Filter Bar */}
       <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+             <div>
+               <label className="block text-xs font-semibold text-gray-500 mb-1">Năm</label>
+               <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none font-bold text-blue-700">
+                 <option value="">Tất cả</option>
+                 {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+               </select>
+             </div>
              <div>
                <label className="block text-xs font-semibold text-gray-500 mb-1">Tháng</label>
                <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none">
@@ -402,7 +418,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                </div>
              </div>
           </div>
-          {(filterMonth || filterCustomer || filterBooking || filterJobCode || filterLine) && (
+          {(filterMonth || filterYear !== new Date().getFullYear().toString() || filterCustomer || filterBooking || filterJobCode || filterLine) && (
             <div className="mt-3 flex justify-end">
               <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-700 flex items-center"><X className="w-3 h-3 mr-1" /> Xóa bộ lọc</button>
             </div>
@@ -414,7 +430,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tháng</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Tháng/Năm</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Job Code</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Customer</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Booking</th>
@@ -433,7 +449,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                 
                 return (
                 <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
-                  <td className="px-6 py-3 text-gray-600">T{job.month}</td>
+                  <td className="px-6 py-3 text-gray-600">T{job.month}/{job.year}</td>
                   <td className="px-6 py-3 font-semibold text-blue-700">
                     <div className="flex items-center gap-2">
                         {job.jobCode}
@@ -600,7 +616,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             customers={customers} 
             onAddCustomer={onAddCustomer} 
             allJobs={jobs} 
-            usedDocNos={usedDocNos} // PASSING THE CALCULATED DOC NOS HERE
+            usedDocNos={usedDocNos} 
         />
       )}
     </div>
