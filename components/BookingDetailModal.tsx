@@ -202,12 +202,78 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // -----------------------------
-  // CALCULATIONS
+  // BALANCING LOGIC (DISTRIBUTION)
+  // -----------------------------
+  
+  // 1. Calculate Weights based on estimated Job Costs
+  const jobWeights = useMemo(() => {
+      return booking.jobs.map(job => {
+          const kimberry = (job.cont20 * 250000) + (job.cont40 * 500000);
+          const other = (job.feeCic||0) + (job.feePsc||0) + (job.feeEmc||0) + (job.feeOther||0);
+          const rawAdj = job.cost - kimberry - other;
+          return Math.max(0, rawAdj); 
+      });
+  }, [booking.jobs]);
+
+  const totalWeight = jobWeights.reduce((a, b) => a + b, 0);
+  const systemTotalVatEst = booking.jobs.reduce((s, j) => s + (j.cost * 0.05263), 0);
+
+  // 2. Determine Targets from Form State
+  const formNet = localCharge.hasInvoice ? (localCharge.net || 0) : (localCharge.total || 0);
+  const formVat = localCharge.hasInvoice ? (localCharge.vat || 0) : 0;
+
+  // Use Form values if present (user entered data), else fallback to System Sums
+  // This ensures that when user types in Invoice Net/VAT, the table updates to match exactly.
+  const targetNet = formNet > 0 ? formNet : totalWeight;
+  const targetVat = (formNet > 0 || formVat > 0) ? formVat : systemTotalVatEst;
+
+  // 3. Distribute Targets to Jobs (Largest Remainder Method)
+  const distributedData = useMemo(() => {
+      const count = booking.jobs.length;
+      if (count === 0) return [];
+
+      const distribute = (total: number, weights: number[], totalW: number) => {
+          if (totalW === 0) {
+              // If weights are 0, distribute equally (or 0 if total is 0)
+              if (total === 0) return Array(count).fill(0);
+              const base = Math.floor(total / count);
+              const remainder = total - (base * count);
+              return Array(count).fill(0).map((_, i) => base + (i < remainder ? 1 : 0));
+          }
+
+          const rawShares = weights.map(w => (total * w) / totalW);
+          const intShares = rawShares.map(s => Math.floor(s));
+          const currentSum = intShares.reduce((a, b) => a + b, 0);
+          const diff = total - currentSum;
+          
+          const decimals = rawShares.map((s, i) => ({ val: s - Math.floor(s), idx: i }));
+          decimals.sort((a, b) => b.val - a.val); // Descending decimal parts
+          
+          for(let i=0; i<diff; i++) {
+              intShares[decimals[i].idx]++;
+          }
+          return intShares;
+      };
+
+      const allocatedNet = distribute(targetNet, jobWeights, totalWeight);
+      // For VAT, we use the same weights (Cost Adj) because VAT is proportional to Cost
+      const allocatedVat = distribute(targetVat, jobWeights, totalWeight);
+
+      return booking.jobs.map((job, i) => ({
+          id: job.id,
+          costAdj: allocatedNet[i],
+          vat: allocatedVat[i]
+      }));
+  }, [booking.jobs, jobWeights, totalWeight, targetNet, targetVat]);
+
+  const distMap = useMemo(() => new Map(distributedData.map(d => [d.id, d])), [distributedData]);
+
+  // -----------------------------
+  // CALCULATIONS (Others)
   // -----------------------------
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => sum + (job.extensions || []).reduce((s, x) => s + x.total, 0), 0);
   const totalLocalChargeRevenue = booking.jobs.reduce((s, j) => s + j.localChargeTotal, 0);
   const totalAdditionalLocalChargeNet = additionalLocalCharges.reduce((s, i) => s + (i.net || 0), 0);
-  
   const totalAdditionalLocalChargeTotalAmount = additionalLocalCharges.reduce((s, i) => s + (i.net || 0) + (i.vat || 0), 0);
 
   const totalExtensionCost = extensionCosts.reduce((s, i) => s + i.total, 0);
@@ -216,16 +282,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   
   const systemTotalSell = booking.jobs.reduce((s, j) => s + j.sell, 0);
   
-  // Calculate System Costs based on Rounded values per Job to match table display
-  const systemTotalAdjustedCost = booking.jobs.reduce((s, j) => {
-    const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
-    const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
-    // ROUNDING TO INTEGER
-    return s + Math.round(j.cost - kimberry - otherFees);
-  }, 0);
-  
-  // Calculate System VAT based on Rounded values per Job
-  const systemTotalVat = booking.jobs.reduce((s, j) => s + Math.round(j.cost * 0.05263), 0);
+  // Use Targets for System Sums display to match Table Sums
+  const systemTotalAdjustedCost = targetNet;
+  const systemTotalVat = targetVat;
 
   const getRevenue = (v: number) => vatMode === 'post' ? v : Math.round(v / 1.08);
   const summaryLocalChargeRevenue = getRevenue(totalLocalChargeRevenue);
@@ -454,10 +513,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const copyColumn = (type: 'sell' | 'cost' | 'vat' | 'project') => {
     const values = booking.jobs.map(job => {
         if (type === "sell") return job.sell;
-        // ROUNDED INTEGER
-        if (type === "cost") return Math.round(job.cost - ((job.cont20 * 250000) + (job.cont40 * 500000) + (job.feeCic||0) + (job.feePsc||0) + (job.feeEmc||0) + (job.feeOther||0)));
-        // ROUNDED INTEGER
-        if (type === "vat") return Math.round(job.cost * 0.05263);
+        // Use balanced values from distMap
+        const dist = distMap.get(job.id);
+        if (type === "cost") return dist ? dist.costAdj : 0;
+        if (type === "vat") return dist ? dist.vat : 0;
         const yy = new Date().getFullYear().toString().slice(-2);
         const mm = job.month.padStart(2, "0");
         return `K${yy}${mm}${job.jobCode}`;
@@ -518,9 +577,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {booking.jobs.map(job => {
-                                    const kimberry = job.cont20 * 250000 + job.cont40 * 500000;
-                                    const other = (job.feeCic||0) + (job.feePsc||0) + (job.feeEmc||0) + (job.feeOther||0);
-                                    
+                                    const dist = distMap.get(job.id);
+                                    const displayCost = dist ? dist.costAdj : 0;
+                                    const displayVat = dist ? dist.vat : 0;
+
                                     const lcTotal = job.localChargeTotal || 0;
                                     const lcInv = job.localChargeInvoice || '';
                                     const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
@@ -541,8 +601,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                                 <div>{formatMoney(extTotal)}</div>
                                                 {extInv && <div className="text-[9px] text-slate-400 truncate max-w-[80px] ml-auto">{extInv}</div>}
                                             </td>
-                                            <td className="px-3 py-1.5 text-right border-r text-slate-600">{formatMoney(Math.round(job.cost - kimberry - other))}</td>
-                                            <td className="px-3 py-1.5 text-right border-r text-slate-400">{formatMoney(Math.round(job.cost * 0.05263))}</td>
+                                            <td className="px-3 py-1.5 text-right border-r text-slate-600 font-medium">{formatMoney(displayCost)}</td>
+                                            <td className="px-3 py-1.5 text-right border-r text-slate-400">{formatMoney(displayVat)}</td>
                                             <td className="px-3 py-1.5 text-center text-[10px] font-mono text-slate-400">K..{job.jobCode.slice(-4)}</td>
                                         </tr>
                                     );
