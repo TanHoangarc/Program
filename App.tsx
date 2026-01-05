@@ -15,7 +15,8 @@ import { ProfitReport } from './pages/ProfitReport';
 import { LookupPage } from './pages/LookupPage'; 
 import { PaymentPage } from './pages/PaymentPage'; 
 import { CVHCPage } from './pages/CVHCPage';
-import { SalaryPage } from './pages/SalaryPage'; // IMPORT SalaryPage
+import { SalaryPage } from './pages/SalaryPage';
+import { ToolAI } from './pages/ToolAI'; // IMPORT ToolAI
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship } from 'lucide-react';
 
@@ -44,7 +45,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -386,18 +387,6 @@ const App: React.FC = () => {
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
-
-      // REMOVED LOCKED ID MERGING TO PREVENT RE-LOCKING OF MANUALLY UNLOCKED ITEMS
-      /*
-      const incLocks = Array.isArray(incomingData.lockedIds) ? incomingData.lockedIds : (incomingData.data?.lockedIds || incomingData.payload?.lockedIds || []);
-      if (incLocks.length > 0) {
-          setLockedIds(prev => {
-              const newSet = new Set(prev);
-              incLocks.forEach((id: string) => newSet.add(id));
-              return newSet;
-          });
-      }
-      */
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
@@ -851,6 +840,10 @@ const App: React.FC = () => {
                     salaries={salaries}
                     onUpdateSalaries={handleUpdateSalaries}
                 />
+            )}
+
+            {currentPage === 'tool-ai' && (
+              <ToolAI />
             )}
 
             {currentPage === 'system' && (

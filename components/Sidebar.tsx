@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary';
+  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -30,6 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewRecon = isAdminOrManager;
   const canViewData = isAdminOrManager || isStaff;
   const canViewSystem = isAdminOrManager;
+  const canViewToolAI = isAdminOrManager || isStaff; // Allow staff to use Tool AI
   
   const canSendPending = isStaff;
 
@@ -334,6 +335,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
               )}
             </div>
+          )}
+
+          {canViewToolAI && (
+            <MenuItem 
+              active={currentPage === 'tool-ai'}
+              onClick={() => handleNavigate('tool-ai')}
+              icon={Cpu}
+              label="Tool AI"
+            />
           )}
 
           {canViewSystem && (
