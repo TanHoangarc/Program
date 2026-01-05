@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search, ChevronLeft, ChevronRight } from 'lucide-react';
-import { MONTHS } from '../constants';
+import { MONTHS, YEARS } from '../constants';
 import * as XLSX from 'xlsx'; 
 import ExcelJS from 'exceljs'; 
 import { formatDateVN, calculateBookingSummary, parseDateVN, generateNextDocNo, getPaginationRange } from '../utils';
@@ -44,6 +44,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts 
 }) => {
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [filterDesc, setFilterDesc] = useState(''); 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -108,7 +109,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   useEffect(() => {
     setSelectedIds(new Set());
     setCurrentPage(1); // Reset page on filter change
-  }, [mode, filterMonth, filterDesc]);
+  }, [mode, filterMonth, filterYear, filterDesc]);
 
   useEffect(() => {
     const loadTemplate = async () => {
@@ -177,12 +178,15 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     reader.readAsArrayBuffer(file);
   };
 
-  const checkMonth = (dateStr?: string | null) => {
-      if (!filterMonth) return true;
+  const checkDateFilter = (dateStr?: string | null) => {
       if (!dateStr) return false;
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return false;
-      return (date.getMonth() + 1).toString() === filterMonth;
+      
+      const mMatch = filterMonth ? (date.getMonth() + 1).toString() === filterMonth : true;
+      const yMatch = filterYear ? date.getFullYear().toString() === filterYear : true;
+      
+      return mMatch && yMatch;
   };
 
   const exportData = useMemo(() => {
@@ -197,14 +201,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       const depAdditionalRows: any[] = [];
 
       jobs.forEach(j => {
-         if (j.thuCuoc > 0 && j.amisDepositDocNo && checkMonth(j.ngayThuCuoc)) {
+         if (j.thuCuoc > 0 && j.amisDepositDocNo && checkDateFilter(j.ngayThuCuoc)) {
              const docNo = j.amisDepositDocNo;
              if (!depGroupMap.has(docNo)) depGroupMap.set(docNo, []);
              depGroupMap.get(docNo)?.push(j);
          }
          
          (j.additionalReceipts || []).forEach(r => {
-             if (r.type === 'deposit' && checkMonth(r.date)) {
+             if (r.type === 'deposit' && checkDateFilter(r.date)) {
                  depAdditionalRows.push({
                      jobId: j.id, type: 'deposit_thu', rowId: `dep-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
@@ -247,14 +251,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       const lcAdditionalRows: any[] = [];
 
       jobs.forEach(j => {
-          if (j.localChargeTotal > 0 && j.amisLcDocNo && checkMonth(j.localChargeDate)) {
+          if (j.localChargeTotal > 0 && j.amisLcDocNo && checkDateFilter(j.localChargeDate)) {
                const docNo = j.amisLcDocNo;
                if (!lcGroupMap.has(docNo)) lcGroupMap.set(docNo, []);
                lcGroupMap.get(docNo)?.push(j);
           }
           
           (j.additionalReceipts || []).forEach(r => {
-             if ((r.type === 'local' || r.type === 'other') && checkMonth(r.date)) {
+             if ((r.type === 'local' || r.type === 'other') && checkDateFilter(r.date)) {
                  lcAdditionalRows.push({
                      jobId: j.id, type: 'lc_thu', rowId: `lc-add-${r.id}`,
                      date: r.date, docNo: r.docNo,
@@ -298,7 +302,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       jobs.forEach(j => {
           (j.extensions || []).forEach((ext) => {
-              if (ext.total > 0 && ext.amisDocNo && checkMonth(ext.invoiceDate)) {
+              if (ext.total > 0 && ext.amisDocNo && checkDateFilter(ext.invoiceDate)) {
                   const docNo = ext.amisDocNo;
                   if (!extGroupMap.has(docNo)) extGroupMap.set(docNo, []);
                   extGroupMap.get(docNo)?.push({ ext, job: j });
@@ -306,7 +310,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           });
           
           (j.additionalReceipts || []).forEach(r => {
-             if (r.type === 'extension' && checkMonth(r.date)) {
+             if (r.type === 'extension' && checkDateFilter(r.date)) {
                  const extTarget = (j.extensions || []).find(e => e.id === r.extensionId);
                  const custId = extTarget ? (extTarget.customerId || j.customerId) : j.customerId;
                  extAdditionalRows.push({
@@ -349,7 +353,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       // 4. Thu Khác
       customReceipts.forEach(r => {
-          if (checkMonth(r.date)) {
+          if (checkDateFilter(r.date)) {
               const descUpper = (r.desc || '').toUpperCase();
               const isDeposit = descUpper.includes('CƯỢC') || descUpper.includes('DEPOSIT') || r.type === 'deposit';
               const tkCo = isDeposit ? '1388' : '13111';
@@ -358,7 +362,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
               if (r.additionalReceipts && Array.isArray(r.additionalReceipts)) {
                   r.additionalReceipts.forEach((ar: any) => {
-                      if (checkMonth(ar.date)) {
+                      if (checkDateFilter(ar.date)) {
                           const arDescUpper = (ar.desc || '').toUpperCase();
                           const arIsDeposit = ar.type === 'deposit' || arDescUpper.includes('CƯỢC');
                           const arTkCo = arIsDeposit ? '1388' : '13111';
@@ -394,7 +398,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         // 1. Chi Payment (Local Charge Out)
         jobs.forEach(j => {
              const date = j.amisPaymentDate || todayStr;
-             if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo) && checkMonth(date)) {
+             if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo) && checkDateFilter(date)) {
                  processedDocNos.add(j.amisPaymentDocNo);
                  let amount = 0;
                  if (j.booking) {
@@ -422,7 +426,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         // 2. Chi Cược (Deposit Out)
         const processedDepositOut = new Set<string>();
         jobs.forEach(j => {
-            if (j.amisDepositOutDocNo && !processedDepositOut.has(j.amisDepositOutDocNo) && checkMonth(j.amisDepositOutDate)) {
+            if (j.amisDepositOutDocNo && !processedDepositOut.has(j.amisDepositOutDocNo) && checkDateFilter(j.amisDepositOutDate)) {
                 processedDepositOut.add(j.amisDepositOutDocNo);
                 let amount = 0;
                 if (j.booking) {
@@ -455,7 +459,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         return;
                     }
 
-                    if (ext.amisDocNo && checkMonth(ext.amisDate)) {
+                    if (ext.amisDocNo && checkDateFilter(ext.amisDate)) {
                         hasDetailedExtensions = true;
                         processedExtensionIds.add(ext.id);
 
@@ -483,7 +487,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
             
             // Fallback: Check Job Level fields (Legacy) if no extension costs detail with docNo matches
-            if (!hasDetailedExtensions && j.amisExtensionPaymentDocNo && checkMonth(j.amisExtensionPaymentDate)) {
+            if (!hasDetailedExtensions && j.amisExtensionPaymentDocNo && checkDateFilter(j.amisExtensionPaymentDate)) {
                  let amount = j.amisExtensionPaymentAmount || 0;
                  if (amount === 0 && j.booking) {
                     const summary = calculateBookingSummary(jobs, j.booking);
@@ -517,7 +521,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         // 4. Chi Hoàn Cược (Deposit Refund to Customer)
         const processedRefunds = new Set<string>();
         jobs.forEach(j => {
-            if (j.amisDepositRefundDocNo && !processedRefunds.has(j.amisDepositRefundDocNo) && checkMonth(j.amisDepositRefundDate)) {
+            if (j.amisDepositRefundDocNo && !processedRefunds.has(j.amisDepositRefundDocNo) && checkDateFilter(j.amisDepositRefundDate)) {
                 processedRefunds.add(j.amisDepositRefundDocNo);
                 
                 const groupJobs = jobs.filter(subJ => subJ.amisDepositRefundDocNo === j.amisDepositRefundDocNo);
@@ -549,7 +553,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         jobs.forEach(j => {
             if (j.refunds && j.refunds.length > 0) {
                 j.refunds.forEach(ref => {
-                    if (checkMonth(ref.date)) {
+                    if (checkDateFilter(ref.date)) {
                         rows.push({
                             jobId: j.id,
                             type: 'refund_overpayment',
@@ -636,14 +640,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 date: dateStr, docNo: docNo, objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
                 desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''} (không xuất hoá đơn)`,
                 amount: j.sell, projectCode: projectCode,
-                month: j.month
+                month: j.month,
+                year: j.year
             });
         });
 
-        // 4. Filter for Display based on selected Month
+        // 4. Filter for Display based on selected Month and Year
         rows = allGeneratedRows.filter(r => {
-             if (!filterMonth) return true;
-             return r.month === filterMonth;
+             const mMatch = filterMonth ? r.month === filterMonth : true;
+             const yMatch = filterYear ? r.year === Number(filterYear) : true;
+             return mMatch && yMatch;
         });
     }
     else if (mode === 'mua') {
@@ -829,10 +835,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         // 4. Filter for Display
         rows = allGeneratedMuaRows.filter(r => {
-             if (!filterMonth) return true;
-             // Check if date falls in selected month
-             const d = new Date(r.date);
-             return (d.getMonth() + 1).toString() === filterMonth;
+             // Check if date falls in selected month and year
+             return checkDateFilter(r.date);
         });
     }
 
@@ -856,7 +860,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
-  }, [jobs, mode, filterMonth, filterDesc, customers, customReceipts, lines, lockedIds]); 
+  }, [jobs, mode, filterMonth, filterYear, filterDesc, customers, customReceipts, lines, lockedIds]); 
 
   // Pagination Logic
   const totalPages = Math.ceil(exportData.length / ITEMS_PER_PAGE);
@@ -1354,7 +1358,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         {/* Toolbar */}
         <div className="glass-panel p-4 rounded-xl shadow-sm border border-white/40 flex justify-between items-center sticky top-0 z-20">
            <div className="flex items-center space-x-4">
-              <div className="flex items-center text-slate-500 font-medium"><Filter className="w-4 h-4 mr-2" /> Lọc tháng:</div>
+              <div className="flex items-center text-slate-500 font-medium"><Filter className="w-4 h-4 mr-2" /> Lọc tháng/năm:</div>
+              <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="p-2 glass-input rounded-lg text-sm w-32 focus:ring-0 outline-none font-bold text-blue-700">
+                <option value="">Tất cả</option>
+                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
               <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="p-2 glass-input rounded-lg text-sm w-32 focus:ring-0 outline-none">
                 <option value="">Tất cả</option>
                 {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
