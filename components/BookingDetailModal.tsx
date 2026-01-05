@@ -517,7 +517,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
         const dist = distMap.get(job.id);
         if (type === "cost") return dist ? dist.costAdj : 0;
         if (type === "vat") return dist ? dist.vat : 0;
-        const yy = new Date().getFullYear().toString().slice(-2);
+        const jobYear = job.year || booking.year || new Date().getFullYear();
+        const yy = jobYear.toString().slice(-2);
         const mm = job.month.padStart(2, "0");
         return `K${yy}${mm}${job.jobCode}`;
     });
