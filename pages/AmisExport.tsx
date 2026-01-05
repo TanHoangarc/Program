@@ -575,7 +575,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         });
     }
     else if (mode === 'ban') {
+        // --- MODE BAN: GENERATE SEQUENTIAL NUMBERING (BHxxxxx) GLOBALLY ---
         rows = [];
+        
+        // 1. Get ALL valid jobs (Sales > 0 + LHK)
         let validJobs = jobs.filter(j => {
             const hasSell = j.sell > 0;
             const name = (j.customerName || '').toLowerCase();
@@ -583,11 +586,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             return hasSell && isLhk;
         });
 
-        if (filterMonth) validJobs = validJobs.filter(j => j.month === filterMonth);
-
+        // 2. Sort by Year -> Month -> Booking
         validJobs.sort((a, b) => {
-            const monthDiff = Number(a.month) - Number(b.month); 
-            if (monthDiff !== 0) return monthDiff;
+            const yearA = a.year || 2025;
+            const yearB = b.year || 2025;
+            if (yearA !== yearB) return yearA - yearB;
+
+            const monthA = parseInt(a.month || '0', 10);
+            const monthB = parseInt(b.month || '0', 10);
+            if (monthA !== monthB) return monthA - monthB;
+            
             const bookingA = String(a.booking || '').trim().toLowerCase();
             const bookingB = String(b.booking || '').trim().toLowerCase();
             return bookingA.localeCompare(bookingB);
@@ -595,7 +603,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         const bookingToDocNoMap = new Map<string, string>();
         let currentDocNum = 1;
-        const currentYear = new Date().getFullYear();
+
+        // 3. Generate rows sequentially
+        const allGeneratedRows: any[] = [];
 
         validJobs.forEach(j => {
             const bookingKey = String(j.booking || '').trim();
@@ -611,29 +621,49 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 currentDocNum++;
             }
 
-            const yy = currentYear.toString().slice(-2);
+            const jobYear = j.year || new Date().getFullYear();
+            const yy = jobYear.toString().slice(-2);
             const mm = (j.month || '01').padStart(2, '0');
             const projectCode = `K${yy}${mm}${j.jobCode}`;
             
             const monthInt = parseInt(j.month || '1', 10);
-            const daysInMonth = new Date(currentYear, monthInt, 0).getDate(); 
+            const daysInMonth = new Date(jobYear, monthInt, 0).getDate(); 
             const targetDay = Math.min(30, daysInMonth);
-            const dateStr = `${currentYear}-${String(monthInt).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+            const dateStr = `${jobYear}-${String(monthInt).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 
-            rows.push({
+            allGeneratedRows.push({
                 jobId: j.id, type: 'ban', rowId: `ban-${j.id}`,
                 date: dateStr, docNo: docNo, objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId),
                 desc: `Bán hàng LONG HOÀNG - KIMBERRY BILL ${j.booking || ''} là cost ${j.hbl || ''} (không xuất hoá đơn)`,
-                amount: j.sell, projectCode: projectCode
+                amount: j.sell, projectCode: projectCode,
+                month: j.month
             });
+        });
+
+        // 4. Filter for Display based on selected Month
+        rows = allGeneratedRows.filter(r => {
+             if (!filterMonth) return true;
+             return r.month === filterMonth;
         });
     }
     else if (mode === 'mua') {
+        // --- MODE MUA: GENERATE SEQUENTIAL NUMBERING (MHxxxxx) GLOBALLY ---
         const rawItems: any[] = [];
         const processedBookings = new Set<string>();
         
-        jobs.forEach(j => {
-            if (filterMonth && j.month !== filterMonth) return;
+        // 1. Sort all jobs by date to process them in order
+        const sortedJobs = [...jobs].sort((a, b) => {
+             const yearA = a.year || 2025;
+             const yearB = b.year || 2025;
+             if (yearA !== yearB) return yearA - yearB;
+             const monthA = parseInt(a.month || '0', 10);
+             const monthB = parseInt(b.month || '0', 10);
+             return monthA - monthB;
+        });
+
+        sortedJobs.forEach(j => {
+            const jobYear = j.year || new Date().getFullYear();
+            const jobDateFallback = new Date(jobYear, (parseInt(j.month || '1')-1), 1).toISOString().split('T')[0];
 
             if (j.booking) {
                 if (processedBookings.has(j.booking)) return;
@@ -646,9 +676,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 const supplierName = lineObj ? lineObj.name : j.line;
                 const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
 
+                // Extract Local Charge
                 const lc = details.localCharge;
                 let lcNet = 0, lcVat = 0, lcTotal = 0;
-
                 if (lc.hasInvoice === false) {
                     lcTotal = lc.total || 0;
                     lcNet = Math.round(lcTotal / 1.05);
@@ -660,9 +690,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 }
 
                 if (lcTotal > 0) {
+                    const iDate = lc.date || jobDateFallback;
                     rawItems.push({
                         jobId: j.id,
-                        date: lc.date || new Date().toISOString().split('T')[0],
+                        date: iDate,
                         invoice: lc.invoice || '',
                         desc: `Mua hàng của ${supplierName} BILL ${j.booking}`,
                         supplierCode: j.line,
@@ -672,10 +703,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         vatAmount: lcVat,
                         amount: lcTotal,
                         costType: 'Local charge',
-                        sortDate: new Date(lc.date || '1970-01-01').getTime()
+                        sortDate: new Date(iDate).getTime()
                     });
                 }
 
+                // Extract Additional
                 if (details.additionalLocalCharges) {
                     details.additionalLocalCharges.forEach(add => {
                         let aNet = 0, aVat = 0, aTotal = 0;
@@ -690,9 +722,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         }
 
                         if (aTotal > 0) {
+                            const iDate = add.date || jobDateFallback;
                             rawItems.push({
                                 jobId: j.id,
-                                date: add.date || new Date().toISOString().split('T')[0],
+                                date: iDate,
                                 invoice: add.invoice || '',
                                 desc: `Chi phí khác của ${supplierName} BILL ${j.booking}`,
                                 supplierCode: j.line,
@@ -702,20 +735,22 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                                 vatAmount: aVat,
                                 amount: aTotal,
                                 costType: 'Local charge',
-                                sortDate: new Date(add.date || '1970-01-01').getTime()
+                                sortDate: new Date(iDate).getTime()
                             });
                         }
                     });
                 }
 
+                // Extract Extension
                 if (details.extensionCosts) {
                     details.extensionCosts.forEach(ext => {
                         if (ext.total > 0) {
                             const eNet = ext.net || Math.round(ext.total / 1.05);
                             const eVat = ext.vat || (ext.total - eNet);
+                            const iDate = ext.date || jobDateFallback;
                             rawItems.push({
                                 jobId: j.id,
-                                date: ext.date || new Date().toISOString().split('T')[0],
+                                date: iDate,
                                 invoice: ext.invoice || '',
                                 desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`,
                                 supplierCode: j.line,
@@ -725,13 +760,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                                 vatAmount: eVat,
                                 amount: ext.total,
                                 costType: 'Demurrage',
-                                sortDate: new Date(ext.date || '1970-01-01').getTime()
+                                sortDate: new Date(iDate).getTime()
                             });
                         }
                     });
                 }
 
             } else {
+                // No Booking (Single Job)
                 if (j.cost > 0) {
                     const lineObj = lines.find(l => l.code === j.line);
                     const supplierName = lineObj ? lineObj.name : j.line;
@@ -740,10 +776,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                     const total = j.cost;
                     const net = Math.round(total / 1.05);
                     const vat = total - net;
+                    
+                    const iDate = jobDateFallback;
 
                     rawItems.push({
                         jobId: j.id,
-                        date: new Date().toISOString().split('T')[0],
+                        date: iDate,
                         invoice: '',
                         desc: `Mua hàng của ${supplierName} Job ${j.jobCode}`,
                         supplierCode: j.line,
@@ -753,18 +791,20 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         vatAmount: vat,
                         amount: total,
                         costType: 'Local charge',
-                        sortDate: Date.now() 
+                        sortDate: new Date(iDate).getTime()
                     });
                 }
             }
         });
 
+        // 2. Sort all items by Date
         rawItems.sort((a, b) => a.sortDate - b.sortDate);
 
+        // 3. Assign sequential Doc No
         const invoiceToDocMap = new Map<string, string>();
         let currentDocNum = 1;
         
-        rows = rawItems.map(item => {
+        const allGeneratedMuaRows = rawItems.map(item => {
             const groupKey = item.invoice ? item.invoice.trim().toUpperCase() : `NO_INV_${item.jobId}_${Math.random()}`;
             
             let docNo = '';
@@ -785,6 +825,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 objCode: item.supplierCode,
                 objName: item.supplierName
             };
+        });
+
+        // 4. Filter for Display
+        rows = allGeneratedMuaRows.filter(r => {
+             if (!filterMonth) return true;
+             // Check if date falls in selected month
+             const d = new Date(r.date);
+             return (d.getMonth() + 1).toString() === filterMonth;
         });
     }
 

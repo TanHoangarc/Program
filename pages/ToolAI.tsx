@@ -20,10 +20,10 @@ import axios from 'axios';
 // --- CONFIGURATION ---
 const BACKEND_URL = "https://api.kimberry.id.vn";
 
-// Fix for pdfjs-dist import structure
+// Fix for pdfjs-dist import structure to ensure compatibility
 const pdfjsLib = (pdfjsMod as any).default || pdfjsMod;
 
-// Set worker for PDF rendering using esm.sh
+// Set worker for PDF rendering using esm.sh for consistency
 if (pdfjsLib.GlobalWorkerOptions) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@5.4.530/build/pdf.worker.min.mjs';
 }
@@ -268,7 +268,6 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 
 // --- 2. SPLIT TOOL ---
 const SplitTool = ({ onBack }: { onBack: () => void }) => {
-    // ... (No changes here, keeping existing SplitTool code)
     const [file, setFile] = useState<File | null>(null);
     const [thumbnails, setThumbnails] = useState<PdfPageThumbnail[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -355,7 +354,6 @@ const SplitTool = ({ onBack }: { onBack: () => void }) => {
 
 // --- 3. MERGE TOOL ---
 const MergeTool = ({ onBack }: { onBack: () => void }) => {
-    // ... (Keeping existing MergeTool code)
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const handleFiles = (fileList: FileList | null) => { if (fileList) setFiles(prev => [...prev, ...Array.from(fileList)]); };
@@ -390,7 +388,6 @@ const MergeTool = ({ onBack }: { onBack: () => void }) => {
 
 // --- 4. IMAGES TO PDF TOOL ---
 const ImagesToPdfTool = ({ onBack }: { onBack: () => void }) => {
-    // ... (Keeping existing ImagesToPdfTool code)
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [pageSize, setPageSize] = useState<'A4' | 'Fit'>('A4');
@@ -443,7 +440,6 @@ const ImagesToPdfTool = ({ onBack }: { onBack: () => void }) => {
 
 // --- 5. STAMP TOOL ---
 const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampItem[], setStamps: any, fetchStamps: () => void, onBack: () => void }) => {
-    // ... (Keeping existing StampTool code)
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
     const [scale, setScale] = useState(1.0);
@@ -514,7 +510,6 @@ const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampIt
 
 // --- 6. UNLOCK & COMPRESS (Simplified for UI consistency) ---
 const FeaturePlaceholderTool = ({ title, icon: Icon, desc, onBack }: { title: string, icon: any, desc: string, onBack: () => void }) => {
-    // ... (Keeping existing FeaturePlaceholderTool code)
     return (
         <div className="h-full flex flex-col">
             <ToolHeader icon={Icon} title={title} description={desc} onBack={onBack} />
@@ -528,7 +523,7 @@ const FeaturePlaceholderTool = ({ title, icon: Icon, desc, onBack }: { title: st
     )
 }
 
-// --- 7. EDIT CONTENT TOOL (The Original Powerful One) ---
+// --- 7. EDIT CONTENT TOOL (ADVANCED) ---
 const EditContentTool = ({ onBack }: { onBack: () => void }) => {
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
@@ -631,7 +626,7 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
             const pdfY = pdfPageHeight - ((selection.y + selection.h) * pdfScaleFactor);
 
             if (useAI) {
-                // Prepare Target Image
+                // Prepare Target Image (High Res Crop)
                 const scaleMultiplier = 3; 
                 const targetCanvas = document.createElement('canvas');
                 targetCanvas.width = selection.w * scaleMultiplier;
@@ -660,50 +655,66 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
                         promptParts.push({ inlineData: { mimeType: "image/png", data: base64Sample } });
                         
                         promptText = replacementText 
-                            ? `CONTEXT: You are a professional digital document restoration expert.
+                            ? `CONTEXT: You are a Forensic Document Expert.
                                INPUTS:
-                               - Image 1 (Target): The cropped area where text needs to be replaced.
-                               - Image 2 (Reference Sample): A sample area containing the EXACT font style, background noise, and paper texture to copy.
+                               - Image 1: Target area (Canvas to edit).
+                               - Image 2: Style Reference (Source of Truth for Font & Texture).
 
-                               TASK: Replace the text in Image 1 with "${replacementText}".
+                               TASK: Erase the text in Image 1 and replace it with "${replacementText}".
 
-                               STRICT EXECUTION RULES:
-                               1. **FONT CLONING**: Analyze Image 2. You MUST use the exact same font family, weight, blurriness, and pixelation artifacts found in Image 2. Do NOT use a clean, sharp digital font. The new text must look scanned and aged exactly like Image 2.
-                               2. **BACKGROUND SYNTHESIS**: Erase the old text in Image 1 and fill the void by synthesizing the paper texture found in Image 2. Copy the noise pattern, grain, and lighting from Image 2.
-                               3. **BLENDING**: Ensure the new text blends seamlessly with the surrounding area of Image 1.
-                               4. **OUTPUT**: Return ONLY the modified Image 1 as a PNG.`
-                            : `CONTEXT: You are a professional digital document restoration expert.
+                               CRITICAL INSTRUCTION ON SCALING:
+                               - **IGNORE DIMENSION MISMATCH**: The size of Image 2 is unrelated to Image 1. Do NOT scale the text to fit the box ratio.
+                               - **ABSOLUTE CLONING**: Extract the EXACT font size (in pixels), font weight, and font style from Image 2 and apply it directly to Image 1.
+                               - Do NOT resize the font. If the text in Image 2 is small, the new text must be small.
+
+                               STRICT VISUAL EXECUTION:
+                               1. **BACKGROUND TEXTURE**: 
+                                  - Analyze the "salt & pepper" noise, compression artifacts, and paper grain in Image 2.
+                                  - Synthesize a **new** background for Image 1 that fills the erased area with this EXACT texture pattern.
+                                  - **NO SOLID COLORS**. The background must look like a noisy, scanned raster image.
+                               
+                               2. **INK & RENDER SIMULATION**:
+                                  - **Blur/Softness**: Analyze the edge blur (anti-aliasing radius) in Image 2. The new text must be exactly as blurry/soft. Do NOT generate sharp vector text.
+                                  - **Opacity**: Use the exact ink density (e.g., #333333 or 90% opacity) found in Image 2. It should look "baked" into the paper.
+                                  - **Imperfections**: If Image 2 has jpeg artifacts around the text, replicate them.
+
+                               3. **ALIGNMENT**: Align the baseline with any remaining text in Image 1.
+
+                               OUTPUT: Return ONLY the modified Image 1 as a PNG.`
+                            : `CONTEXT: You are a Forensic Document Expert.
                                INPUTS:
-                               - Image 1 (Target): The area to be cleared.
-                               - Image 2 (Reference Sample): A sample area containing the target background texture.
+                               - Image 1: Target area to clear.
+                               - Image 2: Reference background texture.
 
-                               TASK: Remove all text/content from Image 1.
+                               TASK: Completely remove all text/content from Image 1.
 
-                               STRICT EXECUTION RULES:
-                               1. **TEXTURE RECONSTRUCTION**: Fill the void in Image 1 using the exact paper texture, noise, and grain found in Image 2.
-                               2. **SEAMLESS BLEND**: The result should look like a blank piece of the original scanned paper. No solid colors.
-                               3. **OUTPUT**: Return ONLY the modified Image 1 as a PNG.`;
+                               STRICT VISUAL EXECUTION:
+                               1. **TEXTURE SYNTHESIS**: Fill the void in Image 1 by generating the exact paper grain, noise pattern, and compression artifacts found in Image 2.
+                               2. **NO SOLID COLORS**: The result must look like a raw, dirty, scanned piece of paper. 
+                               3. **SEAMLESSNESS**: The filled area must differ indistinguishably from the surrounding pixels.
+
+                               OUTPUT: Return ONLY the modified Image 1 as a PNG.`;
                     }
                 } else {
                     // Fallback to single image prompt if no sample selected
                     promptText = replacementText
                     ? `The input is a crop from a scanned document.
-                       ACTION: Remove existing text and replace with '${replacementText}'.
-                       BACKGROUND RULES:
-                       1. **NO SOLID COLORS**: The background must NOT be solid white/grey.
-                       2. **TEXTURE MATCHING**: Analyze the 'salt and pepper' noise, grain, and paper texture in the source image. Synthesize exactly the same texture to fill the background.
-                       3. **BLENDING**: The new background must differ indistinguishably from the original source background.
-                       TEXT RULES:
-                       1. Match font family, size, and weight exactly.
-                       2. TEXT QUALITY: SHARP, DIGITAL, HIGH CONTRAST. Do not blur the text.
-                       3. Return ONLY the modified image.`
+                       ACTION: Remove existing text and replace with "${replacementText}".
+                       
+                       VISUAL RULES:
+                       1. **BACKGROUND**: Synthesize the exact noise, grain, and paper texture of the source image to fill the background. NO SOLID COLORS.
+                       2. **TEXT**: Match the font family, size, and weight of the original text exactly.
+                       3. **SCAN SIMULATION**: The new text must NOT be sharp. It must have the same blur, soft edges, and dark grey opacity (not pure black) as the original scanned text.
+                       
+                       Return ONLY the modified image.`
                     : `The input is a crop from a scanned document.
                        ACTION: Remove all text/content from this area.
-                       BACKGROUND RULES:
-                       1. **NO SOLID COLORS**: The background must NOT be solid white/grey.
-                       2. **TEXTURE RECONSTRUCTION**: You must recreate the exact scanned paper texture, noise, and grain found in the input image to fill the void.
-                       3. **BLENDING**: Use the surrounding pixels as a reference. The result should look like a blank piece of the original scanned paper.
-                       4. Return ONLY the modified image.`;
+                       
+                       VISUAL RULES:
+                       1. **BACKGROUND**: Recreate the exact scanned paper texture, noise, and grain found in the input image.
+                       2. **NO SOLID COLORS**: The result must look like a blank part of the original scanned page.
+                       
+                       Return ONLY the modified image.`;
                 }
 
                 promptParts.push({ text: promptText });
