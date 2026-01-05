@@ -243,23 +243,26 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 
             <div 
                 ref={scrollContainerRef}
-                className="flex-1 w-full overflow-auto p-8 shadow-inner relative flex justify-center items-start custom-scrollbar"
+                className="flex-1 w-full h-full overflow-auto custom-scrollbar relative"
                 style={{ cursor: tool === 'pan' ? (isPanning ? 'grabbing' : 'grab') : 'crosshair' }}
             >
-                <div 
-                    className="relative bg-white shadow-2xl transition-transform origin-top"
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                >
-                    {loading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
-                            <Loader className="animate-spin text-indigo-600" size={32} />
-                        </div>
-                    )}
-                    <canvas ref={canvasRef} className="block" />
-                    {overlayContent}
+                {/* Wrapper Div to handle centering and sizing properly when zoomed */}
+                <div className="min-w-full min-h-full flex items-start justify-center p-8">
+                    <div 
+                        className="relative bg-white shadow-2xl transition-transform origin-top"
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={handleMouseUp}
+                    >
+                        {loading && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
+                                <Loader className="animate-spin text-indigo-600" size={32} />
+                            </div>
+                        )}
+                        <canvas ref={canvasRef} className="block" />
+                        {overlayContent}
+                    </div>
                 </div>
             </div>
         </div>
@@ -527,7 +530,7 @@ const FeaturePlaceholderTool = ({ title, icon: Icon, desc, onBack }: { title: st
 const EditContentTool = ({ onBack }: { onBack: () => void }) => {
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
-    const [scale, setScale] = useState(1.5);
+    const [scale, setScale] = useState(1.0); // Default scale 100%
     const [tool, setTool] = useState<'select' | 'pan'>('select');
     const [isProcessing, setIsProcessing] = useState(false);
     const [statusMsg, setStatusMsg] = useState('');
@@ -912,6 +915,7 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
 
 // --- DASHBOARD COMPONENT ---
 const Dashboard = ({ onSelectTool }: { onSelectTool: (t: ToolType) => void }) => {
+    // ... (unchanged)
     const tools = [
         { id: 'split', title: 'Tách PDF', desc: 'Tách file PDF thành nhiều trang nhỏ, hoặc theo range.', icon: Split, color: 'bg-indigo-50 text-indigo-600' },
         { id: 'merge', title: 'Ghép PDF', desc: 'Gộp nhiều file PDF thành một file duy nhất.', icon: Merge, color: 'bg-blue-50 text-blue-600' },
@@ -953,6 +957,7 @@ const Dashboard = ({ onSelectTool }: { onSelectTool: (t: ToolType) => void }) =>
 
 // --- MAIN LAYOUT ---
 export const ToolAI = () => {
+    // ... (unchanged)
     const [activeTool, setActiveTool] = useState<ToolType>(null);
     const [stamps, setStamps] = useState<StampItem[]>([]);
 
