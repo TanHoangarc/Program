@@ -99,7 +99,7 @@ const FileUploader = ({ onFileSelect, accept = ".pdf", multiple = false, label =
     </div>
 );
 
-// --- 1. PDF VIEWER COMPONENT (Advanced) ---
+// --- 1. PDF VIEWER COMPONENT (Advanced Fit-To-Page Logic) ---
 interface PdfViewerProps {
     file: File | Blob | null;
     page: number;
@@ -112,13 +112,16 @@ interface PdfViewerProps {
     onSelectionEnd?: () => void;
     overlayContent?: React.ReactNode;
     canvasRef?: React.RefObject<HTMLCanvasElement>;
+    fitToPage?: boolean; // New prop: if true, 1.0 scale = Fit Page
+    onBaseScaleChange?: (baseScale: number) => void; // Prop to inform parent of the base ratio
 }
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ 
     file, page, onPageChange, 
     scale, setScale, tool,
     onSelectionStart, onSelectionMove, onSelectionEnd,
-    overlayContent, canvasRef: externalCanvasRef
+    overlayContent, canvasRef: externalCanvasRef,
+    fitToPage = false, onBaseScaleChange
 }) => {
     const internalCanvasRef = useRef<HTMLCanvasElement>(null);
     const canvasRef = externalCanvasRef || internalCanvasRef;
@@ -129,6 +132,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
     const [pdfDoc, setPdfDoc] = useState<any>(null);
     const [isPanning, setIsPanning] = useState(false);
     const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+    const [baseScale, setBaseScale] = useState(1.0); // The scale factor to make the page fit the container
     const renderTaskRef = useRef<any>(null);
 
     useEffect(() => {
@@ -155,11 +159,48 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
         return () => { if (renderTaskRef.current) renderTaskRef.current.cancel(); };
     }, [file]);
 
+    // Calculate Base Scale (Fit Scale) when doc/page changes or container resizes
     useEffect(() => {
-        if (pdfDoc) renderPage(pdfDoc, page, scale);
-    }, [pdfDoc, page, scale]);
+        if (!pdfDoc || !fitToPage || !scrollContainerRef.current) {
+            setBaseScale(1.0);
+            if(onBaseScaleChange) onBaseScaleChange(1.0);
+            return;
+        }
 
-    const renderPage = async (pdf: any, pageNum: number, currentScale: number) => {
+        const calculateBaseScale = async () => {
+            try {
+                const pageProxy = await pdfDoc.getPage(page);
+                const viewport = pageProxy.getViewport({ scale: 1.0 });
+                const container = scrollContainerRef.current;
+                
+                if (container) {
+                    const padding = 60; // Padding for aesthetics
+                    const widthRatio = (container.clientWidth - padding) / viewport.width;
+                    const heightRatio = (container.clientHeight - padding) / viewport.height;
+                    const newBaseScale = Math.min(widthRatio, heightRatio); // Scale to fit entirely
+                    
+                    setBaseScale(newBaseScale);
+                    if(onBaseScaleChange) onBaseScaleChange(newBaseScale);
+                }
+            } catch (e) {
+                console.error("Error calc scale", e);
+            }
+        };
+
+        calculateBaseScale();
+        
+        // Add ResizeObserver to auto-adjust when window resizes
+        const resizeObserver = new ResizeObserver(() => calculateBaseScale());
+        resizeObserver.observe(scrollContainerRef.current);
+        return () => resizeObserver.disconnect();
+
+    }, [pdfDoc, page, fitToPage]);
+
+    useEffect(() => {
+        if (pdfDoc) renderPage(pdfDoc, page, scale * baseScale);
+    }, [pdfDoc, page, scale, baseScale]);
+
+    const renderPage = async (pdf: any, pageNum: number, effectiveScale: number) => {
         if (renderTaskRef.current) {
             await renderTaskRef.current.cancel();
         }
@@ -170,7 +211,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
             if (!canvas) return;
 
             const context = canvas.getContext('2d');
-            const viewport = page.getViewport({ scale: currentScale });
+            const viewport = page.getViewport({ scale: effectiveScale });
 
             canvas.height = viewport.height;
             canvas.width = viewport.width;
@@ -241,28 +282,31 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
                 </div>
             </div>
 
+            {/* SCROLL CONTAINER WITH FLEX CENTER + MARGIN AUTO FIX */}
             <div 
                 ref={scrollContainerRef}
-                className="flex-1 w-full h-full overflow-auto custom-scrollbar relative"
+                className="flex-1 w-full h-full overflow-auto custom-scrollbar relative flex"
                 style={{ cursor: tool === 'pan' ? (isPanning ? 'grabbing' : 'grab') : 'crosshair' }}
             >
-                {/* Wrapper Div to handle centering and sizing properly when zoomed */}
-                <div className="min-w-full min-h-full flex items-start justify-center p-8">
-                    <div 
-                        className="relative bg-white shadow-2xl transition-transform origin-top"
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={handleMouseUp}
-                    >
-                        {loading && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
-                                <Loader className="animate-spin text-indigo-600" size={32} />
-                            </div>
-                        )}
-                        <canvas ref={canvasRef} className="block" />
-                        {overlayContent}
-                    </div>
+                {/* 
+                    CONTENT WRAPPER with m-auto
+                    This ensures the canvas is centered when smaller than viewport (flex default),
+                    but correctly expands (top-left aligned via m-auto) when larger, allowing native scrolling.
+                */}
+                <div 
+                    className="relative bg-white shadow-2xl m-auto"
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                >
+                    {loading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
+                            <Loader className="animate-spin text-indigo-600" size={32} />
+                        </div>
+                    )}
+                    <canvas ref={canvasRef} className="block" />
+                    {overlayContent}
                 </div>
             </div>
         </div>
@@ -271,6 +315,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 
 // --- 2. SPLIT TOOL ---
 const SplitTool = ({ onBack }: { onBack: () => void }) => {
+    // ... (No changes here)
     const [file, setFile] = useState<File | null>(null);
     const [thumbnails, setThumbnails] = useState<PdfPageThumbnail[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -357,6 +402,7 @@ const SplitTool = ({ onBack }: { onBack: () => void }) => {
 
 // --- 3. MERGE TOOL ---
 const MergeTool = ({ onBack }: { onBack: () => void }) => {
+    // ... (No changes here)
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const handleFiles = (fileList: FileList | null) => { if (fileList) setFiles(prev => [...prev, ...Array.from(fileList)]); };
@@ -391,6 +437,7 @@ const MergeTool = ({ onBack }: { onBack: () => void }) => {
 
 // --- 4. IMAGES TO PDF TOOL ---
 const ImagesToPdfTool = ({ onBack }: { onBack: () => void }) => {
+    // ... (No changes here)
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [pageSize, setPageSize] = useState<'A4' | 'Fit'>('A4');
@@ -441,7 +488,7 @@ const ImagesToPdfTool = ({ onBack }: { onBack: () => void }) => {
     );
 };
 
-// --- 5. STAMP TOOL ---
+// --- 5. STAMP TOOL (RESTORED & UPDATED FOR FIT-TO-PAGE) ---
 const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampItem[], setStamps: any, fetchStamps: () => void, onBack: () => void }) => {
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
@@ -452,58 +499,191 @@ const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampIt
     const [rotation, setRotation] = useState(0);
     const [position, setPosition] = useState({ x: 100, y: 100 });
     const [isProcessing, setIsProcessing] = useState(false);
+    const [baseScale, setBaseScale] = useState(1.0); // For correct overlay positioning
+    
+    // Upload stamp ref
     const stampInputRef = useRef<HTMLInputElement>(null);
+
     const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             const formData = new FormData();
             formData.append("file", file);
             formData.append("folderPath", "Stamps");
-            try { await axios.post(`${BACKEND_URL}/upload-file`, formData); fetchStamps(); } catch (err) { alert("Lỗi upload con dấu"); }
+            try {
+                await axios.post(`${BACKEND_URL}/upload-file`, formData);
+                fetchStamps();
+            } catch (err) {
+                alert("Lỗi upload con dấu");
+            }
         }
     };
+
     const applyStamp = async () => {
         if (!file || !selectedStamp) return;
         setIsProcessing(true);
         try {
             const ab = await file.arrayBuffer();
             const pdfDoc = await PDFDocument.load(ab, { ignoreEncryption: true });
+            
+            // Get stamp image
             const stampUrl = stamps.find(s => s.id === selectedStamp)?.url;
             if (!stampUrl) throw new Error("Stamp not found");
+            
+            // Fetch blob from stamp URL to embed
             const stampRes = await fetch(stampUrl);
             const stampBlob = await stampRes.blob();
             const stampArrayBuffer = await stampBlob.arrayBuffer();
+            
+            // Try PNG then JPG
             let stampImage;
-            try { stampImage = await pdfDoc.embedPng(stampArrayBuffer); } catch { stampImage = await pdfDoc.embedJpg(stampArrayBuffer); }
+            try {
+                stampImage = await pdfDoc.embedPng(stampArrayBuffer);
+            } catch {
+                stampImage = await pdfDoc.embedJpg(stampArrayBuffer);
+            }
+            
             const pages = pdfDoc.getPages();
-            const currentPage = pages[page - 1]; 
+            const currentPage = pages[page - 1]; // 0-based
             const { height } = currentPage.getSize();
+            
             const dims = stampImage.scale(stampScale);
-            currentPage.drawImage(stampImage, { x: position.x, y: height - position.y - dims.height, width: dims.width, height: dims.height, opacity: opacity, rotate: degrees(rotation), });
+            
+            // Calculate PDF coordinates (Bottom-Left origin)
+            currentPage.drawImage(stampImage, {
+                x: position.x,
+                y: height - position.y - dims.height, // Flip Y axis
+                width: dims.width,
+                height: dims.height,
+                opacity: opacity,
+                rotate: degrees(rotation),
+            });
+
             const pdfBytes = await pdfDoc.save();
             const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `stamped_${file.name}`; link.click();
-        } catch (e: any) { console.error(e); alert("Lỗi đóng dấu: " + e.message); } finally { setIsProcessing(false); }
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `stamped_${file.name}`;
+            link.click();
+        } catch (e: any) {
+            console.error(e);
+            alert("Lỗi đóng dấu: " + e.message);
+        } finally {
+            setIsProcessing(false);
+        }
     };
+
     const handleDeleteStamp = async (e: React.MouseEvent, id: string, name: string) => {
         e.stopPropagation();
         if(!window.confirm("Xóa con dấu này?")) return;
-        try { setStamps((prev: any) => prev.filter((s:any) => s.id !== id)); } catch {}
+        try {
+            // Mock delete on UI side, implement actual delete if backend supports
+            setStamps((prev: any) => prev.filter((s:any) => s.id !== id));
+        } catch {}
     };
+
     return (
         <div className="h-full flex flex-col">
             <ToolHeader icon={Stamp} title="Đóng Dấu PDF" description="Chèn con dấu, logo hoặc chữ ký vào file PDF. Hỗ trợ điều chỉnh độ mờ và xoay." onBack={onBack} />
-            {!file ? (<FileUploader onFileSelect={(files) => files && setFile(files[0])} />) : (
+            
+            {!file ? (
+                <FileUploader onFileSelect={(files) => files && setFile(files[0])} />
+            ) : (
                 <div className="flex flex-col lg:flex-row h-full gap-6 overflow-hidden">
                     <div className="flex-1 bg-slate-200/50 rounded-xl overflow-hidden flex flex-col border border-slate-200 relative">
-                        <PdfViewer file={file} page={page} onPageChange={setPage} scale={scale} setScale={setScale} tool="pan"
-                            overlayContent={selectedStamp && (<div className="absolute border-2 border-dashed border-blue-500 cursor-move z-20 hover:border-blue-700 transition-colors" style={{ left: position.x * scale, top: position.y * scale, width: 150 * stampScale * scale, height: 150 * stampScale * scale, opacity: opacity, transform: `rotate(${rotation}deg)` }}><img src={stamps.find(s => s.id === selectedStamp)?.url} className="w-full h-full object-contain pointer-events-none"/><div className="absolute -top-6 left-0 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded font-bold">Preview</div></div>)}
+                        <PdfViewer 
+                            file={file} page={page} onPageChange={setPage}
+                            scale={scale} setScale={setScale} tool="pan"
+                            fitToPage={true} // Enable fit to page for easier viewing
+                            onBaseScaleChange={setBaseScale} // Capture base scale to adjust overlay position
+                            overlayContent={
+                                selectedStamp && (
+                                    <div 
+                                        className="absolute border-2 border-dashed border-blue-500 cursor-move z-20 hover:border-blue-700 transition-colors"
+                                        style={{ 
+                                            // Adjusted position based on effective scale
+                                            left: position.x * scale * baseScale, 
+                                            top: position.y * scale * baseScale, 
+                                            width: 150 * stampScale * scale * baseScale, 
+                                            height: 150 * stampScale * scale * baseScale,
+                                            opacity: opacity,
+                                            transform: `rotate(${rotation}deg)`
+                                        }}
+                                    >
+                                        <img 
+                                            src={stamps.find(s => s.id === selectedStamp)?.url} 
+                                            className="w-full h-full object-contain pointer-events-none"
+                                        />
+                                        <div className="absolute -top-6 left-0 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded font-bold">
+                                            Preview
+                                        </div>
+                                    </div>
+                                )
+                            }
                         />
                     </div>
+
                     <div className="w-full lg:w-80 bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-5 overflow-y-auto shadow-sm shrink-0">
-                        <div><h3 className="font-bold text-slate-800 mb-3 flex items-center justify-between"><span>Thư Viện Dấu</span><button onClick={() => stampInputRef.current?.click()} className="text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 px-2 py-1 rounded">+ Thêm</button></h3><input type="file" className="hidden" ref={stampInputRef} onChange={handleStampUpload} accept="image/*" /><div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto custom-scrollbar p-1">{stamps.map(s => (<div key={s.id} onClick={() => setSelectedStamp(s.id)} className={`aspect-square border rounded-lg p-1 cursor-pointer flex items-center justify-center relative group bg-white ${selectedStamp === s.id ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-300'}`}><img src={s.url} className="max-w-full max-h-full object-contain" /><button onClick={(e) => handleDeleteStamp(e, s.id, s.name)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10}/></button></div>))}{stamps.length === 0 && <div className="col-span-3 text-center text-xs text-slate-400 py-4 italic">Chưa có con dấu</div>}</div></div>
-                        {selectedStamp && (<div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-right-4"><div><div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Độ mờ</label><span className="text-xs font-bold text-indigo-600">{Math.round(opacity * 100)}%</span></div><input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/></div><div><div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Kích thước</label><span className="text-xs font-bold text-indigo-600">{Math.round(stampScale * 100)}%</span></div><input type="range" min="0.1" max="2" step="0.1" value={stampScale} onChange={(e) => setStampScale(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/></div><div><div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Xoay</label><span className="text-xs font-bold text-indigo-600">{rotation}°</span></div><div className="flex items-center gap-2"><RotateCw size={14} className="text-slate-400"/><input type="range" min="0" max="360" step="90" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/></div></div><div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100"><div><label className="text-[10px] font-bold text-slate-500 block mb-1">Vị trí X</label><input type="number" value={position.x} onChange={e => setPosition({...position, x: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500" /></div><div><label className="text-[10px] font-bold text-slate-500 block mb-1">Vị trí Y</label><input type="number" value={position.y} onChange={e => setPosition({...position, y: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500" /></div></div></div>)}
-                        <div className="mt-auto"><button onClick={applyStamp} disabled={!selectedStamp || isProcessing} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95">{isProcessing ? <Loader className="animate-spin" /> : <Stamp size={18} />} Đóng Dấu PDF</button></div>
+                        <div>
+                            <h3 className="font-bold text-slate-800 mb-3 flex items-center justify-between">
+                                <span>Thư Viện Dấu</span>
+                                <button onClick={() => stampInputRef.current?.click()} className="text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 px-2 py-1 rounded">+ Thêm</button>
+                            </h3>
+                            <input type="file" className="hidden" ref={stampInputRef} onChange={handleStampUpload} accept="image/*" />
+                            
+                            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto custom-scrollbar p-1">
+                                {stamps.map(s => (
+                                    <div 
+                                        key={s.id} 
+                                        onClick={() => setSelectedStamp(s.id)}
+                                        className={`aspect-square border rounded-lg p-1 cursor-pointer flex items-center justify-center relative group bg-white ${selectedStamp === s.id ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-300'}`}
+                                    >
+                                        <img src={s.url} className="max-w-full max-h-full object-contain" />
+                                        <button 
+                                            onClick={(e) => handleDeleteStamp(e, s.id, s.name)}
+                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <X size={10}/>
+                                        </button>
+                                    </div>
+                                ))}
+                                {stamps.length === 0 && <div className="col-span-3 text-center text-xs text-slate-400 py-4 italic">Chưa có con dấu</div>}
+                            </div>
+                        </div>
+
+                        {selectedStamp && (
+                            <div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-right-4">
+                                <div>
+                                    <div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Độ mờ</label><span className="text-xs font-bold text-indigo-600">{Math.round(opacity * 100)}%</span></div>
+                                    <input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/>
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Kích thước</label><span className="text-xs font-bold text-indigo-600">{Math.round(stampScale * 100)}%</span></div>
+                                    <input type="range" min="0.1" max="2" step="0.1" value={stampScale} onChange={(e) => setStampScale(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/>
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Xoay</label><span className="text-xs font-bold text-indigo-600">{rotation}°</span></div>
+                                    <div className="flex items-center gap-2">
+                                        <RotateCw size={14} className="text-slate-400"/>
+                                        <input type="range" min="0" max="360" step="90" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Vị trí X</label><input type="number" value={position.x} onChange={e => setPosition({...position, x: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500" /></div>
+                                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Vị trí Y</label><input type="number" value={position.y} onChange={e => setPosition({...position, y: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500" /></div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="mt-auto">
+                            <button onClick={applyStamp} disabled={!selectedStamp || isProcessing} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95">
+                                {isProcessing ? <Loader className="animate-spin" /> : <Stamp size={18} />}
+                                Đóng Dấu PDF
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -526,8 +706,215 @@ const FeaturePlaceholderTool = ({ title, icon: Icon, desc, onBack }: { title: st
     )
 }
 
-// --- 7. EDIT CONTENT TOOL (ADVANCED) ---
+// --- 7. EXTRACT STAMP TOOL (AI POWERED) ---
+const ExtractStampTool = ({ onBack, fetchStamps }: { onBack: () => void, fetchStamps: () => void }) => {
+    const [file, setFile] = useState<File | null>(null);
+    const [page, setPage] = useState(1);
+    const [scale, setScale] = useState(1.0); // Reset to 1.0 default (Will be scaled by FitToPage)
+    const [selection, setSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
+    const [isSelecting, setIsSelecting] = useState(false);
+    const startPos = useRef<{x:number, y:number} | null>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [statusMsg, setStatusMsg] = useState('');
+    const [extractedImage, setExtractedImage] = useState<string | null>(null);
+    const [stampName, setStampName] = useState('');
+
+    const onFileChange = (files: FileList | null) => {
+        if (files && files[0]) {
+            setFile(files[0]);
+            setSelection(null);
+            setExtractedImage(null);
+            setPage(1);
+        }
+    };
+
+    const handleSelectionStart = (x: number, y: number) => {
+        setIsSelecting(true);
+        startPos.current = { x, y };
+        setSelection({ x, y, w: 0, h: 0 });
+    };
+
+    const handleSelectionMove = (x: number, y: number) => {
+        if (!isSelecting || !startPos.current) return;
+        const boxX = Math.min(startPos.current.x, x);
+        const boxY = Math.min(startPos.current.y, y);
+        const boxW = Math.abs(x - startPos.current.x);
+        const boxH = Math.abs(y - startPos.current.y);
+        setSelection({ x: boxX, y: boxY, w: boxW, h: boxH });
+    };
+
+    const handleSelectionEnd = () => {
+        setIsSelecting(false);
+        startPos.current = null;
+    };
+
+    const handleExtract = async () => {
+        if (!selection || !canvasRef.current || !file) return;
+        if (selection.w < 20 || selection.h < 20) return alert("Vùng chọn quá nhỏ.");
+
+        setIsProcessing(true);
+        setStatusMsg("Đang chuẩn bị ảnh...");
+
+        try {
+            // Crop Image
+            const scaleMultiplier = 2; // High res for better extraction
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = selection.w * scaleMultiplier;
+            tempCanvas.height = selection.h * scaleMultiplier;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (!tempCtx) throw new Error("Canvas Error");
+            
+            tempCtx.drawImage(canvasRef.current, selection.x, selection.y, selection.w, selection.h, 0, 0, tempCanvas.width, tempCanvas.height);
+            const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
+
+            setStatusMsg("AI đang phân tích & tách nền...");
+            
+            const apiKey = process.env.API_KEY;
+            if (!apiKey) throw new Error("Chưa cấu hình API Key");
+
+            const ai = new GoogleGenAI({ apiKey });
+            
+            // PROMPT UPDATED: ASK FOR SIGNATURE AND STAMP
+            const prompt = `You are an expert image processor.
+            Task: Extract the official stamp (red/blue) AND any handwritten signatures (black/blue ink) from this image.
+            1. Identify the stamp and any overlapping or nearby handwritten signatures.
+            2. Remove the paper background (texture, noise, white/grey areas).
+            3. Keep the stamp ink and signature ink clearly visible.
+            4. Return the result as a transparent PNG image.`;
+
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash-image",
+                contents: { parts: [{ inlineData: { mimeType: "image/png", data: base64Image } }, { text: prompt }] }
+            });
+
+            let aiImageBase64: string | null = null;
+            if (response.candidates?.[0]?.content?.parts) {
+                for (const part of response.candidates[0].content.parts) {
+                    if (part.inlineData?.data) {
+                        aiImageBase64 = part.inlineData.data;
+                        break;
+                    }
+                }
+            }
+
+            if (!aiImageBase64) throw new Error("AI không trả về hình ảnh.");
+            
+            setExtractedImage(`data:image/png;base64,${aiImageBase64}`);
+            setStatusMsg("");
+
+        } catch (err: any) {
+            console.error(err);
+            alert("Lỗi: " + (err.message || "Unknown"));
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleSaveToLibrary = async () => {
+        if (!extractedImage || !stampName.trim()) return alert("Vui lòng nhập tên con dấu!");
+        
+        try {
+            // Convert base64 to File
+            const res = await fetch(extractedImage);
+            const blob = await res.blob();
+            const safeName = stampName.replace(/[^a-zA-Z0-9-_]/g, '');
+            const fileName = `STAMP_${safeName}_${Date.now()}.png`;
+            const fileObj = new File([blob], fileName, { type: 'image/png' });
+
+            const formData = new FormData();
+            formData.append("file", fileObj);
+            formData.append("folderPath", "Stamps");
+
+            await axios.post(`${BACKEND_URL}/upload-file`, formData);
+            fetchStamps(); // Refresh main list
+            alert("Đã lưu con dấu vào thư viện thành công!");
+            setExtractedImage(null); // Reset
+            setStampName("");
+            setSelection(null);
+
+        } catch (err) {
+            console.error(err);
+            alert("Lỗi lưu con dấu.");
+        }
+    };
+
+    return (
+        <div className="h-full flex flex-col">
+            <ToolHeader icon={ScanLine} title="Tách Con Dấu (AI)" description="Dùng AI để tách lấy con dấu từ văn bản scan, loại bỏ nền và chữ đè." onBack={onBack} />
+            
+            {!file ? (
+                <FileUploader onFileSelect={onFileChange} label="Tải lên tài liệu chứa con dấu" />
+            ) : (
+                <div className="flex flex-col lg:flex-row h-full gap-6 overflow-hidden">
+                    <div className="flex-1 bg-slate-200/50 rounded-xl overflow-hidden flex flex-col border border-slate-200 relative">
+                        <PdfViewer 
+                            file={file} page={page} onPageChange={setPage} scale={scale} setScale={setScale} tool="select"
+                            onSelectionStart={handleSelectionStart} onSelectionMove={handleSelectionMove} onSelectionEnd={handleSelectionEnd}
+                            canvasRef={canvasRef}
+                            fitToPage={true} // Enabled Fit-To-Page
+                            overlayContent={selection && (
+                                <div className="absolute border-2 border-dashed border-red-500 bg-red-500/20 pointer-events-none z-10 box-border" style={{ left: selection.x, top: selection.y, width: selection.w, height: selection.h }}>
+                                    <div className="absolute -top-7 left-0 bg-red-600 text-white text-[10px] px-2 py-1 rounded shadow-lg font-bold flex items-center whitespace-nowrap">Vùng Cắt</div>
+                                </div>
+                            )}
+                        />
+                    </div>
+
+                    <div className="w-full lg:w-80 bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-5 overflow-y-auto shadow-sm shrink-0">
+                        <div>
+                            <h3 className="font-bold text-slate-800 mb-2">Kết quả Tách</h3>
+                            <div className="aspect-square bg-[url('https://www.transparenttextures.com/patterns/checkerboard.png')] rounded-xl border border-slate-200 flex items-center justify-center relative overflow-hidden">
+                                {isProcessing ? (
+                                    <div className="flex flex-col items-center">
+                                        <Loader className="animate-spin text-indigo-600 mb-2" size={32} />
+                                        <span className="text-xs text-slate-500 font-medium text-center px-4">{statusMsg}</span>
+                                    </div>
+                                ) : extractedImage ? (
+                                    <img src={extractedImage} className="max-w-full max-h-full object-contain" />
+                                ) : (
+                                    <span className="text-slate-400 text-xs text-center px-4">Chọn vùng chứa con dấu và nhấn "Tách Dấu"</span>
+                                )}
+                            </div>
+                        </div>
+
+                        {extractedImage && (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 block mb-1">Tên con dấu</label>
+                                    <input 
+                                        type="text" 
+                                        value={stampName} 
+                                        onChange={(e) => setStampName(e.target.value)} 
+                                        placeholder="VD: Mộc tròn công ty ABC"
+                                        className="w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                <button onClick={handleSaveToLibrary} className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2">
+                                    <Save size={16} /> Lưu vào Thư Viện
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="mt-auto pt-4 border-t border-slate-100 space-y-2">
+                            <button onClick={handleExtract} disabled={!selection || isProcessing} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95">
+                                <Sparkles size={18} /> Tách Dấu (AI)
+                            </button>
+                            <button onClick={() => {setFile(null); setExtractedImage(null); setSelection(null)}} className="w-full py-2 text-slate-500 hover:text-slate-700 text-xs font-bold">
+                                Chọn file khác
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- 8. EDIT CONTENT TOOL (The Original Powerful One) ---
 const EditContentTool = ({ onBack }: { onBack: () => void }) => {
+    // ... (No logic change needed, just enabling fitToPage)
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
     const [scale, setScale] = useState(1.0); // Default scale 100%
@@ -543,9 +930,8 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
     const [previewFile, setPreviewFile] = useState<File | Blob | null>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     
-    // New States for History and Selection Mode
     const [history, setHistory] = useState<Blob[]>([]);
-    const [selectionMode, setSelectionMode] = useState<'target' | 'sample'>('target'); // target = area to edit, sample = style reference
+    const [selectionMode, setSelectionMode] = useState<'target' | 'sample'>('target'); 
     const [sampleSelection, setSampleSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
 
     const onFileChange = (files: FileList | null) => {
@@ -599,7 +985,6 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
     const handleSelectionEnd = () => {
         setIsSelecting(false);
         startPos.current = null;
-        // Auto-switch back to target mode after selecting sample
         if (selectionMode === 'sample') {
             setSelectionMode('target');
         }
@@ -609,7 +994,6 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
         if (!selection || !canvasRef.current || !file) return;
         if (selection.w < 5 || selection.h < 5) return alert("Vùng chọn quá nhỏ.");
 
-        // Save state to history before editing
         setHistory(prev => [...prev, modifiedPdf || file]);
 
         setIsProcessing(true);
@@ -629,7 +1013,6 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
             const pdfY = pdfPageHeight - ((selection.y + selection.h) * pdfScaleFactor);
 
             if (useAI) {
-                // Prepare Target Image (High Res Crop)
                 const scaleMultiplier = 3; 
                 const targetCanvas = document.createElement('canvas');
                 targetCanvas.width = selection.w * scaleMultiplier;
@@ -640,13 +1023,11 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
                 targetCtx.drawImage(canvas, selection.x, selection.y, selection.w, selection.h, 0, 0, targetCanvas.width, targetCanvas.height);
                 const base64Target = targetCanvas.toDataURL('image/png').split(',')[1];
 
-                // Prepare Prompt Parts
                 const promptParts: any[] = [];
                 promptParts.push({ inlineData: { mimeType: "image/png", data: base64Target } });
 
                 let promptText = "";
 
-                // Add Reference Image if exists
                 if (sampleSelection && sampleSelection.w > 5) {
                     const sampleCanvas = document.createElement('canvas');
                     sampleCanvas.width = sampleSelection.w * scaleMultiplier;
@@ -699,7 +1080,6 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
                                OUTPUT: Return ONLY the modified Image 1 as a PNG.`;
                     }
                 } else {
-                    // Fallback to single image prompt if no sample selected
                     promptText = replacementText
                     ? `The input is a crop from a scanned document.
                        ACTION: Remove existing text and replace with "${replacementText}".
@@ -750,7 +1130,6 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
                 setStatusMsg("Đang cập nhật PDF...");
                 const embeddedImage = await pdfDoc.embedPng(aiImageBytes);
                 
-                // Draw back 
                 currentPage.drawImage(embeddedImage, { 
                     x: pdfX, 
                     y: pdfY, 
@@ -759,7 +1138,6 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
                 });
 
             } else {
-                // Manual Whiteout
                 currentPage.drawRectangle({ x: pdfX, y: pdfY, width: pdfW, height: pdfH, color: rgb(1, 1, 1), opacity: 1 });
                 if (replacementText) {
                     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -772,7 +1150,6 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
             setModifiedPdf(newBlob);
             setPreviewFile(newBlob);
             setSelection(null); 
-            // Keep sample selection for reuse if needed
 
         } catch (err: any) {
             console.error(err);
@@ -827,6 +1204,7 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
                             file={previewFile} page={page} onPageChange={setPage} scale={scale} setScale={setScale} tool={tool}
                             onSelectionStart={handleSelectionStart} onSelectionMove={handleSelectionMove} onSelectionEnd={handleSelectionEnd}
                             canvasRef={canvasRef}
+                            fitToPage={true} // Enable fit to page here too
                             overlayContent={
                                 <>
                                     {/* Render Edit Selection (Blue) */}
@@ -979,7 +1357,7 @@ export const ToolAI = () => {
             case 'unlock': return <FeaturePlaceholderTool title="Mở Khóa PDF" icon={Unlock} desc="Gỡ bỏ mật khẩu bảo vệ file PDF (Decryption)." onBack={() => setActiveTool(null)} />;
             case 'edit_content': return <EditContentTool onBack={() => setActiveTool(null)} />;
             case 'stamp': return <StampTool stamps={stamps} setStamps={setStamps} fetchStamps={fetchStamps} onBack={() => setActiveTool(null)} />;
-            case 'extract_stamp': return <EditContentTool onBack={() => setActiveTool(null)} />; // Reuse AI editor for now
+            case 'extract_stamp': return <ExtractStampTool onBack={() => setActiveTool(null)} fetchStamps={fetchStamps} />;
             default: return <Dashboard onSelectTool={setActiveTool} />;
         }
     };
