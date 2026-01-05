@@ -509,7 +509,7 @@ const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampIt
             const file = e.target.files[0];
             const formData = new FormData();
             formData.append("file", file);
-            formData.append("folderPath", "Stamps");
+            formData.append("folderPath", "Sign"); // CHANGED to Sign
             try {
                 await axios.post(`${BACKEND_URL}/upload-file`, formData);
                 fetchStamps();
@@ -517,6 +517,21 @@ const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampIt
                 alert("Lỗi upload con dấu");
             }
         }
+    };
+
+    const handleCanvasClick = (x: number, y: number) => {
+        if (!selectedStamp) return;
+        
+        // Calculate the position on the PDF (unscaled)
+        // Adjust for stamp size (center the stamp on click)
+        // Base width of stamp preview is 150px
+        const stampWidth = 150 * stampScale;
+        const stampHeight = 150 * stampScale; // Assuming square for simplicity, or adjust if aspect ratio known
+
+        const pdfX = (x / (scale * baseScale)) - (stampWidth / 2);
+        const pdfY = (y / (scale * baseScale)) - (stampHeight / 2);
+
+        setPosition({ x: pdfX, y: pdfY });
     };
 
     const applyStamp = async () => {
@@ -593,7 +608,9 @@ const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampIt
                     <div className="flex-1 bg-slate-200/50 rounded-xl overflow-hidden flex flex-col border border-slate-200 relative">
                         <PdfViewer 
                             file={file} page={page} onPageChange={setPage}
-                            scale={scale} setScale={setScale} tool="pan"
+                            scale={scale} setScale={setScale} 
+                            tool={selectedStamp ? "select" : "pan"} // Use 'select' tool to capture clicks when stamp is active
+                            onSelectionStart={selectedStamp ? handleCanvasClick : undefined}
                             fitToPage={true} // Enable fit to page for easier viewing
                             onBaseScaleChange={setBaseScale} // Capture base scale to adjust overlay position
                             overlayContent={
@@ -621,6 +638,11 @@ const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampIt
                                 )
                             }
                         />
+                        {selectedStamp && (
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm pointer-events-none">
+                                Click lên tài liệu để đặt vị trí con dấu
+                            </div>
+                        )}
                     </div>
 
                     <div className="w-full lg:w-80 bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-5 overflow-y-auto shadow-sm shrink-0">
@@ -669,11 +691,6 @@ const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampIt
                                         <RotateCw size={14} className="text-slate-400"/>
                                         <input type="range" min="0" max="360" step="90" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/>
                                     </div>
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Vị trí X</label><input type="number" value={position.x} onChange={e => setPosition({...position, x: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500" /></div>
-                                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Vị trí Y</label><input type="number" value={position.y} onChange={e => setPosition({...position, y: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500" /></div>
                                 </div>
                             </div>
                         )}
@@ -825,7 +842,7 @@ const ExtractStampTool = ({ onBack, fetchStamps }: { onBack: () => void, fetchSt
 
             const formData = new FormData();
             formData.append("file", fileObj);
-            formData.append("folderPath", "Stamps");
+            formData.append("folderPath", "Sign"); // CHANGED to Sign
 
             await axios.post(`${BACKEND_URL}/upload-file`, formData);
             fetchStamps(); // Refresh main list
@@ -1342,7 +1359,13 @@ export const ToolAI = () => {
     const fetchStamps = async () => {
         try {
             const res = await axios.get(`${BACKEND_URL}/stamps`);
-            if (res.data) setStamps(res.data.map((s: any) => ({ ...s, id: s.id || s.name })));
+            if (res.data) {
+                setStamps(res.data.map((s: any) => ({
+                    ...s,
+                    id: s.id || s.name,
+                    url: s.url.startsWith('http') ? s.url : `${BACKEND_URL}${s.url}`
+                })));
+            }
         } catch (err) { console.error(err); }
     };
 
