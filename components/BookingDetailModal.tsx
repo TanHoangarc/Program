@@ -176,7 +176,7 @@ const AttachmentRow = ({
     );
 };
 
-export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, onViewJob }) => {
+export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, onViewJob, zIndex }) => {
 
   const [localCharge, setLocalCharge] = useState({
     ...booking.costDetails.localCharge,
@@ -213,15 +213,19 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalExtensionCost = extensionCosts.reduce((s, i) => s + i.total, 0);
   const totalExtensionNetCost = extensionCosts.reduce((s, i) => s + (i.net || 0), 0);
   const totalDepositCost = deposits.reduce((s, d) => s + d.amount, 0);
+  
   const systemTotalSell = booking.jobs.reduce((s, j) => s + j.sell, 0);
   
+  // Calculate System Costs based on Rounded values per Job to match table display
   const systemTotalAdjustedCost = booking.jobs.reduce((s, j) => {
     const kimberry = (j.cont20 * 250000) + (j.cont40 * 500000);
     const otherFees = (j.feeCic || 0) + (j.feePsc || 0) + (j.feeEmc || 0) + (j.feeOther || 0);
-    return s + (j.cost - kimberry - otherFees);
+    // ROUNDING TO INTEGER
+    return s + Math.round(j.cost - kimberry - otherFees);
   }, 0);
   
-  const systemTotalVat = booking.jobs.reduce((s, j) => s + (j.cost * 0.05263), 0);
+  // Calculate System VAT based on Rounded values per Job
+  const systemTotalVat = booking.jobs.reduce((s, j) => s + Math.round(j.cost * 0.05263), 0);
 
   const getRevenue = (v: number) => vatMode === 'post' ? v : Math.round(v / 1.08);
   const summaryLocalChargeRevenue = getRevenue(totalLocalChargeRevenue);
@@ -450,8 +454,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const copyColumn = (type: 'sell' | 'cost' | 'vat' | 'project') => {
     const values = booking.jobs.map(job => {
         if (type === "sell") return job.sell;
-        if (type === "cost") return (job.cost - ((job.cont20 * 250000) + (job.cont40 * 500000) + (job.feeCic||0) + (job.feePsc||0) + (job.feeEmc||0) + (job.feeOther||0)));
-        if (type === "vat") return job.cost * 0.05263;
+        // ROUNDED INTEGER
+        if (type === "cost") return Math.round(job.cost - ((job.cont20 * 250000) + (job.cont40 * 500000) + (job.feeCic||0) + (job.feePsc||0) + (job.feeEmc||0) + (job.feeOther||0)));
+        // ROUNDED INTEGER
+        if (type === "vat") return Math.round(job.cost * 0.05263);
         const yy = new Date().getFullYear().toString().slice(-2);
         const mm = job.month.padStart(2, "0");
         return `K${yy}${mm}${job.jobCode}`;
@@ -461,10 +467,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     setTimeout(() => setCopiedId(null), 1000);
   };
 
-  const formatMoney = (v: number) => new Intl.NumberFormat("en-US").format(v);
+  const formatMoney = (v: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(v);
 
   return createPortal(
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${zIndex || 'z-[100]'}`}>
       {/* Hidden File Input used by all attachment rows */}
       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
 
@@ -535,8 +541,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                                 <div>{formatMoney(extTotal)}</div>
                                                 {extInv && <div className="text-[9px] text-slate-400 truncate max-w-[80px] ml-auto">{extInv}</div>}
                                             </td>
-                                            <td className="px-3 py-1.5 text-right border-r text-slate-600">{formatMoney(job.cost - kimberry - other)}</td>
-                                            <td className="px-3 py-1.5 text-right border-r text-slate-400">{formatMoney(job.cost * 0.05263)}</td>
+                                            <td className="px-3 py-1.5 text-right border-r text-slate-600">{formatMoney(Math.round(job.cost - kimberry - other))}</td>
+                                            <td className="px-3 py-1.5 text-right border-r text-slate-400">{formatMoney(Math.round(job.cost * 0.05263))}</td>
                                             <td className="px-3 py-1.5 text-center text-[10px] font-mono text-slate-400">K..{job.jobCode.slice(-4)}</td>
                                         </tr>
                                     );
