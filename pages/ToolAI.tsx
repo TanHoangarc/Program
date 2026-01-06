@@ -1,51 +1,205 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Scissors, Minimize2, Merge, Image as ImageIcon, Unlock, Edit, 
+  Scissors, Minimize2, Merge, Image, Unlock, Edit, 
   Stamp, Upload, Download, Trash2, MoveUp, MoveDown, 
   Plus, Check, X, Loader, ChevronLeft, ChevronRight, MousePointer,
   Crop, Layers, Wand2, RefreshCw, Eraser, Palette, Droplets, Split,
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
-  ArrowLeft, ShieldCheck, Cpu, MessageSquare, Eraser as EraserIcon,
-  ZoomIn, ZoomOut, FileText, Sparkles, CheckCircle, Hand, Move,
-  Settings, Grid, Layout, Sun, Monitor, Type, Eye, RotateCw,
-  Stamp as StampIcon, ScanLine, RotateCcw, Target, Pipette
+  ArrowLeft, ShieldCheck
 } from 'lucide-react';
-import { PDFDocument, rgb, degrees, StandardFonts, PageSizes } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsMod from 'pdfjs-dist';
 import { GoogleGenAI } from "@google/genai";
 import axios from 'axios';
 
-// --- CONFIGURATION ---
-const BACKEND_URL = "https://api.kimberry.id.vn";
-
-// Fix for pdfjs-dist import structure to ensure compatibility
+// Fix for pdfjs-dist import structure
 const pdfjsLib = (pdfjsMod as any).default || pdfjsMod;
 
-// Set worker for PDF rendering using esm.sh for consistency
+// Set worker for PDF rendering using cdnjs for better stability
+// Updated to match package.json version 5.4.530
 if (pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@5.4.530/build/pdf.worker.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.530/build/pdf.worker.min.mjs';
 }
 
-// --- TYPES ---
-type ToolType = 'split' | 'compress' | 'merge' | 'images_to_pdf' | 'unlock' | 'stamp' | 'edit_content' | 'extract_stamp' | null;
+const BACKEND_URL = "https://api.kimberry.id.vn";
+
+type ToolType = 'split' | 'compress' | 'merge' | 'images_to_pdf' | 'unlock' | 'edit' | 'stamp' | 'extract';
 
 interface StampItem {
     id: string;
-    url: string;
+    url: string; // URL from server
     name: string;
+    created?: number;
 }
 
-interface PdfPageThumbnail {
-    pageIndex: number;
-    url: string; // Blob URL
-    selected: boolean;
-    width: number;
-    height: number;
-}
+// --- Helper: Trim Whitespace/Transparency ---
+const trimCanvas = (sourceCanvas: HTMLCanvasElement): HTMLCanvasElement => {
+    const ctx = sourceCanvas.getContext('2d');
+    if (!ctx) return sourceCanvas;
+    
+    const w = sourceCanvas.width;
+    const h = sourceCanvas.height;
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
 
-// --- UTILS ---
+    let minX = w, minY = h, maxX = 0, maxY = 0;
+    let found = false;
+
+    // Scan all pixels
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            const r = data[i];
+            const g = data[i+1];
+            const b = data[i+2];
+            const a = data[i+3];
+
+            // Define "Content" vs "Background"
+            // Background is White or Transparent
+            // White threshold: > 240
+            const isWhite = r > 240 && g > 240 && b > 240;
+            const isTransparent = a < 20;
+            
+            if (!isWhite && !isTransparent) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                found = true;
+            }
+        }
+    }
+
+    if (!found) return sourceCanvas;
+
+    // Add a small padding
+    const padding = 2;
+    minX = Math.max(0, minX - padding);
+    minY = Math.max(0, minY - padding);
+    maxX = Math.min(w, maxX + padding);
+    maxY = Math.min(h, maxY + padding);
+
+    const trimW = maxX - minX;
+    const trimH = maxY - minY;
+
+    if (trimW <= 0 || trimH <= 0) return sourceCanvas;
+
+    const trimmed = document.createElement('canvas');
+    trimmed.width = trimW;
+    trimmed.height = trimH;
+    const tCtx = trimmed.getContext('2d');
+    if (tCtx) {
+        tCtx.drawImage(sourceCanvas, minX, minY, trimW, trimH, 0, 0, trimW, trimH);
+    }
+    return trimmed;
+};
+
+// --- Helper: Resize Image for Storage Optimization ---
+const resizeImage = (file: File, maxWidth: number = 250): Promise<string> => {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new window.Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Scale down if image is wider than maxWidth
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, width, height);
+                    // Use PNG to preserve transparency
+                    resolve(canvas.toDataURL('image/png'));
+                } else {
+                    // Fallback to original if canvas fails
+                    resolve(e.target?.result as string);
+                }
+            };
+            img.src = e.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+    });
+};
+
+// --- Helper: Convert Base64 to File ---
+const base64ToFile = async (dataUrl: string, fileName: string): Promise<File> => {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return new File([blob], fileName, { type: 'image/png' });
+};
+
+// --- Helper: Remove White Background ---
+const removeWhiteBackground = async (dataUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+        const img = new window.Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { resolve(dataUrl); return; }
+            
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                // Threshold for white/near-white
+                if (r > 230 && g > 230 && b > 230) {
+                    data[i + 3] = 0;
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+    });
+};
+
+// --- Helper: Crop Image Slice (For Fanfold Stamp) ---
+const cropImageSlice = (dataUrl: string, partIndex: number, totalParts: number): Promise<string> => {
+    return new Promise((resolve) => {
+        const img = new window.Image();
+        img.crossOrigin = "Anonymous"; // Enable CORS for server images
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const w = img.width;
+            const h = img.height;
+            const sliceW = Math.floor(w / totalParts);
+            
+            canvas.width = sliceW;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { resolve(dataUrl); return; }
+
+            const sx = sliceW * partIndex;
+            ctx.drawImage(img, sx, 0, sliceW, h, 0, 0, sliceW, h);
+            resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = (e) => {
+            console.error("Error loading image for slicing", e);
+            resolve(dataUrl);
+        };
+        img.src = dataUrl;
+    });
+};
+
+// --- Helper: Format Bytes ---
 const formatBytes = (bytes: number, decimals = 2) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -55,88 +209,33 @@ const formatBytes = (bytes: number, decimals = 2) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
-// --- SHARED COMPONENTS ---
-
-const ToolHeader = ({ icon: Icon, title, description, onBack }: { icon: any, title: string, description: string, onBack: () => void }) => (
-    <div className="mb-6 border-b border-slate-200 pb-4 flex items-start gap-4">
-        <button 
-            onClick={onBack}
-            className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors mt-1"
-            title="Quay lại danh sách"
-        >
-            <ArrowLeft size={24} />
-        </button>
-        <div>
-            <div className="flex items-center gap-3 mb-1">
-                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                    <Icon size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800">{title}</h2>
-            </div>
-            <p className="text-slate-500">{description}</p>
-        </div>
-    </div>
-);
-
-const FileUploader = ({ onFileSelect, accept = ".pdf", multiple = false, label = "Chọn file PDF" }: { onFileSelect: (files: FileList | null) => void, accept?: string, multiple?: boolean, label?: string }) => (
-    <div className="border-2 border-dashed border-slate-300 rounded-xl p-10 bg-slate-50 hover:bg-slate-100 transition-all cursor-pointer group text-center flex flex-col items-center justify-center h-full min-h-[300px]">
-        <input 
-            type="file" 
-            accept={accept} 
-            multiple={multiple} 
-            onChange={(e) => onFileSelect(e.target.files)} 
-            className="hidden" 
-            id="file-upload-input" 
-        />
-        <label htmlFor="file-upload-input" className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
-            <div className="w-20 h-20 bg-white rounded-full shadow-sm flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-indigo-500 border border-slate-100">
-                <Upload size={36} />
-            </div>
-            <span className="text-xl font-bold text-slate-700">{label}</span>
-            <span className="text-sm text-slate-400 mt-2 max-w-xs mx-auto">Kéo thả file vào đây hoặc nhấn để tải lên từ máy tính</span>
-            {multiple && <span className="mt-4 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold">Hỗ trợ nhiều file</span>}
-        </label>
-    </div>
-);
-
-// --- 1. PDF VIEWER COMPONENT (Advanced Fit-To-Page Logic) ---
+// --- Helper Component: PDF Viewer with Canvas ---
 interface PdfViewerProps {
-    file: File | Blob | null;
-    page: number;
+    file: File | null;
+    page: number; // 1-based
     onPageChange: (newPage: number) => void;
-    scale: number;
-    setScale: (s: number) => void;
-    tool: 'select' | 'pan';
-    onSelectionStart?: (x: number, y: number) => void;
-    onSelectionMove?: (x: number, y: number) => void;
-    onSelectionEnd?: () => void;
+    onClick?: (x: number, y: number, viewportWidth: number, viewportHeight: number) => void;
     overlayContent?: React.ReactNode;
-    canvasRef?: React.RefObject<HTMLCanvasElement>;
-    fitToPage?: boolean; // New prop: if true, 1.0 scale = Fit Page
-    onBaseScaleChange?: (baseScale: number) => void; // Prop to inform parent of the base ratio
+    containerRef?: React.RefObject<HTMLDivElement>;
+    onMouseDown?: (e: React.MouseEvent) => void;
+    onMouseMove?: (e: React.MouseEvent) => void;
+    onMouseUp?: (e: React.MouseEvent) => void;
+    onMouseLeave?: (e: React.MouseEvent) => void;
 }
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ 
-    file, page, onPageChange, 
-    scale, setScale, tool,
-    onSelectionStart, onSelectionMove, onSelectionEnd,
-    overlayContent, canvasRef: externalCanvasRef,
-    fitToPage = false, onBaseScaleChange
+    file, page, onPageChange, onClick, overlayContent,
+    containerRef, onMouseDown, onMouseMove, onMouseUp, onMouseLeave 
 }) => {
-    const internalCanvasRef = useRef<HTMLCanvasElement>(null);
-    const canvasRef = externalCanvasRef || internalCanvasRef;
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
-    
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     const [numPages, setNumPages] = useState(0);
     const [loading, setLoading] = useState(false);
-    const [pdfDoc, setPdfDoc] = useState<any>(null);
-    const [isPanning, setIsPanning] = useState(false);
-    const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
-    const [baseScale, setBaseScale] = useState(1.0); // The scale factor to make the page fit the container
     const renderTaskRef = useRef<any>(null);
+    const [pdfDoc, setPdfDoc] = useState<any>(null);
 
     useEffect(() => {
         if (!file) return;
+
         const loadPdf = async () => {
             setLoading(true);
             setPdfDoc(null);
@@ -144,7 +243,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
                 const arrayBuffer = await file.arrayBuffer();
                 const loadingTask = pdfjsLib.getDocument({
                     data: arrayBuffer,
-                    cMapUrl: 'https://esm.sh/pdfjs-dist@5.4.530/cmaps/',
+                    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.530/cmaps/',
                     cMapPacked: true,
                 });
                 const pdf = await loadingTask.promise;
@@ -155,55 +254,24 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
                 setLoading(false);
             }
         };
+
         loadPdf();
-        return () => { if (renderTaskRef.current) renderTaskRef.current.cancel(); };
+        return () => {
+             if (renderTaskRef.current) renderTaskRef.current.cancel();
+        };
     }, [file]);
 
-    // Calculate Base Scale (Fit Scale) when doc/page changes or container resizes
     useEffect(() => {
-        if (!pdfDoc || !fitToPage || !scrollContainerRef.current) {
-            setBaseScale(1.0);
-            if(onBaseScaleChange) onBaseScaleChange(1.0);
-            return;
+        if (pdfDoc) {
+            renderPage(pdfDoc, page);
         }
+    }, [pdfDoc, page]);
 
-        const calculateBaseScale = async () => {
-            try {
-                const pageProxy = await pdfDoc.getPage(page);
-                const viewport = pageProxy.getViewport({ scale: 1.0 });
-                const container = scrollContainerRef.current;
-                
-                if (container) {
-                    const padding = 60; // Padding for aesthetics
-                    const widthRatio = (container.clientWidth - padding) / viewport.width;
-                    const heightRatio = (container.clientHeight - padding) / viewport.height;
-                    const newBaseScale = Math.min(widthRatio, heightRatio); // Scale to fit entirely
-                    
-                    setBaseScale(newBaseScale);
-                    if(onBaseScaleChange) onBaseScaleChange(newBaseScale);
-                }
-            } catch (e) {
-                console.error("Error calc scale", e);
-            }
-        };
-
-        calculateBaseScale();
-        
-        // Add ResizeObserver to auto-adjust when window resizes
-        const resizeObserver = new ResizeObserver(() => calculateBaseScale());
-        resizeObserver.observe(scrollContainerRef.current);
-        return () => resizeObserver.disconnect();
-
-    }, [pdfDoc, page, fitToPage]);
-
-    useEffect(() => {
-        if (pdfDoc) renderPage(pdfDoc, page, scale * baseScale);
-    }, [pdfDoc, page, scale, baseScale]);
-
-    const renderPage = async (pdf: any, pageNum: number, effectiveScale: number) => {
+    const renderPage = async (pdf: any, pageNum: number) => {
         if (renderTaskRef.current) {
             await renderTaskRef.current.cancel();
         }
+        
         setLoading(true);
         try {
             const page = await pdf.getPage(pageNum);
@@ -211,7 +279,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
             if (!canvas) return;
 
             const context = canvas.getContext('2d');
-            const viewport = page.getViewport({ scale: effectiveScale });
+            const viewport = page.getViewport({ scale: 1.5 }); // High quality
 
             canvas.height = viewport.height;
             canvas.width = viewport.width;
@@ -228,1079 +296,1034 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
             setLoading(false);
         } catch (error: any) {
              if (error?.name !== 'RenderingCancelledException') {
-                 console.error("Render error", error);
+                 console.error("Page render error", error);
                  setLoading(false);
              }
         }
     };
 
-    const handleMouseDown = (e: React.MouseEvent) => {
-        if (tool === 'pan') {
-            setIsPanning(true);
-            setLastMousePos({ x: e.clientX, y: e.clientY });
-        } else if (tool === 'select' && onSelectionStart && canvasRef.current) {
-            const rect = canvasRef.current.getBoundingClientRect();
-            onSelectionStart(e.clientX - rect.left, e.clientY - rect.top);
-        }
-    };
-
-    const handleMouseMove = (e: React.MouseEvent) => {
-        if (tool === 'pan' && isPanning && scrollContainerRef.current) {
-            e.preventDefault();
-            const dx = e.clientX - lastMousePos.x;
-            const dy = e.clientY - lastMousePos.y;
-            scrollContainerRef.current.scrollLeft -= dx;
-            scrollContainerRef.current.scrollTop -= dy;
-            setLastMousePos({ x: e.clientX, y: e.clientY });
-        } else if (tool === 'select' && onSelectionMove && canvasRef.current) {
-            const rect = canvasRef.current.getBoundingClientRect();
-            onSelectionMove(e.clientX - rect.left, e.clientY - rect.top);
-        }
-    };
-
-    const handleMouseUp = () => {
-        if (isPanning) setIsPanning(false);
-        if (tool === 'select' && onSelectionEnd) onSelectionEnd();
+    const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (!onClick || !canvasRef.current) return;
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        onClick(x, y, rect.width, rect.height);
     };
 
     if (!file) return null;
 
     return (
-        <div className="flex flex-col items-center h-full w-full relative bg-slate-200/50 rounded-xl overflow-hidden border border-slate-200">
-            {/* Control Bar */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/90 backdrop-blur shadow-lg border border-slate-200 rounded-full px-4 py-1.5 flex items-center gap-4">
-                <div className="flex items-center gap-1">
-                    <button disabled={page <= 1} onClick={() => onPageChange(page - 1)} className="p-1.5 hover:bg-slate-100 rounded-full disabled:opacity-30 transition-colors"><ChevronLeft size={16}/></button>
-                    <span className="font-mono text-sm font-bold min-w-[50px] text-center">{page} / {numPages}</span>
-                    <button disabled={page >= numPages} onClick={() => onPageChange(page + 1)} className="p-1.5 hover:bg-slate-100 rounded-full disabled:opacity-30 transition-colors"><ChevronRight size={16}/></button>
-                </div>
-                <div className="w-px h-4 bg-slate-300"></div>
-                <div className="flex items-center gap-1">
-                    <button onClick={() => setScale(Math.max(0.5, scale - 0.25))} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"><ZoomOut size={16}/></button>
-                    <span className="text-xs font-bold w-10 text-center">{Math.round(scale * 100)}%</span>
-                    <button onClick={() => setScale(Math.min(4.0, scale + 0.25))} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"><ZoomIn size={16}/></button>
-                </div>
+        <div className="flex flex-col items-center gap-4">
+            <div className="flex items-center gap-4 bg-slate-100 px-4 py-2 rounded-full shadow-sm">
+                <button 
+                    disabled={page <= 1} 
+                    onClick={() => onPageChange(page - 1)}
+                    className="p-1 hover:bg-white rounded-full disabled:opacity-30"
+                >
+                    <ChevronLeft size={20}/>
+                </button>
+                <span className="font-medium text-sm text-slate-700">Page {page} of {numPages}</span>
+                <button 
+                    disabled={page >= numPages} 
+                    onClick={() => onPageChange(page + 1)}
+                    className="p-1 hover:bg-white rounded-full disabled:opacity-30"
+                >
+                    <ChevronRight size={20}/>
+                </button>
             </div>
 
-            {/* SCROLL CONTAINER WITH FLEX CENTER + MARGIN AUTO FIX */}
             <div 
-                ref={scrollContainerRef}
-                className="flex-1 w-full h-full overflow-auto custom-scrollbar relative flex"
-                style={{ cursor: tool === 'pan' ? (isPanning ? 'grabbing' : 'grab') : 'crosshair' }}
+                ref={containerRef}
+                className="relative border shadow-lg bg-slate-500 inline-block"
+                onMouseDown={onMouseDown}
+                onMouseMove={onMouseMove}
+                onMouseUp={onMouseUp}
+                onMouseLeave={onMouseLeave}
             >
-                {/* 
-                    CONTENT WRAPPER with m-auto
-                    This ensures the canvas is centered when smaller than viewport (flex default),
-                    but correctly expands (top-left aligned via m-auto) when larger, allowing native scrolling.
-                */}
-                <div 
-                    className="relative bg-white shadow-2xl m-auto"
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                >
-                    {loading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
-                            <Loader className="animate-spin text-indigo-600" size={32} />
-                        </div>
-                    )}
-                    <canvas ref={canvasRef} className="block" />
-                    {overlayContent}
-                </div>
+                {loading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                        <Loader className="animate-spin text-indigo-600" size={32} />
+                    </div>
+                )}
+                <canvas 
+                    ref={canvasRef} 
+                    onClick={handleCanvasClick}
+                    className="max-w-full h-auto cursor-crosshair block"
+                    style={{ maxHeight: '70vh' }}
+                />
+                {overlayContent}
             </div>
         </div>
     );
 };
 
-// --- 2. SPLIT TOOL ---
-const SplitTool = ({ onBack }: { onBack: () => void }) => {
-    // ... (No changes here)
+// --- TOOL COMPONENTS ---
+
+const SplitTool = () => {
     const [file, setFile] = useState<File | null>(null);
-    const [thumbnails, setThumbnails] = useState<PdfPageThumbnail[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const handleFileSelect = async (files: FileList | null) => {
-        if (!files || !files[0]) return;
-        const f = files[0];
-        setFile(f);
-        setThumbnails([]); 
-        setIsLoading(true);
-        try {
-            const ab = await f.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ 
-                data: ab, 
-                cMapUrl: 'https://esm.sh/pdfjs-dist@5.4.530/cmaps/', 
-                cMapPacked: true 
-            }).promise;
-            const thumbs: PdfPageThumbnail[] = [];
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 0.3 }); 
-                const canvas = document.createElement('canvas');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-                await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
-                thumbs.push({ pageIndex: i - 1, url: canvas.toDataURL(), selected: true, width: viewport.width, height: viewport.height });
-            }
-            setThumbnails(thumbs);
-        } catch (e) { console.error(e); alert("Lỗi đọc file PDF."); } finally { setIsLoading(false); }
+    const [numPages, setNumPages] = useState(0);
+    const [splitMode, setSplitMode] = useState<'all' | 'range'>('all');
+    const [ranges, setRanges] = useState('');
+    const [pageNames, setPageNames] = useState<{[key: number]: string}>({});
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const f = e.target.files[0];
+            setFile(f);
+            const arrayBuffer = await f.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(arrayBuffer);
+            setNumPages(pdfDoc.getPageCount());
+            setPageNames({}); 
+        }
     };
-    const togglePage = (idx: number) => { setThumbnails(prev => prev.map((t, i) => i === idx ? { ...t, selected: !t.selected } : t)); };
-    const handleSplit = async () => {
+
+    const handleNameChange = (idx: number, name: string) => {
+        setPageNames(prev => ({...prev, [idx]: name}));
+    };
+
+    const splitAndDownload = async (pageIndices: number[], customName?: string) => {
         if (!file) return;
-        setIsLoading(true);
+        setIsProcessing(true);
         try {
-            const ab = await file.arrayBuffer();
-            const pdfDoc = await PDFDocument.load(ab, { ignoreEncryption: true });
-            const zip = new JSZip();
-            const selectedIndices = thumbnails.filter(t => t.selected).map(t => t.pageIndex);
-            for (const idx of selectedIndices) {
-                const newDoc = await PDFDocument.create();
-                const [copiedPage] = await newDoc.copyPages(pdfDoc, [idx]);
-                newDoc.addPage(copiedPage);
-                const pdfBytes = await newDoc.save();
-                zip.file(`page_${idx + 1}.pdf`, pdfBytes);
-            }
-            const content = await zip.generateAsync({ type: "blob" });
+            const arrayBuffer = await file.arrayBuffer();
+            const srcDoc = await PDFDocument.load(arrayBuffer);
+            const newDoc = await PDFDocument.create();
+            const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
+            copiedPages.forEach(page => newDoc.addPage(page));
+            const pdfBytes = await newDoc.save();
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
             const link = document.createElement('a');
-            link.href = URL.createObjectURL(content);
-            link.download = `split_${file.name.replace('.pdf', '')}.zip`;
+            link.href = URL.createObjectURL(blob);
+            link.download = customName || `split_${pageIndices[0] + 1}.pdf`;
             link.click();
-        } catch (e) { alert("Lỗi tách file: " + e); } finally { setIsLoading(false); }
+        } catch (err) {
+            console.error(err);
+            alert("Lỗi khi tách file");
+        }
+        setIsProcessing(false);
     };
+
+    const handleSplitAll = async () => {
+        if (!file) return;
+        setIsProcessing(true);
+        const zip = new JSZip();
+        const arrayBuffer = await file.arrayBuffer();
+        const srcDoc = await PDFDocument.load(arrayBuffer);
+        
+        for (let i = 0; i < srcDoc.getPageCount(); i++) {
+             const newDoc = await PDFDocument.create();
+             const [copiedPage] = await newDoc.copyPages(srcDoc, [i]);
+             newDoc.addPage(copiedPage);
+             const pdfBytes = await newDoc.save();
+             const name = pageNames[i] ? `${pageNames[i]}.pdf` : `page_${i + 1}.pdf`;
+             zip.file(name, pdfBytes);
+        }
+        
+        const content = await zip.generateAsync({ type: "blob" });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = "split_files.zip";
+        link.click();
+        setIsProcessing(false);
+    };
+
     return (
-        <div className="h-full flex flex-col">
-            <ToolHeader icon={Split} title="Tách PDF" description="Chọn các trang cần giữ lại và tách chúng thành các file riêng lẻ hoặc file mới." onBack={onBack} />
-            {!file ? (<div className="flex-1 flex flex-col justify-center pb-20"><FileUploader onFileSelect={handleFileSelect} /></div>) : (
-                <div className="flex flex-col h-full overflow-hidden">
-                    <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm shrink-0">
-                        <div className="flex items-center gap-3"><span className="text-sm font-bold text-slate-700">{file.name}</span><span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">{thumbnails.length} trang</span></div>
-                        <div className="flex gap-2">
-                            <button onClick={() => setThumbnails(prev => prev.map(t => ({...t, selected: true})))} className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 transition-colors">Chọn tất cả</button>
-                            <button onClick={() => setThumbnails(prev => prev.map(t => ({...t, selected: false})))} className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-200 transition-colors">Bỏ chọn</button>
-                            <button onClick={() => {setFile(null); setThumbnails([])}} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-bold hover:bg-red-100 transition-colors flex items-center"><Trash2 size={12} className="mr-1"/> Hủy</button>
-                        </div>
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Scissors className="text-indigo-600"/> Tách File PDF</h3>
+            <input type="file" accept="application/pdf" onChange={onFileChange} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+            {file && (
+                <div className="animate-in fade-in slide-in-from-bottom-2">
+                    <p className="text-sm text-slate-600 mb-4">File: <strong>{file.name}</strong> ({numPages} trang)</p>
+                    <div className="flex gap-4 mb-4">
+                        <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={splitMode === 'all'} onChange={() => setSplitMode('all')} className="text-indigo-600" /><span>Tách từng trang</span></label>
+                        <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={splitMode === 'range'} onChange={() => setSplitMode('range')} className="text-indigo-600" /><span>Tách theo cụm (Range)</span></label>
                     </div>
-                    <div className="flex-1 overflow-y-auto bg-slate-50 p-6 rounded-xl border border-slate-200 mb-4 custom-scrollbar">
-                        {isLoading && thumbnails.length === 0 ? (<div className="flex h-full items-center justify-center flex-col"><Loader className="animate-spin text-indigo-500 mb-2" size={32}/><span className="text-sm text-slate-500 font-medium">Đang xử lý trang...</span></div>) : (
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
-                                {thumbnails.map((thumb, idx) => (
-                                    <div key={idx} onClick={() => togglePage(idx)} className={`relative cursor-pointer rounded-lg overflow-hidden group transition-all duration-200 select-none ${thumb.selected ? 'ring-2 ring-indigo-500 shadow-lg scale-95' : 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0'}`}>
-                                        <div className="aspect-[3/4] bg-white flex items-center justify-center relative"><img src={thumb.url} className="max-w-full max-h-full object-contain shadow-sm" loading="lazy" />{thumb.selected && (<div className="absolute inset-0 bg-indigo-600/10 flex items-center justify-center"><div className="bg-indigo-600 text-white rounded-full p-1 shadow-sm"><Check size={16} strokeWidth={3} /></div></div>)}</div>
-                                        <div className={`absolute bottom-0 inset-x-0 text-center text-[10px] font-bold py-1 ${thumb.selected ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>Trang {idx + 1}</div>
+                    {splitMode === 'all' && (
+                        <div className="space-y-4">
+                            <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg p-2">
+                                {Array.from({length: numPages}).map((_, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 py-2 px-2 border-b border-slate-100 last:border-0">
+                                        <span className="text-sm font-mono w-16">Page {idx + 1}</span>
+                                        <input type="text" placeholder={`page_${idx+1}`} value={pageNames[idx] || ''} onChange={(e) => handleNameChange(idx, e.target.value)} className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm" />
+                                        <button onClick={() => splitAndDownload([idx], (pageNames[idx] ? pageNames[idx] + '.pdf' : undefined))} className="p-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100"><Download size={16} /></button>
                                     </div>
                                 ))}
                             </div>
-                        )}
-                    </div>
-                    <div className="shrink-0 pt-2"><button onClick={handleSplit} disabled={!thumbnails.some(t => t.selected) || isLoading} className="w-full py-4 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg transition-all transform active:scale-95">{isLoading ? <Loader className="animate-spin"/> : <Download />} Tách & Tải Xuống (ZIP)</button></div>
+                            <button onClick={handleSplitAll} disabled={isProcessing} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 flex justify-center gap-2">{isProcessing ? <Loader className="animate-spin" /> : <Download size={20} />} Tải xuống tất cả (ZIP)</button>
+                        </div>
+                    )}
+                    {splitMode === 'range' && (
+                        <div className="space-y-4">
+                            <input type="text" value={ranges} onChange={(e) => setRanges(e.target.value)} placeholder="e.g. 1-3, 5" className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                            <button onClick={() => {
+                                const parts = ranges.split(',').map(p => p.trim());
+                                const indices: number[] = [];
+                                parts.forEach(p => {
+                                    if (p.includes('-')) {
+                                        const [start, end] = p.split('-').map(Number);
+                                        for(let i=start; i<=end; i++) indices.push(i-1);
+                                    } else { indices.push(Number(p)-1); }
+                                });
+                                const validIndices = indices.filter(i => i >= 0 && i < numPages);
+                                if(validIndices.length > 0) splitAndDownload(validIndices, 'split_range.pdf');
+                                else alert("Trang không hợp lệ");
+                            }} disabled={isProcessing || !ranges} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 flex justify-center gap-2">{isProcessing ? <Loader className="animate-spin" /> : <Download size={20} />} Tải xuống File đã tách</button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
     );
 };
 
-// --- 3. MERGE TOOL ---
-const MergeTool = ({ onBack }: { onBack: () => void }) => {
-    // ... (No changes here)
+const CompressTool = () => {
+    const [file, setFile] = useState<File | null>(null);
+    const [compressedPdf, setCompressedPdf] = useState<Uint8Array | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const handleCompress = async () => {
+        if (!file) return;
+        setIsProcessing(true);
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(arrayBuffer);
+            // PDF-Lib does not have strong compression, but saving sometimes optimizes structure.
+            const pdfBytes = await pdfDoc.save(); 
+            setCompressedPdf(pdfBytes);
+        } catch (e) { alert("Lỗi xử lý file."); }
+        setIsProcessing(false);
+    };
+    const handleDownload = () => {
+        if (!compressedPdf || !file) return;
+        const blob = new Blob([compressedPdf], { type: 'application/pdf' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `compressed_${file.name}`;
+        link.click();
+    };
+    return (
+         <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Minimize2 className="text-indigo-600"/> Giảm Dung Lượng PDF</h3>
+            <input type="file" accept="application/pdf" onChange={(e) => { setFile(e.target.files?.[0] || null); setCompressedPdf(null); }} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+            {file && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <p className="font-medium text-slate-700 mb-2">File gốc: {file.name}</p>
+                    <p className="text-sm text-slate-500 mb-4">Kích thước: <span className="font-bold text-slate-800">{formatBytes(file.size)}</span></p>
+                    {!compressedPdf ? (
+                        <button onClick={handleCompress} disabled={isProcessing} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 flex items-center gap-2">{isProcessing ? <Loader className="animate-spin" size={16} /> : <Minimize2 size={16} />} Nén Ngay</button>
+                    ) : (
+                        <div className="animate-in fade-in">
+                            <div className="flex items-center gap-2 text-emerald-600 mb-4 font-medium"><Check size={20} /> Đã nén thành công!</div>
+                            <p className="text-sm text-slate-500 mb-4">Kích thước mới: <span className="font-bold text-emerald-700">{formatBytes(compressedPdf.byteLength)}</span></p>
+                            <button onClick={handleDownload} className="bg-emerald-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-emerald-700 flex items-center gap-2"><Download size={16} /> Tải Xuống</button>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const MergeTool = () => {
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const handleFiles = (fileList: FileList | null) => { if (fileList) setFiles(prev => [...prev, ...Array.from(fileList)]); };
-    const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
-    const moveFile = (idx: number, dir: -1 | 1) => { const newFiles = [...files]; const temp = newFiles[idx]; newFiles[idx] = newFiles[idx + dir]; newFiles[idx + dir] = temp; setFiles(newFiles); };
+    const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files || [])]); };
+    const moveFile = (index: number, direction: 'up' | 'down') => {
+        const newFiles = [...files];
+        if (direction === 'up' && index > 0) [newFiles[index], newFiles[index-1]] = [newFiles[index-1], newFiles[index]];
+        else if (direction === 'down' && index < newFiles.length - 1) [newFiles[index], newFiles[index+1]] = [newFiles[index+1], newFiles[index]];
+        setFiles(newFiles);
+    };
+    const removeFile = (index: number) => setFiles(files.filter((_, i) => i !== index));
     const handleMerge = async () => {
+        if (files.length < 2) return alert("Chọn ít nhất 2 file để ghép.");
         setIsProcessing(true);
         try {
             const mergedPdf = await PDFDocument.create();
-            for (const file of files) { const ab = await file.arrayBuffer(); const pdf = await PDFDocument.load(ab, { ignoreEncryption: true }); const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices()); copiedPages.forEach(p => mergedPdf.addPage(p)); }
+            for (const file of files) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await PDFDocument.load(arrayBuffer);
+                const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                copiedPages.forEach((page) => mergedPdf.addPage(page));
+            }
             const pdfBytes = await mergedPdf.save();
             const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `merged_${Date.now()}.pdf`; link.click();
-        } catch (e) { alert("Lỗi ghép file: " + e); } finally { setIsProcessing(false); }
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `merged_${Date.now()}.pdf`;
+            link.click();
+        } catch (err) { alert("Lỗi khi ghép file."); }
+        setIsProcessing(false);
     };
     return (
-        <div className="h-full flex flex-col">
-            <ToolHeader icon={Merge} title="Ghép PDF" description="Kết hợp nhiều file PDF thành một tài liệu duy nhất theo thứ tự mong muốn." onBack={onBack} />
-            <div className="flex-1 flex flex-col gap-6 overflow-hidden">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full min-h-0">
-                    <div className="h-full flex flex-col"><FileUploader onFileSelect={handleFiles} multiple={true} label="Thêm file PDF" /></div>
-                    <div className="bg-white rounded-xl border border-slate-200 p-5 overflow-hidden flex flex-col shadow-sm">
-                        <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100"><h3 className="font-bold text-slate-700 flex items-center"><Layers className="w-4 h-4 mr-2 text-indigo-500"/> Danh sách file ({files.length})</h3>{files.length > 0 && <button onClick={() => setFiles([])} className="text-red-500 text-xs hover:bg-red-50 px-2 py-1 rounded font-medium">Xóa tất cả</button>}</div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">{files.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-400 italic"><FileText size={48} className="mb-2 opacity-20"/><p className="text-sm">Chưa có file nào được chọn</p></div>) : (files.map((file, idx) => (<div key={idx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg hover:border-indigo-200 transition-all group hover:shadow-sm"><div className="flex items-center gap-3 overflow-hidden"><div className="bg-red-100 p-2 rounded-lg text-red-600 font-bold text-xs shadow-sm w-8 h-8 flex items-center justify-center">{idx + 1}</div><div className="flex flex-col overflow-hidden"><span className="text-sm font-medium text-slate-700 truncate" title={file.name}>{file.name}</span><span className="text-[10px] text-slate-400">{formatBytes(file.size)}</span></div></div><div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button disabled={idx === 0} onClick={() => moveFile(idx, -1)} className="p-1.5 hover:bg-white rounded-lg disabled:opacity-30 text-slate-500 hover:text-indigo-600 hover:shadow-sm"><MoveUp size={14}/></button><button disabled={idx === files.length - 1} onClick={() => moveFile(idx, 1)} className="p-1.5 hover:bg-white rounded-lg disabled:opacity-30 text-slate-500 hover:text-indigo-600 hover:shadow-sm"><MoveDown size={14}/></button><div className="w-px h-4 bg-slate-300 mx-1"></div><button onClick={() => removeFile(idx)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button></div></div>)))}</div>
-                        <div className="mt-4 pt-4 border-t border-slate-100"><button onClick={handleMerge} disabled={files.length < 2 || isProcessing} className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all transform active:scale-95">{isProcessing ? <Loader className="animate-spin"/> : <Merge />} Ghép {files.length} Files</button></div>
-                    </div>
-                </div>
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Merge className="text-indigo-600"/> Ghép File PDF</h3>
+            <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50 hover:bg-indigo-50 transition-colors">
+                <input type="file" multiple accept="application/pdf" onChange={handleFiles} className="hidden" id="merge-upload" />
+                <label htmlFor="merge-upload" className="cursor-pointer flex flex-col items-center"><Upload size={32} className="text-slate-400 mb-2"/><span className="text-indigo-600 font-medium">Chọn file PDF</span></label>
             </div>
+            {files.length > 0 && (
+                <div className="space-y-2">
+                    <ul className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+                        {files.map((file, idx) => (
+                            <li key={idx} className="p-3 flex items-center justify-between">
+                                <div className="flex items-center gap-3 overflow-hidden"><span className="bg-slate-100 text-slate-500 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">{idx + 1}</span><span className="truncate max-w-[200px] md:max-w-md text-sm font-medium">{file.name}</span></div>
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => moveFile(idx, 'up')} disabled={idx === 0} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-30"><MoveUp size={16}/></button>
+                                    <button onClick={() => moveFile(idx, 'down')} disabled={idx === files.length - 1} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-30"><MoveDown size={16}/></button>
+                                    <button onClick={() => removeFile(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded ml-2"><Trash2 size={16}/></button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                    <button onClick={handleMerge} disabled={isProcessing} className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-md flex justify-center gap-2 mt-4">{isProcessing ? <Loader className="animate-spin" /> : <Merge size={20} />} Ghép File PDF</button>
+                </div>
+            )}
         </div>
     );
 };
 
-// --- 4. IMAGES TO PDF TOOL ---
-const ImagesToPdfTool = ({ onBack }: { onBack: () => void }) => {
-    // ... (No changes here)
+const ImagesToPdfTool = () => {
     const [files, setFiles] = useState<File[]>([]);
+    const [previews, setPreviews] = useState<string[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [pageSize, setPageSize] = useState<'A4' | 'Fit'>('A4');
-    const [orientation, setOrientation] = useState<'Portrait' | 'Landscape'>('Portrait');
-    const [margin, setMargin] = useState(20);
-    const handleFiles = (fileList: FileList | null) => { if (fileList) setFiles(prev => [...prev, ...Array.from(fileList)]); };
-    const handleConvert = async () => {
-        if(files.length === 0) return;
-        setIsProcessing(true);
-        try {
-            const pdfDoc = await PDFDocument.create();
-            for (const file of files) {
-                const buffer = await file.arrayBuffer();
-                let img;
-                try { if (file.type === 'image/jpeg' || file.name.toLowerCase().endsWith('.jpg')) img = await pdfDoc.embedJpg(buffer); else if (file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')) img = await pdfDoc.embedPng(buffer); else continue; } catch { continue; }
-                let page;
-                if (pageSize === 'A4') {
-                    const dims = orientation === 'Portrait' ? [595.28, 841.89] : [841.89, 595.28];
-                    page = pdfDoc.addPage([dims[0], dims[1]]); 
-                    const maxWidth = dims[0] - (margin * 2);
-                    const maxHeight = dims[1] - (margin * 2);
-                    const { width, height } = img.scaleToFit(maxWidth, maxHeight);
-                    page.drawImage(img, { x: (dims[0] - width) / 2, y: (dims[1] - height) / 2, width, height });
-                } else {
-                    page = pdfDoc.addPage([img.width + (margin*2), img.height + (margin*2)]);
-                    page.drawImage(img, { x: margin, y: margin, width: img.width, height: img.height });
-                }
-            }
-            const pdfBytes = await pdfDoc.save();
-            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `images_converted_${Date.now()}.pdf`; link.click();
-        } catch (e) { alert("Lỗi chuyển đổi: " + e); } finally { setIsProcessing(false); }
-    };
+    useEffect(() => { const newPreviews: string[] = []; files.forEach(file => newPreviews.push(URL.createObjectURL(file))); setPreviews(newPreviews); return () => newPreviews.forEach(url => URL.revokeObjectURL(url)); }, [files]);
+    const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files || [])]); };
+    const removeFile = (index: number) => setFiles(prev => prev.filter((_, i) => i !== index));
+    const moveFile = (index: number, direction: 'left' | 'right') => { const newFiles = [...files]; if (direction === 'left' && index > 0) [newFiles[index], newFiles[index-1]] = [newFiles[index-1], newFiles[index]]; else if (direction === 'right' && index < newFiles.length - 1) [newFiles[index], newFiles[index+1]] = [newFiles[index+1], newFiles[index]]; setFiles(newFiles); };
+    const handleMerge = async () => { if (files.length === 0) return; setIsProcessing(true); try { const pdfDoc = await PDFDocument.create(); for (const file of files) { const buffer = await file.arrayBuffer(); let image; if (file.type === 'image/jpeg') image = await pdfDoc.embedJpg(buffer); else if (file.type === 'image/png') image = await pdfDoc.embedPng(buffer); else continue; const page = pdfDoc.addPage([image.width, image.height]); page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height, }); } const pdfBytes = await pdfDoc.save(); const blob = new Blob([pdfBytes], { type: 'application/pdf' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `images_combined.pdf`; link.click(); } catch (err) { alert("Lỗi khi tạo PDF."); } setIsProcessing(false); };
     return (
-        <div className="h-full flex flex-col">
-            <ToolHeader icon={ImageIcon} title="Ảnh sang PDF" description="Chuyển đổi hình ảnh (JPG, PNG) thành tài liệu PDF chất lượng cao." onBack={onBack} />
-            <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-hidden">
-                <div className="flex-1 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl p-4 overflow-y-auto custom-scrollbar relative">{files.length === 0 ? (<label className="flex flex-col items-center justify-center h-full cursor-pointer absolute inset-0"><input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFiles(e.target.files)} /><div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mb-4 text-indigo-400"><ImageIcon size={32}/></div><span className="text-slate-500 font-bold text-lg">Nhấn để chọn ảnh</span><span className="text-slate-400 text-xs mt-1">Hỗ trợ JPG, PNG</span></label>) : (<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{files.map((f, i) => (<div key={i} className="relative aspect-[3/4] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden group"><img src={URL.createObjectURL(f)} className="w-full h-full object-cover" /><div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))} className="bg-red-500 text-white p-1.5 rounded-lg shadow-md hover:bg-red-600 transition-colors"><X size={14}/></button></div><div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur text-slate-700 text-[10px] p-2 truncate font-medium border-t border-slate-100">{f.name}</div></div>))}<label className="flex flex-col items-center justify-center aspect-[3/4] bg-slate-100 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors"><input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFiles(e.target.files)} /><Plus size={32} className="text-slate-400"/><span className="text-xs font-bold text-slate-500 mt-2">Thêm ảnh</span></label></div>)}</div>
-                <div className="w-full md:w-80 bg-white rounded-xl border border-slate-200 p-6 flex flex-col gap-6 shadow-sm h-fit">
-                    <h3 className="font-bold text-slate-800 text-lg flex items-center"><Settings className="w-5 h-5 mr-2 text-slate-500"/> Cấu hình</h3>
-                    <div><label className="text-xs font-bold text-slate-500 block mb-2 uppercase tracking-wide">Khổ giấy</label><div className="grid grid-cols-2 gap-2"><button onClick={() => setPageSize('A4')} className={`py-2.5 rounded-lg text-sm font-bold border transition-all ${pageSize === 'A4' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>A4</button><button onClick={() => setPageSize('Fit')} className={`py-2.5 rounded-lg text-sm font-bold border transition-all ${pageSize === 'Fit' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>Vừa Ảnh</button></div></div>
-                    {pageSize === 'A4' && (<div className="animate-in fade-in slide-in-from-top-2"><label className="text-xs font-bold text-slate-500 block mb-2 uppercase tracking-wide">Hướng giấy</label><div className="grid grid-cols-2 gap-2"><button onClick={() => setOrientation('Portrait')} className={`py-2.5 rounded-lg text-sm font-bold border transition-all flex items-center justify-center ${orientation === 'Portrait' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-600'}`}><Layout className="w-4 h-4 mr-2 rotate-0"/> Dọc</button><button onClick={() => setOrientation('Landscape')} className={`py-2.5 rounded-lg text-sm font-bold border transition-all flex items-center justify-center ${orientation === 'Landscape' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-600'}`}><Layout className="w-4 h-4 mr-2 rotate-90"/> Ngang</button></div></div>)}
-                    <div><div className="flex justify-between mb-2"><label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Lề trang</label><span className="text-xs font-bold text-indigo-600">{margin}px</span></div><input type="range" min="0" max="100" value={margin} onChange={(e) => setMargin(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer"/></div>
-                    <div className="pt-4 border-t border-slate-100 mt-auto"><button onClick={handleConvert} disabled={files.length === 0 || isProcessing} className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all transform active:scale-95">{isProcessing ? <Loader className="animate-spin"/> : <RefreshCw />} Chuyển đổi PDF</button></div>
-                </div>
-            </div>
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Image className="text-indigo-600"/> Ảnh sang PDF</h3>
+            <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50"><input type="file" multiple accept="image/png, image/jpeg" onChange={handleFilesChange} className="hidden" id="img-upload" /><label htmlFor="img-upload" className="cursor-pointer flex flex-col items-center"><Image size={32} className="text-slate-400 mb-2"/><span className="text-indigo-600 font-medium">Chọn ảnh (JPG, PNG)</span></label></div>
+            {files.length > 0 && (<div><p className="mb-4 text-xs text-slate-600">Đã chọn {files.length} ảnh.</p><div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">{files.map((file, idx) => (<div key={idx} className="relative group bg-slate-100 rounded-lg border border-slate-200 aspect-square flex flex-col items-center justify-center overflow-hidden"><img src={previews[idx]} alt="" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"><button onClick={() => moveFile(idx, 'left')} disabled={idx === 0} className="p-1.5 bg-white text-slate-800 rounded-full hover:bg-slate-200 disabled:opacity-50"><ChevronLeft size={16}/></button><button onClick={() => removeFile(idx)} className="p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600"><X size={16}/></button><button onClick={() => moveFile(idx, 'right')} disabled={idx === files.length - 1} className="p-1.5 bg-white text-slate-800 rounded-full hover:bg-slate-200 disabled:opacity-50"><ChevronRight size={16}/></button></div></div>))}</div><button onClick={handleMerge} disabled={isProcessing} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium">{isProcessing ? "Đang xử lý..." : "Tạo & Tải PDF"}</button></div>)}
         </div>
     );
 };
 
-// --- 5. STAMP TOOL (RESTORED & UPDATED FOR FIT-TO-PAGE) ---
-const StampTool = ({ stamps, setStamps, fetchStamps, onBack }: { stamps: StampItem[], setStamps: any, fetchStamps: () => void, onBack: () => void }) => {
+const UnlockTool = () => {
     const [file, setFile] = useState<File | null>(null);
-    const [page, setPage] = useState(1);
-    const [scale, setScale] = useState(1.0);
-    const [selectedStamp, setSelectedStamp] = useState<string | null>(null);
-    const [stampScale, setStampScale] = useState(0.5);
-    const [opacity, setOpacity] = useState(0.9);
-    const [rotation, setRotation] = useState(0);
-    const [position, setPosition] = useState({ x: 100, y: 100 });
+    const [password, setPassword] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [baseScale, setBaseScale] = useState(1.0); // For correct overlay positioning
-    
-    // Upload stamp ref
-    const stampInputRef = useRef<HTMLInputElement>(null);
+    const handleUnlock = async () => { if (!file) return; setIsProcessing(true); try { const buffer = await file.arrayBuffer(); const pdfDoc = await PDFDocument.load(buffer, { password, ignoreEncryption: false } as any); const pdfBytes = await pdfDoc.save(); const blob = new Blob([pdfBytes], { type: 'application/pdf' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `unlocked_${file.name}`; link.click(); } catch (err) { alert("Mật khẩu không đúng hoặc lỗi file."); } setIsProcessing(false); };
+    return (
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Unlock className="text-indigo-600"/> Mở Khóa PDF</h3>
+            <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-500 mb-4"/><input type="password" placeholder="Nhập mật khẩu file" value={password} onChange={e => setPassword(e.target.value)} className="w-full border p-2 rounded-lg mb-4"/><button onClick={handleUnlock} disabled={!file || !password || isProcessing} className="bg-indigo-600 text-white px-6 py-2 rounded-lg">Mở Khóa & Tải</button>
+        </div>
+    );
+};
 
-    const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            const formData = new FormData();
-            formData.append("file", file);
-            formData.append("folderPath", "Sign"); // CHANGED to Sign
+const EditTool = () => {
+    const [file, setFile] = useState<File | null>(null);
+    const [text, setText] = useState('');
+    const [position, setPosition] = useState({ x: 50, y: 500 });
+    const [page, setPage] = useState(1);
+    const [color, setColor] = useState('#000000');
+    const [size, setSize] = useState(24);
+    const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
+    const handleCanvasClick = (x: number, y: number, viewW: number, viewH: number) => { setPosition({ x, y }); setViewSize({ width: viewW, height: viewH }); };
+    const handleEdit = async () => { if (!file) return; try { const buffer = await file.arrayBuffer(); const pdfDoc = await PDFDocument.load(buffer); const pages = pdfDoc.getPages(); const targetPage = pages[page - 1]; if (targetPage) { const r = parseInt(color.slice(1,3), 16) / 255; const g = parseInt(color.slice(3,5), 16) / 255; const b = parseInt(color.slice(5,7), 16) / 255; const { width, height } = targetPage.getSize(); let pdfX = position.x; let pdfY = position.y; if (viewSize.width > 0) { pdfX = (position.x / viewSize.width) * width; pdfY = height - ((position.y / viewSize.height) * height); } targetPage.drawText(text, { x: pdfX, y: pdfY, size: Number(size), color: rgb(r, g, b), }); const pdfBytes = await pdfDoc.save(); const blob = new Blob([pdfBytes], { type: 'application/pdf' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `edited_${file.name}`; link.click(); } else { alert("Trang không tồn tại"); } } catch (err) { alert("Lỗi chỉnh sửa"); } };
+    return (
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Edit className="text-indigo-600"/> Thêm Chữ vào PDF</h3>
+            {!file ? (
+                 <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50"><input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="edit-upload" /><label htmlFor="edit-upload" className="cursor-pointer flex flex-col items-center"><Upload size={32} className="text-slate-400 mb-2"/><span className="text-indigo-600 font-medium">Chọn file PDF để sửa</span></label></div>
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                     <div className="lg:col-span-2 bg-slate-100 p-4 rounded-xl flex justify-center"><PdfViewer file={file} page={page} onPageChange={setPage} onClick={handleCanvasClick} overlayContent={text && (<div style={{ position: 'absolute', left: position.x, top: position.y, color: color, fontSize: `${size}px`, lineHeight: 1, transform: 'translateY(-100%)', pointerEvents: 'none', whiteSpace: 'nowrap', textShadow: '0 0 2px white' }}>{text}<div className="absolute -bottom-1 -left-1 w-2 h-2 bg-indigo-500 rounded-full"></div></div>)} /></div>
+                     <div className="space-y-4"><div><p className="text-xs text-slate-500 mb-2">Click vào trang PDF để chọn vị trí.</p><label className="block text-sm font-medium mb-1">Nội dung văn bản</label><input type="text" value={text} onChange={e => setText(e.target.value)} className="w-full border p-2 rounded" placeholder="Nhập nội dung..."/></div><div className="grid grid-cols-2 gap-2"><div><label className="block text-sm font-medium mb-1">Cỡ chữ</label><input type="number" value={size} onChange={e => setSize(Number(e.target.value))} className="w-full border p-2 rounded"/></div><div><label className="block text-sm font-medium mb-1">Màu sắc</label><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-10 border rounded"/></div></div><div className="pt-4"><button onClick={handleEdit} disabled={!text} className="bg-indigo-600 text-white px-6 py-2 rounded-lg w-full font-bold hover:bg-indigo-700">Áp dụng & Tải xuống</button><button onClick={() => setFile(null)} className="mt-2 text-slate-500 text-sm w-full hover:underline">Chọn file khác</button></div></div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any }) => {
+    const [file, setFile] = useState<File | null>(null);
+    const [selectedStamp, setSelectedStamp] = useState<string | null>(null);
+    const [isAdding, setIsAdding] = useState(false);
+    const [page, setPage] = useState(1);
+    const [position, setPosition] = useState({ x: 100, y: 100 }); 
+    const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
+    const [scale, setScale] = useState(0.5);
+    const [opacity, setOpacity] = useState(1);
+    const [stampType, setStampType] = useState<'normal' | 'fanfold'>('normal');
+    const [fanfoldStart, setFanfoldStart] = useState(1);
+    const [fanfoldEnd, setFanfoldEnd] = useState(2);
+
+    useEffect(() => {
+        fetchStamps();
+    }, []);
+
+    const fetchStamps = async () => {
+        try {
+            const res = await axios.get(`${BACKEND_URL}/stamps`);
+            // Map server response to StampItem
+            const mapped: StampItem[] = res.data.map((s: any) => ({
+                id: s.name,
+                name: s.name.split('.')[0], // Display name
+                url: `${BACKEND_URL}${s.url}`,
+                created: Date.now()
+            }));
+            setStamps(mapped);
+        } catch (e) {
+            console.error("Error fetching stamps:", e);
+        }
+    };
+
+    const handleCanvasClick = (x: number, y: number, viewW: number, viewH: number) => {
+        setPosition({ x, y });
+        setViewSize({ width: viewW, height: viewH });
+    };
+
+    const handleAddStamp = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            setIsAdding(true);
             try {
-                await axios.post(`${BACKEND_URL}/upload-file`, formData);
-                fetchStamps();
-            } catch (err) {
-                alert("Lỗi upload con dấu");
+                const files = Array.from(e.target.files);
+                
+                // Upload each file to server
+                for (const file of files) {
+                    // Resize before upload to save space (optional, but good)
+                    const resizedDataUrl = await resizeImage(file);
+                    const resizedFile = await base64ToFile(resizedDataUrl, file.name);
+
+                    const formData = new FormData();
+                    formData.append('file', resizedFile);
+                    
+                    await axios.post(`${BACKEND_URL}/upload-stamp`, formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                }
+                // Refresh list from server
+                await fetchStamps();
+            } catch (error) {
+                console.error("Error processing stamps", error);
+                alert("Lỗi khi upload con dấu. Vui lòng thử lại.");
+            } finally {
+                setIsAdding(false);
             }
         }
     };
 
-    const handleCanvasClick = (x: number, y: number) => {
-        if (!selectedStamp) return;
-        
-        // Calculate the position on the PDF (unscaled)
-        // Adjust for stamp size (center the stamp on click)
-        // Base width of stamp preview is 150px
-        const stampWidth = 150 * stampScale;
-        const stampHeight = 150 * stampScale; // Assuming square for simplicity, or adjust if aspect ratio known
+    const handleDeleteStamp = async (id: string) => {
+        if(window.confirm("Bạn có chắc chắn muốn xóa con dấu này khỏi thư viện?")) {
+            try {
+                // id in stamps state is actually the filename (mapped from s.name)
+                await axios.delete(`${BACKEND_URL}/stamps/${id}`);
+                await fetchStamps(); // Refresh
+                if (selectedStamp === id) setSelectedStamp(null);
+            } catch (err) {
+                console.error("Error deleting stamp", err);
+                alert("Không thể xóa file trên server.");
+            }
+        }
+    };
 
-        const pdfX = (x / (scale * baseScale)) - (stampWidth / 2);
-        const pdfY = (y / (scale * baseScale)) - (stampHeight / 2);
-
-        setPosition({ x: pdfX, y: pdfY });
+    const handleRenameStamp = (id: string, currentName: string) => {
+        // Renaming on server might require a new API or just re-upload. 
+        // For simplicity, we just update local display name or disable rename for now 
+        // as file system based storage uses filename as ID.
+        alert("Tính năng đổi tên file trên server chưa được hỗ trợ. Vui lòng xóa và upload lại với tên mới.");
     };
 
     const applyStamp = async () => {
         if (!file || !selectedStamp) return;
-        setIsProcessing(true);
         try {
-            const ab = await file.arrayBuffer();
-            const pdfDoc = await PDFDocument.load(ab, { ignoreEncryption: true });
+            const stampItem = stamps.find(s => s.id === selectedStamp);
+            if (!stampItem) return;
+            const pdfBuffer = await file.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(pdfBuffer);
+            const totalPdfPages = pdfDoc.getPageCount();
             
-            // Get stamp image
-            const stampUrl = stamps.find(s => s.id === selectedStamp)?.url;
-            if (!stampUrl) throw new Error("Stamp not found");
-            
-            // Fetch blob from stamp URL to embed
-            const stampRes = await fetch(stampUrl);
-            const stampBlob = await stampRes.blob();
-            const stampArrayBuffer = await stampBlob.arrayBuffer();
-            
-            // Try PNG then JPG
-            let stampImage;
-            try {
-                stampImage = await pdfDoc.embedPng(stampArrayBuffer);
-            } catch {
-                stampImage = await pdfDoc.embedJpg(stampArrayBuffer);
-            }
-            
-            const pages = pdfDoc.getPages();
-            const currentPage = pages[page - 1]; // 0-based
-            const { height } = currentPage.getSize();
-            
-            const dims = stampImage.scale(stampScale);
-            
-            // Calculate PDF coordinates (Bottom-Left origin)
-            currentPage.drawImage(stampImage, {
-                x: position.x,
-                y: height - position.y - dims.height, // Flip Y axis
-                width: dims.width,
-                height: dims.height,
-                opacity: opacity,
-                rotate: degrees(rotation),
-            });
+            // Define visual base width matching the preview CSS (200px)
+            const BASE_VISUAL_WIDTH = 200; 
 
+            if (stampType === 'normal') {
+                let imageToEmbed = stampItem.url;
+                let stampImage;
+                
+                // Fetch the image data because PDF-lib needs bytes, not URL (unless browser)
+                // stampItem.url is absolute URL to backend
+                const imgBytes = await fetch(imageToEmbed).then(res => res.arrayBuffer());
+                
+                // Detect type from extension or header (simple check)
+                if (imageToEmbed.toLowerCase().endsWith('.png')) {
+                    stampImage = await pdfDoc.embedPng(imgBytes);
+                } else {
+                    stampImage = await pdfDoc.embedJpg(imgBytes);
+                }
+                
+                const targetPage = pdfDoc.getPages()[page - 1];
+                if (!targetPage) return;
+                
+                const { width, height } = targetPage.getSize();
+                const imgAspect = stampImage.width / stampImage.height;
+                
+                // Calculate Size based on WYSIWYG
+                let pdfW, pdfH;
+                const visualWidth = BASE_VISUAL_WIDTH * scale;
+                
+                if (viewSize.width > 0) {
+                    // WYSIWYG: Scale based on ratio of page width to view width
+                    pdfW = visualWidth * (width / viewSize.width);
+                } else {
+                    // Fallback: 1px = 1pt (if no user interaction)
+                    pdfW = visualWidth; 
+                }
+                pdfH = pdfW / imgAspect;
+
+                // Calculate Position
+                let pdfX = 0, pdfY = 0;
+                if (viewSize.width > 0) {
+                    const clickX = (position.x / viewSize.width) * width;
+                    const clickY = height - ((position.y / viewSize.height) * height);
+                    pdfX = clickX - (pdfW / 2);
+                    pdfY = clickY - (pdfH / 2);
+                } else {
+                    pdfX = width - pdfW - 20;
+                    pdfY = 20;
+                }
+                
+                targetPage.drawImage(stampImage, { x: pdfX, y: pdfY, width: pdfW, height: pdfH, opacity: opacity });
+            } else {
+                // Fanfold logic
+                const start = Math.max(1, fanfoldStart);
+                const end = Math.min(totalPdfPages, fanfoldEnd);
+                const totalParts = end - start + 1;
+                if (totalParts < 2) { alert("Chế độ giáp lai cần ít nhất 2 trang."); return; }
+                
+                for (let i = 0; i < totalParts; i++) {
+                    const pageIndex = start + i - 1;
+                    const targetPage = pdfDoc.getPages()[pageIndex];
+                    
+                    // cropImageSlice needs to handle CORS image loaded from server
+                    const sliceDataUrl = await cropImageSlice(stampItem.url, i, totalParts);
+                    let sliceImage;
+                    if (sliceDataUrl.startsWith('data:image/png')) sliceImage = await pdfDoc.embedPng(sliceDataUrl);
+                    else sliceImage = await pdfDoc.embedJpg(sliceDataUrl);
+                    
+                    const { width, height } = targetPage.getSize();
+                    const sliceAspect = sliceImage.width / sliceImage.height;
+
+                    // Calculate Size
+                    let pdfW, pdfH;
+                    const visualSliceWidth = (BASE_VISUAL_WIDTH * scale) / totalParts;
+                    
+                    if (viewSize.width > 0) {
+                        pdfW = visualSliceWidth * (width / viewSize.width);
+                    } else {
+                        pdfW = visualSliceWidth;
+                    }
+                    pdfH = pdfW / sliceAspect;
+
+                    let pdfX = 0, pdfY = 0;
+                    if (viewSize.width > 0) {
+                        const clickX = (position.x / viewSize.width) * width;
+                        const clickY = height - ((position.y / viewSize.height) * height);
+                        pdfX = clickX - (pdfW / 2);
+                        pdfY = clickY - (pdfH / 2);
+                    } else {
+                        pdfX = width - pdfW;
+                        pdfY = height / 2 - (pdfH / 2);
+                    }
+                    
+                    targetPage.drawImage(sliceImage, { x: pdfX, y: pdfY, width: pdfW, height: pdfH, opacity: opacity });
+                }
+            }
             const pdfBytes = await pdfDoc.save();
             const blob = new Blob([pdfBytes], { type: 'application/pdf' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
             link.download = `stamped_${file.name}`;
             link.click();
-        } catch (e: any) {
-            console.error(e);
-            alert("Lỗi đóng dấu: " + e.message);
-        } finally {
-            setIsProcessing(false);
-        }
+        } catch (err) { alert("Lỗi đóng dấu."); console.error(err); }
     };
-
-    const handleDeleteStamp = async (e: React.MouseEvent, id: string, name: string) => {
-        e.stopPropagation();
-        if(!window.confirm("Xóa con dấu này?")) return;
-        try {
-            // Mock delete on UI side, implement actual delete if backend supports
-            setStamps((prev: any) => prev.filter((s:any) => s.id !== id));
-        } catch {}
+    const selectedStampUrl = stamps.find(s => s.id === selectedStamp)?.url;
+    const getPreviewSliceStyle = () => {
+        if (stampType === 'normal') return { width: '100%', left: '0' };
+        if (page < fanfoldStart || page > fanfoldEnd) return { display: 'none' };
+        const totalParts = fanfoldEnd - fanfoldStart + 1;
+        const partIndex = page - fanfoldStart;
+        return { width: `${totalParts * 100}%`, marginLeft: `-${partIndex * 100}%`, maxWidth: 'none' };
+    };
+    const getPreviewContainerWidth = () => {
+        const BASE_WIDTH = 200; // Increased base width for better default size
+        if (stampType === 'normal') return `${BASE_WIDTH * scale}px`;
+        const totalParts = fanfoldEnd - fanfoldStart + 1;
+        return `${(BASE_WIDTH * scale) / totalParts}px`;
     };
 
     return (
-        <div className="h-full flex flex-col">
-            <ToolHeader icon={Stamp} title="Đóng Dấu PDF" description="Chèn con dấu, logo hoặc chữ ký vào file PDF. Hỗ trợ điều chỉnh độ mờ và xoay." onBack={onBack} />
-            
-            {!file ? (
-                <FileUploader onFileSelect={(files) => files && setFile(files[0])} />
-            ) : (
-                <div className="flex flex-col lg:flex-row h-full gap-6 overflow-hidden">
-                    <div className="flex-1 bg-slate-200/50 rounded-xl overflow-hidden flex flex-col border border-slate-200 relative">
-                        <PdfViewer 
-                            file={file} page={page} onPageChange={setPage}
-                            scale={scale} setScale={setScale} 
-                            tool={selectedStamp ? "select" : "pan"} // Use 'select' tool to capture clicks when stamp is active
-                            onSelectionStart={selectedStamp ? handleCanvasClick : undefined}
-                            fitToPage={true} // Enable fit to page for easier viewing
-                            onBaseScaleChange={setBaseScale} // Capture base scale to adjust overlay position
-                            overlayContent={
-                                selectedStamp && (
-                                    <div 
-                                        className="absolute border-2 border-dashed border-blue-500 cursor-move z-20 hover:border-blue-700 transition-colors"
-                                        style={{ 
-                                            // Adjusted position based on effective scale
-                                            left: position.x * scale * baseScale, 
-                                            top: position.y * scale * baseScale, 
-                                            width: 150 * stampScale * scale * baseScale, 
-                                            height: 150 * stampScale * scale * baseScale,
-                                            opacity: opacity,
-                                            transform: `rotate(${rotation}deg)`
-                                        }}
-                                    >
-                                        <img 
-                                            src={stamps.find(s => s.id === selectedStamp)?.url} 
-                                            className="w-full h-full object-contain pointer-events-none"
-                                        />
-                                        <div className="absolute -top-6 left-0 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded font-bold">
-                                            Preview
-                                        </div>
-                                    </div>
-                                )
-                            }
-                        />
-                        {selectedStamp && (
-                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm pointer-events-none">
-                                Click lên tài liệu để đặt vị trí con dấu
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Stamp className="text-indigo-600"/> Đóng Dấu (Watermark)</h3>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
+                <div className="flex justify-between items-center mb-4"><h4 className="font-semibold text-sm uppercase text-slate-500 flex items-center gap-2"><Cloud size={16} className="text-indigo-500" /> Thư viện</h4><button onClick={() => setIsAdding(!isAdding)} className="text-indigo-600 text-sm font-medium hover:underline flex items-center gap-1"><Plus size={16}/> Thêm mới</button></div>
+                {isAdding && (
+                    <div className="bg-white p-4 rounded-lg border border-indigo-100 mb-4 animate-in fade-in">
+                        <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-indigo-300 border-dashed rounded-lg cursor-pointer bg-indigo-50 hover:bg-indigo-100 transition-colors">
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <Cloud className="w-8 h-8 text-indigo-500 mb-2" />
+                                <p className="mb-2 text-sm text-indigo-600"><span className="font-semibold">Click để chọn ảnh</span> (Chọn nhiều ảnh cùng lúc)</p>
+                                <p className="text-xs text-indigo-400">PNG, JPG</p>
                             </div>
-                        )}
+                            <input 
+                                type="file" 
+                                accept="image/png, image/jpeg" 
+                                multiple 
+                                onChange={handleAddStamp} 
+                                className="hidden" 
+                            />
+                        </label>
+                        <p className="text-[10px] text-slate-400 mt-2 italic text-center">Đang upload lên E:\ServerData\Sign...</p>
                     </div>
-
-                    <div className="w-full lg:w-80 bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-5 overflow-y-auto shadow-sm shrink-0">
-                        <div>
-                            <h3 className="font-bold text-slate-800 mb-3 flex items-center justify-between">
-                                <span>Thư Viện Dấu</span>
-                                <button onClick={() => stampInputRef.current?.click()} className="text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 px-2 py-1 rounded">+ Thêm</button>
-                            </h3>
-                            <input type="file" className="hidden" ref={stampInputRef} onChange={handleStampUpload} accept="image/*" />
-                            
-                            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto custom-scrollbar p-1">
-                                {stamps.map(s => (
-                                    <div 
-                                        key={s.id} 
-                                        onClick={() => setSelectedStamp(s.id)}
-                                        className={`aspect-square border rounded-lg p-1 cursor-pointer flex items-center justify-center relative group bg-white ${selectedStamp === s.id ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-300'}`}
-                                    >
-                                        <img src={s.url} className="max-w-full max-h-full object-contain" />
-                                        <button 
-                                            onClick={(e) => handleDeleteStamp(e, s.id, s.name)}
-                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <X size={10}/>
-                                        </button>
-                                    </div>
-                                ))}
-                                {stamps.length === 0 && <div className="col-span-3 text-center text-xs text-slate-400 py-4 italic">Chưa có con dấu</div>}
-                            </div>
-                        </div>
-
-                        {selectedStamp && (
-                            <div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-right-4">
-                                <div>
-                                    <div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Độ mờ</label><span className="text-xs font-bold text-indigo-600">{Math.round(opacity * 100)}%</span></div>
-                                    <input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/>
-                                </div>
-
-                                <div>
-                                    <div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Kích thước</label><span className="text-xs font-bold text-indigo-600">{Math.round(stampScale * 100)}%</span></div>
-                                    <input type="range" min="0.1" max="2" step="0.1" value={stampScale} onChange={(e) => setStampScale(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/>
-                                </div>
-
-                                <div>
-                                    <div className="flex justify-between mb-1"><label className="text-xs font-bold text-slate-500">Xoay</label><span className="text-xs font-bold text-indigo-600">{rotation}°</span></div>
-                                    <div className="flex items-center gap-2">
-                                        <RotateCw size={14} className="text-slate-400"/>
-                                        <input type="range" min="0" max="360" step="90" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} className="w-full accent-indigo-600 h-2 bg-slate-100 rounded"/>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="mt-auto">
-                            <button onClick={applyStamp} disabled={!selectedStamp || isProcessing} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95">
-                                {isProcessing ? <Loader className="animate-spin" /> : <Stamp size={18} />}
-                                Đóng Dấu PDF
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">{stamps.map(stamp => (<div key={stamp.id} onClick={() => setSelectedStamp(stamp.id)} className={`relative border-2 rounded-lg p-2 cursor-pointer transition-all hover:bg-white group ${selectedStamp === stamp.id ? 'border-indigo-500 bg-indigo-50' : 'border-transparent bg-white shadow-sm'}`}><img src={stamp.url} className="w-full h-16 object-contain mb-1" /><p className="text-[10px] text-center font-medium truncate">{stamp.name}</p><div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-md p-0.5 backdrop-blur-sm shadow-sm"><button onClick={(e) => { e.stopPropagation(); handleDeleteStamp(stamp.id); }} className="p-1 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition" title="Xóa"><Trash2 size={12}/></button></div></div>))}{stamps.length === 0 && <p className="col-span-5 text-center text-sm text-slate-400 py-4 flex flex-col items-center gap-2"><FolderOpen size={24}/> Thư mục Sign rỗng.</p>}</div>
+            </div>
+            <div className="border-t border-slate-100 pt-6">
+                {!file ? (
+                     <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50"><input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="stamp-upload" /><label htmlFor="stamp-upload" className="cursor-pointer flex flex-col items-center"><Upload size={32} className="text-slate-400 mb-2"/><span className="text-indigo-600 font-medium">Chọn file PDF</span></label></div>
+                ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2 bg-slate-100 p-4 rounded-xl flex justify-center"><PdfViewer file={file} page={page} onPageChange={setPage} onClick={handleCanvasClick} overlayContent={selectedStampUrl && (<div style={{ position: 'absolute', left: position.x, top: position.y, width: getPreviewContainerWidth(), opacity: opacity, transform: 'translate(-50%, -50%)', pointerEvents: 'none', overflow: 'hidden' }}><img src={selectedStampUrl} style={{ height: 'auto', ...getPreviewSliceStyle() as any }} /><div className="absolute top-0 left-0 w-full h-full border border-dashed border-indigo-500"></div></div>)} /></div>
+                        <div className="bg-slate-50 p-4 rounded-xl h-fit"><p className="text-xs text-slate-500 mb-4 font-medium uppercase tracking-wider">Cấu hình con dấu</p>{!selectedStamp ? (<p className="text-red-500 text-sm mb-4">Vui lòng chọn con dấu từ thư viện trên.</p>) : (<div className="space-y-4"><div className="flex items-center gap-2 text-sm text-slate-600 mb-2"><MousePointer size={14}/> Click vào trang để chọn vị trí</div><div><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1 mb-2"><Split size={12}/> Chế độ đóng dấu</label><div className="flex gap-2 mb-3"><button onClick={() => setStampType('normal')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'normal' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Bình thường</button><button onClick={() => setStampType('fanfold')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'fanfold' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Giáp lai (Nhiều trang)</button></div>{stampType === 'fanfold' && (<div className="bg-white p-3 rounded-lg border border-slate-200 mb-3 animate-in fade-in"><p className="text-xs text-slate-500 mb-2 flex items-center gap-1"><Files size={12}/> Phạm vi trang (Range)</p><div className="flex items-center gap-2"><div><label className="text-[10px] text-slate-400 block">Từ trang</label><input type="number" min="1" value={fanfoldStart} onChange={e => setFanfoldStart(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div><span className="text-slate-400">-</span><div><label className="text-[10px] text-slate-400 block">Đến trang</label><input type="number" min={fanfoldStart} value={fanfoldEnd} onChange={e => setFanfoldEnd(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div></div><p className="text-[10px] text-slate-400 mt-2 text-center">Sẽ chia con dấu thành <strong className="text-indigo-600">{Math.max(1, fanfoldEnd - fanfoldStart + 1)}</strong> phần.</p></div>)}</div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ lớn (Scale): {scale}x</label><input type="range" min="0.1" max="2" step="0.1" value={scale} onChange={e => setScale(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ mờ (Opacity): {Math.round(opacity * 100)}%</label><input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={e => setOpacity(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div className="pt-2"><button onClick={applyStamp} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-md">Đóng dấu & Tải xuống</button><button onClick={() => setFile(null)} className="mt-2 text-slate-500 text-sm w-full hover:underline">Chọn file khác</button></div></div>)}</div></div>
+                )}
+            </div>
         </div>
     );
 };
 
-// --- 6. UNLOCK & COMPRESS (Simplified for UI consistency) ---
-const FeaturePlaceholderTool = ({ title, icon: Icon, desc, onBack }: { title: string, icon: any, desc: string, onBack: () => void }) => {
-    return (
-        <div className="h-full flex flex-col">
-            <ToolHeader icon={Icon} title={title} description={desc} onBack={onBack} />
-            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center">
-                <div className="bg-slate-50 p-8 rounded-full mb-6 ring-8 ring-slate-50/50"><Icon size={64} className="text-slate-300" strokeWidth={1.5} /></div>
-                <h2 className="text-3xl font-bold text-slate-700 mb-3">{title}</h2>
-                <p className="text-slate-500 max-w-md mb-8 text-lg">{desc}</p>
-                <div className="p-4 bg-yellow-50 text-yellow-800 rounded-xl border border-yellow-200 flex items-center gap-3 max-w-md text-left"><AlertTriangle className="w-6 h-6 flex-shrink-0" /><span className="text-sm font-medium">Tính năng này đang được phát triển và sẽ sớm ra mắt trong bản cập nhật tiếp theo.</span></div>
-            </div>
-        </div>
-    )
-}
-
-// --- 7. EXTRACT STAMP TOOL (AI POWERED) ---
-const ExtractStampTool = ({ onBack, fetchStamps }: { onBack: () => void, fetchStamps: () => void }) => {
+const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
-    const [scale, setScale] = useState(1.0); // Reset to 1.0 default (Will be scaled by FitToPage)
+    const [isProcessing, setIsProcessing] = useState(false);
     const [selection, setSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
     const [isSelecting, setIsSelecting] = useState(false);
     const startPos = useRef<{x:number, y:number} | null>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [statusMsg, setStatusMsg] = useState('');
-    const [extractedImage, setExtractedImage] = useState<string | null>(null);
-    const [stampName, setStampName] = useState('');
+    const canvasWrapperRef = useRef<HTMLDivElement>(null);
+    const [baseImage, setBaseImage] = useState<string | null>(null);
+    const [resultImage, setResultImage] = useState<string | null>(null);
+    const [colorMode, setColorMode] = useState<'original'|'red'|'blue'>('original');
+    const [saturation, setSaturation] = useState(1);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    const onFileChange = (files: FileList | null) => {
-        if (files && files[0]) {
-            setFile(files[0]);
-            setSelection(null);
-            setExtractedImage(null);
-            setPage(1);
-        }
-    };
+    useEffect(() => { setSelection(null); setBaseImage(null); setResultImage(null); setErrorMsg(null); }, [page, file]);
 
-    const handleSelectionStart = (x: number, y: number) => {
+    useEffect(() => {
+        if (!baseImage) return;
+        const apply = async () => {
+            const img = new window.Image();
+            img.src = baseImage;
+            await new Promise(r => img.onload = r);
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if(!ctx) return;
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0,0, canvas.width, canvas.height);
+            const data = imageData.data;
+            for(let i=0; i<data.length; i+=4) {
+                let r = data[i];
+                let g = data[i+1];
+                let b = data[i+2];
+                if (saturation !== 1) { const gray = 0.2989*r + 0.5870*g + 0.1140*b; r = gray + (r - gray) * saturation; g = gray + (g - gray) * saturation; b = gray + (b - gray) * saturation; }
+                if (colorMode === 'red') { g = g * 0.2; b = b * 0.2; } else if (colorMode === 'blue') { r = r * 0.2; g = g * 0.2; }
+                data[i] = r; data[i+1] = g; data[i+2] = b;
+            }
+            ctx.putImageData(imageData, 0, 0);
+            setResultImage(canvas.toDataURL('image/png'));
+        };
+        apply();
+    }, [baseImage, colorMode, saturation]);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        const target = e.currentTarget as HTMLDivElement;
+        const rect = target.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         setIsSelecting(true);
         startPos.current = { x, y };
         setSelection({ x, y, w: 0, h: 0 });
+        setErrorMsg(null);
     };
 
-    const handleSelectionMove = (x: number, y: number) => {
+    const handleMouseMove = (e: React.MouseEvent) => {
         if (!isSelecting || !startPos.current) return;
-        const boxX = Math.min(startPos.current.x, x);
-        const boxY = Math.min(startPos.current.y, y);
-        const boxW = Math.abs(x - startPos.current.x);
-        const boxH = Math.abs(y - startPos.current.y);
-        setSelection({ x: boxX, y: boxY, w: boxW, h: boxH });
+        const target = e.currentTarget as HTMLDivElement;
+        const rect = target.getBoundingClientRect();
+        
+        const currentX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const currentY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+        
+        const width = currentX - startPos.current.x;
+        const height = currentY - startPos.current.y;
+
+        setSelection({
+            x: width > 0 ? startPos.current.x : currentX,
+            y: height > 0 ? startPos.current.y : currentY,
+            w: Math.abs(width),
+            h: Math.abs(height)
+        });
     };
 
-    const handleSelectionEnd = () => {
+    const handleMouseUp = () => {
         setIsSelecting(false);
         startPos.current = null;
     };
 
-    const handleExtract = async () => {
-        if (!selection || !canvasRef.current || !file) return;
-        if (selection.w < 20 || selection.h < 20) return alert("Vùng chọn quá nhỏ.");
-
+    const processCrop = async (type: 'original' | 'filter' | 'ai') => {
+        if (!selection || !canvasWrapperRef.current) return;
         setIsProcessing(true);
-        setStatusMsg("Đang chuẩn bị ảnh...");
+        setErrorMsg(null);
 
-        try {
-            // Crop Image
-            const scaleMultiplier = 2; // High res for better extraction
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = selection.w * scaleMultiplier;
-            tempCanvas.height = selection.h * scaleMultiplier;
-            const tempCtx = tempCanvas.getContext('2d');
-            if (!tempCtx) throw new Error("Canvas Error");
-            
-            tempCtx.drawImage(canvasRef.current, selection.x, selection.y, selection.w, selection.h, 0, 0, tempCanvas.width, tempCanvas.height);
-            const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
+        const canvas = canvasWrapperRef.current.querySelector('canvas');
+        if (!canvas) return;
 
-            setStatusMsg("AI đang phân tích & tách nền...");
-            
-            const apiKey = process.env.API_KEY;
-            if (!apiKey) throw new Error("Chưa cấu hình API Key");
+        const scaleX = canvas.width / canvasWrapperRef.current.clientWidth;
+        const scaleY = canvas.height / canvasWrapperRef.current.clientHeight;
 
-            const ai = new GoogleGenAI({ apiKey });
-            
-            // PROMPT UPDATED: ASK FOR SIGNATURE AND STAMP
-            const prompt = `You are an expert image processor.
-            Task: Extract the official stamp (red/blue) AND any handwritten signatures (black/blue ink) from this image.
-            1. Identify the stamp and any overlapping or nearby handwritten signatures.
-            2. Remove the paper background (texture, noise, white/grey areas).
-            3. Keep the stamp ink and signature ink clearly visible.
-            4. Return the result as a transparent PNG image.`;
+        const cropX = selection.x * scaleX;
+        const cropY = selection.y * scaleY;
+        const cropW = selection.w * scaleX;
+        const cropH = selection.h * scaleY;
 
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-image",
-                contents: { parts: [{ inlineData: { mimeType: "image/png", data: base64Image } }, { text: prompt }] }
-            });
+        if (cropW < 5 || cropH < 5) {
+             setErrorMsg("Vùng chọn quá nhỏ.");
+             setIsProcessing(false);
+             return;
+        }
 
-            let aiImageBase64: string | null = null;
-            if (response.candidates?.[0]?.content?.parts) {
-                for (const part of response.candidates[0].content.parts) {
-                    if (part.inlineData?.data) {
-                        aiImageBase64 = part.inlineData.data;
-                        break;
-                    }
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = cropW;
+        tempCanvas.height = cropH;
+        const ctx = tempCanvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+        let finalUrl = '';
+
+        if (type === 'filter') {
+            const imageData = ctx.getImageData(0, 0, cropW, cropH);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const isRed = r > g + 30 && r > b + 30;
+                const isBlue = b > r + 30 && b > g + 30;
+                if (!isRed && !isBlue) {
+                    data[i + 3] = 0;
                 }
             }
-
-            if (!aiImageBase64) throw new Error("AI không trả về hình ảnh.");
-            
-            setExtractedImage(`data:image/png;base64,${aiImageBase64}`);
-            setStatusMsg("");
-
-        } catch (err: any) {
-            console.error(err);
-            alert("Lỗi: " + (err.message || "Unknown"));
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleSaveToLibrary = async () => {
-        if (!extractedImage || !stampName.trim()) return alert("Vui lòng nhập tên con dấu!");
-        
-        try {
-            // Convert base64 to File
-            const res = await fetch(extractedImage);
-            const blob = await res.blob();
-            const safeName = stampName.replace(/[^a-zA-Z0-9-_]/g, '');
-            const fileName = `STAMP_${safeName}_${Date.now()}.png`;
-            const fileObj = new File([blob], fileName, { type: 'image/png' });
-
-            const formData = new FormData();
-            formData.append("file", fileObj);
-            formData.append("folderPath", "Sign"); // CHANGED to Sign
-
-            await axios.post(`${BACKEND_URL}/upload-file`, formData);
-            fetchStamps(); // Refresh main list
-            alert("Đã lưu con dấu vào thư viện thành công!");
-            setExtractedImage(null); // Reset
-            setStampName("");
-            setSelection(null);
-
-        } catch (err) {
-            console.error(err);
-            alert("Lỗi lưu con dấu.");
-        }
-    };
-
-    return (
-        <div className="h-full flex flex-col">
-            <ToolHeader icon={ScanLine} title="Tách Con Dấu (AI)" description="Dùng AI để tách lấy con dấu từ văn bản scan, loại bỏ nền và chữ đè." onBack={onBack} />
-            
-            {!file ? (
-                <FileUploader onFileSelect={onFileChange} label="Tải lên tài liệu chứa con dấu" />
-            ) : (
-                <div className="flex flex-col lg:flex-row h-full gap-6 overflow-hidden">
-                    <div className="flex-1 bg-slate-200/50 rounded-xl overflow-hidden flex flex-col border border-slate-200 relative">
-                        <PdfViewer 
-                            file={file} page={page} onPageChange={setPage} scale={scale} setScale={setScale} tool="select"
-                            onSelectionStart={handleSelectionStart} onSelectionMove={handleSelectionMove} onSelectionEnd={handleSelectionEnd}
-                            canvasRef={canvasRef}
-                            fitToPage={true} // Enabled Fit-To-Page
-                            overlayContent={selection && (
-                                <div className="absolute border-2 border-dashed border-red-500 bg-red-500/20 pointer-events-none z-10 box-border" style={{ left: selection.x, top: selection.y, width: selection.w, height: selection.h }}>
-                                    <div className="absolute -top-7 left-0 bg-red-600 text-white text-[10px] px-2 py-1 rounded shadow-lg font-bold flex items-center whitespace-nowrap">Vùng Cắt</div>
-                                </div>
-                            )}
-                        />
-                    </div>
-
-                    <div className="w-full lg:w-80 bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-5 overflow-y-auto shadow-sm shrink-0">
-                        <div>
-                            <h3 className="font-bold text-slate-800 mb-2">Kết quả Tách</h3>
-                            <div className="aspect-square bg-[url('https://www.transparenttextures.com/patterns/checkerboard.png')] rounded-xl border border-slate-200 flex items-center justify-center relative overflow-hidden">
-                                {isProcessing ? (
-                                    <div className="flex flex-col items-center">
-                                        <Loader className="animate-spin text-indigo-600 mb-2" size={32} />
-                                        <span className="text-xs text-slate-500 font-medium text-center px-4">{statusMsg}</span>
-                                    </div>
-                                ) : extractedImage ? (
-                                    <img src={extractedImage} className="max-w-full max-h-full object-contain" />
-                                ) : (
-                                    <span className="text-slate-400 text-xs text-center px-4">Chọn vùng chứa con dấu và nhấn "Tách Dấu"</span>
-                                )}
-                            </div>
-                        </div>
-
-                        {extractedImage && (
-                            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
-                                <div>
-                                    <label className="text-xs font-bold text-slate-500 block mb-1">Tên con dấu</label>
-                                    <input 
-                                        type="text" 
-                                        value={stampName} 
-                                        onChange={(e) => setStampName(e.target.value)} 
-                                        placeholder="VD: Mộc tròn công ty ABC"
-                                        className="w-full border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                </div>
-                                <button onClick={handleSaveToLibrary} className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2">
-                                    <Save size={16} /> Lưu vào Thư Viện
-                                </button>
-                            </div>
-                        )}
-
-                        <div className="mt-auto pt-4 border-t border-slate-100 space-y-2">
-                            <button onClick={handleExtract} disabled={!selection || isProcessing} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95">
-                                <Sparkles size={18} /> Tách Dấu (AI)
-                            </button>
-                            <button onClick={() => {setFile(null); setExtractedImage(null); setSelection(null)}} className="w-full py-2 text-slate-500 hover:text-slate-700 text-xs font-bold">
-                                Chọn file khác
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// --- 8. EDIT CONTENT TOOL (The Original Powerful One) ---
-const EditContentTool = ({ onBack }: { onBack: () => void }) => {
-    // ... (No logic change needed, just enabling fitToPage)
-    const [file, setFile] = useState<File | null>(null);
-    const [page, setPage] = useState(1);
-    const [scale, setScale] = useState(1.0); // Default scale 100%
-    const [tool, setTool] = useState<'select' | 'pan'>('select');
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [statusMsg, setStatusMsg] = useState('');
-    const [useAI, setUseAI] = useState(true);
-    const [replacementText, setReplacementText] = useState('');
-    const [selection, setSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
-    const [isSelecting, setIsSelecting] = useState(false);
-    const startPos = useRef<{x:number, y:number} | null>(null);
-    const [modifiedPdf, setModifiedPdf] = useState<Blob | null>(null);
-    const [previewFile, setPreviewFile] = useState<File | Blob | null>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    
-    const [history, setHistory] = useState<Blob[]>([]);
-    const [selectionMode, setSelectionMode] = useState<'target' | 'sample'>('target'); 
-    const [sampleSelection, setSampleSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
-
-    const onFileChange = (files: FileList | null) => {
-        if (files && files[0]) {
-            const f = files[0];
-            setFile(f);
-            setPreviewFile(f);
-            setModifiedPdf(null);
-            setSelection(null);
-            setSampleSelection(null);
-            setPage(1);
-            setHistory([]);
-        }
-    };
-
-    const handleUndo = () => {
-        if (history.length === 0) return;
-        const prev = history[history.length - 1];
-        setModifiedPdf(prev);
-        setPreviewFile(prev);
-        setHistory(prevHist => prevHist.slice(0, -1));
-        setSelection(null);
-    };
-
-    const handleSelectionStart = (x: number, y: number) => {
-        if (tool !== 'select') return;
-        setIsSelecting(true);
-        startPos.current = { x, y };
-        
-        if (selectionMode === 'target') {
-            setSelection({ x, y, w: 0, h: 0 });
-        } else {
-            setSampleSelection({ x, y, w: 0, h: 0 });
-        }
-    };
-
-    const handleSelectionMove = (x: number, y: number) => {
-        if (!isSelecting || !startPos.current) return;
-        const boxX = Math.min(startPos.current.x, x);
-        const boxY = Math.min(startPos.current.y, y);
-        const boxW = Math.abs(x - startPos.current.x);
-        const boxH = Math.abs(y - startPos.current.y);
-        
-        if (selectionMode === 'target') {
-            setSelection({ x: boxX, y: boxY, w: boxW, h: boxH });
-        } else {
-            setSampleSelection({ x: boxX, y: boxY, w: boxW, h: boxH });
-        }
-    };
-
-    const handleSelectionEnd = () => {
-        setIsSelecting(false);
-        startPos.current = null;
-        if (selectionMode === 'sample') {
-            setSelectionMode('target');
-        }
-    };
-
-    const applyEdit = async () => {
-        if (!selection || !canvasRef.current || !file) return;
-        if (selection.w < 5 || selection.h < 5) return alert("Vùng chọn quá nhỏ.");
-
-        setHistory(prev => [...prev, modifiedPdf || file]);
-
-        setIsProcessing(true);
-        setStatusMsg("Chuẩn bị dữ liệu...");
-
-        try {
-            const arrayBuffer = await (modifiedPdf || file).arrayBuffer();
-            const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-            const currentPage = pdfDoc.getPages()[page - 1];
-            const { width: pdfPageWidth, height: pdfPageHeight } = currentPage.getSize();
-            const canvas = canvasRef.current;
-            const pdfScaleFactor = pdfPageWidth / canvas.width;
-            
-            const pdfX = selection.x * pdfScaleFactor;
-            const pdfW = selection.w * pdfScaleFactor;
-            const pdfH = selection.h * pdfScaleFactor;
-            const pdfY = pdfPageHeight - ((selection.y + selection.h) * pdfScaleFactor);
-
-            if (useAI) {
-                const scaleMultiplier = 3; 
-                const targetCanvas = document.createElement('canvas');
-                targetCanvas.width = selection.w * scaleMultiplier;
-                targetCanvas.height = selection.h * scaleMultiplier;
-                const targetCtx = targetCanvas.getContext('2d');
-                if (!targetCtx) throw new Error("Canvas Error");
+            ctx.putImageData(imageData, 0, 0);
+            const trimmed = trimCanvas(tempCanvas);
+            finalUrl = trimmed.toDataURL('image/png');
+        } 
+        else if (type === 'ai') {
+             try {
+                // Must use process.env.API_KEY directly as per coding guidelines
+                const apiKey = process.env.API_KEY;
                 
-                targetCtx.drawImage(canvas, selection.x, selection.y, selection.w, selection.h, 0, 0, targetCanvas.width, targetCanvas.height);
-                const base64Target = targetCanvas.toDataURL('image/png').split(',')[1];
-
-                const promptParts: any[] = [];
-                promptParts.push({ inlineData: { mimeType: "image/png", data: base64Target } });
-
-                let promptText = "";
-
-                if (sampleSelection && sampleSelection.w > 5) {
-                    const sampleCanvas = document.createElement('canvas');
-                    sampleCanvas.width = sampleSelection.w * scaleMultiplier;
-                    sampleCanvas.height = sampleSelection.h * scaleMultiplier;
-                    const sampleCtx = sampleCanvas.getContext('2d');
-                    if(sampleCtx) {
-                        sampleCtx.drawImage(canvas, sampleSelection.x, sampleSelection.y, sampleSelection.w, sampleSelection.h, 0, 0, sampleCanvas.width, sampleCanvas.height);
-                        const base64Sample = sampleCanvas.toDataURL('image/png').split(',')[1];
-                        promptParts.push({ inlineData: { mimeType: "image/png", data: base64Sample } });
-                        
-                        promptText = replacementText 
-                            ? `CONTEXT: You are a Forensic Document Expert.
-                               INPUTS:
-                               - Image 1: Target area (Canvas to edit).
-                               - Image 2: Style Reference (Source of Truth for Font & Texture).
-
-                               TASK: Erase the text in Image 1 and replace it with "${replacementText}".
-
-                               CRITICAL INSTRUCTION ON SCALING:
-                               - **IGNORE DIMENSION MISMATCH**: The size of Image 2 is unrelated to Image 1. Do NOT scale the text to fit the box ratio.
-                               - **ABSOLUTE CLONING**: Extract the EXACT font size (in pixels), font weight, and font style from Image 2 and apply it directly to Image 1.
-                               - Do NOT resize the font. If the text in Image 2 is small, the new text must be small.
-
-                               STRICT VISUAL EXECUTION:
-                               1. **BACKGROUND TEXTURE**: 
-                                  - Analyze the "salt & pepper" noise, compression artifacts, and paper grain in Image 2.
-                                  - Synthesize a **new** background for Image 1 that fills the erased area with this EXACT texture pattern.
-                                  - **NO SOLID COLORS**. The background must look like a noisy, scanned raster image.
-                               
-                               2. **INK & RENDER SIMULATION**:
-                                  - **Blur/Softness**: Analyze the edge blur (anti-aliasing radius) in Image 2. The new text must be exactly as blurry/soft. Do NOT generate sharp vector text.
-                                  - **Opacity**: Use the exact ink density (e.g., #333333 or 90% opacity) found in Image 2. It should look "baked" into the paper.
-                                  - **Imperfections**: If Image 2 has jpeg artifacts around the text, replicate them.
-
-                               3. **ALIGNMENT**: Align the baseline with any remaining text in Image 1.
-
-                               OUTPUT: Return ONLY the modified Image 1 as a PNG.`
-                            : `CONTEXT: You are a Forensic Document Expert.
-                               INPUTS:
-                               - Image 1: Target area to clear.
-                               - Image 2: Reference background texture.
-
-                               TASK: Completely remove all text/content from Image 1.
-
-                               STRICT VISUAL EXECUTION:
-                               1. **TEXTURE SYNTHESIS**: Fill the void in Image 1 by generating the exact paper grain, noise pattern, and compression artifacts found in Image 2.
-                               2. **NO SOLID COLORS**: The result must look like a raw, dirty, scanned piece of paper. 
-                               3. **SEAMLESSNESS**: The filled area must differ indistinguishably from the surrounding pixels.
-
-                               OUTPUT: Return ONLY the modified Image 1 as a PNG.`;
-                    }
-                } else {
-                    promptText = replacementText
-                    ? `The input is a crop from a scanned document.
-                       ACTION: Remove existing text and replace with "${replacementText}".
-                       
-                       VISUAL RULES:
-                       1. **BACKGROUND**: Synthesize the exact noise, grain, and paper texture of the source image to fill the background. NO SOLID COLORS.
-                       2. **TEXT**: Match the font family, size, and weight of the original text exactly.
-                       3. **SCAN SIMULATION**: The new text must NOT be sharp. It must have the same blur, soft edges, and dark grey opacity (not pure black) as the original scanned text.
-                       
-                       Return ONLY the modified image.`
-                    : `The input is a crop from a scanned document.
-                       ACTION: Remove all text/content from this area.
-                       
-                       VISUAL RULES:
-                       1. **BACKGROUND**: Recreate the exact scanned paper texture, noise, and grain found in the input image.
-                       2. **NO SOLID COLORS**: The result must look like a blank part of the original scanned page.
-                       
-                       Return ONLY the modified image.`;
+                if (!apiKey) {
+                    throw new Error("KEY_MISSING");
                 }
 
-                promptParts.push({ text: promptText });
-
-                setStatusMsg("AI đang xử lý (Gemini)...");
-                const apiKey = process.env.API_KEY;
-                if (!apiKey) throw new Error("Chưa cấu hình API Key");
-
-                const ai = new GoogleGenAI({ apiKey });
+                const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
+                const ai = new GoogleGenAI({ apiKey: apiKey });
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash-image",
-                    contents: { parts: promptParts }
+                    contents: {
+                        parts: [
+                            { inlineData: { mimeType: "image/png", data: base64Image } },
+                            { text: "Restore the stamp and handwritten signature in this image. Remove any machine-printed text overlaying them. Do NOT remove handwritten signatures. Keep the white background. Do not make the background transparent. Return the image of the restored stamp and signature." }
+                        ]
+                    }
                 });
-
-                let aiImageBytes: Uint8Array | null = null;
-                if (response.candidates?.[0]?.content?.parts) {
+                
+                let foundImage = false;
+                if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
                     for (const part of response.candidates[0].content.parts) {
-                        if (part.inlineData?.data) {
-                            const binaryString = atob(part.inlineData.data);
-                            const bytes = new Uint8Array(binaryString.length);
-                            for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-                            aiImageBytes = bytes;
+                        if (part.inlineData) {
+                            const img = new window.Image();
+                            img.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            await new Promise((resolve) => { img.onload = resolve; });
+                            
+                            const resCanvas = document.createElement('canvas');
+                            resCanvas.width = img.width;
+                            resCanvas.height = img.height;
+                            const rCtx = resCanvas.getContext('2d');
+                            if (rCtx) {
+                                rCtx.drawImage(img, 0, 0);
+                                const trimmed = trimCanvas(resCanvas);
+                                finalUrl = trimmed.toDataURL('image/png');
+                            }
+                            foundImage = true;
                             break;
                         }
                     }
                 }
-
-                if (!aiImageBytes) throw new Error("AI không trả về hình ảnh.");
-
-                setStatusMsg("Đang cập nhật PDF...");
-                const embeddedImage = await pdfDoc.embedPng(aiImageBytes);
                 
-                currentPage.drawImage(embeddedImage, { 
-                    x: pdfX, 
-                    y: pdfY, 
-                    width: pdfW, 
-                    height: pdfH
+                if (!foundImage) throw new Error("AI response did not contain an image.");
+             } catch (e: any) {
+                 console.error("AI Error:", e);
+                 setIsProcessing(false); // Ensure loading stops
+                 
+                 if (e.message === 'KEY_MISSING') {
+                     setErrorMsg("API Key Missing");
+                 } else {
+                     let msg = e.message || e.toString();
+                     
+                     // Check for 429 specifically in the string
+                     if (msg.includes("429") || (msg.includes("quota") && msg.includes("exceeded"))) {
+                         msg = "Hết hạn mức sử dụng (429). Bạn đang dùng gói miễn phí của Google, hệ thống bị giới hạn tốc độ. Vui lòng đợi 1-2 phút rồi thử lại.";
+                     }
+                     else if (msg.includes("403")) {
+                         msg = "API Key không hợp lệ (403). Kiểm tra lại key trong Vercel Settings.";
+                     }
+                     else if (msg.includes("404")) {
+                         msg = "Model không tồn tại (404).";
+                     }
+                     // Try to parse cleaner message from JSON if it looks like JSON
+                     else if (msg.includes('{"error":')) {
+                         try {
+                             // Attempt to extract json object
+                             const match = msg.match(/\{"error":.*\}/);
+                             if (match) {
+                                 const parsed = JSON.parse(match[0]);
+                                 if (parsed.error?.message) {
+                                     msg = parsed.error.message;
+                                 }
+                             }
+                         } catch (err) {
+                             // ignore parsing error
+                         }
+                     }
+
+                     setErrorMsg(`Lỗi AI: ${msg}`);
+                 }
+             }
+        }
+        else {
+            const trimmed = trimCanvas(tempCanvas);
+            finalUrl = trimmed.toDataURL('image/png');
+        }
+
+        if (finalUrl) {
+            setBaseImage(finalUrl);
+            setResultImage(finalUrl); 
+            setColorMode('original');
+            setSaturation(1);
+        }
+        setIsProcessing(false);
+    };
+
+    const handleRemoveBg = async () => { const src = baseImage || resultImage; if (!src) return; setIsProcessing(true); const newImage = await removeWhiteBackground(src); setBaseImage(newImage); setIsProcessing(false); };
+    const downloadResult = () => { if (!resultImage) return; const link = document.createElement('a'); link.href = resultImage; link.download = `extracted_stamp_${Date.now()}.png`; link.click(); };
+    
+    // NEW: Save to Library (Upload to Server)
+    const saveToLibrary = async () => {
+        if (!resultImage) return;
+        const name = window.prompt("Nhập tên con dấu để lưu vào thư viện:", "Stamp_" + Date.now());
+        if (name) {
+            try {
+                // Convert base64 to File
+                const file = await base64ToFile(resultImage, `${name}.png`);
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                await axios.post(`${BACKEND_URL}/upload-stamp`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
                 });
+                
+                // Refresh list in parent via setStamps (parent needs to re-fetch)
+                // Since setStamps here is passed from parent which uses fetchStamps, 
+                // we might need to trigger a refresh. 
+                // However, simpler is just to reload or let user go back to Stamp tool which re-fetches.
+                // Or we can manually fetch here if we had access to fetchStamps.
+                // For now, assume user will see it when they go to Stamp tool.
+                
+                // Better: Fetch and update setStamps immediately
+                const res = await axios.get(`${BACKEND_URL}/stamps`);
+                const mapped = res.data.map((s: any) => ({
+                    id: s.name,
+                    name: s.name.split('.')[0],
+                    url: `${BACKEND_URL}${s.url}`,
+                    created: Date.now()
+                }));
+                setStamps(mapped);
 
-            } else {
-                currentPage.drawRectangle({ x: pdfX, y: pdfY, width: pdfW, height: pdfH, color: rgb(1, 1, 1), opacity: 1 });
-                if (replacementText) {
-                    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-                    currentPage.drawText(replacementText, { x: pdfX + 2, y: pdfY + (pdfH/2) - 5, size: 10, font, color: rgb(0, 0, 0) });
-                }
+                alert("Đã lưu con dấu vào thư viện! Bạn có thể dùng nó trong mục 'Đóng Dấu'.");
+            } catch (err) {
+                console.error("Error saving stamp", err);
+                alert("Lỗi khi lưu con dấu lên server.");
             }
-
-            const pdfBytes = await pdfDoc.save();
-            const newBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-            setModifiedPdf(newBlob);
-            setPreviewFile(newBlob);
-            setSelection(null); 
-
-        } catch (err: any) {
-            console.error(err);
-            alert("Lỗi: " + (err.message || "Unknown"));
-            setHistory(prev => prev.slice(0, -1));
-        } finally {
-            setIsProcessing(false);
-            setStatusMsg("");
         }
     };
 
-    const handleDownload = () => {
-        if (!modifiedPdf) return;
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(modifiedPdf);
-        link.download = `edited_${file?.name || 'doc.pdf'}`;
-        link.click();
-    };
-
     return (
-        <div className="h-full flex flex-col">
-            <div className="flex items-center gap-4 mb-4 border-b pb-4">
-                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ArrowLeft size={20}/></button>
-                <div className="flex-1 flex justify-between items-center">
-                    <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Pencil className="text-indigo-600"/> Sửa Nội Dung (AI Scan)</h3>
-                    <div className="flex items-center gap-2">
-                        {/* Undo Button */}
-                        <button 
-                            onClick={handleUndo} 
-                            disabled={history.length === 0 || isProcessing}
-                            className="px-3 py-1.5 rounded-md text-sm font-bold flex items-center gap-2 transition-all bg-white border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Quay lại thao tác trước"
-                        >
-                            <RotateCcw size={14} /> Hoàn tác
-                        </button>
-                        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                            <button onClick={() => setTool('select')} className={`px-3 py-1.5 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${tool === 'select' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><MousePointer size={14} /> Chọn vùng</button>
-                            <button onClick={() => setTool('pan')} className={`px-3 py-1.5 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${tool === 'pan' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Hand size={14} /> Di chuyển</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Crop className="text-indigo-600"/> Tách Con Dấu (Crop & AI)</h3>
+            
             {!file ? (
-                <div className="flex-1 pb-20">
-                    <FileUploader onFileSelect={onFileChange} label="Tải lên PDF để sửa" />
+                <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50">
+                    <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="extract-upload-2" />
+                    <label htmlFor="extract-upload-2" className="cursor-pointer flex flex-col items-center">
+                        <Upload size={32} className="text-slate-400 mb-2"/>
+                        <span className="text-indigo-600 font-medium">Chọn file PDF</span>
+                    </label>
                 </div>
             ) : (
-                <div className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
-                    <div className="flex-1 min-h-0 bg-slate-200/50 rounded-xl border border-slate-200 overflow-hidden flex flex-col relative">
-                        <PdfViewer 
-                            file={previewFile} page={page} onPageChange={setPage} scale={scale} setScale={setScale} tool={tool}
-                            onSelectionStart={handleSelectionStart} onSelectionMove={handleSelectionMove} onSelectionEnd={handleSelectionEnd}
-                            canvasRef={canvasRef}
-                            fitToPage={true} // Enable fit to page here too
-                            overlayContent={
-                                <>
-                                    {/* Render Edit Selection (Blue) */}
-                                    {selection && (
-                                        <div className="absolute border-2 border-dashed border-indigo-500 bg-indigo-500/10 pointer-events-none z-10 box-border" style={{ left: selection.x, top: selection.y, width: selection.w, height: selection.h }}>
-                                            <div className="absolute -top-7 left-0 bg-indigo-600 text-white text-[10px] px-2 py-1 rounded shadow-lg font-bold flex items-center whitespace-nowrap"><Target size={10} className="mr-1"/> Vùng Sửa</div>
-                                        </div>
-                                    )}
-                                    {/* Render Sample Selection (Orange/Green) */}
-                                    {sampleSelection && (
-                                        <div className="absolute border-2 border-dashed border-orange-500 bg-orange-500/10 pointer-events-none z-10 box-border" style={{ left: sampleSelection.x, top: sampleSelection.y, width: sampleSelection.w, height: sampleSelection.h }}>
-                                            <div className="absolute -top-7 left-0 bg-orange-600 text-white text-[10px] px-2 py-1 rounded shadow-lg font-bold flex items-center whitespace-nowrap"><Pipette size={10} className="mr-1"/> Vùng Mẫu</div>
-                                        </div>
-                                    )}
-                                </>
-                            }
-                        />
+                <div className="flex flex-col lg:flex-row gap-6">
+                    <div className="flex-1">
+                        <div className="bg-slate-100 p-4 rounded-xl flex justify-center overflow-auto relative select-none">
+                            <PdfViewer 
+                                file={file} 
+                                page={page} 
+                                onPageChange={setPage} 
+                                onClick={() => {}} 
+                                containerRef={canvasWrapperRef}
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
+                                overlayContent={
+                                    selection && (
+                                        <div 
+                                            className="absolute border-2 border-indigo-500 bg-indigo-500/20 pointer-events-none"
+                                            style={{
+                                                left: selection.x,
+                                                top: selection.y,
+                                                width: selection.w,
+                                                height: selection.h
+                                            }}
+                                        ></div>
+                                    )
+                                }
+                            />
+                        </div>
+                        <p className="text-xs text-center text-slate-500 mt-2">Kéo chuột để khoanh vùng con dấu cần tách</p>
                     </div>
 
-                    <div className="w-full lg:w-80 flex flex-col gap-4 shrink-0 h-full overflow-y-auto">
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                            <h4 className="font-bold text-slate-800 border-b pb-2 flex items-center justify-between">
-                                <span>Công cụ AI</span>
-                                {selection && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">Đã chọn vùng</span>}
-                            </h4>
+                    <div className="w-full lg:w-80 space-y-6">
+                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                             <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Layers size={18}/> Xử lý vùng chọn
+                             </h4>
+                             
+                             {errorMsg && (
+                                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 animate-in fade-in">
+                                     <div className="flex items-center gap-2 font-bold mb-1">
+                                         <AlertTriangle size={16} /> Lỗi xử lý
+                                     </div>
+                                     <p className="mb-2">{errorMsg}</p>
+                                     {errorMsg === "API Key Missing" && (
+                                         <div className="bg-white p-2 rounded border border-red-100 text-xs text-slate-600">
+                                             <strong>Cách khắc phục:</strong>
+                                             <ol className="list-decimal pl-4 mt-1 space-y-1">
+                                                 <li>Vào Vercel Project Settings &gt; Environment Variables.</li>
+                                                 <li>Đảm bảo đã thêm <code>VITE_GEMINI_API_KEY</code>.</li>
+                                                 <li className="text-red-600 font-bold">Quan trọng: Vào tab Deployments, chọn Redeploy để cập nhật Key mới vào ứng dụng.</li>
+                                             </ol>
+                                         </div>
+                                     )}
+                                 </div>
+                             )}
 
-                            <label className="flex items-center justify-between cursor-pointer p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200">
-                                <span className="text-sm font-medium text-slate-700 flex items-center"><Sparkles size={16} className={`mr-2 ${useAI ? 'text-purple-500' : 'text-slate-400'}`}/> Gemini AI Magic</span>
-                                <div className="relative"><input type="checkbox" checked={useAI} onChange={e => setUseAI(e.target.checked)} className="sr-only peer"/><div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div></div>
-                            </label>
+                             <div className="space-y-3">
+                                 <button 
+                                    onClick={() => processCrop('original')}
+                                    disabled={!selection || isProcessing}
+                                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2"
+                                 >
+                                    <Crop size={16}/> Cắt Nguyên Bản
+                                 </button>
+                                 <button 
+                                    onClick={() => processCrop('filter')}
+                                    disabled={!selection || isProcessing}
+                                    className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 border border-emerald-200"
+                                 >
+                                    <RefreshCw size={16}/> Lọc Nền (Thuật toán)
+                                 </button>
+                                 <button 
+                                    onClick={() => processCrop('ai')}
+                                    disabled={!selection || isProcessing}
+                                    className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 shadow-md"
+                                 >
+                                    {isProcessing ? <Loader className="animate-spin" size={16}/> : <Wand2 size={16}/>} 
+                                    AI Phục Hồi & Gỡ Chữ
+                                 </button>
+                             </div>
+                         </div>
 
-                            {/* SELECTION MODE TOGGLE */}
-                            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-lg">
-                                <button 
-                                    onClick={() => { setSelectionMode('target'); setTool('select'); }}
-                                    className={`py-2 px-1 text-xs font-bold rounded-md flex items-center justify-center transition-all ${selectionMode === 'target' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    <Target size={14} className="mr-1"/> Chọn Vùng Sửa
-                                </button>
-                                <button 
-                                    onClick={() => { setSelectionMode('sample'); setTool('select'); }}
-                                    className={`py-2 px-1 text-xs font-bold rounded-md flex items-center justify-center transition-all ${selectionMode === 'sample' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    <Pipette size={14} className="mr-1"/> Chọn Vùng Mẫu
-                                </button>
-                            </div>
-                            
-                            {/* SAMPLE STATUS INFO */}
-                            {sampleSelection ? (
-                                <div className="text-[10px] bg-orange-50 text-orange-700 px-3 py-2 rounded-lg border border-orange-100 flex items-center">
-                                    <CheckCircle size={12} className="mr-1.5"/> Đã có mẫu tham chiếu (Font, Nền)
-                                </div>
-                            ) : (
-                                <div className="text-[10px] bg-slate-50 text-slate-500 px-3 py-2 rounded-lg border border-slate-100 italic">
-                                    Chưa chọn vùng mẫu (Dùng mặc định)
-                                </div>
-                            )}
+                         {resultImage && (
+                             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm animate-in fade-in">
+                                 <h4 className="font-bold text-slate-800 mb-4">Kết quả</h4>
+                                 <div className="bg-[url('https://border-image.com/images/transparent-background-pattern.png')] bg-cover border rounded-lg overflow-hidden mb-4 flex items-center justify-center min-h-[150px] relative">
+                                     <img src={resultImage} className="max-w-full max-h-[300px] object-contain" />
+                                 </div>
+                                 
+                                 <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Palette size={12}/> Chế độ màu</label>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={() => setColorMode('original')}
+                                                className={`flex-1 py-1 text-xs rounded border ${colorMode === 'original' ? 'bg-slate-100 border-slate-400 font-bold' : 'border-slate-200 hover:bg-slate-50'}`}
+                                            >Gốc</button>
+                                            <button 
+                                                onClick={() => setColorMode('red')}
+                                                className={`flex-1 py-1 text-xs rounded border text-red-600 ${colorMode === 'red' ? 'bg-red-50 border-red-400 font-bold' : 'border-slate-200 hover:bg-red-50'}`}
+                                            >Đỏ</button>
+                                            <button 
+                                                onClick={() => setColorMode('blue')}
+                                                className={`flex-1 py-1 text-xs rounded border text-blue-600 ${colorMode === 'blue' ? 'bg-blue-50 border-blue-400 font-bold' : 'border-slate-200 hover:bg-blue-50'}`}
+                                            >Xanh</button>
+                                        </div>
+                                    </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Nội dung thay thế</label>
-                                <textarea value={replacementText} onChange={(e) => setReplacementText(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-28" placeholder="Nhập văn bản mới... (Để trống để xóa vùng chọn)" />
-                                <p className="text-[10px] text-slate-400 mt-2 italic leading-tight bg-blue-50 p-2 rounded text-blue-600">
-                                    <span className="font-bold">Mẹo:</span> Chọn "Vùng Mẫu" chứa nền giấy và font chữ tương tự để AI bắt chước chính xác nhất.
-                                </p>
-                            </div>
+                                    <div>
+                                        <label className="flex justify-between text-xs font-semibold text-slate-500 uppercase mb-1">
+                                            <span className="flex items-center gap-1"><Droplets size={12}/> Độ tươi (Saturation)</span>
+                                            <span>{saturation}x</span>
+                                        </label>
+                                        <input 
+                                            type="range" 
+                                            min="0" max="3" step="0.1" 
+                                            value={saturation}
+                                            onChange={(e) => setSaturation(Number(e.target.value))}
+                                            className="w-full accent-indigo-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                        />
+                                    </div>
 
-                            <button onClick={applyEdit} disabled={!selection || isProcessing} className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center shadow-lg transition-all active:scale-95 ${!selection ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : isProcessing ? 'bg-indigo-50 text-indigo-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                                {isProcessing ? <><Loader className="animate-spin w-4 h-4 mr-2"/> {statusMsg}</> : <><Wand2 className="w-4 h-4 mr-2"/> {replacementText ? 'Thay Thế' : 'Xóa Vùng Chọn'}</>}
-                            </button>
-                        </div>
+                                    <div className="pt-2 flex flex-col gap-2">
+                                        <button 
+                                            onClick={handleRemoveBg}
+                                            disabled={isProcessing}
+                                            className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2"
+                                        >
+                                            <Eraser size={16}/> Tách nền trắng
+                                        </button>
+                                        <button 
+                                            onClick={saveToLibrary}
+                                            className="w-full bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2"
+                                        >
+                                            <Save size={16}/> Lưu vào thư viện
+                                        </button>
+                                        <button 
+                                            onClick={downloadResult}
+                                            className="w-full bg-slate-900 text-white py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2"
+                                        >
+                                            <Download size={16}/> Tải xuống PNG
+                                        </button>
+                                    </div>
+                                 </div>
+                             </div>
+                         )}
 
-                        {modifiedPdf && (
-                            <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 animate-in fade-in slide-in-from-bottom-4 shadow-sm">
-                                <div className="flex items-center gap-2 text-emerald-800 font-bold mb-2 text-sm"><CheckCircle size={16}/> Đã chỉnh sửa xong!</div>
-                                <button onClick={handleDownload} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-colors"><Download size={16}/> Tải xuống PDF Mới</button>
-                            </div>
-                        )}
-
-                        <button onClick={() => {setFile(null); setModifiedPdf(null);}} className="text-xs text-slate-400 hover:text-red-500 hover:underline text-center w-full py-2">Hủy bỏ / Chọn file khác</button>
+                         <button onClick={() => setFile(null)} className="w-full text-slate-400 text-xs hover:text-slate-600 underline">Chọn file khác</button>
                     </div>
                 </div>
             )}
@@ -1308,96 +1331,72 @@ const EditContentTool = ({ onBack }: { onBack: () => void }) => {
     );
 };
 
-// --- DASHBOARD COMPONENT ---
-const Dashboard = ({ onSelectTool }: { onSelectTool: (t: ToolType) => void }) => {
-    // ... (unchanged)
+export const ToolAI: React.FC = () => {
+    const [activeTool, setActiveTool] = useState<ToolType | null>(null);
+    const [stamps, setStamps] = useState<StampItem[]>([]);
+
+    const renderTool = () => {
+        switch (activeTool) {
+            case 'split': return <SplitTool />;
+            case 'compress': return <CompressTool />;
+            case 'merge': return <MergeTool />;
+            case 'images_to_pdf': return <ImagesToPdfTool />;
+            case 'unlock': return <UnlockTool />;
+            case 'edit': return <EditTool />;
+            case 'stamp': return <StampTool stamps={stamps} setStamps={setStamps} />;
+            case 'extract': return <ExtractStampTool setStamps={setStamps} />;
+            default: return null;
+        }
+    };
+
+    if (activeTool) {
+        return (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                <button 
+                    onClick={() => setActiveTool(null)}
+                    className="mb-4 flex items-center gap-2 text-slate-500 hover:text-indigo-600 transition-colors font-medium"
+                >
+                    <ArrowLeft size={20} /> Quay lại danh sách công cụ
+                </button>
+                <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm min-h-[600px]">
+                    {renderTool()}
+                </div>
+            </div>
+        );
+    }
+
     const tools = [
-        { id: 'split', title: 'Tách PDF', desc: 'Tách file PDF thành nhiều trang nhỏ, hoặc theo range.', icon: Split, color: 'bg-indigo-50 text-indigo-600' },
-        { id: 'merge', title: 'Ghép PDF', desc: 'Gộp nhiều file PDF thành một file duy nhất.', icon: Merge, color: 'bg-blue-50 text-blue-600' },
-        { id: 'compress', title: 'Nén PDF', desc: 'Giảm dung lượng file PDF để dễ chia sẻ.', icon: Minimize2, color: 'bg-teal-50 text-teal-600' },
-        { id: 'images_to_pdf', title: 'Ảnh sang PDF', desc: 'Chuyển đổi file ảnh (JPG, PNG) sang PDF.', icon: ImageIcon, color: 'bg-purple-50 text-purple-600' },
-        { id: 'unlock', title: 'Mở Khóa PDF', desc: 'Xóa mật khẩu bảo vệ khỏi file PDF (nếu biết pass).', icon: Unlock, color: 'bg-orange-50 text-orange-600' },
-        { id: 'edit_content', title: 'Chỉnh Sửa PDF', desc: 'Thêm văn bản, chú thích vào trang PDF.', icon: Pencil, color: 'bg-sky-50 text-sky-600' },
-        { id: 'stamp', title: 'Đóng Dấu (SignLH)', desc: 'Chèn chữ ký, mộc, logo hoặc giáp lai nhiều trang.', icon: StampIcon, color: 'bg-rose-50 text-rose-600' },
-        { id: 'extract_stamp', title: 'Tách Con Dấu (AI)', desc: 'Dùng AI để tách và phục hồi con dấu từ văn bản scan.', icon: ScanLine, color: 'bg-cyan-50 text-cyan-600' },
+        { id: 'split', name: 'Tách PDF', icon: Scissors, desc: 'Tách file PDF thành nhiều trang nhỏ, hoặc theo range.' },
+        { id: 'merge', name: 'Ghép PDF', icon: Merge, desc: 'Gộp nhiều file PDF thành một file duy nhất.' },
+        { id: 'compress', name: 'Nén PDF', icon: Minimize2, desc: 'Giảm dung lượng file PDF để dễ chia sẻ.' },
+        { id: 'images_to_pdf', name: 'Ảnh sang PDF', icon: Image, desc: 'Chuyển đổi file ảnh (JPG, PNG) sang PDF.' },
+        { id: 'unlock', name: 'Mở Khóa PDF', icon: Unlock, desc: 'Xóa mật khẩu bảo vệ khỏi file PDF (nếu biết pass).' },
+        { id: 'edit', name: 'Chỉnh Sửa PDF', icon: Edit, desc: 'Thêm văn bản, chú thích vào trang PDF.' },
+        { id: 'stamp', name: 'Đóng Dấu (SignLH)', icon: Stamp, desc: 'Chèn chữ ký, mộc, logo hoặc giáp lai nhiều trang.' },
+        { id: 'extract', name: 'Tách Con Dấu (AI)', icon: Crop, desc: 'Dùng AI để tách và phục hồi con dấu từ văn bản scan.' },
     ];
 
     return (
-        <div className="p-8 max-w-7xl mx-auto">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold text-slate-800 mb-2">PDF Tools</h1>
+        <div className="space-y-6 animate-in fade-in duration-500">
+            <div>
+                <h2 className="text-2xl font-bold text-slate-900">PDF Tools</h2>
                 <p className="text-slate-500">Bộ công cụ xử lý PDF tiện lợi - Xử lý ngay trên trình duyệt, bảo mật tuyệt đối.</p>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {tools.map((tool) => (
                     <button
                         key={tool.id}
-                        onClick={() => onSelectTool(tool.id as ToolType)}
-                        className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex flex-col gap-4 group hover:border-slate-200"
+                        onClick={() => setActiveTool(tool.id as ToolType)}
+                        className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all text-left group h-full flex flex-col"
                     >
-                        <div className={`p-3 rounded-xl w-fit ${tool.color} transition-transform group-hover:scale-110`}>
+                        <div className="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform">
                             <tool.icon size={24} />
                         </div>
-                        <div>
-                            <h3 className="font-bold text-lg text-slate-800 mb-2">{tool.title}</h3>
-                            <p className="text-sm text-slate-500 leading-relaxed">{tool.desc}</p>
-                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors">{tool.name}</h3>
+                        <p className="text-slate-500 text-sm flex-1">{tool.desc}</p>
                     </button>
                 ))}
-            </div>
-        </div>
-    );
-};
-
-// --- MAIN LAYOUT ---
-export const ToolAI = () => {
-    // ... (unchanged)
-    const [activeTool, setActiveTool] = useState<ToolType>(null);
-    const [stamps, setStamps] = useState<StampItem[]>([]);
-
-    const fetchStamps = async () => {
-        try {
-            const res = await axios.get(`${BACKEND_URL}/stamps`);
-            if (res.data) {
-                setStamps(res.data.map((s: any) => ({
-                    ...s,
-                    id: s.id || s.name,
-                    url: s.url.startsWith('http') ? s.url : `${BACKEND_URL}${s.url}`
-                })));
-            }
-        } catch (err) { console.error(err); }
-    };
-
-    useEffect(() => { fetchStamps(); }, []);
-
-    const renderTool = () => {
-        switch (activeTool) {
-            case 'split': return <SplitTool onBack={() => setActiveTool(null)} />;
-            case 'compress': return <FeaturePlaceholderTool title="Nén PDF" icon={Minimize2} desc="Giảm dung lượng file PDF mà không làm giảm chất lượng đáng kể." onBack={() => setActiveTool(null)} />;
-            case 'merge': return <MergeTool onBack={() => setActiveTool(null)} />;
-            case 'images_to_pdf': return <ImagesToPdfTool onBack={() => setActiveTool(null)} />;
-            case 'unlock': return <FeaturePlaceholderTool title="Mở Khóa PDF" icon={Unlock} desc="Gỡ bỏ mật khẩu bảo vệ file PDF (Decryption)." onBack={() => setActiveTool(null)} />;
-            case 'edit_content': return <EditContentTool onBack={() => setActiveTool(null)} />;
-            case 'stamp': return <StampTool stamps={stamps} setStamps={setStamps} fetchStamps={fetchStamps} onBack={() => setActiveTool(null)} />;
-            case 'extract_stamp': return <ExtractStampTool onBack={() => setActiveTool(null)} fetchStamps={fetchStamps} />;
-            default: return <Dashboard onSelectTool={setActiveTool} />;
-        }
-    };
-
-    return (
-        <div className="flex h-full bg-slate-50/50 overflow-hidden">
-            {/* Main Workspace */}
-            <div className="flex-1 bg-white shadow-sm border-l border-slate-200 overflow-hidden relative flex flex-col">
-                {activeTool === null ? (
-                    <div className="h-full overflow-y-auto">
-                        <Dashboard onSelectTool={setActiveTool} />
-                    </div>
-                ) : (
-                    <div className="h-full p-6 lg:p-8 flex flex-col">
-                        {renderTool()}
-                    </div>
-                )}
             </div>
         </div>
     );
