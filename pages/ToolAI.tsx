@@ -879,7 +879,20 @@ const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any 
                         <p className="text-[10px] text-slate-400 mt-2 italic text-center">Đang upload lên E:\ServerData\Sign...</p>
                     </div>
                 )}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">{stamps.map(stamp => (<div key={stamp.id} onClick={() => setSelectedStamp(stamp.id)} className={`relative border-2 rounded-lg p-2 cursor-pointer transition-all hover:bg-white group ${selectedStamp === stamp.id ? 'border-indigo-500 bg-indigo-50' : 'border-transparent bg-white shadow-sm'}`}><img src={stamp.url} className="w-full h-16 object-contain mb-1" /><p className="text-[10px] text-center font-medium truncate">{stamp.name}</p><div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-md p-0.5 backdrop-blur-sm shadow-sm"><button onClick={(e) => { e.stopPropagation(); handleDeleteStamp(stamp.id); }} className="p-1 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition" title="Xóa"><Trash2 size={12}/></button></div></div>))}{stamps.length === 0 && <p className="col-span-5 text-center text-sm text-slate-400 py-4 flex flex-col items-center gap-2"><FolderOpen size={24}/> Thư mục Sign rỗng.</p>}</div>
+                <div className="max-h-[320px] overflow-y-auto custom-scrollbar pr-2">
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
+                        {stamps.map(stamp => (
+                            <div key={stamp.id} onClick={() => setSelectedStamp(stamp.id)} className={`relative border-2 rounded-lg p-2 cursor-pointer transition-all hover:bg-white group ${selectedStamp === stamp.id ? 'border-indigo-500 bg-indigo-50' : 'border-transparent bg-white shadow-sm'}`}>
+                                <img src={stamp.url} className="w-full h-16 object-contain mb-1" />
+                                <p className="text-[10px] text-center font-medium truncate">{stamp.name}</p>
+                                <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-md p-0.5 backdrop-blur-sm shadow-sm">
+                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteStamp(stamp.id); }} className="p-1 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition" title="Xóa"><Trash2 size={12}/></button>
+                                </div>
+                            </div>
+                        ))}
+                        {stamps.length === 0 && <p className="col-span-3 md:col-span-5 text-center text-sm text-slate-400 py-4 flex flex-col items-center gap-2"><FolderOpen size={24}/> Thư mục Sign rỗng.</p>}
+                    </div>
+                </div>
             </div>
             <div className="border-t border-slate-100 pt-6">
                 {!file ? (
