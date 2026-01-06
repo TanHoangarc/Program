@@ -312,7 +312,7 @@ export interface SalaryRecord {
 export interface UserAccount {
   username: string;
   pass: string;
-  role: "Admin" | "Manager" | "Staff" | "Docs";
+  role: "Admin" | "Manager" | "Staff" | "Docs" | "Account";
 }
 
 // ============================================================

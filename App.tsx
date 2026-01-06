@@ -28,7 +28,8 @@ const DEFAULT_USERS: UserAccount[] = [
   { username: 'KimberryAdmin', pass: 'Jwckim@123#', role: 'Admin' },
   { username: 'Kimberrystaff', pass: 'Jwckim@124#', role: 'Staff' },
   { username: 'Kimberrymanager', pass: 'Jwckim@125#', role: 'Manager' },
-  { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' }
+  { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' },
+  { username: 'Accountkim', pass: 'Jwckim@123', role: 'Account' }
 ];
 
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
@@ -721,6 +722,7 @@ const App: React.FC = () => {
                 <AmisExport 
                     jobs={jobs} 
                     customers={customers} 
+                    lines={lines} // Pass lines
                     mode="thu" 
                     onUpdateJob={handleEditJob} 
                     lockedIds={lockedIds} 
@@ -733,6 +735,7 @@ const App: React.FC = () => {
                 <AmisExport 
                     jobs={jobs} 
                     customers={customers} 
+                    lines={lines} // Pass lines
                     mode="chi" 
                     onUpdateJob={handleEditJob} 
                     lockedIds={lockedIds} 
@@ -745,6 +748,7 @@ const App: React.FC = () => {
                 <AmisExport 
                     jobs={jobs} 
                     customers={customers} 
+                    lines={lines} // Pass lines
                     mode="ban" 
                     onUpdateJob={handleEditJob} 
                     lockedIds={lockedIds} 
@@ -757,6 +761,7 @@ const App: React.FC = () => {
                 <AmisExport 
                     jobs={jobs} 
                     customers={customers} 
+                    lines={lines} // Pass lines to enable supplier lookup
                     mode="mua" 
                     onUpdateJob={handleEditJob} 
                     lockedIds={lockedIds} 

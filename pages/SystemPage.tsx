@@ -328,6 +328,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                     >
                        <option value="Staff">Staff (Nhân viên)</option>
                        <option value="Docs">Docs (Chứng từ)</option>
+                       <option value="Account">Account (Kế toán)</option>
                        <option value="Manager">Manager (Quản lý)</option>
                        <option value="Admin">Admin (Quản trị)</option>
                     </select>
@@ -343,4 +344,3 @@ export const SystemPage: React.FC<SystemPageProps> = ({
     </div>
   );
 };
-

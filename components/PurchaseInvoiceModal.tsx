@@ -117,7 +117,8 @@ export const PurchaseInvoiceModal: React.FC<PurchaseInvoiceModalProps> = ({
         const totalNet = mainNet + addNet;
         const totalVat = mainVat + addVat;
 
-        const lineObj = (lines || []).find(l => l.code === booking.line);
+        // Use trim() for robust matching
+        const lineObj = (lines || []).find(l => l.code.trim() === booking.line?.trim());
         const supplierName = lineObj ? lineObj.name : booking.line;
         const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
 
@@ -142,7 +143,28 @@ export const PurchaseInvoiceModal: React.FC<PurchaseInvoiceModalProps> = ({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    setFormData(prev => {
+        const nextState = { ...prev, [name]: value };
+
+        // TỰ ĐỘNG CẬP NHẬT KHI NHẬP MÃ NHÀ CUNG CẤP
+        if (name === 'supplierCode') {
+            const normalizedCode = value.trim().toLowerCase();
+            const foundLine = (lines || []).find(l => l.code.trim().toLowerCase() === normalizedCode);
+            
+            if (foundLine) {
+                const bkId = booking?.bookingId || '';
+                // 1. Cập nhật Diễn giải đầy đủ tên công ty
+                nextState.description = `Mua hàng của ${foundLine.name} BILL ${bkId}`;
+                // 2. Cập nhật Tên hàng tương ứng (nếu có)
+                nextState.itemName = foundLine.itemName || 'Phí Local Charge';
+                // 3. Cập nhật tên nội bộ
+                nextState.supplierName = foundLine.name;
+            }
+        }
+
+        return nextState;
+    });
   };
 
   const handleDateChange = (val: string) => {

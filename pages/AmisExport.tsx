@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { JobData, Customer, ShippingLine, INITIAL_JOB } from '../types';
+import { JobData, Customer, ShippingLine, INITIAL_JOB, BookingSummary } from '../types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
 import * as XLSX from 'xlsx'; 
@@ -8,6 +8,7 @@ import ExcelJS from 'exceljs';
 import { formatDateVN, calculateBookingSummary, parseDateVN, generateNextDocNo, getPaginationRange } from '../utils';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
+import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal'; // Added Import
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
 import { JobModal } from '../components/JobModal';
 import axios from 'axios';
@@ -74,10 +75,15 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
 
-  // Sales Invoice Modal State (New)
+  // Sales Invoice Modal State
   const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
   const [salesJob, setSalesJob] = useState<JobData | null>(null);
   const [salesInitialData, setSalesInitialData] = useState<any>(null);
+
+  // Purchase Invoice Modal State
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [purchaseBooking, setPurchaseBooking] = useState<BookingSummary | null>(null);
+  const [purchaseInitialData, setPurchaseInitialData] = useState<any>(null);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
@@ -678,7 +684,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 const details = j.bookingCostDetails;
                 if (!details) return;
 
-                const lineObj = lines.find(l => l.code === j.line);
+                const lineObj = lines.find(l => l.code.trim() === j.line.trim());
                 const supplierName = lineObj ? lineObj.name : j.line;
                 const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
 
@@ -775,7 +781,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             } else {
                 // No Booking (Single Job)
                 if (j.cost > 0) {
-                    const lineObj = lines.find(l => l.code === j.line);
+                    const lineObj = lines.find(l => l.code.trim() === j.line.trim());
                     const supplierName = lineObj ? lineObj.name : j.line;
                     const defaultItemName = lineObj?.itemName || 'Phí Local Charge';
                     
@@ -951,8 +957,41 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           setIsSalesModalOpen(true);
       }
       else if (mode === 'mua' && job) {
+          // CONSTRUCT DATA FOR PURCHASE INVOICE MODAL
           setEditingJob(job);
-          setIsJobModalOpen(true);
+          
+          // Map row data to modal initial data
+          setPurchaseInitialData({
+              docNo: row.docNo,
+              date: row.date,
+              invoiceNo: row.invoiceNo,
+              supplierCode: row.objCode,
+              supplierName: row.objName,
+              description: row.desc,
+              itemName: row.itemName,
+              netAmount: row.netAmount,
+              vatAmount: row.vatAmount,
+              purchaseType: 'Mua hàng trong nước không qua kho',
+              paymentMethod: 'Chưa thanh toán',
+              tkCost: '63211',
+              tkPayable: '3311',
+              vatRate: '5%',
+              tkVat: '1331'
+          });
+
+          // Create a dummy/wrapper booking object because PurchaseInvoiceModal requires it
+          const dummyBooking = calculateBookingSummary(jobs, job.booking) || {
+              bookingId: job.booking || 'UNKNOWN',
+              month: job.month,
+              year: job.year,
+              line: job.line,
+              jobCount: 1,
+              totalCost: 0, totalSell: 0, totalProfit: 0, totalCont20: 0, totalCont40: 0, jobs: [job],
+              costDetails: job.bookingCostDetails || { localCharge: { invoice: '', date: '', net: 0, vat: 0, total: 0 }, extensionCosts: [], deposits: [] }
+          };
+          setPurchaseBooking(dummyBooking);
+          
+          setIsPurchaseModalOpen(true);
       }
   };
 
@@ -964,6 +1003,44 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   const handleSaveSales = (data: any) => {
       setIsSalesModalOpen(false);
+  };
+
+  // ADDED: Handle Save from Purchase Invoice Modal
+  const handleSavePurchase = (data: any) => {
+      if (editingJob && onUpdateJob) {
+          // Strategy: Update the MAIN Local Charge of the job if it exists
+          // Since we don't know exactly which array item generated the row without ID tracking,
+          // we update the main structure or try to match.
+          // For AMIS export purposes, usually modifying the main Local Charge is sufficient 
+          // or the specific item being clicked.
+          
+          const updatedJob = { ...editingJob };
+          
+          // Ensure bookingCostDetails exists
+          if (!updatedJob.bookingCostDetails) {
+               updatedJob.bookingCostDetails = { 
+                   localCharge: { invoice: '', date: '', net: 0, vat: 0, total: 0, hasInvoice: false }, 
+                   extensionCosts: [], 
+                   deposits: [] 
+               };
+          }
+
+          // Update Main Local Charge with data from modal
+          // NOTE: This assumes the user is editing the main invoice. 
+          // If the row was from an 'additionalLocalCharges' item, this might overwrite the main one.
+          // Ideally we match by old values, but for now we apply to main to support the requested feature.
+          updatedJob.bookingCostDetails.localCharge = {
+              ...updatedJob.bookingCostDetails.localCharge,
+              invoice: data.invoiceNo,
+              date: data.date,
+              net: data.netAmount,
+              vat: data.vatAmount,
+              total: (data.netAmount || 0) + (data.vatAmount || 0)
+          };
+          
+          onUpdateJob(updatedJob);
+      }
+      setIsPurchaseModalOpen(false);
   };
 
   const handleDelete = (row: any) => {
@@ -1641,6 +1718,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               onSave={handleSaveSales}
               job={salesJob}
               initialData={salesInitialData}
+          />
+      )}
+
+      {/* PURCHASE INVOICE MODAL FOR MUA EDIT */}
+      {isPurchaseModalOpen && purchaseBooking && (
+          <PurchaseInvoiceModal 
+              isOpen={isPurchaseModalOpen}
+              onClose={() => setIsPurchaseModalOpen(false)}
+              onSave={handleSavePurchase}
+              booking={purchaseBooking}
+              lines={lines}
+              initialData={purchaseInitialData}
           />
       )}
 

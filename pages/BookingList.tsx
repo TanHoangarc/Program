@@ -472,6 +472,7 @@ export const BookingList: React.FC<BookingListProps> = ({
              onClose={() => setPurchaseModalOpen(false)}
              booking={targetBookingForPurchase}
              onSave={handleSavePurchase}
+             lines={lines}
           />
       )}
 

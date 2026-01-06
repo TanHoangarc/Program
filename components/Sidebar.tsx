@@ -21,16 +21,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isAdminOrManager = role === 'Admin' || role === 'Manager';
   const isStaff = role === 'Staff';
   const isDocs = role === 'Docs';
+  const isAccount = role === 'Account';
 
   // Permission Logic
-  const canViewOverview = isAdminOrManager;
-  const canViewOperations = isAdminOrManager || isStaff;
-  const canViewDataPayment = isAdminOrManager || isDocs;
-  const canViewAccounting = isAdminOrManager;
-  const canViewRecon = isAdminOrManager;
-  const canViewData = isAdminOrManager || isStaff;
-  const canViewSystem = isAdminOrManager;
-  const canViewToolAI = isAdminOrManager || isStaff; // Allow staff to use Tool AI
+  const canViewOverview = isAdminOrManager; // Account excluded from overview
+  const canViewOperations = isAdminOrManager || isStaff || isAccount; // Account can view Operations
+  const canViewDataPayment = isAdminOrManager || isDocs || isAccount; // Account can view Payment/Lookup
+  const canViewAccounting = isAdminOrManager || isAccount; // Account can view Amis
+  const canViewRecon = isAdminOrManager; // Account excluded
+  const canViewData = isAdminOrManager || isStaff || isAccount; // Account can view Data
+  const canViewSystem = isAdminOrManager; // Account excluded
+  const canViewToolAI = isAdminOrManager || isStaff || isAccount; // Account can view Tool AI
   
   const canSendPending = isStaff;
 
@@ -175,7 +176,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </>
           )}
 
-          {/* OPERATIONS SECTION (Admin/Manager/Staff) */}
+          {/* OPERATIONS SECTION (Admin/Manager/Staff/Account) */}
           {canViewOperations && (
             <>
               <MenuItem 
@@ -222,16 +223,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
 
-              <MenuItem 
-                active={currentPage === 'lhk'}
-                onClick={() => handleNavigate('lhk')}
-                icon={Briefcase}
-                label="LHK Jobs"
-              />
+              {!isAccount && (
+                <MenuItem 
+                  active={currentPage === 'lhk'}
+                  onClick={() => handleNavigate('lhk')}
+                  icon={Briefcase}
+                  label="LHK Jobs"
+                />
+              )}
             </>
           )}
 
-          {/* DATA AND PAYMENT SECTION (Admin/Manager/Docs) */}
+          {/* DATA AND PAYMENT SECTION (Admin/Manager/Docs/Account) */}
           {canViewDataPayment && (
             <>
               <MenuItem 
@@ -246,16 +249,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 icon={Landmark}
                 label="Thanh Toán"
               />
-              <MenuItem 
-                active={currentPage === 'cvhc'}
-                onClick={() => handleNavigate('cvhc')}
-                icon={FileCheck}
-                label="Nộp CVHC"
-              />
+              {!isAccount && (
+                <MenuItem 
+                  active={currentPage === 'cvhc'}
+                  onClick={() => handleNavigate('cvhc')}
+                  icon={FileCheck}
+                  label="Nộp CVHC"
+                />
+              )}
             </>
           )}
 
-          {/* ACCOUNTING SECTION (Admin/Manager Only) */}
+          {/* ACCOUNTING SECTION (Admin/Manager/Account) */}
           {canViewAccounting && (
             <>
               <div>
