@@ -447,6 +447,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               paginatedJobs.map((job) => {
                 const paymentStatus = calculatePaymentStatus(job, jobs);
                 
+                // Check for missing invoices
+                const hasMissingInvoice = 
+                    (job.localChargeTotal > 0 && !job.localChargeInvoice) || 
+                    (job.extensions || []).some(ext => ext.total > 0 && !ext.invoice);
+
                 return (
                 <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
                   <td className="px-6 py-3 text-gray-600">T{job.month}/{job.year}</td>
@@ -454,7 +459,12 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                     <div className="flex items-center gap-2">
                         {job.jobCode}
                         {paymentStatus.hasMismatch && (
-                            <div title="Cảnh báo thanh toán" className="text-orange-500">
+                            <div title="Cảnh báo thanh toán (Lệch tiền)" className="text-orange-500">
+                                <AlertCircle className="w-4 h-4" />
+                            </div>
+                        )}
+                        {hasMissingInvoice && (
+                            <div title="Thiếu số hóa đơn (Local Charge / Gia hạn)" className="text-yellow-500">
                                 <AlertCircle className="w-4 h-4" />
                             </div>
                         )}
