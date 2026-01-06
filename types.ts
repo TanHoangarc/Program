@@ -286,6 +286,9 @@ export interface PaymentRequest {
 
   // Status
   status: "pending" | "completed";
+  
+  // NEW: Toggle state for Order Creation
+  isOrderCreated?: boolean;
 
   createdAt: string;
   completedAt?: string;
