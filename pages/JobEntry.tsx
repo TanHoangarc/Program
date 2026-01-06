@@ -85,7 +85,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     }
   }, [initialJobId, jobs, onClearTargetJob]);
 
-  // --- CALCULATE USED DOC NOS (For Auto-Increment) ---
+  // --- CALCULATE USED DOC NOS (For Auto-Increment in QuickReceive) ---
   const usedDocNos = useMemo(() => {
       const list: string[] = [];
       
@@ -100,8 +100,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       }
 
       // 2. From Jobs (Additional Receipts)
-      // Note: Main Job DocNos are checked automatically by the utility function via the 'jobs' array.
-      // However, additional receipts nested inside jobs are NOT checked automatically, so we collect them here.
       jobs.forEach(j => {
           if (j.additionalReceipts) {
               j.additionalReceipts.forEach(r => { if (r.docNo) list.push(r.docNo); });
@@ -118,7 +116,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleEdit = (job: JobData) => {
-    // Deep copy to ensure clean state
     setEditingJob(JSON.parse(JSON.stringify(job)));
     setIsViewMode(false);
     setIsModalOpen(true);
@@ -128,8 +125,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const handleRowClick = (job: JobData, e: React.MouseEvent) => {
     if ((e.target as Element).closest('.action-menu-container')) return;
     
-    // CRITICAL FIX: Deep copy job data to prevent "readonly" issues or reference bugs
-    // This ensures the Modal gets a completely fresh object
     try {
       const safeJob = JSON.parse(JSON.stringify(job));
       setEditingJob(safeJob);
@@ -153,7 +148,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   };
 
   const handleDelete = (id: string) => {
-    onDeleteJob(id);
+    if(window.confirm("Bạn có chắc chắn muốn xóa Job này?")) {
+        onDeleteJob(id);
+    }
     setActiveMenuId(null);
   };
 
@@ -221,6 +218,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         
         const mappedData: Partial<JobData> = {
           month: row['Tháng']?.toString() || '1',
+          year: row['Năm'] ? Number(row['Năm']) : new Date().getFullYear(),
           jobCode: rowJobCode || `IMP-${Date.now()}`,
           booking: row['Booking'] || '',
           consol: row['Consol'] || '',
@@ -253,7 +251,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             ...existingJob,
             ...mappedData,
             id: existingJob.id,
-            extensions: existingJob.extensions || [], // FIX: Ensure extensions is an array
+            extensions: existingJob.extensions || [], 
             bookingCostDetails: existingJob.bookingCostDetails
           };
           onEditJob(updatedJob);
@@ -278,14 +276,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const extTotal = (job.extensions || []).reduce((sum, ext) => sum + ext.total, 0);
       const extInvoices = (job.extensions || []).map(ext => ext.invoice).filter(Boolean).join(', ');
       return {
-        "Năm": job.year,
-        "Tháng": job.month, 
-        "Job Code": job.jobCode, 
-        "Booking": job.booking, "Consol": job.consol,
+        "Năm": job.year, "Tháng": job.month, "Job Code": job.jobCode, "Booking": job.booking, "Consol": job.consol,
         "Line": job.line, "Customer": job.customerName, "HBL": job.hbl, "Transit": job.transit,
         "Cost": job.cost, "Sell": job.sell, "Profit": job.profit, "Cont 20": job.cont20, "Cont 40": job.cont40,
         "Thu Payment (Local Charge)": job.localChargeTotal, "Invoice Thu": job.localChargeInvoice, "Ngân hàng": job.bank,
-        "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '', 
+        "Mã KH Cược": customers.find(c => c?.id === job.maKhCuocId)?.code || '',
         "Thu Cược": job.thuCuoc,
         "Ngày Thu Cược": formatDateVN(job.ngayThuCuoc),
         "Ngày Thu Hoàn": formatDateVN(job.ngayThuHoan),
@@ -300,42 +295,33 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const filteredJobs = useMemo(() => {
     let matches = jobs.filter(job => {
-      // Safe access to properties using String()
       const jCode = String(job.jobCode || '');
       const jBooking = String(job.booking || '');
       
+      const matchesYear = filterYear ? job.year === Number(filterYear) : true;
       const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
       const matchesLine = filterLine ? job.line === filterLine : true;
-      const matchesYear = filterYear ? job.year === Number(filterYear) : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
       const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
       const matchesBooking = filterBooking ? jBooking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
-      return matchesJobCode && matchesLine && matchesYear && matchesMonth && matchesCustomer && matchesBooking;
+      return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking && matchesYear;
     });
 
-    // Sort: Month Descending -> Booking Ascending
     return matches.sort((a, b) => {
-      // 1. Year Descending
       const yearDiff = (b.year || 0) - (a.year || 0);
       if (yearDiff !== 0) return yearDiff;
-
-      // 2. Month Descending
       const monthDiff = Number(b.month) - Number(a.month);
       if (monthDiff !== 0) return monthDiff;
-      
-      // 3. Booking Ascending (Group jobs by booking)
       const bookingA = String(a.booking || '').toLowerCase();
       const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterJobCode, filterLine, filterYear, filterMonth, filterCustomer, filterBooking]);
+  }, [jobs, filterJobCode, filterLine, filterMonth, filterYear, filterCustomer, filterBooking]);
 
-  // Pagination Logic
   const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
   const paginatedJobs = filteredJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const paginationRange = getPaginationRange(currentPage, totalPages);
 
-  // Totals Calculation (Based on Filtered Data)
   const totals = useMemo(() => {
     return filteredJobs.reduce((acc, job) => ({
       cost: acc.cost + job.cost,
@@ -347,7 +333,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   }, [filteredJobs]);
 
   const clearFilters = () => {
-    setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterYear(new Date().getFullYear().toString()); setFilterCustomer(''); setFilterBooking('');
+    setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterCustomer(''); setFilterBooking(''); setFilterYear(new Date().getFullYear().toString());
   };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -447,10 +433,15 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               paginatedJobs.map((job) => {
                 const paymentStatus = calculatePaymentStatus(job, jobs);
                 
-                // Check for missing invoices
-                const hasMissingInvoice = 
-                    (job.localChargeTotal > 0 && !job.localChargeInvoice) || 
-                    (job.extensions || []).some(ext => ext.total > 0 && !ext.invoice);
+                const custName = (job.customerName || '').toUpperCase();
+                const isLongHoang = custName.includes('LONG HOANG') || custName.includes('LONGHOANG') || custName.includes('LHK');
+
+                // Missing Invoice Logic:
+                // Show warning if NOT Long Hoang AND (has LC Amount but no invoice OR has Ext Amount but no invoice)
+                const hasMissingInvoice = !isLongHoang && (
+                    (job.localChargeTotal > 0 && !job.localChargeInvoice) ||
+                    (job.extensions || []).some(ext => ext.total > 0 && !ext.invoice)
+                );
 
                 return (
                 <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
@@ -611,6 +602,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onViewBookingDetails={handleViewBookingDetails} 
           isViewMode={isViewMode} 
           onSwitchToEdit={() => setIsViewMode(false)} 
+          existingJobs={jobs}
           onAddCustomer={onAddCustomer}
         />
       )}
@@ -624,9 +616,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             job={quickReceiveJob} 
             mode={quickReceiveMode} 
             customers={customers} 
-            onAddCustomer={onAddCustomer} 
-            allJobs={jobs} 
-            usedDocNos={usedDocNos} 
+            allJobs={jobs}
+            usedDocNos={usedDocNos}
+            onAddCustomer={onAddCustomer}
         />
       )}
     </div>
