@@ -479,7 +479,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                              paymentBank: 'Ngân hàng TMCP Quân đội',
                              currency: 'VND', 
                              description: ext.amisDesc, 
-                             tkNo: '13111', 
+                             tkNo: '3311', 
                              tkCo: '1121',
                         });
                     }
@@ -511,7 +511,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                          paymentBank: 'Ngân hàng TMCP Quân đội',
                          currency: 'VND', 
                          description: j.amisExtensionPaymentDesc, 
-                         tkNo: '13111', 
+                         tkNo: '3311', 
                          tkCo: '1121',
                     });
                  }
@@ -543,7 +543,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                      paymentBank: 'Ngân hàng TMCP Quân đội',
                      currency: 'VND', 
                      description: j.amisDepositRefundDesc, 
-                     tkNo: '1388', 
+                     tkNo: '3311', 
                      tkCo: '1121',
                 });
             }
