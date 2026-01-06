@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search, Check
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search, Check, FileCheck, FileText
 } from 'lucide-react';
 import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
@@ -249,6 +249,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       type, // Selected Type
       createdAt: new Date().toISOString(),
       status: "pending",
+      isOrderCreated: false, // Default is NOT created
 
       invoiceFileName: uploaded?.fileName ?? "",
       invoicePath: uploaded?.serverPath ?? "",
@@ -282,6 +283,28 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     setIsUploading(false);
+  };
+
+  // ============================================================
+  // TOGGLE ORDER STATUS
+  // ============================================================
+  const toggleOrderCreated = (id: string) => {
+      const updated = requests.map(r => 
+          r.id === id ? { ...r, isOrderCreated: !r.isOrderCreated } : r
+      );
+      onUpdateRequests(updated);
+      
+      // Auto sync update for Docs/Admin
+      if (['Docs', 'Admin', 'Manager'].includes(currentUser?.role || '') && onSendPending) {
+          const payload = {
+              user: currentUser.username,
+              timestamp: new Date().toISOString(),
+              autoApprove: true,
+              paymentRequests: updated,
+              jobs: [], customers: [], lines: []
+          };
+          onSendPending(payload).catch(err => console.error("Toggle Order Status sync failed", err));
+      }
   };
 
   // ============================================================
@@ -874,6 +897,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                 <th className="px-6 py-3 text-right">Số tiền</th>
                 <th className="px-6 py-3 text-center">Loại chi</th>
                 <th className="px-6 py-3 text-center">File</th>
+                <th className="px-6 py-3 text-center">Trạng thái lệnh</th>
                 <th className="px-6 py-3 text-center">Chức năng</th>
               </tr>
             </thead>
@@ -930,6 +954,27 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                     <div className="text-[9px] text-slate-400 mt-1 max-w-[150px] mx-auto truncate">
                       {req.invoiceFileName}
                     </div>
+                  </td>
+
+                  {/* TOGGLE ORDER STATUS */}
+                  <td className="px-6 py-4 text-center">
+                      <button 
+                          onClick={() => toggleOrderCreated(req.id)}
+                          className={`
+                              flex items-center justify-center mx-auto px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border
+                              ${req.isOrderCreated 
+                                  ? 'bg-blue-800 text-white border-blue-900 hover:bg-blue-700' 
+                                  : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                              }
+                          `}
+                          title={req.isOrderCreated ? "Click để đánh dấu là chưa tạo" : "Click để đánh dấu là đã tạo"}
+                      >
+                          {req.isOrderCreated ? (
+                              <><FileCheck className="w-3.5 h-3.5 mr-1" /> Đã tạo lệnh</>
+                          ) : (
+                              <><FileText className="w-3.5 h-3.5 mr-1" /> Chưa tạo lệnh</>
+                          )}
+                      </button>
                   </td>
 
                   <td className="px-6 py-4 text-center">
