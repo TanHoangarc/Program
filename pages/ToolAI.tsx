@@ -6,13 +6,11 @@ import {
   Plus, Check, X, Loader, ChevronLeft, ChevronRight, MousePointer,
   Crop, Layers, Wand2, RefreshCw, Eraser, Palette, Droplets, Split,
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
-  ArrowLeft, ShieldCheck, Key
+  ArrowLeft, ShieldCheck, Key, Zap
 } from 'lucide-react';
 import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsMod from 'pdfjs-dist';
-// REMOVED DIRECT GOOGLE SDK IMPORT TO USE BACKEND PROXY
-// import { GoogleGenAI } from "@google/genai";
 import axios from 'axios';
 
 // Fix for pdfjs-dist import structure
@@ -1045,38 +1043,66 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
         else if (type === 'ai') {
              try {
                 // PRIORITIZE Custom Key entered by user, then Env Key
+                // NOTE: If Custom Key is entered, we switch to DIRECT CLIENT CALL to bypass Backend Proxy errors.
                 const apiKey = customApiKey || process.env.API_KEY;
+                const useDirectCall = !!customApiKey; 
                 
                 if (!apiKey) {
                     throw new Error("KEY_MISSING");
                 }
 
                 const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
+                const promptText = "Restore the stamp and handwritten signature in this image. Remove any machine-printed text overlaying them. Do NOT remove handwritten signatures. Keep the white background. Do not make the background transparent. Return the image of the restored stamp and signature.";
                 
-                // --- UPDATE: CALL BACKEND PROXY INSTEAD OF DIRECT GOOGLE CALL ---
-                const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
-                    apiKey: apiKey,
-                    model: "gemini-3-pro-image-preview",
-                    contents: {
-                        parts: [
-                            { inlineData: { mimeType: "image/png", data: base64Image } },
-                            { text: "Restore the stamp and handwritten signature in this image. Remove any machine-printed text overlaying them. Do NOT remove handwritten signatures. Keep the white background. Do not make the background transparent. Return the image of the restored stamp and signature." }
-                        ]
-                    },
-                    config: {
-                        // Optional config
-                    }
-                });
-                
-                // Backend returns the full response object
-                const aiResponse = response.data;
+                let aiResponse;
+
+                if (useDirectCall) {
+                     // === DIRECT CALL TO GOOGLE (Client-Side) ===
+                     // This fixes the issue where deployed backend doesn't have the updated code.
+                     // Using gemini-1.5-flash for better stability and lower restrictions.
+                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                         method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                         body: JSON.stringify({
+                             contents: [{
+                                 parts: [
+                                     { inline_data: { mime_type: "image/png", data: base64Image } },
+                                     { text: promptText }
+                                 ]
+                             }]
+                         })
+                     });
+                     
+                     if (!response.ok) {
+                         const errText = await response.text();
+                         throw new Error(`Direct Google API Error (${response.status}): ${errText}`);
+                     }
+                     aiResponse = await response.json();
+
+                } else {
+                    // === BACKEND PROXY CALL ===
+                    const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
+                        apiKey: apiKey,
+                        model: "gemini-3-pro-image-preview", // Use configured model on backend
+                        contents: {
+                            parts: [
+                                { inlineData: { mimeType: "image/png", data: base64Image } },
+                                { text: promptText }
+                            ]
+                        }
+                    });
+                    aiResponse = response.data;
+                }
                 
                 let foundImage = false;
                 if (aiResponse.candidates && aiResponse.candidates[0].content && aiResponse.candidates[0].content.parts) {
                     for (const part of aiResponse.candidates[0].content.parts) {
-                        if (part.inlineData) {
+                        if (part.inlineData || part.inline_data) {
+                            const inline = part.inlineData || part.inline_data;
+                            const mimeType = inline.mimeType || inline.mime_type;
+                            
                             const img = new window.Image();
-                            img.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            img.src = `data:${mimeType};base64,${inline.data}`;
                             await new Promise((resolve) => { img.onload = resolve; });
                             
                             const resCanvas = document.createElement('canvas');
@@ -1095,6 +1121,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                 }
                 
                 if (!foundImage) throw new Error("AI response did not contain an image.");
+
              } catch (e: any) {
                  console.error("AI Error:", e);
                  setIsProcessing(false); // Ensure loading stops
@@ -1109,13 +1136,13 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                          msg = "Hết hạn mức sử dụng (429). Key mặc định đã hết quota. Vui lòng nhập Key riêng của bạn vào ô bên dưới.";
                      }
                      else if (msg.includes("403")) {
-                         msg = "API Key không hợp lệ (403). Kiểm tra lại key trong Vercel Settings.";
+                         msg = "API Key không hợp lệ (403). Kiểm tra Key và cài đặt Restrictions (chọn None hoặc thêm Domain).";
                      }
                      else if (msg.includes("404")) {
                          msg = "Model không tồn tại (404).";
                      }
                      else if (msg.includes("500")) {
-                         msg = "Lỗi máy chủ Google (500). Hệ thống đang bận hoặc ảnh quá phức tạp. Vui lòng thử lại sau vài giây hoặc kiểm tra Key.";
+                         msg = "Lỗi máy chủ Google (500). Hệ thống đang bận hoặc ảnh quá phức tạp. Vui lòng thử lại sau vài giây.";
                      }
 
                      setErrorMsg(`Lỗi AI: ${msg}`);
@@ -1239,7 +1266,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                              {/* CUSTOM API KEY INPUT */}
                              <div className="mb-4">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                                    <Key size={10} /> API Key (Tùy chọn)
+                                    <Key size={10} /> API Key Cá Nhân (Bypass Backend)
                                 </label>
                                 <input
                                     type="password"
@@ -1248,9 +1275,14 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                                     placeholder="Dán Google Gemini API Key vào đây..."
                                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
                                 />
-                                <p className="text-[9px] text-slate-400 mt-1 italic">
-                                    Nếu gặp lỗi 429 (Hết hạn mức), hãy nhập Key riêng để dùng tiếp.
-                                </p>
+                                <div className="mt-2 text-[9px] text-slate-500 italic bg-blue-50 p-2 rounded border border-blue-100 flex gap-1">
+                                    <Zap size={12} className="text-blue-500 shrink-0 mt-0.5" />
+                                    <span>
+                                        Nếu nhập key ở đây, hệ thống sẽ kết nối trực tiếp đến Google từ trình duyệt (dùng model Flash nhanh hơn), giúp tránh lỗi khi deploy. 
+                                        <br/>
+                                        <strong>Lưu ý:</strong> Trên Google Cloud, Key này cần đặt "Application restrictions" là <strong>None</strong> hoặc thêm domain Vercel vào "Websites".
+                                    </span>
+                                </div>
                              </div>
 
                              <div className="space-y-3">
