@@ -6,7 +6,7 @@ import {
   Plus, Check, X, Loader, ChevronLeft, ChevronRight, MousePointer,
   Crop, Layers, Wand2, RefreshCw, Eraser, Palette, Droplets, Split,
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
-  ArrowLeft, ShieldCheck, Key, Zap
+  ArrowLeft, ShieldCheck, Key, Zap, Settings
 } from 'lucide-react';
 import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -31,6 +31,14 @@ interface StampItem {
     name: string;
     created?: number;
 }
+
+// --- CONSTANTS ---
+const AI_MODELS = [
+    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Khuyên dùng)' },
+    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (Ổn định)' },
+    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (Thông minh)' },
+    { value: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B (Nhanh)' }
+];
 
 // --- Helper: Trim Whitespace/Transparency ---
 const trimCanvas = (sourceCanvas: HTMLCanvasElement): HTMLCanvasElement => {
@@ -925,6 +933,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     const [saturation, setSaturation] = useState(1);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [customApiKey, setCustomApiKey] = useState('');
+    const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash-exp');
 
     useEffect(() => { setSelection(null); setBaseImage(null); setResultImage(null); setErrorMsg(null); }, [page, file]);
 
@@ -1043,8 +1052,8 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
         else if (type === 'ai') {
              try {
                 // PRIORITIZE Custom Key entered by user, then Env Key
-                // NOTE: If Custom Key is entered, we switch to DIRECT CLIENT CALL to bypass Backend Proxy errors.
-                const apiKey = customApiKey || process.env.API_KEY;
+                // TRIM API KEY TO AVOID WHITESPACE ISSUES
+                const apiKey = (customApiKey || process.env.API_KEY || '').trim();
                 const useDirectCall = !!customApiKey; 
                 
                 if (!apiKey) {
@@ -1058,9 +1067,9 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
 
                 if (useDirectCall) {
                      // === DIRECT CALL TO GOOGLE (Client-Side) ===
-                     // This fixes the issue where deployed backend doesn't have the updated code.
-                     // Using gemini-1.5-flash for better stability and lower restrictions.
-                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                     // Use selected model
+                     const modelToUse = selectedModel || 'gemini-1.5-flash';
+                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
                          method: 'POST',
                          headers: { 'Content-Type': 'application/json' },
                          body: JSON.stringify({
@@ -1075,15 +1084,16 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                      
                      if (!response.ok) {
                          const errText = await response.text();
-                         throw new Error(`Direct Google API Error (${response.status}): ${errText}`);
+                         throw new Error(`Direct Google API Error (${response.status}) on model ${modelToUse}: ${errText}`);
                      }
                      aiResponse = await response.json();
 
                 } else {
                     // === BACKEND PROXY CALL ===
+                    // Use selected model, default to 1.5 flash if unspecified
                     const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
                         apiKey: apiKey,
-                        model: "gemini-3-pro-image-preview", // Use configured model on backend
+                        model: selectedModel || "gemini-1.5-flash", // Use selected model instead of hardcoded 3-pro
                         contents: {
                             parts: [
                                 { inlineData: { mimeType: "image/png", data: base64Image } },
@@ -1120,7 +1130,10 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                     }
                 }
                 
-                if (!foundImage) throw new Error("AI response did not contain an image.");
+                if (!foundImage) {
+                    console.warn("AI Response Candidates:", aiResponse.candidates);
+                    throw new Error("AI trả về kết quả nhưng không tìm thấy hình ảnh (inlineData). Có thể Model này chỉ trả về text.");
+                }
 
              } catch (e: any) {
                  console.error("AI Error:", e);
@@ -1133,16 +1146,16 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                      
                      // Check for common error codes in the string
                      if (msg.includes("429") || (msg.includes("quota") && msg.includes("exceeded"))) {
-                         msg = "Hết hạn mức sử dụng (429). Key mặc định đã hết quota. Vui lòng nhập Key riêng của bạn vào ô bên dưới.";
+                         msg = "Hết hạn mức sử dụng (429). Key mặc định đã hết quota. Vui lòng nhập Key riêng của bạn.";
                      }
                      else if (msg.includes("403")) {
-                         msg = "API Key không hợp lệ (403). Kiểm tra Key và cài đặt Restrictions (chọn None hoặc thêm Domain).";
+                         msg = "API Key không hợp lệ (403). Kiểm tra Key và cài đặt Restrictions.";
                      }
                      else if (msg.includes("404")) {
-                         msg = "Model không tồn tại (404).";
+                         msg = `Model '${selectedModel}' không tìm thấy (404). Hãy thử chọn Model khác.`;
                      }
                      else if (msg.includes("500")) {
-                         msg = "Lỗi máy chủ Google (500). Hệ thống đang bận hoặc ảnh quá phức tạp. Vui lòng thử lại sau vài giây.";
+                         msg = "Lỗi máy chủ Google (500). Hệ thống đang bận. Vui lòng thử lại sau.";
                      }
 
                      setErrorMsg(`Lỗi AI: ${msg}`);
@@ -1264,24 +1277,41 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                              )}
 
                              {/* CUSTOM API KEY INPUT */}
-                             <div className="mb-4">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                                    <Key size={10} /> API Key Cá Nhân (Bypass Backend)
-                                </label>
-                                <input
-                                    type="password"
-                                    value={customApiKey}
-                                    onChange={(e) => setCustomApiKey(e.target.value)}
-                                    placeholder="Dán Google Gemini API Key vào đây..."
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
-                                />
-                                <div className="mt-2 text-[9px] text-slate-500 italic bg-blue-50 p-2 rounded border border-blue-100 flex gap-1">
-                                    <Zap size={12} className="text-blue-500 shrink-0 mt-0.5" />
-                                    <span>
-                                        Nếu nhập key ở đây, hệ thống sẽ kết nối trực tiếp đến Google từ trình duyệt (dùng model Flash nhanh hơn), giúp tránh lỗi khi deploy. 
-                                        <br/>
-                                        <strong>Lưu ý:</strong> Trên Google Cloud, Key này cần đặt "Application restrictions" là <strong>None</strong> hoặc thêm domain Vercel vào "Websites".
-                                    </span>
+                             <div className="mb-4 space-y-3">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                        <Settings size={10} /> Model AI (Chọn nếu lỗi 404)
+                                    </label>
+                                    <select 
+                                        value={selectedModel}
+                                        onChange={(e) => setSelectedModel(e.target.value)}
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                                    >
+                                        {AI_MODELS.map(m => (
+                                            <option key={m.value} value={m.value}>{m.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                        <Key size={10} /> API Key Cá Nhân (Bypass Backend)
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={customApiKey}
+                                        onChange={(e) => setCustomApiKey(e.target.value)}
+                                        placeholder="Dán Google Gemini API Key vào đây..."
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
+                                    />
+                                    <div className="mt-2 text-[9px] text-slate-500 italic bg-blue-50 p-2 rounded border border-blue-100 flex gap-1">
+                                        <Zap size={12} className="text-blue-500 shrink-0 mt-0.5" />
+                                        <span>
+                                            Nếu nhập key ở đây, hệ thống sẽ kết nối trực tiếp đến Google bằng Model đã chọn ở trên.
+                                            <br/>
+                                            <strong>Lưu ý:</strong> Trên Google Cloud, Key này cần đặt "Application restrictions" là <strong>None</strong> hoặc thêm domain Vercel vào "Websites".
+                                        </span>
+                                    </div>
                                 </div>
                              </div>
 
