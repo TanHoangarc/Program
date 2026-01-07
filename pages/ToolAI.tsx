@@ -11,7 +11,8 @@ import {
 import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsMod from 'pdfjs-dist';
-import { GoogleGenAI } from "@google/genai";
+// REMOVED DIRECT GOOGLE SDK IMPORT TO USE BACKEND PROXY
+// import { GoogleGenAI } from "@google/genai";
 import axios from 'axios';
 
 // Fix for pdfjs-dist import structure
@@ -1051,10 +1052,10 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                 }
 
                 const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
-                const ai = new GoogleGenAI({ apiKey: apiKey });
                 
-                // --- UPDATE: Use gemini-3-pro-image-preview for Pro quality ---
-                const response = await ai.models.generateContent({
+                // --- UPDATE: CALL BACKEND PROXY INSTEAD OF DIRECT GOOGLE CALL ---
+                const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
+                    apiKey: apiKey,
                     model: "gemini-3-pro-image-preview",
                     contents: {
                         parts: [
@@ -1063,14 +1064,16 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                         ]
                     },
                     config: {
-                        // Optional: Ensure response is image
-                        // imageConfig: { imageSize: "1K" } // 3-pro supports this if needed, but default is usually fine
+                        // Optional config
                     }
                 });
                 
+                // Backend returns the full response object
+                const aiResponse = response.data;
+                
                 let foundImage = false;
-                if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
-                    for (const part of response.candidates[0].content.parts) {
+                if (aiResponse.candidates && aiResponse.candidates[0].content && aiResponse.candidates[0].content.parts) {
+                    for (const part of aiResponse.candidates[0].content.parts) {
                         if (part.inlineData) {
                             const img = new window.Image();
                             img.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -1099,7 +1102,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                  if (e.message === 'KEY_MISSING') {
                      setErrorMsg("API Key Missing");
                  } else {
-                     let msg = e.message || e.toString();
+                     let msg = e.response?.data?.error || e.message || e.toString();
                      
                      // Check for common error codes in the string
                      if (msg.includes("429") || (msg.includes("quota") && msg.includes("exceeded"))) {
@@ -1113,21 +1116,6 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                      }
                      else if (msg.includes("500")) {
                          msg = "Lỗi máy chủ Google (500). Hệ thống đang bận hoặc ảnh quá phức tạp. Vui lòng thử lại sau vài giây hoặc kiểm tra Key.";
-                     }
-                     // Try to parse cleaner message from JSON if it looks like JSON
-                     else if (msg.includes('{"error":')) {
-                         try {
-                             // Attempt to extract json object
-                             const match = msg.match(/\{"error":.*\}/);
-                             if (match) {
-                                 const parsed = JSON.parse(match[0]);
-                                 if (parsed.error?.message) {
-                                     msg = parsed.error.message;
-                                 }
-                             }
-                         } catch (err) {
-                             // ignore parsing error
-                         }
                      }
 
                      setErrorMsg(`Lỗi AI: ${msg}`);
