@@ -6,7 +6,7 @@ import {
   Plus, Check, X, Loader, ChevronLeft, ChevronRight, MousePointer,
   Crop, Layers, Wand2, RefreshCw, Eraser, Palette, Droplets, Split,
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
-  ArrowLeft, ShieldCheck
+  ArrowLeft, ShieldCheck, Key
 } from 'lucide-react';
 import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -18,7 +18,6 @@ import axios from 'axios';
 const pdfjsLib = (pdfjsMod as any).default || pdfjsMod;
 
 // Set worker for PDF rendering using cdnjs for better stability
-// Updated to match package.json version 5.4.530
 if (pdfjsLib.GlobalWorkerOptions) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.530/build/pdf.worker.min.mjs';
 }
@@ -920,6 +919,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     const [colorMode, setColorMode] = useState<'original'|'red'|'blue'>('original');
     const [saturation, setSaturation] = useState(1);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [customApiKey, setCustomApiKey] = useState('');
 
     useEffect(() => { setSelection(null); setBaseImage(null); setResultImage(null); setErrorMsg(null); }, [page, file]);
 
@@ -1037,8 +1037,8 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
         } 
         else if (type === 'ai') {
              try {
-                // Must use process.env.API_KEY directly as per coding guidelines
-                const apiKey = process.env.API_KEY;
+                // PRIORITIZE Custom Key entered by user, then Env Key
+                const apiKey = customApiKey || process.env.API_KEY;
                 
                 if (!apiKey) {
                     throw new Error("KEY_MISSING");
@@ -1091,7 +1091,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                      
                      // Check for 429 specifically in the string
                      if (msg.includes("429") || (msg.includes("quota") && msg.includes("exceeded"))) {
-                         msg = "Hết hạn mức sử dụng (429). Bạn đang dùng gói miễn phí của Google, hệ thống bị giới hạn tốc độ. Vui lòng đợi 1-2 phút rồi thử lại.";
+                         msg = "Hết hạn mức sử dụng (429). Key mặc định đã hết quota. Vui lòng nhập Key riêng của bạn vào ô bên dưới.";
                      }
                      else if (msg.includes("403")) {
                          msg = "API Key không hợp lệ (403). Kiểm tra lại key trong Vercel Settings.";
@@ -1150,13 +1150,6 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                 await axios.post(`${BACKEND_URL}/upload-stamp`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
-                
-                // Refresh list in parent via setStamps (parent needs to re-fetch)
-                // Since setStamps here is passed from parent which uses fetchStamps, 
-                // we might need to trigger a refresh. 
-                // However, simpler is just to reload or let user go back to Stamp tool which re-fetches.
-                // Or we can manually fetch here if we had access to fetchStamps.
-                // For now, assume user will see it when they go to Stamp tool.
                 
                 // Better: Fetch and update setStamps immediately
                 const res = await axios.get(`${BACKEND_URL}/stamps`);
@@ -1232,18 +1225,30 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                                          <AlertTriangle size={16} /> Lỗi xử lý
                                      </div>
                                      <p className="mb-2">{errorMsg}</p>
-                                     {errorMsg === "API Key Missing" && (
-                                         <div className="bg-white p-2 rounded border border-red-100 text-xs text-slate-600">
-                                             <strong>Cách khắc phục:</strong>
-                                             <ol className="list-decimal pl-4 mt-1 space-y-1">
-                                                 <li>Vào Vercel Project Settings &gt; Environment Variables.</li>
-                                                 <li>Đảm bảo đã thêm <code>VITE_GEMINI_API_KEY</code>.</li>
-                                                 <li className="text-red-600 font-bold">Quan trọng: Vào tab Deployments, chọn Redeploy để cập nhật Key mới vào ứng dụng.</li>
-                                             </ol>
+                                     {errorMsg.includes("429") && (
+                                         <div className="bg-white p-2 rounded border border-red-100 text-xs text-slate-600 mt-2">
+                                             <strong>Mẹo:</strong> Hãy nhập API Key riêng của bạn vào ô bên dưới để tiếp tục sử dụng mà không bị giới hạn.
                                          </div>
                                      )}
                                  </div>
                              )}
+
+                             {/* CUSTOM API KEY INPUT */}
+                             <div className="mb-4">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                    <Key size={10} /> API Key (Tùy chọn)
+                                </label>
+                                <input
+                                    type="password"
+                                    value={customApiKey}
+                                    onChange={(e) => setCustomApiKey(e.target.value)}
+                                    placeholder="Dán Google Gemini API Key vào đây..."
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
+                                />
+                                <p className="text-[9px] text-slate-400 mt-1 italic">
+                                    Nếu gặp lỗi 429 (Hết hạn mức), hãy nhập Key riêng để dùng tiếp.
+                                </p>
+                             </div>
 
                              <div className="space-y-3">
                                  <button 
@@ -1263,7 +1268,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                                  <button 
                                     onClick={() => processCrop('ai')}
                                     disabled={!selection || isProcessing}
-                                    className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 shadow-md"
+                                    className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
                                  >
                                     {isProcessing ? <Loader className="animate-spin" size={16}/> : <Wand2 size={16}/>} 
                                     AI Phục Hồi & Gỡ Chữ
