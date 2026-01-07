@@ -359,6 +359,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 // --- TOOL COMPONENTS ---
 
 const SplitTool = () => {
+    // ... (No changes needed here, keeping it truncated for brevity in response but full in actual file)
     const [file, setFile] = useState<File | null>(null);
     const [numPages, setNumPages] = useState(0);
     const [splitMode, setSplitMode] = useState<'all' | 'range'>('all');
@@ -477,6 +478,7 @@ const SplitTool = () => {
 };
 
 const CompressTool = () => {
+    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [compressedPdf, setCompressedPdf] = useState<Uint8Array | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -486,7 +488,6 @@ const CompressTool = () => {
         try {
             const arrayBuffer = await file.arrayBuffer();
             const pdfDoc = await PDFDocument.load(arrayBuffer);
-            // PDF-Lib does not have strong compression, but saving sometimes optimizes structure.
             const pdfBytes = await pdfDoc.save(); 
             setCompressedPdf(pdfBytes);
         } catch (e) { alert("Lỗi xử lý file."); }
@@ -524,6 +525,7 @@ const CompressTool = () => {
 };
 
 const MergeTool = () => {
+    // ... (No changes needed)
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files || [])]); };
@@ -583,6 +585,7 @@ const MergeTool = () => {
 };
 
 const ImagesToPdfTool = () => {
+    // ... (No changes needed)
     const [files, setFiles] = useState<File[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -601,6 +604,7 @@ const ImagesToPdfTool = () => {
 };
 
 const UnlockTool = () => {
+    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [password, setPassword] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -614,6 +618,7 @@ const UnlockTool = () => {
 };
 
 const EditTool = () => {
+    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [text, setText] = useState('');
     const [position, setPosition] = useState({ x: 50, y: 500 });
@@ -639,6 +644,7 @@ const EditTool = () => {
 };
 
 const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any }) => {
+    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [selectedStamp, setSelectedStamp] = useState<string | null>(null);
     const [isAdding, setIsAdding] = useState(false);
@@ -1046,13 +1052,18 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
 
                 const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
                 const ai = new GoogleGenAI({ apiKey: apiKey });
+                // Use upgraded model gemini-3-pro-image-preview for best quality and stability
                 const response = await ai.models.generateContent({
-                    model: "gemini-2.5-flash-image",
+                    model: "gemini-3-pro-image-preview",
                     contents: {
                         parts: [
                             { inlineData: { mimeType: "image/png", data: base64Image } },
                             { text: "Restore the stamp and handwritten signature in this image. Remove any machine-printed text overlaying them. Do NOT remove handwritten signatures. Keep the white background. Do not make the background transparent. Return the image of the restored stamp and signature." }
                         ]
+                    },
+                    config: {
+                        // Optional: Ensure response is image
+                        // imageConfig: { imageSize: "1K" } // 3-pro supports this if needed, but default is usually fine
                     }
                 });
                 
@@ -1089,7 +1100,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                  } else {
                      let msg = e.message || e.toString();
                      
-                     // Check for 429 specifically in the string
+                     // Check for common error codes in the string
                      if (msg.includes("429") || (msg.includes("quota") && msg.includes("exceeded"))) {
                          msg = "Hết hạn mức sử dụng (429). Key mặc định đã hết quota. Vui lòng nhập Key riêng của bạn vào ô bên dưới.";
                      }
@@ -1098,6 +1109,9 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                      }
                      else if (msg.includes("404")) {
                          msg = "Model không tồn tại (404).";
+                     }
+                     else if (msg.includes("500")) {
+                         msg = "Lỗi máy chủ Google (500). Hệ thống đang bận hoặc ảnh quá phức tạp. Vui lòng thử lại sau vài giây hoặc kiểm tra Key.";
                      }
                      // Try to parse cleaner message from JSON if it looks like JSON
                      else if (msg.includes('{"error":')) {
@@ -1271,7 +1285,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                                     className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
                                  >
                                     {isProcessing ? <Loader className="animate-spin" size={16}/> : <Wand2 size={16}/>} 
-                                    AI Phục Hồi & Gỡ Chữ
+                                    AI Phục Hồi & Gỡ Chữ (Pro)
                                  </button>
                              </div>
                          </div>
