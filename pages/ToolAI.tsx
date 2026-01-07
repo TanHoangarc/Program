@@ -1052,7 +1052,8 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
 
                 const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
                 const ai = new GoogleGenAI({ apiKey: apiKey });
-                // Use upgraded model gemini-3-pro-image-preview for best quality and stability
+                
+                // --- UPDATE: Use gemini-3-pro-image-preview for Pro quality ---
                 const response = await ai.models.generateContent({
                     model: "gemini-3-pro-image-preview",
                     contents: {
