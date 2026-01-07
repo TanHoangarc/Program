@@ -6,11 +6,13 @@ import {
   Plus, Check, X, Loader, ChevronLeft, ChevronRight, MousePointer,
   Crop, Layers, Wand2, RefreshCw, Eraser, Palette, Droplets, Split,
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
-  ArrowLeft, ShieldCheck, Key, Zap, Settings
+  ArrowLeft, ShieldCheck, Key
 } from 'lucide-react';
 import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsMod from 'pdfjs-dist';
+// REMOVED DIRECT GOOGLE SDK IMPORT TO USE BACKEND PROXY
+// import { GoogleGenAI } from "@google/genai";
 import axios from 'axios';
 
 // Fix for pdfjs-dist import structure
@@ -31,14 +33,6 @@ interface StampItem {
     name: string;
     created?: number;
 }
-
-// --- CONSTANTS ---
-const AI_MODELS = [
-    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Khuyên dùng)' },
-    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (Ổn định)' },
-    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (Thông minh)' },
-    { value: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B (Nhanh)' }
-];
 
 // --- Helper: Trim Whitespace/Transparency ---
 const trimCanvas = (sourceCanvas: HTMLCanvasElement): HTMLCanvasElement => {
@@ -933,7 +927,6 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     const [saturation, setSaturation] = useState(1);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [customApiKey, setCustomApiKey] = useState('');
-    const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash-exp');
 
     useEffect(() => { setSelection(null); setBaseImage(null); setResultImage(null); setErrorMsg(null); }, [page, file]);
 
@@ -1052,67 +1045,38 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
         else if (type === 'ai') {
              try {
                 // PRIORITIZE Custom Key entered by user, then Env Key
-                // TRIM API KEY TO AVOID WHITESPACE ISSUES
-                const apiKey = (customApiKey || process.env.API_KEY || '').trim();
-                const useDirectCall = !!customApiKey; 
+                const apiKey = customApiKey || process.env.API_KEY;
                 
                 if (!apiKey) {
                     throw new Error("KEY_MISSING");
                 }
 
                 const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
-                const promptText = "Restore the stamp and handwritten signature in this image. Remove any machine-printed text overlaying them. Do NOT remove handwritten signatures. Keep the white background. Do not make the background transparent. Return the image of the restored stamp and signature.";
                 
-                let aiResponse;
-
-                if (useDirectCall) {
-                     // === DIRECT CALL TO GOOGLE (Client-Side) ===
-                     // Use selected model
-                     const modelToUse = selectedModel || 'gemini-1.5-flash';
-                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
-                         method: 'POST',
-                         headers: { 'Content-Type': 'application/json' },
-                         body: JSON.stringify({
-                             contents: [{
-                                 parts: [
-                                     { inline_data: { mime_type: "image/png", data: base64Image } },
-                                     { text: promptText }
-                                 ]
-                             }]
-                         })
-                     });
-                     
-                     if (!response.ok) {
-                         const errText = await response.text();
-                         throw new Error(`Direct Google API Error (${response.status}) on model ${modelToUse}: ${errText}`);
-                     }
-                     aiResponse = await response.json();
-
-                } else {
-                    // === BACKEND PROXY CALL ===
-                    // Use selected model, default to 1.5 flash if unspecified
-                    const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
-                        apiKey: apiKey,
-                        model: selectedModel || "gemini-1.5-flash", // Use selected model instead of hardcoded 3-pro
-                        contents: {
-                            parts: [
-                                { inlineData: { mimeType: "image/png", data: base64Image } },
-                                { text: promptText }
-                            ]
-                        }
-                    });
-                    aiResponse = response.data;
-                }
+                // --- UPDATE: CALL BACKEND PROXY INSTEAD OF DIRECT GOOGLE CALL ---
+                const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
+                    apiKey: apiKey,
+                    model: "gemini-3-pro-image-preview",
+                    contents: {
+                        parts: [
+                            { inlineData: { mimeType: "image/png", data: base64Image } },
+                            { text: "Restore the stamp and handwritten signature in this image. Remove any machine-printed text overlaying them. Do NOT remove handwritten signatures. Keep the white background. Do not make the background transparent. Return the image of the restored stamp and signature." }
+                        ]
+                    },
+                    config: {
+                        // Optional config
+                    }
+                });
+                
+                // Backend returns the full response object
+                const aiResponse = response.data;
                 
                 let foundImage = false;
                 if (aiResponse.candidates && aiResponse.candidates[0].content && aiResponse.candidates[0].content.parts) {
                     for (const part of aiResponse.candidates[0].content.parts) {
-                        if (part.inlineData || part.inline_data) {
-                            const inline = part.inlineData || part.inline_data;
-                            const mimeType = inline.mimeType || inline.mime_type;
-                            
+                        if (part.inlineData) {
                             const img = new window.Image();
-                            img.src = `data:${mimeType};base64,${inline.data}`;
+                            img.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
                             await new Promise((resolve) => { img.onload = resolve; });
                             
                             const resCanvas = document.createElement('canvas');
@@ -1130,11 +1094,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                     }
                 }
                 
-                if (!foundImage) {
-                    console.warn("AI Response Candidates:", aiResponse.candidates);
-                    throw new Error("AI trả về kết quả nhưng không tìm thấy hình ảnh (inlineData). Có thể Model này chỉ trả về text.");
-                }
-
+                if (!foundImage) throw new Error("AI response did not contain an image.");
              } catch (e: any) {
                  console.error("AI Error:", e);
                  setIsProcessing(false); // Ensure loading stops
@@ -1146,16 +1106,16 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                      
                      // Check for common error codes in the string
                      if (msg.includes("429") || (msg.includes("quota") && msg.includes("exceeded"))) {
-                         msg = "Hết hạn mức sử dụng (429). Key mặc định đã hết quota. Vui lòng nhập Key riêng của bạn.";
+                         msg = "Hết hạn mức sử dụng (429). Key mặc định đã hết quota. Vui lòng nhập Key riêng của bạn vào ô bên dưới.";
                      }
                      else if (msg.includes("403")) {
-                         msg = "API Key không hợp lệ (403). Kiểm tra Key và cài đặt Restrictions.";
+                         msg = "API Key không hợp lệ (403). Kiểm tra lại key trong Vercel Settings.";
                      }
                      else if (msg.includes("404")) {
-                         msg = `Model '${selectedModel}' không tìm thấy (404). Hãy thử chọn Model khác.`;
+                         msg = "Model không tồn tại (404).";
                      }
                      else if (msg.includes("500")) {
-                         msg = "Lỗi máy chủ Google (500). Hệ thống đang bận. Vui lòng thử lại sau.";
+                         msg = "Lỗi máy chủ Google (500). Hệ thống đang bận hoặc ảnh quá phức tạp. Vui lòng thử lại sau vài giây hoặc kiểm tra Key.";
                      }
 
                      setErrorMsg(`Lỗi AI: ${msg}`);
@@ -1277,42 +1237,20 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                              )}
 
                              {/* CUSTOM API KEY INPUT */}
-                             <div className="mb-4 space-y-3">
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                                        <Settings size={10} /> Model AI (Chọn nếu lỗi 404)
-                                    </label>
-                                    <select 
-                                        value={selectedModel}
-                                        onChange={(e) => setSelectedModel(e.target.value)}
-                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                                    >
-                                        {AI_MODELS.map(m => (
-                                            <option key={m.value} value={m.value}>{m.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                                        <Key size={10} /> API Key Cá Nhân (Bypass Backend)
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={customApiKey}
-                                        onChange={(e) => setCustomApiKey(e.target.value)}
-                                        placeholder="Dán Google Gemini API Key vào đây..."
-                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
-                                    />
-                                    <div className="mt-2 text-[9px] text-slate-500 italic bg-blue-50 p-2 rounded border border-blue-100 flex gap-1">
-                                        <Zap size={12} className="text-blue-500 shrink-0 mt-0.5" />
-                                        <span>
-                                            Nếu nhập key ở đây, hệ thống sẽ kết nối trực tiếp đến Google bằng Model đã chọn ở trên.
-                                            <br/>
-                                            <strong>Lưu ý:</strong> Trên Google Cloud, Key này cần đặt "Application restrictions" là <strong>None</strong> hoặc thêm domain Vercel vào "Websites".
-                                        </span>
-                                    </div>
-                                </div>
+                             <div className="mb-4">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                    <Key size={10} /> API Key (Tùy chọn)
+                                </label>
+                                <input
+                                    type="password"
+                                    value={customApiKey}
+                                    onChange={(e) => setCustomApiKey(e.target.value)}
+                                    placeholder="Dán Google Gemini API Key vào đây..."
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
+                                />
+                                <p className="text-[9px] text-slate-400 mt-1 italic">
+                                    Nếu gặp lỗi 429 (Hết hạn mức), hãy nhập Key riêng để dùng tiếp.
+                                </p>
                              </div>
 
                              <div className="space-y-3">
