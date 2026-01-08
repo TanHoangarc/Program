@@ -6,7 +6,7 @@ import {
   Plus, Check, X, Loader, ChevronLeft, ChevronRight, MousePointer,
   Crop, Layers, Wand2, RefreshCw, Eraser, Palette, Droplets, Split,
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
-  ArrowLeft, ShieldCheck, Key, Type, ZoomIn, ZoomOut, Maximize
+  ArrowLeft, ShieldCheck, Key, Type, ZoomIn, ZoomOut, Maximize, Sun, Divide, Contrast, Move, Scaling
 } from 'lucide-react';
 import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -222,11 +222,13 @@ interface PdfViewerProps {
     onMouseMove?: (e: React.MouseEvent) => void;
     onMouseUp?: (e: React.MouseEvent) => void;
     onMouseLeave?: (e: React.MouseEvent) => void;
+    fitParent?: boolean; // New prop to force canvas to fit container (remove scroll/zoom effect)
 }
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ 
     file, page, scale = 1.0, onPageChange, onClick, overlayContent,
-    containerRef, onMouseDown, onMouseMove, onMouseUp, onMouseLeave 
+    containerRef, onMouseDown, onMouseMove, onMouseUp, onMouseLeave,
+    fitParent = false
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [numPages, setNumPages] = useState(0);
@@ -314,7 +316,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
     if (!file) return null;
 
     return (
-        <div className="flex flex-col items-center gap-4 w-fit mx-auto relative group/pdf">
+        <div className={`flex flex-col items-center gap-4 w-fit mx-auto relative group/pdf ${fitParent ? 'w-full' : ''}`}>
             <div className="flex items-center gap-4 bg-slate-800/90 backdrop-blur text-white px-4 py-2 rounded-full shadow-lg sticky top-4 z-50 transition-opacity opacity-0 group-hover/pdf:opacity-100 hover:opacity-100">
                 <button 
                     disabled={page <= 1} 
@@ -335,7 +337,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 
             <div 
                 ref={containerRef}
-                className="relative border shadow-lg bg-slate-500 inline-block origin-top-left select-none"
+                className={`relative border shadow-lg bg-slate-500 inline-block origin-top-left select-none ${fitParent ? 'w-full' : ''}`}
                 onMouseDown={onMouseDown}
                 onMouseMove={onMouseMove}
                 onMouseUp={onMouseUp}
@@ -349,7 +351,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
                 <canvas 
                     ref={canvasRef} 
                     onClick={handleCanvasClick}
-                    className="cursor-crosshair block"
+                    className={`cursor-crosshair block ${fitParent ? 'max-w-full h-auto mx-auto' : ''}`}
                 />
                 {overlayContent}
             </div>
@@ -898,7 +900,17 @@ const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any 
                      <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50"><input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="stamp-upload" /><label htmlFor="stamp-upload" className="cursor-pointer flex flex-col items-center"><Upload size={32} className="text-slate-400 mb-2"/><span className="text-indigo-600 font-medium">Chọn file PDF</span></label></div>
                 ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 bg-slate-100 p-4 rounded-xl flex justify-center"><PdfViewer file={file} page={page} onPageChange={setPage} onClick={handleCanvasClick} overlayContent={selectedStampUrl && (<div style={{ position: 'absolute', left: position.x, top: position.y, width: getPreviewContainerWidth(), opacity: opacity, transform: 'translate(-50%, -50%)', pointerEvents: 'none', overflow: 'hidden' }}><img src={selectedStampUrl} style={{ height: 'auto', ...getPreviewSliceStyle() as any }} /><div className="absolute top-0 left-0 w-full h-full border border-dashed border-indigo-500"></div></div>)} /></div>
+                        <div className="lg:col-span-2 bg-slate-100 p-4 rounded-xl flex justify-center">
+                            <PdfViewer 
+                                file={file} 
+                                page={page} 
+                                onPageChange={setPage} 
+                                onClick={handleCanvasClick} 
+                                fitParent={true} // FORCE FIT TO CONTAINER, NO ZOOM
+                                scale={1.5} // High quality rendering
+                                overlayContent={selectedStampUrl && (<div style={{ position: 'absolute', left: position.x, top: position.y, width: getPreviewContainerWidth(), opacity: opacity, transform: 'translate(-50%, -50%)', pointerEvents: 'none', overflow: 'hidden' }}><img src={selectedStampUrl} style={{ height: 'auto', ...getPreviewSliceStyle() as any }} /><div className="absolute top-0 left-0 w-full h-full border border-dashed border-indigo-500"></div></div>)} 
+                            />
+                        </div>
                         <div className="bg-slate-50 p-4 rounded-xl h-fit"><p className="text-xs text-slate-500 mb-4 font-medium uppercase tracking-wider">Cấu hình con dấu</p>{!selectedStamp ? (<p className="text-red-500 text-sm mb-4">Vui lòng chọn con dấu từ thư viện trên.</p>) : (<div className="space-y-4"><div className="flex items-center gap-2 text-sm text-slate-600 mb-2"><MousePointer size={14}/> Click vào trang để chọn vị trí</div><div><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Split size={12}/> Chế độ đóng dấu</label><div className="flex gap-2 mb-3"><button onClick={() => setStampType('normal')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'normal' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Bình thường</button><button onClick={() => setStampType('fanfold')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'fanfold' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Giáp lai (Nhiều trang)</button></div>{stampType === 'fanfold' && (<div className="bg-white p-3 rounded-lg border border-slate-200 mb-3 animate-in fade-in"><p className="text-xs text-slate-500 mb-2 flex items-center gap-1"><Files size={12}/> Phạm vi trang (Range)</p><div className="flex items-center gap-2"><div><label className="text-[10px] text-slate-400 block">Từ trang</label><input type="number" min="1" value={fanfoldStart} onChange={e => setFanfoldStart(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div><span className="text-slate-400">-</span><div><label className="text-[10px] text-slate-400 block">Đến trang</label><input type="number" min={fanfoldStart} value={fanfoldEnd} onChange={e => setFanfoldEnd(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div></div><p className="text-[10px] text-slate-400 mt-2 text-center">Sẽ chia con dấu thành <strong className="text-indigo-600">{Math.max(1, fanfoldEnd - fanfoldStart + 1)}</strong> phần.</p></div>)}</div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ lớn (Scale): {scale}x</label><input type="range" min="0.1" max="2" step="0.1" value={scale} onChange={e => setScale(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ mờ (Opacity): {Math.round(opacity * 100)}%</label><input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={e => setOpacity(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div className="pt-2"><button onClick={applyStamp} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-md">Đóng dấu & Tải xuống</button><button onClick={() => setFile(null)} className="mt-2 text-slate-500 text-sm w-full hover:underline">Chọn file khác</button></div></div>)}</div></div>
                 )}
             </div>
@@ -952,7 +964,8 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     }, [baseImage, colorMode, saturation]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
-        const target = e.currentTarget as HTMLDivElement;
+        if (!canvasWrapperRef.current) return;
+        const target = canvasWrapperRef.current;
         const rect = target.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -963,8 +976,8 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     };
 
     const handleMouseMove = (e: React.MouseEvent) => {
-        if (!isSelecting || !startPos.current) return;
-        const target = e.currentTarget as HTMLDivElement;
+        if (!isSelecting || !startPos.current || !canvasWrapperRef.current) return;
+        const target = canvasWrapperRef.current;
         const rect = target.getBoundingClientRect();
         
         const currentX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
@@ -1191,6 +1204,8 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                                 onMouseMove={handleMouseMove}
                                 onMouseUp={handleMouseUp}
                                 onMouseLeave={handleMouseUp}
+                                fitParent={true} // FORCE FIT TO CONTAINER, NO ZOOM
+                                scale={1.5} // Better quality
                                 overlayContent={
                                     selection && (
                                         <div 
@@ -1348,39 +1363,101 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
 export const SmartEditTool = () => {
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
-    const [scale, setScale] = useState(1.0); // Start at 1.0 scale
+    const [zoom, setZoom] = useState(100); // Percentage zoom
     const [selection, setSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
     const [isSelecting, setIsSelecting] = useState(false);
     const startPos = useRef<{x:number, y:number} | null>(null);
     const canvasWrapperRef = useRef<HTMLDivElement>(null);
     const [prompt, setPrompt] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [replacements, setReplacements] = useState<{x: number, y: number, w: number, h: number, image: string, page: number}[]>([]);
+    const [replacements, setReplacements] = useState<{
+        x: number, y: number, w: number, h: number, 
+        image: string, page: number,
+        brightness: number, blur: number, contrast: number
+    }[]>([]);
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [customApiKey, setCustomApiKey] = useState('');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+    // --- INTERACTION MODE STATE ---
+    const [interactionMode, setInteractionMode] = useState<'none' | 'move' | 'crop'>('none');
+    const [isDragging, setIsDragging] = useState(false);
+    const dragStartRef = useRef<{ x: number, y: number, initialRep: any } | null>(null);
+
+    useEffect(() => {
+        const handleGlobalMove = (e: MouseEvent) => {
+            if (!isDragging || selectedIndex === null || !dragStartRef.current || !canvasWrapperRef.current) return;
+            
+            const { x: startX, y: startY, initialRep } = dragStartRef.current;
+            const containerW = canvasWrapperRef.current.clientWidth;
+            const containerH = canvasWrapperRef.current.clientHeight;
+            
+            const deltaX = (e.clientX - startX) / containerW;
+            const deltaY = (e.clientY - startY) / containerH;
+
+            setReplacements(prev => prev.map((rep, idx) => {
+                if (idx !== selectedIndex) return rep;
+                
+                if (interactionMode === 'move') {
+                    return {
+                        ...rep,
+                        x: initialRep.x + deltaX,
+                        y: initialRep.y + deltaY
+                    };
+                } else if (interactionMode === 'crop') {
+                    // Simple resize from bottom-right
+                    const newW = Math.max(0.01, initialRep.w + deltaX);
+                    const newH = Math.max(0.01, initialRep.h + deltaY);
+                    return {
+                        ...rep,
+                        w: newW,
+                        h: newH
+                    };
+                }
+                return rep;
+            }));
+        };
+
+        const handleGlobalUp = () => {
+            if (isDragging) {
+                setIsDragging(false);
+                dragStartRef.current = null;
+            }
+        };
+
+        if (isDragging) {
+            window.addEventListener('mousemove', handleGlobalMove);
+            window.addEventListener('mouseup', handleGlobalUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleGlobalMove);
+            window.removeEventListener('mouseup', handleGlobalUp);
+        };
+    }, [isDragging, selectedIndex, interactionMode]);
+
     const handleMouseDown = (e: React.MouseEvent) => {
+        // If clicking on canvas background (not on a replacement), start selection
         if (!canvasWrapperRef.current) return;
-        const target = e.currentTarget as HTMLDivElement;
-        const rect = target.getBoundingClientRect();
         
-        // Use offsetX if available for better accuracy inside scrollable areas, otherwise fallback
-        const x = e.nativeEvent.offsetX;
-        const y = e.nativeEvent.offsetY;
-        
+        // If clicking a replacement, event propagation stops there, so this runs only on background
+        const rect = canvasWrapperRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         setIsSelecting(true);
         startPos.current = { x, y };
         setSelection({ x, y, w: 0, h: 0 });
+        setSelectedIndex(null); 
+        setInteractionMode('none'); // Reset mode when clicking background
     };
 
     const handleMouseMove = (e: React.MouseEvent) => {
         if (!isSelecting || !startPos.current || !canvasWrapperRef.current) return;
+        const rect = canvasWrapperRef.current.getBoundingClientRect();
         
-        // Current position relative to the element
-        const currentX = e.nativeEvent.offsetX;
-        const currentY = e.nativeEvent.offsetY;
+        const currentX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const currentY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
         
-        // Calculate width/height based on start position
         const width = currentX - startPos.current.x;
         const height = currentY - startPos.current.y;
 
@@ -1395,6 +1472,21 @@ export const SmartEditTool = () => {
     const handleMouseUp = () => {
         setIsSelecting(false);
         startPos.current = null;
+    };
+
+    const handleReplacementMouseDown = (e: React.MouseEvent, index: number) => {
+        e.stopPropagation();
+        setSelectedIndex(index);
+        
+        // If mode is active, start dragging/resizing
+        if (interactionMode !== 'none') {
+            setIsDragging(true);
+            dragStartRef.current = {
+                x: e.clientX,
+                y: e.clientY,
+                initialRep: { ...replacements[index] }
+            };
+        }
     };
 
     const handleAiReplaceRelative = async () => {
@@ -1446,17 +1538,17 @@ export const SmartEditTool = () => {
             const apiKey = customApiKey || process.env.API_KEY;
             if (!apiKey) throw new Error("KEY_MISSING");
 
-            // Advanced Prompt Engineering for "Scan Match" & Layout Preservation
+            // UPDATED: Strictly enforced size matching prompt
             const systemInstruction = `You are a professional document editing AI.
             TASK: Replace the text inside the provided image crop with: "${prompt}".
             
             CRITICAL VISUAL RULES:
             1. SCAN MATCH: Analyze the font family, weight, blur, noise, and paper texture of the original image. The new text MUST look exactly like the original scanned document.
-            2. LAYOUT & SIZING: 
-               - Analyze the height and width of the FIRST character visible in the source image.
-               - Generate the new text "${prompt}" using that EXACT character height and width.
-               - Do NOT stretch or squash the text to fill the box if it doesn't fit naturally.
-               - Maintain the original kerning (character spacing).
+            2. SIZE MATCHING (MOST IMPORTANT): 
+               - The font size of the generated text MUST MATCH EXACTLY the font size of the original text in the image.
+               - Do NOT auto-scale or resize the text to fill the box if it makes the font larger or smaller than the original characters.
+               - Each character in the new text must occupy the same physical dimensions as the original characters.
+               - Maintain the original kerning (character spacing) and tracking.
             3. ASPECT RATIO: The output image MUST have the exact same aspect ratio as the input image. Fill any empty space with the matching background texture.
             4. Do NOT output clean digital text. It must look scanned (slight blur, grain).
             
@@ -1489,14 +1581,23 @@ export const SmartEditTool = () => {
 
             if (!resultImage) throw new Error("AI did not return an image.");
 
-            setReplacements(prev => [...prev, {
+            const newRep = {
                 x: relX, 
                 y: relY, 
                 w: relW, 
                 h: relH, 
                 image: resultImage,
-                page: page
-            }]);
+                page: page,
+                brightness: 1, // Default brightness
+                blur: 0,        // Default blur
+                contrast: 1     // Default contrast
+            };
+
+            setReplacements(prev => {
+                const next = [...prev, newRep];
+                setSelectedIndex(next.length - 1);
+                return next;
+            });
             
             setSelection(null); 
             setPrompt('');
@@ -1510,6 +1611,30 @@ export const SmartEditTool = () => {
         }
     };
 
+    const processImageFilters = (src: string, brightness: number, blur: number, contrast: number): Promise<string> => {
+        return new Promise((resolve) => {
+            if (brightness === 1 && blur === 0 && contrast === 1) {
+                resolve(src);
+                return;
+            }
+            const img = new window.Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { resolve(src); return; }
+                
+                // Use standard CSS filters including contrast
+                ctx.filter = `brightness(${brightness}) blur(${blur}px) contrast(${contrast})`;
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = () => resolve(src);
+            img.src = src;
+        });
+    };
+
     const handleSavePdfSmart = async () => {
         if (!file || replacements.length === 0) return;
         setIsProcessing(true);
@@ -1521,9 +1646,12 @@ export const SmartEditTool = () => {
                 const targetPage = pdfDoc.getPages()[rep.page - 1];
                 if (!targetPage) continue;
 
-                const imgBytes = await fetch(rep.image).then(res => res.arrayBuffer());
+                // Process filters before embedding
+                const processedImgDataUrl = await processImageFilters(rep.image, rep.brightness, rep.blur, rep.contrast);
+                const imgBytes = await fetch(processedImgDataUrl).then(res => res.arrayBuffer());
+                
                 let embedImg;
-                if (rep.image.includes('image/png')) embedImg = await pdfDoc.embedPng(imgBytes);
+                if (processedImgDataUrl.includes('image/png')) embedImg = await pdfDoc.embedPng(imgBytes);
                 else embedImg = await pdfDoc.embedJpg(imgBytes);
 
                 const { width: pdfPageW, height: pdfPageH } = targetPage.getSize();
@@ -1560,6 +1688,12 @@ export const SmartEditTool = () => {
 
     const removeReplacement = (index: number) => {
         setReplacements(prev => prev.filter((_, i) => i !== index));
+        if (selectedIndex === index) setSelectedIndex(null);
+    };
+
+    const updateSelectedReplacement = (field: 'brightness' | 'blur' | 'contrast', value: number) => {
+        if (selectedIndex === null) return;
+        setReplacements(prev => prev.map((r, i) => i === selectedIndex ? { ...r, [field]: value } : r));
     };
 
     return (
@@ -1579,22 +1713,26 @@ export const SmartEditTool = () => {
                     <div className="flex-1 flex flex-col min-h-0">
                         {/* Zoom Controls */}
                         <div className="flex items-center gap-4 mb-2 bg-slate-100 p-2 rounded-lg justify-center shrink-0">
-                            <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomOut size={18}/></button>
-                            <span className="text-xs font-bold text-slate-500 w-12 text-center">{Math.round(scale * 100)}%</span>
-                            <button onClick={() => setScale(s => Math.min(3, s + 0.25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomIn size={18}/></button>
+                            <button onClick={() => setZoom(s => Math.max(50, s - 25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomOut size={18}/></button>
+                            <span className="text-xs font-bold text-slate-500 w-12 text-center">{zoom}%</span>
+                            <button onClick={() => setZoom(s => Math.min(300, s + 25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomIn size={18}/></button>
                             <div className="h-4 w-px bg-slate-300 mx-2"></div>
-                            <button onClick={() => setScale(1.0)} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600 text-xs font-bold px-2">Fit</button>
+                            <button onClick={() => setZoom(100)} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600 text-xs font-bold px-2">100%</button>
                         </div>
 
                         {/* PDF Container - Overflow Auto handles scrolling when Zoomed */}
-                        <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 shadow-inner flex-1 overflow-auto relative select-none group">
+                        <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 shadow-inner flex-1 overflow-auto relative select-none group w-full h-full">
                             {/* Inner wrapper needs to be inline-block to allow canvas to expand scroll area */}
-                            <div className="inline-block relative min-w-full min-h-full flex justify-center">
-                                <div className="relative">
+                            <div 
+                                className="inline-block relative min-w-full min-h-full flex justify-center origin-top-left transition-all duration-200 ease-out" 
+                                style={{ width: `${zoom}%`, minWidth: '100%' }}
+                            >
+                                <div className="relative w-full">
                                     <PdfViewer 
                                         file={file} 
                                         page={page} 
-                                        scale={scale}
+                                        // Dynamic scale calculation based on zoom to ensure high resolution
+                                        scale={Math.max(1.5, (zoom / 100) * 1.5)} 
                                         onPageChange={setPage} 
                                         onClick={() => {}} 
                                         containerRef={canvasWrapperRef}
@@ -1602,6 +1740,7 @@ export const SmartEditTool = () => {
                                         onMouseMove={handleMouseMove}
                                         onMouseUp={handleMouseUp}
                                         onMouseLeave={handleMouseUp}
+                                        fitParent={true} // Crucial: Fits to wrapper width which is scaled by zoom
                                         overlayContent={
                                             <>
                                                 {/* Selection Box */}
@@ -1618,32 +1757,59 @@ export const SmartEditTool = () => {
                                                 )}
 
                                                 {/* Replacements Overlay */}
-                                                {replacements.filter(r => r.page === page).map((rep, idx) => (
-                                                    <div 
-                                                        key={idx}
-                                                        className="absolute z-10 group-hover:ring-1 ring-blue-400/50"
-                                                        style={{
-                                                            left: `${rep.x * 100}%`,
-                                                            top: `${rep.y * 100}%`,
-                                                            width: `${rep.w * 100}%`,
-                                                            height: `${rep.h * 100}%`
-                                                        }}
-                                                    >
-                                                        {/* Force fill to ensure no gaps, relying on AI to match aspect ratio in generation */}
-                                                        <img 
-                                                            src={rep.image} 
-                                                            className="w-full h-full object-fill" 
-                                                            alt="replaced text"
-                                                        />
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); removeReplacement(replacements.indexOf(rep)); }}
-                                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 shadow-sm pointer-events-auto cursor-pointer z-30"
-                                                            title="Xóa"
+                                                {replacements.filter(r => r.page === page).map((rep, idx) => {
+                                                    const originalIndex = replacements.indexOf(rep);
+                                                    const isSelected = selectedIndex === originalIndex;
+                                                    
+                                                    // Determine visual state based on mode
+                                                    const isMoveMode = isSelected && interactionMode === 'move';
+                                                    const isCropMode = isSelected && interactionMode === 'crop';
+
+                                                    return (
+                                                        <div 
+                                                            key={idx}
+                                                            className={`absolute z-10 select-none transition-shadow
+                                                                ${isSelected ? 'z-30 ring-2 ring-indigo-500' : 'group-hover:ring-1 ring-blue-400/50'}
+                                                                ${isMoveMode ? 'cursor-move' : 'cursor-pointer'}
+                                                            `}
+                                                            style={{
+                                                                left: `${rep.x * 100}%`,
+                                                                top: `${rep.y * 100}%`,
+                                                                width: `${rep.w * 100}%`,
+                                                                height: `${rep.h * 100}%`
+                                                            }}
+                                                            onMouseDown={(e) => handleReplacementMouseDown(e, originalIndex)}
                                                         >
-                                                            <X size={12} />
-                                                        </button>
-                                                    </div>
-                                                ))}
+                                                            <img 
+                                                                src={rep.image} 
+                                                                className="w-full h-full" 
+                                                                alt="replaced text"
+                                                                draggable={false}
+                                                                style={{
+                                                                    filter: `brightness(${rep.brightness}) blur(${rep.blur}px) contrast(${rep.contrast})`,
+                                                                    // Use fill to allow arbitrary resizing ("cropping" visual effect)
+                                                                    objectFit: 'fill'
+                                                                }}
+                                                            />
+                                                            
+                                                            {/* Resize Handle (Crop Mode) */}
+                                                            {isCropMode && (
+                                                                <div 
+                                                                    className="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-indigo-600 cursor-nwse-resize z-40 shadow-sm"
+                                                                    // MouseDown on handle initiates drag with mode=crop implicitly handled by SmartEditTool logic
+                                                                ></div>
+                                                            )}
+
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); removeReplacement(originalIndex); }}
+                                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 shadow-sm pointer-events-auto cursor-pointer z-30 hover:scale-100"
+                                                                title="Xóa"
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
                                             </>
                                         }
                                     />
@@ -1654,6 +1820,92 @@ export const SmartEditTool = () => {
                     </div>
 
                     <div className="w-full lg:w-80 space-y-6 shrink-0 overflow-y-auto">
+                         
+                         {/* EDITOR CONTROLS (Only visible if replacement selected) */}
+                         {selectedIndex !== null && replacements[selectedIndex] && (
+                             <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                                 {/* Move/Crop Controls */}
+                                 <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                     <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2 text-xs uppercase">
+                                         <Scaling size={14}/> Thao tác
+                                     </h4>
+                                     <div className="grid grid-cols-2 gap-2">
+                                         <button 
+                                            onClick={() => setInteractionMode(m => m === 'move' ? 'none' : 'move')}
+                                            className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all border
+                                                ${interactionMode === 'move' 
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                                }`}
+                                         >
+                                             <Move size={14} /> Di chuyển
+                                         </button>
+                                         <button 
+                                            onClick={() => setInteractionMode(m => m === 'crop' ? 'none' : 'crop')}
+                                            className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all border
+                                                ${interactionMode === 'crop' 
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                                }`}
+                                         >
+                                             <Crop size={14} /> Crop (Resize)
+                                         </button>
+                                     </div>
+                                     <p className="text-[10px] text-slate-400 mt-2 text-center italic">
+                                         {interactionMode === 'move' ? 'Kéo thả khung để di chuyển vị trí' : interactionMode === 'crop' ? 'Kéo góc phải dưới để thay đổi kích thước' : 'Chọn chế độ để chỉnh sửa'}
+                                     </p>
+                                 </div>
+
+                                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                                     <h4 className="font-bold text-indigo-800 mb-3 flex items-center gap-2 text-sm">
+                                         <Palette size={16}/> Chỉnh sửa ảnh
+                                     </h4>
+                                     <div className="space-y-4">
+                                         <div>
+                                             <label className="flex justify-between text-xs font-semibold text-slate-600 uppercase mb-1">
+                                                 <span className="flex items-center gap-1"><Sun size={12}/> Độ sáng</span>
+                                                 <span>{Math.round(replacements[selectedIndex].brightness * 100)}%</span>
+                                             </label>
+                                             <input 
+                                                 type="range" 
+                                                 min="0.5" max="1.5" step="0.05" 
+                                                 value={replacements[selectedIndex].brightness}
+                                                 onChange={(e) => updateSelectedReplacement('brightness', Number(e.target.value))}
+                                                 className="w-full accent-indigo-600 h-2 bg-white rounded-lg appearance-none cursor-pointer border border-indigo-100"
+                                             />
+                                         </div>
+                                         <div>
+                                             <label className="flex justify-between text-xs font-semibold text-slate-600 uppercase mb-1">
+                                                 <span className="flex items-center gap-1"><Contrast size={12}/> Độ đậm (Contrast)</span>
+                                                 <span>{Math.round(replacements[selectedIndex].contrast * 100)}%</span>
+                                             </label>
+                                             <input 
+                                                 type="range" 
+                                                 min="0.5" max="2" step="0.1" 
+                                                 value={replacements[selectedIndex].contrast || 1}
+                                                 onChange={(e) => updateSelectedReplacement('contrast', Number(e.target.value))}
+                                                 className="w-full accent-indigo-600 h-2 bg-white rounded-lg appearance-none cursor-pointer border border-indigo-100"
+                                             />
+                                         </div>
+                                         <div>
+                                             <label className="flex justify-between text-xs font-semibold text-slate-600 uppercase mb-1">
+                                                 <span className="flex items-center gap-1"><Droplets size={12}/> Độ mờ (Blur)</span>
+                                                 <span>{replacements[selectedIndex].blur}px</span>
+                                             </label>
+                                             <input 
+                                                 type="range" 
+                                                 min="0" max="2" step="0.1" 
+                                                 value={replacements[selectedIndex].blur}
+                                                 onChange={(e) => updateSelectedReplacement('blur', Number(e.target.value))}
+                                                 className="w-full accent-indigo-600 h-2 bg-white rounded-lg appearance-none cursor-pointer border border-indigo-100"
+                                             />
+                                         </div>
+                                         <button onClick={() => { setSelectedIndex(null); setInteractionMode('none'); }} className="w-full text-xs text-indigo-500 hover:text-indigo-700 underline mt-2">Đóng chỉnh sửa</button>
+                                     </div>
+                                 </div>
+                             </div>
+                         )}
+
                          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                              <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                                 <Wand2 size={18}/> Nội dung thay thế
@@ -1678,6 +1930,9 @@ export const SmartEditTool = () => {
                                     placeholder="Dán Google Gemini API Key vào đây..."
                                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
                                 />
+                                <p className="text-[9px] text-slate-400 mt-1 italic">
+                                    Nếu gặp lỗi 429 (Hết hạn mức), hãy nhập Key riêng để dùng tiếp.
+                                </p>
                              </div>
 
                              <div className="space-y-3">
