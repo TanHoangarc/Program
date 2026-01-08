@@ -306,13 +306,75 @@ export interface SalaryRecord {
 }
 
 // ============================================================
-// USER ACCOUNT
+// USER ACCOUNT & AUTH
 // ============================================================
 
 export interface UserAccount {
   username: string;
   pass: string;
-  role: "Admin" | "Manager" | "Staff" | "Docs" | "Account";
+  role: "Admin" | "Manager" | "Staff" | "Docs" | "Account" | "sales" | "admin"; // Extended for NFC
+  allowedProfileIds?: string[]; // For NFC Sales role
+}
+
+// Alias for NFC Page compatibility
+export type AuthUser = UserAccount;
+
+// ============================================================
+// NFC CARD SYSTEM (WEB PROFILE)
+// ============================================================
+
+export interface SocialLink {
+  id: string;
+  platform: 'facebook' | 'twitter' | 'instagram' | 'linkedin' | 'youtube' | 'tiktok' | 'github' | 'website' | 'zalo' | 'email' | 'phone' | 'map' | 'other';
+  url: string;
+  label: string;
+  iconUrl?: string;
+  qrImageUrl?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  url: string;
+  description: string;
+  imageUrl?: string;
+  detailImageUrls?: string[];
+}
+
+export interface WebNfcProfile {
+  id: string;
+  slug: string;
+  name: string;
+  title: string;
+  bio: string;
+  
+  // Bilingual Content
+  headerTitleVi?: string;
+  footerRoleVi?: string;
+  titleEn?: string;
+  bioEn?: string;
+  headerTitleEn?: string;
+  footerRoleEn?: string;
+
+  // Contact
+  phoneNumber?: string;
+  zaloNumber?: string;
+
+  // Images
+  avatarUrl: string;
+  coverUrl: string;
+  mainQrUrl?: string;
+
+  // Lists
+  socialLinks: SocialLink[];
+  projects: Project[];
+
+  // System
+  visits: number;
+  interactions: number;
+  lastActive: string;
+  status: 'active' | 'inactive';
+  fullUrl: string;
 }
 
 // ============================================================

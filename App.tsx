@@ -16,12 +16,13 @@ import { LookupPage } from './pages/LookupPage';
 import { PaymentPage } from './pages/PaymentPage'; 
 import { CVHCPage } from './pages/CVHCPage';
 import { SalaryPage } from './pages/SalaryPage';
-import { ToolAI } from './pages/ToolAI'; // IMPORT ToolAI
+import { ToolAI } from './pages/ToolAI'; 
+import { NFCPage } from './pages/NFCPage'; 
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord } from './types';
-import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES } from './constants';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile } from './types';
+import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
 const DEFAULT_USERS: UserAccount[] = [
@@ -41,12 +42,12 @@ const App: React.FC = () => {
 
   // --- AUTH STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<{ username: string, role: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [loginError, setLoginError] = useState('');
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -174,6 +175,16 @@ const App: React.FC = () => {
       }
   });
 
+  // --- NFC STATE ---
+  const [nfcProfiles, setNfcProfiles] = useState<WebNfcProfile[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_nfc_profiles');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
   const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
       try {
@@ -246,6 +257,30 @@ const App: React.FC = () => {
       setSalaries(newSalaries);
   };
 
+  // --- NFC HANDLERS ---
+  const handleAddNfcProfile = (profileData: Omit<WebNfcProfile, 'id' | 'visits' | 'interactions' | 'lastActive' | 'status' | 'fullUrl'>) => {
+      const newProfile: WebNfcProfile = {
+          ...profileData,
+          id: Date.now().toString(),
+          visits: 0,
+          interactions: 0,
+          lastActive: new Date().toISOString(),
+          status: 'active',
+          fullUrl: `${BASE_URL_PREFIX}${profileData.slug}`
+      };
+      setNfcProfiles(prev => [...prev, newProfile]);
+  };
+
+  const handleUpdateNfcProfile = (id: string, updates: Partial<WebNfcProfile>) => {
+      setNfcProfiles(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+  };
+
+  const handleDeleteNfcProfile = (id: string) => {
+      if (window.confirm("Are you sure you want to delete this profile?")) {
+          setNfcProfiles(prev => prev.filter(p => p.id !== id));
+      }
+  };
+
   // --- DATA SYNC FUNCTIONS ---
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
@@ -292,14 +327,9 @@ const App: React.FC = () => {
             customers: [...customers],
             lines: [...lines],
             customReceipts: [...customReceipts],
-            salaries: [...salaries], // Include salaries in sync if needed
-            lockedIds: Array.from(lockedIds) // Include lockedIds in manual sync
+            salaries: [...salaries], 
+            lockedIds: Array.from(lockedIds) 
         };
-    } else {
-        if (!payload.lockedIds) {
-            // Only add lockedIds if it's a specific lock update payload
-            // payload.lockedIds = Array.from(lockedIds); 
-        }
     }
     
     if (!isServerAvailable) {
@@ -330,7 +360,6 @@ const App: React.FC = () => {
               setModifiedJobIds(new Set());
               setModifiedPaymentIds(new Set());
           } 
-          // Auto-sync success log REMOVED
       } else {
           throw new Error(`Server returned ${response.status}`);
       }
@@ -354,7 +383,6 @@ const App: React.FC = () => {
       }
       
       setLockedIds(newSet);
-      // Removed automatic sendPendingToServer call
   };
 
   const handleRejectRequest = async (requestId: string) => {
@@ -456,15 +484,17 @@ const App: React.FC = () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
-        const res = await fetch("https://api.kimberry.id.vn/data", { 
-            signal: controller.signal 
-        });
+        // Fetch BOTH general data and NFC data
+        const [dataRes, nfcRes] = await Promise.all([
+            fetch("https://api.kimberry.id.vn/data", { signal: controller.signal }),
+            fetch("https://api.kimberry.id.vn/nfc", { signal: controller.signal })
+        ]);
+        
         clearTimeout(timeoutId);
 
-        if (!res.ok) throw new Error("Server response not OK");
+        if (!dataRes.ok) throw new Error("Server response not OK");
 
-        const data = await res.json();
-
+        const data = await dataRes.json();
         console.log("SERVER DATA LOADED:", data);
 
         if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(sanitizeData(data.jobs));
@@ -490,6 +520,12 @@ const App: React.FC = () => {
 
         if (data.salaries && Array.isArray(data.salaries)) {
             setSalaries(data.salaries);
+        }
+
+        // LOAD NFC
+        if (nfcRes.ok) {
+            const nfcData = await nfcRes.json();
+            if (Array.isArray(nfcData)) setNfcProfiles(nfcData);
         }
 
         setIsServerAvailable(true);
@@ -534,7 +570,7 @@ const App: React.FC = () => {
     const user = users.find(u => u.username === username && u.pass === pass);
 
     if (user) {
-      const userData = { username: user.username, role: user.role };
+      const userData = user;
       setIsAuthenticated(true);
       setCurrentUser(userData);
       setSessionError('');
@@ -564,6 +600,7 @@ const App: React.FC = () => {
     setSessionError(forced ? "Tài khoản đã được đăng nhập nơi khác." : "");
   }, []);
 
+  // --- GENERAL AUTO BACKUP ---
   const autoBackup = async () => {
     if (!currentUser || !["Admin", "Manager", "Docs"].includes(currentUser.role)) return;
     if (!isServerAvailable) return; 
@@ -580,12 +617,12 @@ const App: React.FC = () => {
         processedRequestIds: Array.from(localDeletedIds),
         customReceipts,
         salaries
+        // NFC EXCLUDED FROM GENERAL BACKUP
       };
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      // --- CHANGED ENDPOINT HERE ---
       await fetch("https://api.kimberry.id.vn/data/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -599,12 +636,28 @@ const App: React.FC = () => {
     }
   };
 
+  // --- NFC AUTO BACKUP ---
+  useEffect(() => {
+      if (!isServerAvailable || nfcProfiles.length === 0) return;
+      
+      // Debounce NFC save
+      const timeoutId = setTimeout(() => {
+          fetch("https://api.kimberry.id.vn/nfc/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(nfcProfiles)
+          }).catch(e => console.warn("NFC Backup failed", e));
+      }, 1000); 
+
+      return () => clearTimeout(timeoutId);
+  }, [nfcProfiles, isServerAvailable]);
+
   useEffect(() => { 
     if (!isServerAvailable) return;
     
     const timeoutId = setTimeout(() => {
         autoBackup();
-    }, 500); // <-- OPTIMIZED: Reduced to 500ms since server write is async
+    }, 500); 
 
     return () => clearTimeout(timeoutId);
   }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, isServerAvailable]);
@@ -616,6 +669,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem("logistics_users_v1", JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
+  useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
   useEffect(() => {
@@ -624,7 +678,7 @@ const App: React.FC = () => {
           const interval = setInterval(fetchPendingRequests, 15000); // Poll every 15s
           return () => clearInterval(interval);
       }
-  }, [currentUser, isServerAvailable]); // Removed currentPage dependency
+  }, [currentUser, isServerAvailable]); 
 
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
@@ -849,6 +903,16 @@ const App: React.FC = () => {
 
             {currentPage === 'tool-ai' && (
               <ToolAI />
+            )}
+
+            {currentPage === 'nfc' && currentUser && (
+              <NFCPage 
+                profiles={nfcProfiles}
+                currentUser={currentUser}
+                onAdd={handleAddNfcProfile}
+                onUpdate={handleUpdateNfcProfile}
+                onDelete={handleDeleteNfcProfile}
+              />
             )}
 
             {currentPage === 'system' && (

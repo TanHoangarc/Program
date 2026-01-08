@@ -13,6 +13,9 @@ export const TRANSIT_PORTS = ['HCM', 'HPH'];
 export const BANKS = ['TCB Bank', 'MB Bank'];
 export const DEFAULT_LINES = ['MSC', 'TSLHN', 'ONE', 'Maersk', 'Cosco', 'Evergreen'];
 
+// NFC Constants
+export const BASE_URL_PREFIX = "https://tanhoangarc.github.io/";
+
 export const MOCK_CUSTOMERS: Customer[] = [
   { id: '1', code: 'CUST01', name: 'VinaFoods Co', mst: '0301234567' },
   { id: '2', code: 'CUST02', name: 'TechGlobal', mst: '0309998887' },
