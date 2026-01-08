@@ -8,7 +8,7 @@ import {
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
   ArrowLeft, ShieldCheck, Key, Type, ZoomIn, ZoomOut, Maximize, Sun, Divide, Contrast, Move, Scaling
 } from 'lucide-react';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsMod from 'pdfjs-dist';
 // REMOVED DIRECT GOOGLE SDK IMPORT TO USE BACKEND PROXY
@@ -615,25 +615,231 @@ const UnlockTool = () => {
     );
 };
 
+// --- Edit Tool Interfaces and Data ---
+interface TextItem {
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    page: number;
+    color: string;
+    size: number;
+    font: string; // 'Helvetica', 'Times Roman', 'Courier'
+}
+
+const FONTS = [
+    { value: 'Helvetica', label: 'Helvetica' },
+    { value: 'TimesRoman', label: 'Times Roman' },
+    { value: 'Courier', label: 'Courier' },
+];
+
 const EditTool = () => {
     const [file, setFile] = useState<File | null>(null);
-    const [text, setText] = useState('');
-    const [position, setPosition] = useState({ x: 50, y: 500 });
     const [page, setPage] = useState(1);
-    const [color, setColor] = useState('#000000');
-    const [size, setSize] = useState(24);
+    const [textItems, setTextItems] = useState<TextItem[]>([]);
+    const [activeId, setActiveId] = useState<string | null>(null);
     const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
-    const handleCanvasClick = (x: number, y: number, viewW: number, viewH: number) => { setPosition({ x, y }); setViewSize({ width: viewW, height: viewH }); };
-    const handleEdit = async () => { if (!file) return; try { const buffer = await file.arrayBuffer(); const pdfDoc = await PDFDocument.load(buffer); const pages = pdfDoc.getPages(); const targetPage = pages[page - 1]; if (targetPage) { const r = parseInt(color.slice(1,3), 16) / 255; const g = parseInt(color.slice(3,5), 16) / 255; const b = parseInt(color.slice(5,7), 16) / 255; const { width, height } = targetPage.getSize(); let pdfX = position.x; let pdfY = position.y; if (viewSize.width > 0) { pdfX = (position.x / viewSize.width) * width; pdfY = height - ((position.y / viewSize.height) * height); } targetPage.drawText(text, { x: pdfX, y: pdfY, size: Number(size), color: rgb(r, g, b), }); const pdfBytes = await pdfDoc.save(); const blob = new Blob([pdfBytes], { type: 'application/pdf' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `edited_${file.name}`; link.click(); } else { alert("Trang không tồn tại"); } } catch (err) { alert("Lỗi chỉnh sửa"); } };
+
+    const activeItem = textItems.find(i => i.id === activeId);
+
+    const handleCanvasClick = (x: number, y: number, viewW: number, viewH: number) => {
+        setViewSize({ width: viewW, height: viewH });
+        
+        // Convert to percentage coordinates (0-1) for consistency with PdfViewer scaling
+        const relX = x / viewW;
+        const relY = y / viewH;
+
+        if (activeId) {
+            // Move active item
+            setTextItems(prev => prev.map(item => 
+                item.id === activeId ? { ...item, x: relX, y: relY, page: page } : item
+            ));
+        } else {
+            // No active item? Just clear selection (or could create new)
+            setActiveId(null);
+        }
+    };
+
+    const handleAddItem = () => {
+        const newItem: TextItem = {
+            id: Date.now().toString(),
+            text: 'Văn bản mới',
+            x: 0.5, // Center
+            y: 0.5, // Center
+            page: page,
+            color: '#000000',
+            size: 24,
+            font: 'Helvetica'
+        };
+        setTextItems(prev => [...prev, newItem]);
+        setActiveId(newItem.id);
+    };
+
+    const handleUpdateItem = (id: string, field: keyof TextItem, value: any) => {
+        setTextItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+    };
+
+    const handleDeleteItem = (id: string) => {
+        setTextItems(prev => prev.filter(item => item.id !== id));
+        if (activeId === id) setActiveId(null);
+    };
+
+    const handleEdit = async () => { 
+        if (!file || textItems.length === 0) return; 
+        try { 
+            const buffer = await file.arrayBuffer(); 
+            const pdfDoc = await PDFDocument.load(buffer); 
+            const pages = pdfDoc.getPages(); 
+            
+            // Embed fonts once
+            const embeddedFonts: Record<string, any> = {};
+            
+            for (const item of textItems) {
+                const targetPage = pages[item.page - 1]; 
+                if (targetPage) { 
+                    // Embed font if not already
+                    if (!embeddedFonts[item.font]) {
+                        embeddedFonts[item.font] = await pdfDoc.embedFont((StandardFonts as any)[item.font]);
+                    }
+                    const font = embeddedFonts[item.font];
+
+                    const r = parseInt(item.color.slice(1,3), 16) / 255; 
+                    const g = parseInt(item.color.slice(3,5), 16) / 255; 
+                    const b = parseInt(item.color.slice(5,7), 16) / 255; 
+                    
+                    const { width, height } = targetPage.getSize(); 
+                    
+                    // Coordinates are 0-1 relative. 
+                    // PDF coordinates: X from left, Y from BOTTOM.
+                    // Visual Viewer Y is from TOP.
+                    
+                    const pdfX = item.x * width;
+                    const pdfY = height - (item.y * height); 
+                    
+                    targetPage.drawText(item.text, { 
+                        x: pdfX, 
+                        y: pdfY, 
+                        size: Number(item.size), 
+                        color: rgb(r, g, b),
+                        font: font
+                    }); 
+                }
+            }
+            
+            const pdfBytes = await pdfDoc.save(); 
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' }); 
+            const link = document.createElement('a'); 
+            link.href = URL.createObjectURL(blob); 
+            link.download = `edited_${file.name}`; 
+            link.click(); 
+        } catch (err) { 
+            console.error(err);
+            alert("Lỗi chỉnh sửa"); 
+        } 
+    };
+
     return (
         <div className="space-y-6">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Edit className="text-indigo-600"/> Thêm Chữ vào PDF</h3>
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Edit className="text-indigo-600"/> Thêm Chữ vào PDF (Multi)</h3>
             {!file ? (
-                 <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50"><input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="edit-upload" /><label htmlFor="edit-upload" className="cursor-pointer flex flex-col items-center"><Upload size={32} className="text-slate-400 mb-2"/><span className="text-indigo-600 font-medium">Chọn file PDF để sửa</span></label></div>
+                 <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50"><input type="file" accept="application/pdf" onChange={(e) => { setFile(e.target.files?.[0] || null); setTextItems([]); setActiveId(null); }} className="hidden" id="edit-upload" /><label htmlFor="edit-upload" className="cursor-pointer flex flex-col items-center"><Upload size={32} className="text-slate-400 mb-2"/><span className="text-indigo-600 font-medium">Chọn file PDF để sửa</span></label></div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                     <div className="lg:col-span-2 bg-slate-100 p-4 rounded-xl flex justify-center"><PdfViewer file={file} page={page} onPageChange={setPage} onClick={handleCanvasClick} overlayContent={text && (<div style={{ position: 'absolute', left: position.x, top: position.y, color: color, fontSize: `${size}px`, lineHeight: 1, transform: 'translateY(-100%)', pointerEvents: 'none', whiteSpace: 'nowrap', textShadow: '0 0 2px white' }}>{text}<div className="absolute -bottom-1 -left-1 w-2 h-2 bg-indigo-500 rounded-full"></div></div>)} /></div>
-                     <div className="space-y-4"><div><p className="text-xs text-slate-500 mb-2">Click vào trang PDF để chọn vị trí.</p><label className="block text-sm font-medium mb-1">Nội dung văn bản</label><input type="text" value={text} onChange={e => setText(e.target.value)} className="w-full border p-2 rounded" placeholder="Nhập nội dung..."/></div><div className="grid grid-cols-2 gap-2"><div><label className="block text-sm font-medium mb-1">Cỡ chữ</label><input type="number" value={size} onChange={e => setSize(Number(e.target.value))} className="w-full border p-2 rounded"/></div><div><label className="block text-sm font-medium mb-1">Màu sắc</label><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-10 border rounded"/></div></div><div className="pt-4"><button onClick={handleEdit} disabled={!text} className="bg-indigo-600 text-white px-6 py-2 rounded-lg w-full font-bold hover:bg-indigo-700">Áp dụng & Tải xuống</button><button onClick={() => setFile(null)} className="mt-2 text-slate-500 text-sm w-full hover:underline">Chọn file khác</button></div></div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+                     {/* Canvas Container */}
+                     <div className="lg:col-span-2 bg-slate-100 p-4 rounded-xl flex justify-center overflow-auto relative h-full">
+                        <PdfViewer 
+                            file={file} 
+                            page={page} 
+                            onPageChange={setPage} 
+                            onClick={handleCanvasClick} 
+                            fitParent={true}
+                            scale={1.5}
+                            overlayContent={
+                                <>
+                                    {textItems.filter(i => i.page === page).map(item => (
+                                        <div 
+                                            key={item.id}
+                                            onClick={(e) => { e.stopPropagation(); setActiveId(item.id); }}
+                                            className={`absolute cursor-pointer whitespace-nowrap select-none border border-transparent hover:border-blue-300 px-1 ${activeId === item.id ? 'ring-2 ring-blue-500 bg-blue-50/20' : ''}`}
+                                            style={{ 
+                                                left: `${item.x * 100}%`, 
+                                                top: `${item.y * 100}%`, 
+                                                fontSize: `${item.size}px`, // Approximation for viewer, scale matters
+                                                color: item.color,
+                                                fontFamily: item.font, // Matches StandardFonts names usually
+                                                transform: 'translateY(-100%)', // PDF text draws from bottom-left, DOM draws from top-left. Adjust visually.
+                                                lineHeight: 1
+                                            }}
+                                        >
+                                            {item.text}
+                                        </div>
+                                    ))}
+                                </>
+                            } 
+                        />
+                     </div>
+
+                     {/* Controls Sidebar */}
+                     <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h4 className="font-bold text-slate-700 text-sm">Danh sách Text</h4>
+                            <button onClick={handleAddItem} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center hover:bg-indigo-700"><Plus size={14} className="mr-1"/> Thêm Text</button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
+                            {textItems.length === 0 && <p className="text-center text-xs text-slate-400 italic mt-4">Chưa có nội dung nào.</p>}
+                            
+                            {textItems.map(item => (
+                                <div key={item.id} onClick={() => setActiveId(item.id)} className={`p-3 rounded-lg border cursor-pointer transition-all ${activeId === item.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className="text-xs font-bold text-slate-500 uppercase">Trang {item.page}</span>
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
+                                    </div>
+                                    <p className="font-medium text-sm truncate text-slate-800" style={{ fontFamily: item.font }}>{item.text}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Active Item Editor */}
+                        {activeItem ? (
+                            <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nội dung</label>
+                                    <input type="text" value={activeItem.text} onChange={e => handleUpdateItem(activeItem.id, 'text', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Font chữ</label>
+                                        <select value={activeItem.font} onChange={e => handleUpdateItem(activeItem.id, 'font', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                                            {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cỡ chữ</label>
+                                        <input type="number" value={activeItem.size} onChange={e => handleUpdateItem(activeItem.id, 'size', Number(e.target.value))} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Màu sắc</label>
+                                    <div className="flex gap-2 items-center">
+                                        <input type="color" value={activeItem.color} onChange={e => handleUpdateItem(activeItem.id, 'color', e.target.value)} className="w-8 h-8 rounded border cursor-pointer" />
+                                        <span className="text-xs text-slate-500 font-mono">{activeItem.color}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-4 border-t border-slate-200 bg-slate-50 text-center text-xs text-slate-400">
+                                Chọn một dòng chữ để chỉnh sửa hoặc bấm vào PDF để đặt vị trí.
+                            </div>
+                        )}
+
+                        <div className="p-4 border-t border-slate-200 bg-white">
+                            <button onClick={handleEdit} className="bg-indigo-600 text-white w-full py-2.5 rounded-lg font-bold hover:bg-indigo-700 shadow-md flex items-center justify-center gap-2">
+                                <Save size={16}/> Áp dụng & Tải xuống
+                            </button>
+                            <button onClick={() => setFile(null)} className="mt-2 text-slate-500 text-xs w-full hover:underline text-center">Chọn file khác</button>
+                        </div>
+                     </div>
                 </div>
             )}
         </div>
@@ -1363,7 +1569,6 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
 export const SmartEditTool = () => {
     const [file, setFile] = useState<File | null>(null);
     const [page, setPage] = useState(1);
-    const [zoom, setZoom] = useState(100); // Percentage zoom
     const [selection, setSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
     const [isSelecting, setIsSelecting] = useState(false);
     const startPos = useRef<{x:number, y:number} | null>(null);
@@ -1711,109 +1916,94 @@ export const SmartEditTool = () => {
             ) : (
                 <div className="flex flex-col lg:flex-row gap-6 h-[700px]">
                     <div className="flex-1 flex flex-col min-h-0">
-                        {/* Zoom Controls */}
-                        <div className="flex items-center gap-4 mb-2 bg-slate-100 p-2 rounded-lg justify-center shrink-0">
-                            <button onClick={() => setZoom(s => Math.max(50, s - 25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomOut size={18}/></button>
-                            <span className="text-xs font-bold text-slate-500 w-12 text-center">{zoom}%</span>
-                            <button onClick={() => setZoom(s => Math.min(300, s + 25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomIn size={18}/></button>
-                            <div className="h-4 w-px bg-slate-300 mx-2"></div>
-                            <button onClick={() => setZoom(100)} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600 text-xs font-bold px-2">100%</button>
-                        </div>
+                        {/* PDF Container - fitParent={true} renders full width */}
+                        <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 shadow-inner flex-1 overflow-auto relative select-none group w-full h-full flex justify-center">
+                            {/* Simple container without zoom wrapper */}
+                            <div className="relative w-full max-w-full">
+                                <PdfViewer 
+                                    file={file} 
+                                    page={page} 
+                                    scale={1.5} // Fixed scale for quality
+                                    onPageChange={setPage} 
+                                    onClick={() => {}} 
+                                    containerRef={canvasWrapperRef}
+                                    onMouseDown={handleMouseDown}
+                                    onMouseMove={handleMouseMove}
+                                    onMouseUp={handleMouseUp}
+                                    onMouseLeave={handleMouseUp}
+                                    fitParent={true} // Crucial: Fits to container width
+                                    overlayContent={
+                                        <>
+                                            {/* Selection Box */}
+                                            {selection && (
+                                                <div 
+                                                    className="absolute border-2 border-indigo-500 bg-indigo-500/20 pointer-events-none z-20"
+                                                    style={{
+                                                        left: selection.x,
+                                                        top: selection.y,
+                                                        width: selection.w,
+                                                        height: selection.h
+                                                    }}
+                                                ></div>
+                                            )}
 
-                        {/* PDF Container - Overflow Auto handles scrolling when Zoomed */}
-                        <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 shadow-inner flex-1 overflow-auto relative select-none group w-full h-full">
-                            {/* Inner wrapper needs to be inline-block to allow canvas to expand scroll area */}
-                            <div 
-                                className="inline-block relative min-w-full min-h-full flex justify-center origin-top-left transition-all duration-200 ease-out" 
-                                style={{ width: `${zoom}%`, minWidth: '100%' }}
-                            >
-                                <div className="relative w-full">
-                                    <PdfViewer 
-                                        file={file} 
-                                        page={page} 
-                                        // Dynamic scale calculation based on zoom to ensure high resolution
-                                        scale={Math.max(1.5, (zoom / 100) * 1.5)} 
-                                        onPageChange={setPage} 
-                                        onClick={() => {}} 
-                                        containerRef={canvasWrapperRef}
-                                        onMouseDown={handleMouseDown}
-                                        onMouseMove={handleMouseMove}
-                                        onMouseUp={handleMouseUp}
-                                        onMouseLeave={handleMouseUp}
-                                        fitParent={true} // Crucial: Fits to wrapper width which is scaled by zoom
-                                        overlayContent={
-                                            <>
-                                                {/* Selection Box */}
-                                                {selection && (
+                                            {/* Replacements Overlay */}
+                                            {replacements.filter(r => r.page === page).map((rep, idx) => {
+                                                const originalIndex = replacements.indexOf(rep);
+                                                const isSelected = selectedIndex === originalIndex;
+                                                
+                                                // Determine visual state based on mode
+                                                const isMoveMode = isSelected && interactionMode === 'move';
+                                                const isCropMode = isSelected && interactionMode === 'crop';
+
+                                                return (
                                                     <div 
-                                                        className="absolute border-2 border-indigo-500 bg-indigo-500/20 pointer-events-none z-20"
+                                                        key={idx}
+                                                        className={`absolute z-10 select-none transition-shadow
+                                                            ${isSelected ? 'z-30 ring-2 ring-indigo-500' : 'group-hover:ring-1 ring-blue-400/50'}
+                                                            ${isMoveMode ? 'cursor-move' : 'cursor-pointer'}
+                                                        `}
                                                         style={{
-                                                            left: selection.x,
-                                                            top: selection.y,
-                                                            width: selection.w,
-                                                            height: selection.h
+                                                            left: `${rep.x * 100}%`,
+                                                            top: `${rep.y * 100}%`,
+                                                            width: `${rep.w * 100}%`,
+                                                            height: `${rep.h * 100}%`
                                                         }}
-                                                    ></div>
-                                                )}
-
-                                                {/* Replacements Overlay */}
-                                                {replacements.filter(r => r.page === page).map((rep, idx) => {
-                                                    const originalIndex = replacements.indexOf(rep);
-                                                    const isSelected = selectedIndex === originalIndex;
-                                                    
-                                                    // Determine visual state based on mode
-                                                    const isMoveMode = isSelected && interactionMode === 'move';
-                                                    const isCropMode = isSelected && interactionMode === 'crop';
-
-                                                    return (
-                                                        <div 
-                                                            key={idx}
-                                                            className={`absolute z-10 select-none transition-shadow
-                                                                ${isSelected ? 'z-30 ring-2 ring-indigo-500' : 'group-hover:ring-1 ring-blue-400/50'}
-                                                                ${isMoveMode ? 'cursor-move' : 'cursor-pointer'}
-                                                            `}
+                                                        onMouseDown={(e) => handleReplacementMouseDown(e, originalIndex)}
+                                                    >
+                                                        <img 
+                                                            src={rep.image} 
+                                                            className="w-full h-full" 
+                                                            alt="replaced text"
+                                                            draggable={false}
                                                             style={{
-                                                                left: `${rep.x * 100}%`,
-                                                                top: `${rep.y * 100}%`,
-                                                                width: `${rep.w * 100}%`,
-                                                                height: `${rep.h * 100}%`
+                                                                filter: `brightness(${rep.brightness}) blur(${rep.blur}px) contrast(${rep.contrast})`,
+                                                                // Use fill to allow arbitrary resizing ("cropping" visual effect)
+                                                                objectFit: 'fill'
                                                             }}
-                                                            onMouseDown={(e) => handleReplacementMouseDown(e, originalIndex)}
-                                                        >
-                                                            <img 
-                                                                src={rep.image} 
-                                                                className="w-full h-full" 
-                                                                alt="replaced text"
-                                                                draggable={false}
-                                                                style={{
-                                                                    filter: `brightness(${rep.brightness}) blur(${rep.blur}px) contrast(${rep.contrast})`,
-                                                                    // Use fill to allow arbitrary resizing ("cropping" visual effect)
-                                                                    objectFit: 'fill'
-                                                                }}
-                                                            />
-                                                            
-                                                            {/* Resize Handle (Crop Mode) */}
-                                                            {isCropMode && (
-                                                                <div 
-                                                                    className="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-indigo-600 cursor-nwse-resize z-40 shadow-sm"
-                                                                    // MouseDown on handle initiates drag with mode=crop implicitly handled by SmartEditTool logic
-                                                                ></div>
-                                                            )}
+                                                        />
+                                                        
+                                                        {/* Resize Handle (Crop Mode) */}
+                                                        {isCropMode && (
+                                                            <div 
+                                                                className="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-indigo-600 cursor-nwse-resize z-40 shadow-sm"
+                                                                // MouseDown on handle initiates drag with mode=crop implicitly handled by SmartEditTool logic
+                                                            ></div>
+                                                        )}
 
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); removeReplacement(originalIndex); }}
-                                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 shadow-sm pointer-events-auto cursor-pointer z-30 hover:scale-100"
-                                                                title="Xóa"
-                                                            >
-                                                                <X size={12} />
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </>
-                                        }
-                                    />
-                                </div>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); removeReplacement(originalIndex); }}
+                                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 shadow-sm pointer-events-auto cursor-pointer z-30 hover:scale-100"
+                                                            title="Xóa"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </>
+                                    }
+                                />
                             </div>
                         </div>
                         <p className="text-xs text-center text-slate-500 mt-2 shrink-0">Kéo chuột chọn vùng văn bản cần thay thế</p>
