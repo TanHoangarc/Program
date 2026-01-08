@@ -6,7 +6,7 @@ import {
   Plus, Check, X, Loader, ChevronLeft, ChevronRight, MousePointer,
   Crop, Layers, Wand2, RefreshCw, Eraser, Palette, Droplets, Split,
   Files, Pencil, Save, Cloud, FolderOpen, AlertTriangle, HelpCircle,
-  ArrowLeft, ShieldCheck, Key
+  ArrowLeft, ShieldCheck, Key, Type, ZoomIn, ZoomOut, Maximize
 } from 'lucide-react';
 import { PDFDocument, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -25,7 +25,7 @@ if (pdfjsLib.GlobalWorkerOptions) {
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
 
-type ToolType = 'split' | 'compress' | 'merge' | 'images_to_pdf' | 'unlock' | 'edit' | 'stamp' | 'extract';
+type ToolType = 'split' | 'compress' | 'merge' | 'images_to_pdf' | 'unlock' | 'edit' | 'stamp' | 'extract' | 'smart_edit';
 
 interface StampItem {
     id: string;
@@ -213,6 +213,7 @@ const formatBytes = (bytes: number, decimals = 2) => {
 interface PdfViewerProps {
     file: File | null;
     page: number; // 1-based
+    scale?: number; // Added Zoom support
     onPageChange: (newPage: number) => void;
     onClick?: (x: number, y: number, viewportWidth: number, viewportHeight: number) => void;
     overlayContent?: React.ReactNode;
@@ -224,7 +225,7 @@ interface PdfViewerProps {
 }
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ 
-    file, page, onPageChange, onClick, overlayContent,
+    file, page, scale = 1.0, onPageChange, onClick, overlayContent,
     containerRef, onMouseDown, onMouseMove, onMouseUp, onMouseLeave 
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -263,11 +264,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 
     useEffect(() => {
         if (pdfDoc) {
-            renderPage(pdfDoc, page);
+            renderPage(pdfDoc, page, scale);
         }
-    }, [pdfDoc, page]);
+    }, [pdfDoc, page, scale]);
 
-    const renderPage = async (pdf: any, pageNum: number) => {
+    const renderPage = async (pdf: any, pageNum: number, currentScale: number) => {
         if (renderTaskRef.current) {
             await renderTaskRef.current.cancel();
         }
@@ -279,7 +280,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
             if (!canvas) return;
 
             const context = canvas.getContext('2d');
-            const viewport = page.getViewport({ scale: 1.5 }); // High quality
+            const viewport = page.getViewport({ scale: currentScale }); 
 
             canvas.height = viewport.height;
             canvas.width = viewport.width;
@@ -313,20 +314,20 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
     if (!file) return null;
 
     return (
-        <div className="flex flex-col items-center gap-4">
-            <div className="flex items-center gap-4 bg-slate-100 px-4 py-2 rounded-full shadow-sm">
+        <div className="flex flex-col items-center gap-4 w-fit mx-auto relative group/pdf">
+            <div className="flex items-center gap-4 bg-slate-800/90 backdrop-blur text-white px-4 py-2 rounded-full shadow-lg sticky top-4 z-50 transition-opacity opacity-0 group-hover/pdf:opacity-100 hover:opacity-100">
                 <button 
                     disabled={page <= 1} 
                     onClick={() => onPageChange(page - 1)}
-                    className="p-1 hover:bg-white rounded-full disabled:opacity-30"
+                    className="p-1 hover:bg-white/20 rounded-full disabled:opacity-30"
                 >
                     <ChevronLeft size={20}/>
                 </button>
-                <span className="font-medium text-sm text-slate-700">Page {page} of {numPages}</span>
+                <span className="font-medium text-sm">Page {page} of {numPages}</span>
                 <button 
                     disabled={page >= numPages} 
                     onClick={() => onPageChange(page + 1)}
-                    className="p-1 hover:bg-white rounded-full disabled:opacity-30"
+                    className="p-1 hover:bg-white/20 rounded-full disabled:opacity-30"
                 >
                     <ChevronRight size={20}/>
                 </button>
@@ -334,7 +335,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 
             <div 
                 ref={containerRef}
-                className="relative border shadow-lg bg-slate-500 inline-block"
+                className="relative border shadow-lg bg-slate-500 inline-block origin-top-left select-none"
                 onMouseDown={onMouseDown}
                 onMouseMove={onMouseMove}
                 onMouseUp={onMouseUp}
@@ -348,8 +349,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
                 <canvas 
                     ref={canvasRef} 
                     onClick={handleCanvasClick}
-                    className="max-w-full h-auto cursor-crosshair block"
-                    style={{ maxHeight: '70vh' }}
+                    className="cursor-crosshair block"
                 />
                 {overlayContent}
             </div>
@@ -360,7 +360,6 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 // --- TOOL COMPONENTS ---
 
 const SplitTool = () => {
-    // ... (No changes needed here, keeping it truncated for brevity in response but full in actual file)
     const [file, setFile] = useState<File | null>(null);
     const [numPages, setNumPages] = useState(0);
     const [splitMode, setSplitMode] = useState<'all' | 'range'>('all');
@@ -479,7 +478,6 @@ const SplitTool = () => {
 };
 
 const CompressTool = () => {
-    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [compressedPdf, setCompressedPdf] = useState<Uint8Array | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -526,7 +524,6 @@ const CompressTool = () => {
 };
 
 const MergeTool = () => {
-    // ... (No changes needed)
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files || [])]); };
@@ -586,7 +583,6 @@ const MergeTool = () => {
 };
 
 const ImagesToPdfTool = () => {
-    // ... (No changes needed)
     const [files, setFiles] = useState<File[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -605,7 +601,6 @@ const ImagesToPdfTool = () => {
 };
 
 const UnlockTool = () => {
-    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [password, setPassword] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -619,7 +614,6 @@ const UnlockTool = () => {
 };
 
 const EditTool = () => {
-    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [text, setText] = useState('');
     const [position, setPosition] = useState({ x: 50, y: 500 });
@@ -645,7 +639,6 @@ const EditTool = () => {
 };
 
 const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any }) => {
-    // ... (No changes needed)
     const [file, setFile] = useState<File | null>(null);
     const [selectedStamp, setSelectedStamp] = useState<string | null>(null);
     const [isAdding, setIsAdding] = useState(false);
@@ -906,7 +899,7 @@ const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any 
                 ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 bg-slate-100 p-4 rounded-xl flex justify-center"><PdfViewer file={file} page={page} onPageChange={setPage} onClick={handleCanvasClick} overlayContent={selectedStampUrl && (<div style={{ position: 'absolute', left: position.x, top: position.y, width: getPreviewContainerWidth(), opacity: opacity, transform: 'translate(-50%, -50%)', pointerEvents: 'none', overflow: 'hidden' }}><img src={selectedStampUrl} style={{ height: 'auto', ...getPreviewSliceStyle() as any }} /><div className="absolute top-0 left-0 w-full h-full border border-dashed border-indigo-500"></div></div>)} /></div>
-                        <div className="bg-slate-50 p-4 rounded-xl h-fit"><p className="text-xs text-slate-500 mb-4 font-medium uppercase tracking-wider">Cấu hình con dấu</p>{!selectedStamp ? (<p className="text-red-500 text-sm mb-4">Vui lòng chọn con dấu từ thư viện trên.</p>) : (<div className="space-y-4"><div className="flex items-center gap-2 text-sm text-slate-600 mb-2"><MousePointer size={14}/> Click vào trang để chọn vị trí</div><div><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1 mb-2"><Split size={12}/> Chế độ đóng dấu</label><div className="flex gap-2 mb-3"><button onClick={() => setStampType('normal')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'normal' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Bình thường</button><button onClick={() => setStampType('fanfold')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'fanfold' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Giáp lai (Nhiều trang)</button></div>{stampType === 'fanfold' && (<div className="bg-white p-3 rounded-lg border border-slate-200 mb-3 animate-in fade-in"><p className="text-xs text-slate-500 mb-2 flex items-center gap-1"><Files size={12}/> Phạm vi trang (Range)</p><div className="flex items-center gap-2"><div><label className="text-[10px] text-slate-400 block">Từ trang</label><input type="number" min="1" value={fanfoldStart} onChange={e => setFanfoldStart(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div><span className="text-slate-400">-</span><div><label className="text-[10px] text-slate-400 block">Đến trang</label><input type="number" min={fanfoldStart} value={fanfoldEnd} onChange={e => setFanfoldEnd(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div></div><p className="text-[10px] text-slate-400 mt-2 text-center">Sẽ chia con dấu thành <strong className="text-indigo-600">{Math.max(1, fanfoldEnd - fanfoldStart + 1)}</strong> phần.</p></div>)}</div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ lớn (Scale): {scale}x</label><input type="range" min="0.1" max="2" step="0.1" value={scale} onChange={e => setScale(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ mờ (Opacity): {Math.round(opacity * 100)}%</label><input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={e => setOpacity(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div className="pt-2"><button onClick={applyStamp} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-md">Đóng dấu & Tải xuống</button><button onClick={() => setFile(null)} className="mt-2 text-slate-500 text-sm w-full hover:underline">Chọn file khác</button></div></div>)}</div></div>
+                        <div className="bg-slate-50 p-4 rounded-xl h-fit"><p className="text-xs text-slate-500 mb-4 font-medium uppercase tracking-wider">Cấu hình con dấu</p>{!selectedStamp ? (<p className="text-red-500 text-sm mb-4">Vui lòng chọn con dấu từ thư viện trên.</p>) : (<div className="space-y-4"><div className="flex items-center gap-2 text-sm text-slate-600 mb-2"><MousePointer size={14}/> Click vào trang để chọn vị trí</div><div><label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1"><Split size={12}/> Chế độ đóng dấu</label><div className="flex gap-2 mb-3"><button onClick={() => setStampType('normal')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'normal' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Bình thường</button><button onClick={() => setStampType('fanfold')} className={`flex-1 py-1.5 text-xs rounded border transition-all ${stampType === 'fanfold' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Giáp lai (Nhiều trang)</button></div>{stampType === 'fanfold' && (<div className="bg-white p-3 rounded-lg border border-slate-200 mb-3 animate-in fade-in"><p className="text-xs text-slate-500 mb-2 flex items-center gap-1"><Files size={12}/> Phạm vi trang (Range)</p><div className="flex items-center gap-2"><div><label className="text-[10px] text-slate-400 block">Từ trang</label><input type="number" min="1" value={fanfoldStart} onChange={e => setFanfoldStart(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div><span className="text-slate-400">-</span><div><label className="text-[10px] text-slate-400 block">Đến trang</label><input type="number" min={fanfoldStart} value={fanfoldEnd} onChange={e => setFanfoldEnd(Number(e.target.value))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-center"/></div></div><p className="text-[10px] text-slate-400 mt-2 text-center">Sẽ chia con dấu thành <strong className="text-indigo-600">{Math.max(1, fanfoldEnd - fanfoldStart + 1)}</strong> phần.</p></div>)}</div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ lớn (Scale): {scale}x</label><input type="range" min="0.1" max="2" step="0.1" value={scale} onChange={e => setScale(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div><label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Độ mờ (Opacity): {Math.round(opacity * 100)}%</label><input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={e => setOpacity(Number(e.target.value))} className="w-full accent-indigo-600" /></div><div className="pt-2"><button onClick={applyStamp} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-md">Đóng dấu & Tải xuống</button><button onClick={() => setFile(null)} className="mt-2 text-slate-500 text-sm w-full hover:underline">Chọn file khác</button></div></div>)}</div></div>
                 )}
             </div>
         </div>
@@ -1174,7 +1167,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
 
     return (
         <div className="space-y-6">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Crop className="text-indigo-600"/> Tách Con Dấu (Crop & AI)</h3>
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Crop className="text-indigo-600"/> Tách Con Dấu (AI)</h3>
             
             {!file ? (
                 <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50">
@@ -1352,6 +1345,383 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     );
 };
 
+export const SmartEditTool = () => {
+    const [file, setFile] = useState<File | null>(null);
+    const [page, setPage] = useState(1);
+    const [scale, setScale] = useState(1.0); // Start at 1.0 scale
+    const [selection, setSelection] = useState<{x:number, y:number, w:number, h:number} | null>(null);
+    const [isSelecting, setIsSelecting] = useState(false);
+    const startPos = useRef<{x:number, y:number} | null>(null);
+    const canvasWrapperRef = useRef<HTMLDivElement>(null);
+    const [prompt, setPrompt] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [replacements, setReplacements] = useState<{x: number, y: number, w: number, h: number, image: string, page: number}[]>([]);
+    const [customApiKey, setCustomApiKey] = useState('');
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (!canvasWrapperRef.current) return;
+        const target = e.currentTarget as HTMLDivElement;
+        const rect = target.getBoundingClientRect();
+        
+        // Use offsetX if available for better accuracy inside scrollable areas, otherwise fallback
+        const x = e.nativeEvent.offsetX;
+        const y = e.nativeEvent.offsetY;
+        
+        setIsSelecting(true);
+        startPos.current = { x, y };
+        setSelection({ x, y, w: 0, h: 0 });
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!isSelecting || !startPos.current || !canvasWrapperRef.current) return;
+        
+        // Current position relative to the element
+        const currentX = e.nativeEvent.offsetX;
+        const currentY = e.nativeEvent.offsetY;
+        
+        // Calculate width/height based on start position
+        const width = currentX - startPos.current.x;
+        const height = currentY - startPos.current.y;
+
+        setSelection({
+            x: width > 0 ? startPos.current.x : currentX,
+            y: height > 0 ? startPos.current.y : currentY,
+            w: Math.abs(width),
+            h: Math.abs(height)
+        });
+    };
+
+    const handleMouseUp = () => {
+        setIsSelecting(false);
+        startPos.current = null;
+    };
+
+    const handleAiReplaceRelative = async () => {
+        if (!selection || !canvasWrapperRef.current || !prompt) return;
+        
+        // Calculate relative coordinates (0 to 1) based on visual container size
+        const containerW = canvasWrapperRef.current.clientWidth; // Visual Width (CSS pixels)
+        const containerH = canvasWrapperRef.current.clientHeight; // Visual Height (CSS pixels)
+        
+        const relX = selection.x / containerW;
+        const relY = selection.y / containerH;
+        const relW = selection.w / containerW;
+        const relH = selection.h / containerH;
+
+        setIsProcessing(true);
+        setErrorMsg(null);
+
+        // Crop logic needs actual canvas pixels (internal resolution)
+        const canvas = canvasWrapperRef.current.querySelector('canvas');
+        if (!canvas) return;
+
+        // Scale visual selection rect to internal canvas pixel coordinates for cropping
+        // The canvas might be high-DPI or just larger than visual size
+        const scaleX = canvas.width / containerW;
+        const scaleY = canvas.height / containerH;
+        
+        const cropX = selection.x * scaleX;
+        const cropY = selection.y * scaleY;
+        const cropW = selection.w * scaleX;
+        const cropH = selection.h * scaleY;
+
+        if (cropW < 5 || cropH < 5) {
+             setErrorMsg("Vùng chọn quá nhỏ.");
+             setIsProcessing(false);
+             return;
+        }
+
+        // Create crop canvas
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = cropW;
+        tempCanvas.height = cropH;
+        const ctx = tempCanvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
+
+        try {
+            const apiKey = customApiKey || process.env.API_KEY;
+            if (!apiKey) throw new Error("KEY_MISSING");
+
+            // Advanced Prompt Engineering for "Scan Match" & Layout Preservation
+            const systemInstruction = `You are a professional document editing AI.
+            TASK: Replace the text inside the provided image crop with: "${prompt}".
+            
+            CRITICAL VISUAL RULES:
+            1. SCAN MATCH: Analyze the font family, weight, blur, noise, and paper texture of the original image. The new text MUST look exactly like the original scanned document.
+            2. LAYOUT & SIZING: 
+               - Analyze the height and width of the FIRST character visible in the source image.
+               - Generate the new text "${prompt}" using that EXACT character height and width.
+               - Do NOT stretch or squash the text to fill the box if it doesn't fit naturally.
+               - Maintain the original kerning (character spacing).
+            3. ASPECT RATIO: The output image MUST have the exact same aspect ratio as the input image. Fill any empty space with the matching background texture.
+            4. Do NOT output clean digital text. It must look scanned (slight blur, grain).
+            
+            Return ONLY the modified image.`;
+
+            const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
+                apiKey: apiKey,
+                model: "gemini-3-pro-image-preview",
+                contents: [
+                    {
+                        parts: [
+                            { inlineData: { mimeType: "image/png", data: base64Image } },
+                            { text: systemInstruction }
+                        ]
+                    }
+                ]
+            });
+
+            const aiResponse = response.data;
+            let resultImage = '';
+
+            if (aiResponse.candidates && aiResponse.candidates[0].content && aiResponse.candidates[0].content.parts) {
+                for (const part of aiResponse.candidates[0].content.parts) {
+                    if (part.inlineData) {
+                        resultImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        break;
+                    }
+                }
+            }
+
+            if (!resultImage) throw new Error("AI did not return an image.");
+
+            setReplacements(prev => [...prev, {
+                x: relX, 
+                y: relY, 
+                w: relW, 
+                h: relH, 
+                image: resultImage,
+                page: page
+            }]);
+            
+            setSelection(null); 
+            setPrompt('');
+
+        } catch (e: any) {
+            console.error("AI Error:", e);
+            if (e.message === 'KEY_MISSING') setErrorMsg("API Key Missing");
+            else setErrorMsg(`Lỗi AI: ${e.response?.data?.error?.message || e.message}`);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleSavePdfSmart = async () => {
+        if (!file || replacements.length === 0) return;
+        setIsProcessing(true);
+        try {
+            const pdfBuffer = await file.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(pdfBuffer);
+            
+            for (const rep of replacements) {
+                const targetPage = pdfDoc.getPages()[rep.page - 1];
+                if (!targetPage) continue;
+
+                const imgBytes = await fetch(rep.image).then(res => res.arrayBuffer());
+                let embedImg;
+                if (rep.image.includes('image/png')) embedImg = await pdfDoc.embedPng(imgBytes);
+                else embedImg = await pdfDoc.embedJpg(imgBytes);
+
+                const { width: pdfPageW, height: pdfPageH } = targetPage.getSize();
+                
+                // Map relative coords (0-1) to PDF Point coords
+                const destW = rep.w * pdfPageW;
+                const destH = rep.h * pdfPageH; 
+                
+                const destX = rep.x * pdfPageW;
+                // PDF Y is from bottom-left. Visual Y is from top-left.
+                const destY = pdfPageH - (rep.y * pdfPageH) - destH; 
+
+                targetPage.drawImage(embedImg, {
+                    x: destX,
+                    y: destY,
+                    width: destW,
+                    height: destH
+                });
+            }
+            
+            const pdfBytes = await pdfDoc.save();
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `smart_edited_${file.name}`;
+            link.click();
+            
+        } catch (e) {
+            console.error(e);
+            alert("Lỗi khi lưu file.");
+        }
+        setIsProcessing(false);
+    };
+
+    const removeReplacement = (index: number) => {
+        setReplacements(prev => prev.filter((_, i) => i !== index));
+    };
+
+    return (
+        <div className="space-y-6">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Type className="text-indigo-600"/> Sửa PDF Thông Minh (AI Scan Match)</h3>
+            
+            {!file ? (
+                <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50">
+                    <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" id="smart-upload" />
+                    <label htmlFor="smart-upload" className="cursor-pointer flex flex-col items-center">
+                        <Upload size={32} className="text-slate-400 mb-2"/>
+                        <span className="text-indigo-600 font-medium">Chọn file PDF (Dạng Scan/Image)</span>
+                    </label>
+                </div>
+            ) : (
+                <div className="flex flex-col lg:flex-row gap-6 h-[700px]">
+                    <div className="flex-1 flex flex-col min-h-0">
+                        {/* Zoom Controls */}
+                        <div className="flex items-center gap-4 mb-2 bg-slate-100 p-2 rounded-lg justify-center shrink-0">
+                            <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomOut size={18}/></button>
+                            <span className="text-xs font-bold text-slate-500 w-12 text-center">{Math.round(scale * 100)}%</span>
+                            <button onClick={() => setScale(s => Math.min(3, s + 0.25))} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600"><ZoomIn size={18}/></button>
+                            <div className="h-4 w-px bg-slate-300 mx-2"></div>
+                            <button onClick={() => setScale(1.0)} className="p-1.5 hover:bg-white rounded shadow-sm text-slate-600 text-xs font-bold px-2">Fit</button>
+                        </div>
+
+                        {/* PDF Container - Overflow Auto handles scrolling when Zoomed */}
+                        <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 shadow-inner flex-1 overflow-auto relative select-none group">
+                            {/* Inner wrapper needs to be inline-block to allow canvas to expand scroll area */}
+                            <div className="inline-block relative min-w-full min-h-full flex justify-center">
+                                <div className="relative">
+                                    <PdfViewer 
+                                        file={file} 
+                                        page={page} 
+                                        scale={scale}
+                                        onPageChange={setPage} 
+                                        onClick={() => {}} 
+                                        containerRef={canvasWrapperRef}
+                                        onMouseDown={handleMouseDown}
+                                        onMouseMove={handleMouseMove}
+                                        onMouseUp={handleMouseUp}
+                                        onMouseLeave={handleMouseUp}
+                                        overlayContent={
+                                            <>
+                                                {/* Selection Box */}
+                                                {selection && (
+                                                    <div 
+                                                        className="absolute border-2 border-indigo-500 bg-indigo-500/20 pointer-events-none z-20"
+                                                        style={{
+                                                            left: selection.x,
+                                                            top: selection.y,
+                                                            width: selection.w,
+                                                            height: selection.h
+                                                        }}
+                                                    ></div>
+                                                )}
+
+                                                {/* Replacements Overlay */}
+                                                {replacements.filter(r => r.page === page).map((rep, idx) => (
+                                                    <div 
+                                                        key={idx}
+                                                        className="absolute z-10 group-hover:ring-1 ring-blue-400/50"
+                                                        style={{
+                                                            left: `${rep.x * 100}%`,
+                                                            top: `${rep.y * 100}%`,
+                                                            width: `${rep.w * 100}%`,
+                                                            height: `${rep.h * 100}%`
+                                                        }}
+                                                    >
+                                                        {/* Force fill to ensure no gaps, relying on AI to match aspect ratio in generation */}
+                                                        <img 
+                                                            src={rep.image} 
+                                                            className="w-full h-full object-fill" 
+                                                            alt="replaced text"
+                                                        />
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); removeReplacement(replacements.indexOf(rep)); }}
+                                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity transform scale-75 shadow-sm pointer-events-auto cursor-pointer z-30"
+                                                            title="Xóa"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        }
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-xs text-center text-slate-500 mt-2 shrink-0">Kéo chuột chọn vùng văn bản cần thay thế</p>
+                    </div>
+
+                    <div className="w-full lg:w-80 space-y-6 shrink-0 overflow-y-auto">
+                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                             <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Wand2 size={18}/> Nội dung thay thế
+                             </h4>
+                             
+                             {errorMsg && (
+                                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 animate-in fade-in">
+                                     <div className="flex items-center gap-2 font-bold mb-1"><AlertTriangle size={16} /> Lỗi</div>
+                                     {errorMsg}
+                                 </div>
+                             )}
+
+                             {/* CUSTOM API KEY */}
+                             <div className="mb-4">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                    <Key size={10} /> API Key (Tùy chọn)
+                                </label>
+                                <input
+                                    type="password"
+                                    value={customApiKey}
+                                    onChange={(e) => setCustomApiKey(e.target.value)}
+                                    placeholder="Dán Google Gemini API Key vào đây..."
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-slate-400"
+                                />
+                             </div>
+
+                             <div className="space-y-3">
+                                 <div>
+                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Văn bản mới</label>
+                                     <textarea 
+                                        value={prompt}
+                                        onChange={(e) => setPrompt(e.target.value)}
+                                        placeholder="VD: 15,000,000 VND"
+                                        className="w-full border p-2 rounded-lg text-sm h-24 resize-none outline-none focus:ring-2 focus:ring-indigo-500"
+                                     />
+                                 </div>
+
+                                 <button 
+                                    onClick={handleAiReplaceRelative}
+                                    disabled={!selection || !prompt || isProcessing}
+                                    className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow-md disabled:opacity-70 disabled:cursor-not-allowed transition-all"
+                                 >
+                                    {isProcessing ? <Loader className="animate-spin" size={16}/> : <Wand2 size={16}/>} 
+                                    AI Thực Hiện
+                                 </button>
+                             </div>
+                         </div>
+
+                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                             <div className="flex justify-between items-center mb-2">
+                                <h4 className="font-bold text-sm text-slate-700">Đã sửa: {replacements.length} vùng</h4>
+                             </div>
+                             <button 
+                                onClick={handleSavePdfSmart}
+                                disabled={replacements.length === 0 || isProcessing}
+                                className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                             >
+                                <Download size={16}/> Tải PDF Hoàn Thiện
+                             </button>
+                             <button onClick={() => setFile(null)} className="w-full text-slate-400 text-xs hover:text-slate-600 underline mt-3">Chọn file khác</button>
+                         </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const ToolAI: React.FC = () => {
     const [activeTool, setActiveTool] = useState<ToolType | null>(null);
     const [stamps, setStamps] = useState<StampItem[]>([]);
@@ -1366,6 +1736,7 @@ export const ToolAI: React.FC = () => {
             case 'edit': return <EditTool />;
             case 'stamp': return <StampTool stamps={stamps} setStamps={setStamps} />;
             case 'extract': return <ExtractStampTool setStamps={setStamps} />;
+            case 'smart_edit': return <SmartEditTool />;
             default: return null;
         }
     };
@@ -1393,6 +1764,7 @@ export const ToolAI: React.FC = () => {
         { id: 'images_to_pdf', name: 'Ảnh sang PDF', icon: Image, desc: 'Chuyển đổi file ảnh (JPG, PNG) sang PDF.' },
         { id: 'unlock', name: 'Mở Khóa PDF', icon: Unlock, desc: 'Xóa mật khẩu bảo vệ khỏi file PDF (nếu biết pass).' },
         { id: 'edit', name: 'Chỉnh Sửa PDF', icon: Edit, desc: 'Thêm văn bản, chú thích vào trang PDF.' },
+        { id: 'smart_edit', name: 'Sửa PDF (AI Scan)', icon: Type, desc: 'Thay thế nội dung văn bản trên file Scan, giữ nguyên nền/font/nhiễu.' },
         { id: 'stamp', name: 'Đóng Dấu (SignLH)', icon: Stamp, desc: 'Chèn chữ ký, mộc, logo hoặc giáp lai nhiều trang.' },
         { id: 'extract', name: 'Tách Con Dấu (AI)', icon: Crop, desc: 'Dùng AI để tách và phục hồi con dấu từ văn bản scan.' },
     ];
