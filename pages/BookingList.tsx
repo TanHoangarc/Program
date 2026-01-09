@@ -30,6 +30,7 @@ export const BookingList: React.FC<BookingListProps> = ({
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); // ADDED
   const [filterBooking, setFilterBooking] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null); // State for highlighting row
   
   // Job Modal State
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
@@ -113,10 +114,18 @@ export const BookingList: React.FC<BookingListProps> = ({
   useEffect(() => {
     if (initialBookingId && bookingData.length > 0) {
       const found = bookingData.find(b => b.bookingId === initialBookingId);
-      if (found) setSelectedBooking(found);
+      if (found) {
+          setSelectedBooking(found);
+          setSelectedRowId(initialBookingId); // Highlight
+      }
       if (onClearTargetBooking) onClearTargetBooking();
     }
   }, [initialBookingId, bookingData, onClearTargetBooking]);
+
+  const handleOpenBooking = (booking: BookingSummary) => {
+      setSelectedBooking(booking);
+      setSelectedRowId(booking.bookingId);
+  };
 
   const handleSaveDetails = (updatedDetails: BookingCostDetails, shouldClose: boolean = true) => {
     if (!selectedBooking) return;
@@ -138,6 +147,7 @@ export const BookingList: React.FC<BookingListProps> = ({
     
     if (action === 'view' || action === 'edit') {
         setSelectedBooking(booking);
+        setSelectedRowId(booking.bookingId); // Highlight when viewed/edited
     } 
     else if (action === 'payment-lc') {
         setTargetBookingForPayment(booking);
@@ -151,6 +161,7 @@ export const BookingList: React.FC<BookingListProps> = ({
         if (!hasDeposits) {
             if (window.confirm("Booking này chưa có thông tin Cược (Deposit). Bạn có muốn mở chi tiết Booking để cập nhật không?")) {
                 setSelectedBooking(booking);
+                setSelectedRowId(booking.bookingId); // Highlight
             }
             return;
         }
@@ -166,6 +177,7 @@ export const BookingList: React.FC<BookingListProps> = ({
         if (extensionCosts.length === 0) {
             if (window.confirm("Booking này chưa có thông tin Gia Hạn. Bạn có muốn mở chi tiết Booking để thêm không?")) {
                 setSelectedBooking(booking);
+                setSelectedRowId(booking.bookingId); // Highlight
             }
             return;
         }
@@ -371,9 +383,12 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const hasMissingFile = missingLcFile || missingAddLcFile || missingExtFile;
 
                 return (
-                  <tr key={booking.bookingId} className="hover:bg-white/40 transition-colors group">
-                    <td className="px-6 py-4 font-medium text-slate-500" onClick={() => setSelectedBooking(booking)}>T{booking.month}/{filterYear}</td>
-                    <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => setSelectedBooking(booking)}>{booking.bookingId}</td>
+                  <tr 
+                    key={booking.bookingId} 
+                    className={`transition-colors group ${selectedRowId === booking.bookingId ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-white/40'}`}
+                  >
+                    <td className="px-6 py-4 font-medium text-slate-500 cursor-pointer" onClick={() => handleOpenBooking(booking)}>T{booking.month}/{filterYear}</td>
+                    <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => handleOpenBooking(booking)}>{booking.bookingId}</td>
                     <td className="px-6 py-4 text-slate-600">{booking.line}</td>
                     <td className="px-6 py-4 text-center"><span className="bg-slate-100/80 text-slate-600 px-2 py-1 rounded-md text-[10px] font-bold border border-slate-200/50">{booking.jobCount}</span></td>
                     <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(booking.totalSell)}</td>
