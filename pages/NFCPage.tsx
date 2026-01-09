@@ -333,99 +333,81 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
         />
       </div>
 
-      {/* List */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                        <th className="px-6 py-4 font-semibold text-slate-700">Profile Name</th>
-                        <th className="px-6 py-4 font-semibold text-slate-700">URL Slug</th>
-                        <th className="px-6 py-4 font-semibold text-slate-700 text-right">Traffic</th>
-                        <th className="px-6 py-4 font-semibold text-slate-700 text-center">Status</th>
-                        <th className="px-6 py-4 font-semibold text-slate-700 text-right">Actions</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {filteredProfiles.length > 0 ? filteredProfiles.map((profile) => (
-                        <tr key={profile.id} className="hover:bg-slate-50 transition-colors group">
-                            <td className="px-6 py-4">
-                                <div className="flex items-center gap-3">
-                                    {profile.avatarUrl ? (
-                                        <img src={profile.avatarUrl} alt={profile.name} className="w-8 h-8 rounded-full object-cover border border-slate-200" />
-                                    ) : (
-                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-                                            {profile.name.charAt(0)}
-                                        </div>
-                                    )}
-                                    <div>
-                                        <span className="font-medium text-slate-900 block">{profile.name}</span>
-                                        {profile.title && <span className="text-xs text-slate-500">{profile.title}</span>}
-                                    </div>
-                                </div>
-                            </td>
-                            <td className="px-6 py-4">
-                                <a 
-                                    href={profile.fullUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-slate-500 hover:text-indigo-600 flex items-center gap-1 truncate max-w-[200px]"
-                                >
-                                    {profile.slug}
-                                    <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </a>
-                            </td>
-                            <td className="px-6 py-4 text-right font-mono text-slate-600">
-                                {profile.visits.toLocaleString()}
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                    profile.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                                }`}>
-                                    {profile.status}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                    <button 
-                                        onClick={() => downloadProject(profile)}
-                                        title="Download Source Code"
-                                        className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors flex items-center gap-2"
-                                    >
-                                        <Download size={16} />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleEditRedirect(profile)}
-                                        title="Edit Profile"
-                                        className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                                    >
-                                        <Settings size={16} />
-                                    </button>
-                                    
-                                    {(currentUser.role === 'admin' || currentUser.role === 'Admin') && (
-                                        <button 
-                                            onClick={() => onDelete(profile.id)}
-                                            title="Delete Profile"
-                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            </td>
-                        </tr>
-                    )) : (
-                        <tr>
-                            <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                                {currentUser.role === 'sales' 
-                                    ? "No profiles assigned to you. Contact Admin." 
-                                    : "No profiles found."}
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
-        </div>
+      {/* Card Grid List (Replaced Table) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {filteredProfiles.length > 0 ? filteredProfiles.map((profile) => (
+            <div key={profile.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group flex flex-col overflow-hidden">
+                <div className="p-6 flex-1 flex flex-col items-center text-center">
+                    <div className="mb-4 relative">
+                        {profile.avatarUrl ? (
+                            <img 
+                                src={profile.avatarUrl} 
+                                alt={profile.name} 
+                                className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg" 
+                            />
+                        ) : (
+                            <div className="w-32 h-32 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-4xl border-4 border-white shadow-lg">
+                                {profile.name.charAt(0)}
+                            </div>
+                        )}
+                        <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-2 border-white ${profile.status === 'active' ? 'bg-emerald-500' : 'bg-slate-300'}`} title={`Status: ${profile.status}`}></div>
+                    </div>
+                    
+                    <div className="mb-4 w-full px-2">
+                        <h3 className="font-bold text-slate-900 truncate text-xl mb-1" title={profile.name}>{profile.name}</h3>
+                        <p className="text-sm text-slate-500 truncate font-medium" title={profile.title}>{profile.title || 'No Title'}</p>
+                    </div>
+                    
+                    <div className="w-full mt-auto">
+                        <a 
+                            href={profile.fullUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-slate-500 hover:text-indigo-600 flex items-center justify-center gap-2 bg-slate-50 p-2.5 rounded-lg truncate transition-colors border border-slate-100 hover:border-indigo-100 hover:bg-white hover:shadow-sm w-full"
+                        >
+                            <ExternalLink size={14} className="shrink-0" />
+                            <span className="truncate font-mono">{profile.slug}</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
+                     <button 
+                        onClick={() => downloadProject(profile)}
+                        className="text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center gap-1.5 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-md shadow-sm hover:shadow"
+                    >
+                        <Download size={14} /> Code
+                    </button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => handleEditRedirect(profile)}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-md transition-all shadow-sm border border-transparent hover:border-slate-200"
+                            title="Edit"
+                        >
+                            <Edit3 size={16} />
+                        </button>
+                        {(currentUser.role === 'admin' || currentUser.role === 'Admin') && (
+                            <button 
+                                onClick={() => onDelete(profile.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-white rounded-md transition-all shadow-sm border border-transparent hover:border-slate-200"
+                                title="Delete"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )) : (
+            <div className="col-span-full py-12 text-center text-slate-400 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
+                <Search size={32} className="opacity-20" />
+                <p>
+                    {currentUser.role === 'sales' 
+                        ? "No profiles assigned to you. Contact Admin." 
+                        : "No profiles found matching your search."}
+                </p>
+            </div>
+        )}
       </div>
 
       {/* Full Screen Create/Edit Modal */}
