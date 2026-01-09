@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc';
+  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -39,7 +39,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     deposit: false,
     amis: false,
-    data: false
+    data: false,
+    bank: false // ADDED
   });
 
   const toggleGroup = (group: string) => {
@@ -297,6 +298,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => handleNavigate('amis-mua')}
                       icon={Briefcase}
                       label="Phiếu Mua Hàng"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* BANK SECTION - NEW */}
+              <div>
+                <MenuItem 
+                  active={['bank-tcb', 'bank-mb'].includes(currentPage)}
+                  onClick={() => toggleGroup('bank')}
+                  icon={Landmark}
+                  label="Ngân hàng"
+                  hasSubmenu={true}
+                  isOpen={openGroups.bank}
+                />
+                {openGroups.bank && (
+                  <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <SubMenuItem 
+                      active={currentPage === 'bank-tcb'}
+                      onClick={() => handleNavigate('bank-tcb')}
+                      icon={Briefcase}
+                      label="Techcom Bank"
+                    />
+                    <SubMenuItem 
+                      active={currentPage === 'bank-mb'}
+                      onClick={() => handleNavigate('bank-mb')}
+                      icon={Coins}
+                      label="MB Bank"
                     />
                   </div>
                 )}
