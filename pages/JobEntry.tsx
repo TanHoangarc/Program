@@ -33,6 +33,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null); // State for highlighting row
 
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
@@ -75,6 +76,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           setEditingJob(safeJob);
           setIsViewMode(true);
           setIsModalOpen(true);
+          setSelectedRowId(initialJobId); // Highlight on auto-open
         } catch (err) {
           console.error("Error parsing job for view", err);
         }
@@ -113,6 +115,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     setEditingJob(null);
     setIsViewMode(false);
     setIsModalOpen(true);
+    setSelectedRowId(null); // Clear highlight on add new
   };
 
   const handleEdit = (job: JobData) => {
@@ -120,11 +123,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     setIsViewMode(false);
     setIsModalOpen(true);
     setActiveMenuId(null);
+    setSelectedRowId(job.id); // Highlight
   };
 
   const handleRowClick = (job: JobData, e: React.MouseEvent) => {
     if ((e.target as Element).closest('.action-menu-container')) return;
     
+    setSelectedRowId(job.id); // Highlight clicked row
+
     try {
       const safeJob = JSON.parse(JSON.stringify(job));
       setEditingJob(safeJob);
@@ -159,6 +165,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     setQuickReceiveMode(mode);
     setIsQuickReceiveOpen(true);
     setActiveMenuId(null);
+    setSelectedRowId(job.id); // Highlight when quick receiving
   };
 
   const handleSaveQuickReceive = (updatedJob: JobData) => {
@@ -444,7 +451,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                 );
 
                 return (
-                <tr key={job.id} className="hover:bg-blue-50/30 cursor-pointer group" onClick={(e) => handleRowClick(job, e)}>
+                <tr 
+                    key={job.id} 
+                    className={`cursor-pointer group transition-colors ${selectedRowId === job.id ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-blue-50/30'}`} 
+                    onClick={(e) => handleRowClick(job, e)}
+                >
                   <td className="px-6 py-3 text-gray-600">T{job.month}/{job.year}</td>
                   <td className="px-6 py-3 font-semibold text-blue-700">
                     <div className="flex items-center gap-2">
