@@ -280,6 +280,14 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalExtensionNetCost = extensionCosts.reduce((s, i) => s + (i.net || 0), 0);
   const totalDepositCost = deposits.reduce((s, d) => s + d.amount, 0);
   
+  // --- NEW FEES CALCULATIONS ---
+  const totalFeeCic = booking.jobs.reduce((s, j) => s + (j.feeCic || 0), 0);
+  const totalFeeKimberry = booking.jobs.reduce((s, j) => s + (j.feeKimberry || 0), 0);
+  const totalFeePsc = booking.jobs.reduce((s, j) => s + (j.feePsc || 0), 0);
+  const totalFeeEmc = booking.jobs.reduce((s, j) => s + (j.feeEmc || 0), 0);
+  const totalFeeOther = booking.jobs.reduce((s, j) => s + (j.feeOther || 0), 0);
+  const totalSystemFees = totalFeeCic + totalFeeKimberry + totalFeePsc + totalFeeEmc + totalFeeOther;
+
   const systemTotalSell = booking.jobs.reduce((s, j) => s + j.sell, 0);
   
   // Use Targets for System Sums display to match Table Sums
@@ -831,6 +839,38 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                             <span className="text-slate-400">Cược (Deposit)</span>
                             <span className="text-red-400">{formatMoney(totalDepositCost)}</span>
                         </div>
+
+                        {/* NEW FEES SECTION START */}
+                        <div className="border-b border-slate-800 my-1"></div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase mt-2 mb-1">Chi tiết Phí (System)</div>
+                        
+                        <div className="space-y-1">
+                            <div className="flex justify-between pl-2 border-l-2 border-slate-700">
+                                <span className="text-slate-400">Kimberry</span>
+                                <span className="text-slate-300">{formatMoney(totalFeeKimberry)}</span>
+                            </div>
+                            <div className="flex justify-between pl-2 border-l-2 border-slate-700">
+                                <span className="text-slate-400">CIC</span>
+                                <span className="text-slate-300">{formatMoney(totalFeeCic)}</span>
+                            </div>
+                            <div className="flex justify-between pl-2 border-l-2 border-slate-700">
+                                <span className="text-slate-400">PSC</span>
+                                <span className="text-slate-300">{formatMoney(totalFeePsc)}</span>
+                            </div>
+                            <div className="flex justify-between pl-2 border-l-2 border-slate-700">
+                                <span className="text-slate-400">EMC</span>
+                                <span className="text-slate-300">{formatMoney(totalFeeEmc)}</span>
+                            </div>
+                            <div className="flex justify-between pl-2 border-l-2 border-slate-700">
+                                <span className="text-slate-400">Khác</span>
+                                <span className="text-slate-300">{formatMoney(totalFeeOther)}</span>
+                            </div>
+                            <div className="flex justify-between pt-1 mt-1 border-t border-slate-800">
+                                <span className="text-slate-400 font-bold">Tổng Phí</span>
+                                <span className="text-orange-500 font-bold">{formatMoney(totalSystemFees)}</span>
+                            </div>
+                        </div>
+                        {/* NEW FEES SECTION END */}
                     </div>
 
                     <div className="mt-4 pt-4 border-t border-slate-700">
