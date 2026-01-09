@@ -18,10 +18,11 @@ import { CVHCPage } from './pages/CVHCPage';
 import { SalaryPage } from './pages/SalaryPage';
 import { ToolAI } from './pages/ToolAI'; 
 import { NFCPage } from './pages/NFCPage'; 
+import { BankPage } from './pages/BankPage';
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -47,7 +48,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -279,6 +280,65 @@ const App: React.FC = () => {
       if (window.confirm("Are you sure you want to delete this profile?")) {
           setNfcProfiles(prev => prev.filter(p => p.id !== id));
       }
+  };
+
+  // --- BANK HANDLERS ---
+  const handleBankTCBAdd = (item: any) => {
+      const newJob: JobData = {
+          ...INITIAL_JOB,
+          id: item.id,
+          localChargeDate: item.date,
+          localChargeTotal: item.amount,
+          localChargeInvoice: item.invoice,
+          amisLcDesc: item.desc,
+          bank: 'TCB Bank',
+          jobCode: 'TCB-' + Date.now(), // Temp code
+          year: new Date().getFullYear(),
+          month: (new Date().getMonth() + 1).toString()
+      };
+      handleAddJob(newJob);
+  };
+  const handleBankTCBEdit = (item: any) => {
+      const job = jobs.find(j => j.id === item.id);
+      if (job) {
+          handleEditJob({
+              ...job,
+              localChargeDate: item.date,
+              localChargeTotal: item.amount,
+              localChargeInvoice: item.invoice,
+              amisLcDesc: item.desc,
+              bank: 'TCB Bank'
+          });
+      }
+  };
+  const handleBankTCBDelete = (id: string) => {
+      const job = jobs.find(j => j.id === id);
+      if (job) {
+          if (job.jobCode.startsWith('TCB-')) {
+              handleDeleteJob(id);
+          } else {
+              handleEditJob({ ...job, bank: '' });
+          }
+      }
+  };
+
+  const handleBankMBAdd = (item: any) => {
+      const newReceipt = {
+          id: item.id,
+          date: item.date,
+          amount: item.amount,
+          invoice: item.invoice,
+          desc: item.desc,
+          docNo: '', 
+          type: 'other'
+      };
+      setCustomReceipts(prev => [...prev, newReceipt]);
+  };
+  const handleBankMBEdit = (item: any) => {
+      setCustomReceipts(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r));
+  };
+  const handleBankMBDelete = (id: string) => {
+      setCustomReceipts(prev => prev.filter(r => r.id !== id));
   };
 
   // --- DATA SYNC FUNCTIONS ---
@@ -829,7 +889,11 @@ const App: React.FC = () => {
               <ProfitReport 
                 jobs={jobs} 
                 salaries={salaries}
-                onViewJob={(id) => { setTargetJobId(id); setCurrentPage("entry"); }} 
+                onUpdateJob={handleEditJob} // Added missing prop
+                customers={customers}
+                lines={lines}
+                onAddCustomer={(c) => setCustomers([...customers, c])}
+                onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
               />
             )}
 
@@ -883,6 +947,7 @@ const App: React.FC = () => {
                 onUpdateJob={handleEditJob}
                 onAddJob={handleAddJob}
                 customers={customers} 
+                onAddCustomer={(c) => setCustomers([...customers, c])}
               />
             )}
 
@@ -934,6 +999,46 @@ const App: React.FC = () => {
                 onApproveRequest={handleApproveRequest}
                 onRejectRequest={handleRejectRequest}
               />
+            )}
+
+            {currentPage === 'bank-tcb' && (
+                <BankPage 
+                    mode="tcb"
+                    data={jobs.filter(j => {
+                        const bank = (j.bank || '').toUpperCase();
+                        return bank.includes('TCB') || bank.includes('TECHCOM');
+                    }).map(j => ({
+                        id: j.id, 
+                        originalId: j.id,
+                        date: j.localChargeDate || '',
+                        amount: j.localChargeTotal || 0,
+                        invoice: j.localChargeInvoice || '',
+                        desc: j.amisLcDesc || j.customerName || '',
+                        jobMonth: j.month,
+                        jobYear: j.year
+                    }))}
+                    onAdd={handleBankTCBAdd}
+                    onEdit={handleBankTCBEdit}
+                    onDelete={handleBankTCBDelete}
+                />
+            )}
+
+            {currentPage === 'bank-mb' && (
+                <BankPage 
+                    mode="mb"
+                    data={customReceipts.map(r => ({
+                        id: r.id,
+                        originalId: r.id,
+                        date: r.date,
+                        amount: r.amount,
+                        invoice: r.invoice || '',
+                        desc: r.desc || '',
+                        type: 'other'
+                    }))}
+                    onAdd={handleBankMBAdd}
+                    onEdit={handleBankMBEdit}
+                    onDelete={handleBankMBDelete}
+                />
             )}
 
           </div>
