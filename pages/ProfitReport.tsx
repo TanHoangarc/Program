@@ -1,22 +1,36 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { JobData, SalaryRecord } from '../types';
+import { JobData, SalaryRecord, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
 import { BadgeDollarSign, Search, ExternalLink, ChevronLeft, ChevronRight, Filter, Coins, Calculator, Receipt } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
-import { getPaginationRange } from '../utils';
+import { getPaginationRange, calculateBookingSummary } from '../utils';
+import { JobModal } from '../components/JobModal';
+import { BookingDetailModal } from '../components/BookingDetailModal';
 
 interface ProfitReportProps {
   jobs: JobData[];
   salaries?: SalaryRecord[];
-  onViewJob?: (jobId: string) => void;
+  onUpdateJob: (job: JobData) => void;
+  customers: Customer[];
+  lines: ShippingLine[];
+  onAddCustomer: (customer: Customer) => void;
+  onAddLine: (line: string) => void;
 }
 
-export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries = [], onViewJob }) => {
+export const ProfitReport: React.FC<ProfitReportProps> = ({ 
+  jobs, salaries = [], onUpdateJob, customers, lines, onAddCustomer, onAddLine 
+}) => {
   const [filterMonth, setFilterMonth] = useState('');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
+
+  // Modal States
+  const [editingJob, setEditingJob] = useState<JobData | null>(null);
+  const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+  const [isViewMode, setIsViewMode] = useState(true);
+  const [viewingBooking, setViewingBooking] = useState<BookingSummary | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -143,6 +157,45 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries = [],
   const paginatedData = profitData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const paginationRange = getPaginationRange(currentPage, totalPages);
 
+  // --- HANDLERS ---
+  const handleViewJob = (jobId: string) => {
+      const job = jobs.find(j => j.id === jobId);
+      if (job) {
+          setEditingJob(JSON.parse(JSON.stringify(job)));
+          setIsViewMode(true);
+          setIsJobModalOpen(true);
+      }
+  };
+
+  const handleSaveJob = (updatedJob: JobData, newCustomer?: Customer) => {
+      if (newCustomer) onAddCustomer(newCustomer);
+      onUpdateJob(updatedJob);
+      
+      // Update local editing state just in case
+      if (editingJob && editingJob.id === updatedJob.id) {
+          setEditingJob(updatedJob);
+      }
+      setIsJobModalOpen(false);
+  };
+
+  const handleViewBookingDetails = (bookingId: string) => {
+      const summary = calculateBookingSummary(jobs, bookingId);
+      if (summary) setViewingBooking(summary);
+  };
+
+  const handleSaveBookingDetails = (updatedDetails: BookingCostDetails) => {
+      if (!viewingBooking) return;
+      viewingBooking.jobs.forEach(job => {
+          const updatedJob = { ...job, bookingCostDetails: updatedDetails };
+          onUpdateJob(updatedJob);
+      });
+      // Update the current editing job if open
+      if (editingJob && editingJob.booking === viewingBooking.bookingId) {
+          setEditingJob(prev => prev ? ({ ...prev, bookingCostDetails: updatedDetails }) : null);
+      }
+      setViewingBooking(null);
+  };
+
   const StatCard = ({ icon: Icon, title, value, colorClass, gradient, subValue }: { icon: any, title: string, value: string, colorClass: string, gradient: string, subValue?: string }) => (
     <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group transition-all duration-300 hover:translate-y-[-2px]">
       <div className={`absolute top-0 right-0 w-20 h-20 ${gradient} opacity-10 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110`}></div>
@@ -258,7 +311,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries = [],
                      <td className="px-6 py-4 text-slate-400 font-medium">T{item.month}/{item.year}</td>
                      <td 
                         className="px-6 py-4 font-bold text-blue-700 cursor-pointer hover:underline"
-                        onClick={() => onViewJob && onViewJob(item.id)}
+                        onClick={() => handleViewJob(item.id)}
                         title="Click để xem chi tiết Job"
                      >
                         {item.jobCode}
@@ -268,11 +321,9 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries = [],
                      <td className="px-6 py-4 text-right text-indigo-500 font-medium">{formatCurrency(item.fees)}</td>
                      <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(item.totalProfit)}</td>
                      <td className="px-6 py-4 text-center">
-                       {onViewJob && (
-                          <button onClick={() => onViewJob(item.id)} className="text-slate-300 hover:text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-all">
-                             <ExternalLink className="w-4 h-4" />
-                          </button>
-                       )}
+                        <button onClick={() => handleViewJob(item.id)} className="text-slate-300 hover:text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-all">
+                            <ExternalLink className="w-4 h-4" />
+                        </button>
                      </td>
                   </tr>
                 ))
@@ -329,6 +380,33 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({ jobs, salaries = [],
           </div>
         )}
       </div>
+
+      {isJobModalOpen && (
+        <JobModal
+            isOpen={isJobModalOpen}
+            onClose={() => setIsJobModalOpen(false)}
+            onSave={handleSaveJob}
+            initialData={editingJob}
+            customers={customers}
+            lines={lines}
+            onAddLine={onAddLine}
+            onAddCustomer={onAddCustomer}
+            onViewBookingDetails={handleViewBookingDetails}
+            isViewMode={isViewMode}
+            onSwitchToEdit={() => setIsViewMode(false)}
+            existingJobs={jobs}
+        />
+      )}
+
+      {viewingBooking && (
+        <BookingDetailModal 
+            booking={viewingBooking} 
+            onClose={() => setViewingBooking(null)} 
+            onSave={handleSaveBookingDetails} 
+            zIndex="z-[60]"
+            onViewJob={handleViewJob}
+        />
+      )}
     </div>
   );
 };
