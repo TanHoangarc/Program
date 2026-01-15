@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -27,6 +27,11 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Staff' });
   const [showPass, setShowPass] = useState(false);
+
+  // --- HISTORY DATA CHECK STATE ---
+  const [historyData, setHistoryData] = useState<any>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyFileName, setHistoryFileName] = useState('');
 
   // Helper to check if a user is Staff
   const isStaffUser = (username?: string) => {
@@ -56,13 +61,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
         const lockCount = (realData.lockedIds || []).length;
         const receiptCount = (realData.customReceipts || []).length;
 
-        // Logic: Staff doesn't have lock permission. 
-        // If sender is Staff, we ignore `lockCount` (treat it as noise/snapshot).
-        // If sender is Admin/Manager, `lockCount` > 0 contributes to content.
         const isStaff = isStaffUser(req.user);
-        
-        // If Staff: Empty if everything else is 0 (ignore locks)
-        // If Not Staff: Empty if everything (including locks) is 0
         const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isStaff ? true : lockCount === 0);
 
         if (isEmpty) {
@@ -72,6 +71,77 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       });
     }
   }, [pendingRequests, onRejectRequest, onApproveRequest, users]);
+
+  // --- FETCH HISTORY DATA ---
+  useEffect(() => {
+      if (currentUser?.role === 'Admin' || currentUser?.role === 'Manager') {
+          fetchHistory();
+      }
+  }, [currentUser]);
+
+  const fetchHistory = async () => {
+      setLoadingHistory(true);
+      try {
+          const res = await fetch('https://api.kimberry.id.vn/history/latest');
+          
+          if (!res.ok) {
+              console.warn("History fetch skipped: Server returned " + res.status);
+              return;
+          }
+
+          const contentType = res.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+              console.warn("History fetch skipped: Response is not JSON");
+              return;
+          }
+
+          const result = await res.json();
+          if (result.found) {
+              setHistoryData(result.data);
+              setHistoryFileName(result.fileName);
+          }
+      } catch (e) {
+          console.error("Failed to fetch history", e);
+      } finally {
+          setLoadingHistory(false);
+      }
+  };
+
+  // --- CALCULATE MISSING DATA ---
+  const missingData = useMemo(() => {
+      if (!historyData) return { jobs: [], customers: [], lines: [] };
+
+      // Check Jobs
+      const histJobs = Array.isArray(historyData.jobs) ? historyData.jobs : [];
+      const currentJobIds = new Set(jobs.map(j => j.id));
+      const missingJobs = histJobs.filter((j: JobData) => !currentJobIds.has(j.id));
+
+      // Check Customers
+      const histCust = Array.isArray(historyData.customers) ? historyData.customers : [];
+      const currentCustIds = new Set(customers.map(c => c.id));
+      const missingCust = histCust.filter((c: Customer) => !currentCustIds.has(c.id));
+
+      return { jobs: missingJobs, customers: missingCust, lines: [] };
+  }, [historyData, jobs, customers]);
+
+  const hasMissingData = missingData.jobs.length > 0 || missingData.customers.length > 0;
+
+  const handleSyncHistory = () => {
+      if (!historyData || !hasMissingData) return;
+      if (window.confirm(`Xác nhận đồng bộ?\n- ${missingData.jobs.length} Jobs sẽ được khôi phục\n- ${missingData.customers.length} Khách hàng sẽ được khôi phục`)) {
+          // Merge missing data into current state
+          const newJobs = [...jobs, ...missingData.jobs];
+          const newCustomers = [...customers, ...missingData.customers];
+          
+          // Call restore (this triggers App.tsx to update state and save to server)
+          onRestore({
+              jobs: newJobs,
+              customers: newCustomers,
+              lines: lines // No changes to lines for now
+          });
+          alert("Đã đồng bộ dữ liệu từ History thành công!");
+      }
+  };
 
   // --- USER MANAGEMENT ---
   const handleAddUserClick = () => {
@@ -136,6 +206,81 @@ export const SystemPage: React.FC<SystemPageProps> = ({
         </div>
         <p className="text-slate-500 ml-11">Quản lý người dùng và duyệt dữ liệu từ nhân viên</p>
       </div>
+
+      {/* DATA INTEGRITY CHECK SECTION (ADMIN ONLY) */}
+      {(currentUser?.role === 'Admin' || currentUser?.role === 'Manager') && (
+          <div className="mb-8 glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-slate-700 flex items-center">
+                      <Database className="w-5 h-5 mr-2 text-indigo-600" /> Kiểm Tra & Đồng Bộ Dữ Liệu
+                  </h3>
+                  <div className="text-xs text-slate-500 flex items-center gap-2">
+                      <span>File History mới nhất: {historyFileName || 'Đang tải...'}</span>
+                      <button onClick={fetchHistory} className="p-1 hover:bg-slate-100 rounded-full" title="Tải lại"><RefreshCw size={12}/></button>
+                  </div>
+              </div>
+
+              {loadingHistory ? (
+                  <div className="text-center py-4 text-slate-400">Đang so sánh dữ liệu...</div>
+              ) : hasMissingData ? (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                      <div className="flex items-start gap-3 mb-4">
+                          <AlertTriangle className="w-6 h-6 text-orange-600 shrink-0" />
+                          <div>
+                              <h4 className="font-bold text-orange-800">Phát hiện dữ liệu chưa đồng bộ!</h4>
+                              <p className="text-sm text-orange-700 mt-1">
+                                  Có dữ liệu tồn tại trong bản Backup History nhưng không có trong dữ liệu hiện tại (backup.json). 
+                                  Điều này có thể do lỗi lưu trữ hoặc dữ liệu bị xóa mà không qua quy trình chuẩn.
+                              </p>
+                          </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          {missingData.jobs.length > 0 && (
+                              <div className="bg-white p-3 rounded-lg border border-orange-100">
+                                  <div className="text-xs font-bold text-slate-500 uppercase mb-2">Jobs bị thiếu ({missingData.jobs.length})</div>
+                                  <div className="max-h-32 overflow-y-auto space-y-1 custom-scrollbar">
+                                      {missingData.jobs.map(j => (
+                                          <div key={j.id} className="text-xs text-slate-700 flex justify-between">
+                                              <span>{j.jobCode}</span>
+                                              <span className="text-slate-400">{j.booking}</span>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+                          {missingData.customers.length > 0 && (
+                              <div className="bg-white p-3 rounded-lg border border-orange-100">
+                                  <div className="text-xs font-bold text-slate-500 uppercase mb-2">Khách hàng bị thiếu ({missingData.customers.length})</div>
+                                  <div className="max-h-32 overflow-y-auto space-y-1 custom-scrollbar">
+                                      {missingData.customers.map(c => (
+                                          <div key={c.id} className="text-xs text-slate-700">
+                                              {c.code} - {c.name}
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
+
+                      <button 
+                          onClick={handleSyncHistory}
+                          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-md flex items-center gap-2"
+                      >
+                          <RefreshCw className="w-4 h-4" /> Đồng bộ Dữ liệu từ History
+                      </button>
+                  </div>
+              ) : (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+                      <Check className="w-6 h-6 text-green-600" />
+                      <div>
+                          <h4 className="font-bold text-green-800">Dữ liệu đồng bộ</h4>
+                          <p className="text-sm text-green-700">Dữ liệu hiện tại khớp hoàn toàn với bản sao lưu gần nhất.</p>
+                      </div>
+                  </div>
+              )}
+          </div>
+      )}
 
       {/* User Management Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -202,11 +347,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                     const receiptCount = (realData.customReceipts || []).length;
 
                     const isStaff = isStaffUser(req.user);
-                    
-                    // Empty check logic (ignoring locks for Staff)
                     const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isStaff ? true : lockCount === 0);
-
-                    // Badge display logic: Only show lock count if NOT Staff
                     const showLockBadge = lockCount > 0 && !isStaff;
 
                     return (
