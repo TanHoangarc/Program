@@ -20,7 +20,7 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { LoginPage } from './components/LoginPage';
-import { Menu, Ship } from 'lucide-react';
+import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
 
 import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
@@ -67,6 +67,9 @@ const App: React.FC = () => {
   // --- PENDING REQUESTS STATE (Admin Only) ---
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   
+  // --- DATA INTEGRITY WARNING ---
+  const [dataMismatchWarning, setDataMismatchWarning] = useState(false);
+
   // --- TRACKING CHANGES ---
   const [modifiedJobIds, setModifiedJobIds] = useState<Set<string>>(() => {
       try {
@@ -210,6 +213,45 @@ const App: React.FC = () => {
     }
     return DEFAULT_USERS;
   });
+
+  // --- INTEGRITY CHECK LOGIC ---
+  useEffect(() => {
+      const checkIntegrity = async () => {
+          // Only check if user is Admin/Manager and server is available
+          if (currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Manager') && isServerAvailable) {
+              try {
+                  const res = await fetch('https://api.kimberry.id.vn/history/latest');
+                  
+                  // Handle non-200 responses (e.g., 404 from live server lacking endpoint)
+                  if (!res.ok) return; 
+                  
+                  // Handle HTML responses (e.g., 404 page)
+                  const contentType = res.headers.get("content-type");
+                  if (!contentType || !contentType.includes("application/json")) return;
+
+                  const result = await res.json();
+                  if (result.found && result.data && Array.isArray(result.data.jobs)) {
+                      // Check for missing data: History has it, but Live doesn't
+                      const histJobs = result.data.jobs;
+                      const currentJobIds = new Set(jobs.map(j => j.id));
+                      const missingCount = histJobs.filter((j: JobData) => !currentJobIds.has(j.id)).length;
+                      
+                      if (missingCount > 0) {
+                          setDataMismatchWarning(true);
+                      } else {
+                          setDataMismatchWarning(false);
+                      }
+                  }
+              } catch (e) {
+                  // Silent fail for integrity check to avoid console noise
+              }
+          }
+      };
+      
+      // Delay check slightly to ensure data loaded
+      const timeout = setTimeout(checkIntegrity, 3000);
+      return () => clearTimeout(timeout);
+  }, [currentUser, isServerAvailable, jobs]); // Re-run if jobs change significantly or user changes
 
   // --- JOB HANDLERS WITH TRACKING ---
   const handleAddJob = (job: JobData) => {
@@ -662,11 +704,13 @@ const App: React.FC = () => {
 
   // --- GENERAL AUTO BACKUP ---
   const autoBackup = async () => {
-    if (!currentUser || !["Admin", "Manager", "Docs"].includes(currentUser.role)) return;
+    // UPDATED: Check for Admin, Manager, Docs, or Staff (staff saves to their own file)
+    if (!currentUser || !["Admin", "Manager", "Docs", "Staff"].includes(currentUser.role)) return;
     if (!isServerAvailable) return; 
 
     try {
       const data = {
+        role: currentUser.role, // VITAL: Pass Role for Server Filtering
         timestamp: new Date().toISOString(),
         version: "2.3",
         jobs,
@@ -771,6 +815,22 @@ const App: React.FC = () => {
       <div className="flex-1 md:ml-[280px] p-2 md:p-4 h-full flex flex-col overflow-hidden relative">
         <main className="flex-1 rounded-2xl md:rounded-3xl overflow-hidden relative shadow-inner h-full flex flex-col bg-white/40 backdrop-blur-3xl border border-white/40">
           <div className="absolute inset-0 bg-white/40 backdrop-blur-3xl border border-white/40 rounded-3xl z-0"></div>
+
+          {/* Alert for Data Mismatch */}
+          {dataMismatchWarning && (
+              <div className="absolute top-2 left-2 right-2 z-50 bg-orange-100 border border-orange-200 text-orange-800 px-4 py-3 rounded-xl shadow-lg flex items-center justify-between animate-in slide-in-from-top-2">
+                  <div className="flex items-center gap-3">
+                      <AlertTriangle className="w-5 h-5 text-orange-600" />
+                      <div>
+                          <span className="font-bold block">Cảnh báo dữ liệu!</span>
+                          <span className="text-xs">Phát hiện dữ liệu không đồng bộ giữa Web và Backup History. Vui lòng vào <strong>Hệ thống</strong> kiểm tra.</span>
+                      </div>
+                  </div>
+                  <button onClick={() => setCurrentPage('system')} className="px-3 py-1 bg-white border border-orange-200 rounded text-xs font-bold hover:bg-orange-50 transition-colors">
+                      Kiểm tra ngay
+                  </button>
+              </div>
+          )}
 
           <div className="relative z-10 h-full overflow-y-auto custom-scrollbar p-2">
 
