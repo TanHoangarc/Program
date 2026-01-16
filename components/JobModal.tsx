@@ -388,18 +388,44 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   }, [initialData?.bookingCostDetails, isOpen]);
 
+  // AUTOMATED FEE CALCULATION
   useEffect(() => {
     if (isViewMode) return;
+
+    // 1. Calculate Kimberry Fee
     const fee20 = (formData.cont20 || 0) * 250000;
     const fee40 = (formData.cont40 || 0) * 500000;
-    const totalFee = fee20 + fee40;
+    const totalFeeKimberry = fee20 + fee40;
+
+    // 2. Calculate CIC Fee (Logic applies from year 2026)
+    let newFeeCic = formData.feeCic;
+    if ((formData.year || 0) >= 2026) {
+        const totalCont = (formData.cont20 || 0) + (formData.cont40 || 0);
+        newFeeCic = totalCont * 200000;
+    }
+
     setFormData(prev => {
-        if (prev.feeKimberry !== totalFee) {
-            return { ...prev, feeKimberry: totalFee };
+        const updates: Partial<JobData> = {};
+        let hasChanges = false;
+
+        if (prev.feeKimberry !== totalFeeKimberry) {
+            updates.feeKimberry = totalFeeKimberry;
+            hasChanges = true;
+        }
+
+        // Only update CIC if it meets the year condition and value has changed
+        // This ensures if user manually edited it for >= 2026, it snaps back if conts change
+        if ((prev.year || 0) >= 2026 && prev.feeCic !== newFeeCic) {
+            updates.feeCic = newFeeCic;
+            hasChanges = true;
+        }
+
+        if (hasChanges) {
+            return { ...prev, ...updates };
         }
         return prev;
     });
-  }, [formData.cont20, formData.cont40, isViewMode]);
+  }, [formData.cont20, formData.cont40, formData.year, isViewMode]);
 
   useEffect(() => {
     if (isViewMode) return;
