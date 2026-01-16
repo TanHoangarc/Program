@@ -866,7 +866,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex-1">
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2">Chi tiết Cost</h4>
                         <div className="grid grid-cols-2 gap-3">
-                            <MoneyInput label="Phí CIC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
+                            <MoneyInput label="Phí THC" name="feeCic" value={formData.feeCic} onChange={handleMoneyChange} readOnly={isViewMode} />
                             <div className="relative">
                                 <MoneyInput label="Phí Kimberry (Auto)" name="feeKimberry" value={formData.feeKimberry} onChange={handleMoneyChange} readOnly={true} className="bg-slate-100 text-slate-500" />
                             </div>
