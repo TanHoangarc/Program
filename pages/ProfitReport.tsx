@@ -272,6 +272,7 @@ export const ProfitReport: React.FC<ProfitReportProps> = ({
             value={formatCurrency(stats.totalFees)} 
             colorClass="bg-indigo-500" 
             gradient="bg-indigo-500" 
+            subValue={`* 0.9: ${formatCurrency(stats.totalFees * 0.9)}`}
          />
          <StatCard 
             icon={Coins} 
