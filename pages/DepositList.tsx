@@ -25,14 +25,10 @@ export const DepositList: React.FC<DepositListProps> = ({
 }) => {
   // Filters
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
-  const [filterEntity, setFilterEntity] = useState(''); // Stores Line Name or Customer ID
+  const [filterEntity, setFilterEntity] = useState(''); // Stores Line Name or Job Code Search Text
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); // ADDED
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); 
   
-  // Custom Autocomplete State for Customer
-  const [custSearchTerm, setCustSearchTerm] = useState('');
-  const [showCustSuggestions, setShowCustSuggestions] = useState(false);
-
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
@@ -60,32 +56,14 @@ export const DepositList: React.FC<DepositListProps> = ({
     return Array.from(lines);
   }, [jobs]);
 
-  // Filtered Customers for Autocomplete
-  const filteredCustomers = useMemo(() => {
-    if (!custSearchTerm) return customers;
-    const lower = custSearchTerm.toLowerCase().trim();
-    // Safe conversion to string to prevent crashes if data is numeric
-    return customers.filter(c => 
-      String(c.code || '').toLowerCase().includes(lower) || 
-      String(c.name || '').toLowerCase().includes(lower)
-    );
-  }, [customers, custSearchTerm]);
-
   const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 
   const clearFilters = () => {
     setFilterStatus('all');
     setFilterEntity('');
     setFilterMonth('');
     setFilterYear(new Date().getFullYear().toString());
-    setCustSearchTerm('');
-  };
-
-  const handleCustomerSelect = (customer: Customer) => {
-    setFilterEntity(customer.id);
-    setCustSearchTerm(String(customer.code));
-    setShowCustSuggestions(false);
   };
 
   const hasActiveFilters = filterStatus !== 'all' || filterEntity !== '' || filterMonth !== '' || filterYear !== new Date().getFullYear().toString();
@@ -214,13 +192,15 @@ export const DepositList: React.FC<DepositListProps> = ({
     result = result.filter(job => {
       const matchYear = filterYear ? job.year === Number(filterYear) : true;
       const matchMonth = filterMonth ? job.month === filterMonth : true;
-      const matchCustomer = filterEntity ? job.maKhCuocId === filterEntity : true;
+      
+      // SEARCH BY JOB CODE
+      const matchJob = filterEntity ? job.jobCode.toLowerCase().includes(filterEntity.toLowerCase()) : true;
       
       let matchStatus = true;
       if (filterStatus === 'pending') matchStatus = !job.ngayThuHoan;
       if (filterStatus === 'completed') matchStatus = !!job.ngayThuHoan;
 
-      return matchYear && matchMonth && matchCustomer && matchStatus;
+      return matchYear && matchMonth && matchJob && matchStatus;
     });
 
     return result.map(job => {
@@ -354,34 +334,16 @@ export const DepositList: React.FC<DepositListProps> = ({
                    {uniqueLines.map(l => <option key={l} value={l}>{l}</option>)}
                  </select>
                ) : (
-                  // Custom Searchable Input for Customer
+                  // Search by Job Code for Customer Mode
                   <div className="relative w-full">
+                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                      <input 
                         type="text"
-                        value={custSearchTerm}
-                        onChange={(e) => {
-                           setCustSearchTerm(e.target.value);
-                           if (!e.target.value) setFilterEntity('');
-                        }}
-                        onFocus={() => setShowCustSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowCustSuggestions(false), 200)}
-                        placeholder="Tìm mã KH hoặc tên..."
-                        className="glass-input w-full p-2.5 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        value={filterEntity}
+                        onChange={(e) => setFilterEntity(e.target.value)}
+                        placeholder="Tìm số Job..."
+                        className="glass-input w-full pl-9 pr-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                      />
-                     {showCustSuggestions && custSearchTerm && filteredCustomers.length > 0 && (
-                        <ul className="absolute z-50 w-full bg-white border border-gray-100 rounded-xl shadow-xl max-h-60 overflow-y-auto mt-2 left-0 py-2">
-                          {filteredCustomers.map(c => (
-                             <li 
-                               key={c.id}
-                               onClick={() => handleCustomerSelect(c)}
-                               className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-50 last:border-0 flex flex-col"
-                             >
-                                <span className="font-bold text-blue-800">{c.code}</span>
-                                <span className="text-xs text-gray-500 truncate">{c.name}</span>
-                             </li>
-                          ))}
-                        </ul>
-                     )}
                   </div>
                )}
 
