@@ -1,14 +1,18 @@
 
 import React, { useState, useRef } from 'react';
-import { JobData, Customer } from '../types';
-import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye } from 'lucide-react';
+import { JobData, Customer, ShippingLine } from '../types';
+import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye, Edit3 } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
+import { JobModal } from '../components/JobModal';
 
 interface CVHCPageProps {
   jobs: JobData[];
   customers: Customer[];
+  lines: ShippingLine[];
   onUpdateJob: (job: JobData) => void;
+  onAddLine?: (line: string) => void;
+  onAddCustomer?: (customer: Customer) => void;
 }
 
 interface CVHCRow {
@@ -23,7 +27,9 @@ interface CVHCRow {
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
 
-export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob }) => {
+export const CVHCPage: React.FC<CVHCPageProps> = ({ 
+  jobs, customers, lines, onUpdateJob, onAddLine, onAddCustomer 
+}) => {
   const [mode, setMode] = useState<'single' | 'multi' | 'combined'>('single');
   const [rows, setRows] = useState<CVHCRow[]>([
     { id: '1', jobCode: '', customerName: '', customerId: '', amount: 0 }
@@ -32,6 +38,10 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [pageCount, setPageCount] = useState<number>(1); // For combined mode
+
+  // Modal State
+  const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState<JobData | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -288,6 +298,36 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
     }
   };
 
+  const handleEditJobClick = (jobId: string) => {
+      const job = jobs.find(j => j.id === jobId);
+      if (job) {
+          setEditingJob(JSON.parse(JSON.stringify(job)));
+          setIsJobModalOpen(true);
+      }
+  };
+
+  const handleSaveJobModal = (updatedJob: JobData, newCustomer?: Customer) => {
+      onUpdateJob(updatedJob);
+      if (newCustomer && onAddCustomer) onAddCustomer(newCustomer);
+      setIsJobModalOpen(false);
+      
+      // Auto refresh the row data based on new job info
+      setRows(prev => prev.map(row => {
+          if (row.jobId === updatedJob.id) {
+              const custId = updatedJob.maKhCuocId || updatedJob.customerId;
+              const custName = findCustomer(custId)?.name || updatedJob.customerName;
+              return {
+                  ...row,
+                  jobCode: updatedJob.jobCode,
+                  amount: updatedJob.thuCuoc,
+                  customerId: custId,
+                  customerName: custName
+              };
+          }
+          return row;
+      }));
+  };
+
   return (
     <div className="p-8 w-full h-full flex flex-col">
       {/* Header */}
@@ -400,15 +440,26 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
                                   {mode === 'combined' ? `Trang ${idx + 1}` : idx + 1}
                               </td>
                               <td className="px-4 py-3">
-                                  <div className="relative">
-                                      <input 
-                                          type="text" 
-                                          value={row.jobCode}
-                                          onChange={(e) => handleJobCodeChange(row.id, e.target.value)}
-                                          placeholder="Nhập số Job..."
-                                          className={`w-full px-3 py-2 border rounded-lg font-bold outline-none focus:ring-2 ${row.jobId ? 'border-green-300 focus:ring-green-500 bg-green-50 text-green-800' : 'border-slate-300 focus:ring-indigo-500'}`}
-                                      />
-                                      {row.jobId && <CheckCircle className="w-4 h-4 text-green-600 absolute right-3 top-2.5" />}
+                                  <div className="relative flex items-center gap-2">
+                                      <div className="relative flex-1">
+                                          <input 
+                                              type="text" 
+                                              value={row.jobCode}
+                                              onChange={(e) => handleJobCodeChange(row.id, e.target.value)}
+                                              placeholder="Nhập số Job..."
+                                              className={`w-full px-3 py-2 border rounded-lg font-bold outline-none focus:ring-2 ${row.jobId ? 'border-green-300 focus:ring-green-500 bg-green-50 text-green-800' : 'border-slate-300 focus:ring-indigo-500'}`}
+                                          />
+                                          {row.jobId && <CheckCircle className="w-4 h-4 text-green-600 absolute right-3 top-2.5" />}
+                                      </div>
+                                      {row.jobId && (
+                                          <button 
+                                              onClick={() => handleEditJobClick(row.jobId!)}
+                                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-200"
+                                              title="Xem/Sửa Job"
+                                          >
+                                              <Edit3 className="w-4 h-4" />
+                                          </button>
+                                      )}
                                   </div>
                               </td>
                               <td className="px-4 py-3">
@@ -489,6 +540,22 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({ jobs, customers, onUpdateJob
           </div>
 
       </div>
+
+      {isJobModalOpen && editingJob && (
+          <JobModal
+              isOpen={isJobModalOpen}
+              onClose={() => setIsJobModalOpen(false)}
+              onSave={handleSaveJobModal}
+              initialData={editingJob}
+              customers={customers}
+              lines={lines}
+              onAddLine={onAddLine || (() => {})}
+              onAddCustomer={onAddCustomer || (() => {})}
+              onViewBookingDetails={() => {}}
+              isViewMode={false}
+              existingJobs={jobs}
+          />
+      )}
     </div>
   );
 };
