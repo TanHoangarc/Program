@@ -1016,6 +1016,9 @@ const App: React.FC = () => {
                     jobs={jobs} 
                     customers={customers} 
                     onUpdateJob={handleEditJob} 
+                    lines={lines}
+                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+                    onAddCustomer={(c) => setCustomers([...customers, c])}
                 />
             )}
 
