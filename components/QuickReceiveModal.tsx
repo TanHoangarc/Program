@@ -222,6 +222,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
   };
 
+  const recalculateDepositRefundMerge = (currentMainJob: JobData, extraJobs: JobData[]) => {
+      const allJobs = [currentMainJob, ...extraJobs];
+      const totalAmount = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+      
+      // Generate Description
+      const jobCodes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
+      const newDesc = `Chi tiền cho KH HOÀN CƯỢC BL ${jobCodes}`;
+
+      setAmisAmount(totalAmount);
+      setAmisDesc(newDesc);
+  };
+
   useEffect(() => {
     if (isOpen) {
       const deepCopyJob = JSON.parse(JSON.stringify(job));
@@ -321,8 +333,17 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           } else if (mode === 'deposit_refund') {
               setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC')); 
               setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
-              setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
-              setAmisAmount(deepCopyJob.thuCuoc || 0); 
+              
+              if (initialAddedJobs.length > 0) {
+                  const allJobs = [deepCopyJob, ...initialAddedJobs];
+                  const total = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+                  const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${codes}`);
+                  setAmisAmount(total); 
+              } else {
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
+                  setAmisAmount(deepCopyJob.thuCuoc || 0); 
+              }
           } else if (mode === 'refund_overpayment') {
               setAmisDocNo(generateNextDocNo(jobsForCalc, 'UNC'));
               setAmisDate(new Date().toISOString().split('T')[0]);
@@ -543,24 +564,34 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const newAddedJobs = [...addedJobs, found];
       setAddedJobs(newAddedJobs);
       setSearchJobCode('');
+      
       if (mode === 'extension') {
           const newSet = new Set(selectedMergedExtIds);
           (found.extensions || []).forEach(e => { if (!e.amisDocNo) newSet.add(e.id); });
           setSelectedMergedExtIds(newSet);
           recalculateMerge(newExtension.invoice, newAddedJobs, newSet);
-      } else { recalculateMerge(formData.localChargeInvoice, newAddedJobs); }
+      } else if (mode === 'deposit_refund') {
+          recalculateDepositRefundMerge(formData, newAddedJobs);
+      } else { 
+          recalculateMerge(formData.localChargeInvoice, newAddedJobs); 
+      }
   };
 
   const handleRemoveAddedJob = (id: string) => {
       const jobToRemove = addedJobs.find(j => j.id === id);
       const newAddedJobs = addedJobs.filter(j => j.id !== id);
       setAddedJobs(newAddedJobs);
+      
       if (mode === 'extension') {
           const newSet = new Set(selectedMergedExtIds);
           if (jobToRemove?.extensions) jobToRemove.extensions.forEach(e => newSet.delete(e.id));
           setSelectedMergedExtIds(newSet);
           recalculateMerge(newExtension.invoice, newAddedJobs, newSet);
-      } else recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+      } else if (mode === 'deposit_refund') {
+          recalculateDepositRefundMerge(formData, newAddedJobs);
+      } else {
+          recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+      }
   };
 
   const handleToggleMergedExtension = (extId: string, isChecked: boolean) => {
