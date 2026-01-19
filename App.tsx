@@ -727,14 +727,29 @@ const App: React.FC = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      await fetch("https://api.kimberry.id.vn/data/save", {
+      const res = await fetch("https://api.kimberry.id.vn/data/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
-      console.log("AUTO BACKUP SUCCESS");
+      
+      const responseData = await res.json();
+      
+      // CRITICAL FIX: If server says we are stale (e.g. attempting to save deleted item), RELOAD.
+      if (responseData.requireReload) {
+          console.warn("⚠️ Data conflict detected (Stale/Deleted data). Forcing reload from server...");
+          // Wait slightly to let server finish current writes, then fetch
+          setTimeout(() => {
+              // Re-fetch logic (copying fetchServerData logic here or calling it if extracted)
+              // Since fetchServerData is defined inside useEffect, we trigger a page reload or state reset
+              window.location.reload(); 
+          }, 1000);
+      } else {
+          console.log("AUTO BACKUP SUCCESS");
+      }
+
     } catch (err) {
       console.warn("AUTO BACKUP FAILED (Offline Mode)", err);
     }
