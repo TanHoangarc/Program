@@ -549,7 +549,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                      paymentBank: 'Ngân hàng TMCP Quân đội',
                      currency: 'VND', 
                      description: j.amisDepositRefundDesc, 
-                     tkNo: '3311', 
+                     tkNo: '1388', 
                      tkCo: '1121',
                 });
             }
