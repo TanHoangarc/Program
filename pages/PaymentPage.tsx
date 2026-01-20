@@ -1,8 +1,3 @@
-
-// ============================================================
-// PAYMENT PAGE – FULL VERSION (UPDATED PATHS FOR INV & UNC)
-// ============================================================
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
@@ -58,8 +53,8 @@ const CustomerRowInput = ({
     value, 
     customers, 
     onSelect, 
-    onChange,
-    onAdd
+    onChange, 
+    onAdd 
 }: { 
     value: string; 
     customers: Customer[]; 
