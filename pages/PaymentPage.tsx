@@ -1,3 +1,8 @@
+
+// ============================================================
+// PAYMENT PAGE – FULL VERSION (UPDATED PATHS FOR INV & UNC)
+// ============================================================
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
@@ -53,8 +58,8 @@ const CustomerRowInput = ({
     value, 
     customers, 
     onSelect, 
-    onChange, 
-    onAdd 
+    onChange,
+    onAdd
 }: { 
     value: string; 
     customers: Customer[]; 
@@ -555,6 +560,21 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       if (!convertData.booking || !convertData.line || convertData.jobRows.length === 0) {
           alert("Vui lòng nhập đầy đủ thông tin bắt buộc (Booking, Line, ít nhất 1 Job).");
           return;
+      }
+
+      // --- DUPLICATE JOB CODE CHECK ---
+      if (jobs) {
+          const duplicates = convertData.jobRows.filter(row => 
+              row.jobCode && jobs.some(existingJob => 
+                  existingJob.jobCode.trim().toLowerCase() === row.jobCode.trim().toLowerCase()
+              )
+          );
+
+          if (duplicates.length > 0) {
+              const duplicateCodes = duplicates.map(d => d.jobCode).join(', ');
+              alert(`Cảnh báo: Các mã Job sau đã tồn tại trong hệ thống: ${duplicateCodes}.\nVui lòng kiểm tra lại hoặc đổi mã khác.`);
+              return;
+          }
       }
 
       // Loop and Add Jobs

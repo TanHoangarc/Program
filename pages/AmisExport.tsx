@@ -817,14 +817,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         let currentDocNum = 1;
         
         const allGeneratedMuaRows = rawItems.map(item => {
-            const groupKey = item.invoice ? item.invoice.trim().toUpperCase() : `NO_INV_${item.jobId}_${Math.random()}`;
+            // Safe trim: Use String() to prevent TypeError
+            const invoiceStr = item.invoice ? String(item.invoice).trim().toUpperCase() : '';
+            const groupKey = invoiceStr || `NO_INV_${item.jobId}_${Math.random()}`;
             
             let docNo = '';
-            if (item.invoice && invoiceToDocMap.has(groupKey)) {
+            if (invoiceStr && invoiceToDocMap.has(groupKey)) {
                 docNo = invoiceToDocMap.get(groupKey)!;
             } else {
                 docNo = `MH${String(currentDocNum).padStart(5, '0')}`;
-                if (item.invoice) invoiceToDocMap.set(groupKey, docNo);
+                if (invoiceStr) invoiceToDocMap.set(groupKey, docNo);
                 currentDocNum++;
             }
 

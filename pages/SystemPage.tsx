@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight, Trash } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -15,12 +16,13 @@ interface SystemPageProps {
   pendingRequests?: any[];
   onApproveRequest?: (requestId: string, data: any, silent?: boolean) => void;
   onRejectRequest?: (requestId: string) => void;
+  onConfirmMismatch?: () => void;
 }
 
 export const SystemPage: React.FC<SystemPageProps> = ({ 
   jobs, customers, lines, users, currentUser, 
   onRestore, onAddUser, onEditUser, onDeleteUser,
-  pendingRequests = [], onApproveRequest, onRejectRequest
+  pendingRequests = [], onApproveRequest, onRejectRequest, onConfirmMismatch
 }) => {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
@@ -139,6 +141,12 @@ export const SystemPage: React.FC<SystemPageProps> = ({
               lines: lines // No changes to lines for now
           });
           alert("Đã đồng bộ dữ liệu từ History thành công!");
+      }
+  };
+
+  const handleConfirmDelete = () => {
+      if (window.confirm("Bạn có chắc chắn muốn xác nhận xóa dữ liệu này? Hành động này sẽ cập nhật bản lưu trữ trên Server khớp với dữ liệu hiện tại.")) {
+          if (onConfirmMismatch) onConfirmMismatch();
       }
   };
 
@@ -262,12 +270,21 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                           )}
                       </div>
 
-                      <button 
-                          onClick={handleSyncHistory}
-                          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-md flex items-center gap-2"
-                      >
-                          <RefreshCw className="w-4 h-4" /> Đồng bộ Dữ liệu từ History
-                      </button>
+                      <div className="flex gap-3">
+                          <button 
+                              onClick={handleSyncHistory}
+                              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-md flex items-center gap-2"
+                          >
+                              <RefreshCw className="w-4 h-4" /> Đồng bộ Dữ liệu từ History
+                          </button>
+                          
+                          <button 
+                              onClick={handleConfirmDelete}
+                              className="bg-white text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-50 shadow-sm flex items-center gap-2"
+                          >
+                              <Trash className="w-4 h-4" /> Chấp nhận xoá (Lưu hiện tại)
+                          </button>
+                      </div>
                   </div>
               ) : (
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">

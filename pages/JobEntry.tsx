@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, AlertCircle, RotateCcw, HandCoins } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
@@ -242,7 +243,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           ngayChiCuoc: row['Ngày Chi Cược'] || '',
           ngayChiHoan: row['Ngày Chi Hoàn'] || '',
           localChargeTotal: Number(row['Thu Payment (Local Charge)']) || Number(row['Thu Payment']) || 0,
-          localChargeInvoice: row['Invoice Thu'] || row['Invoice'] || '',
+          // Force string conversion to prevent TypeError: inv.trim is not a function
+          localChargeInvoice: String(row['Invoice Thu'] || row['Invoice'] || ''),
           bank: row['Ngân hàng'] || '',
           thuCuoc: Number(row['Thu Cược']) || 0,
           ngayThuCuoc: row['Ngày Thu Cược'] || '',
@@ -443,7 +445,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                 const isLongHoang = custName.includes('LONG HOANG') || custName.includes('LONGHOANG') || custName.includes('LHK');
 
                 // Helper: Check if invoice is missing or is a placeholder (XXX BL)
-                const isInvalidInv = (inv?: string) => !inv || inv.trim() === '' || inv.toUpperCase().includes('XXX BL');
+                // Use String() to safely handle non-string values
+                const isInvalidInv = (inv?: any) => !inv || String(inv).trim() === '' || String(inv).toUpperCase().includes('XXX BL');
 
                 // Missing Invoice Logic:
                 // Show warning if NOT Long Hoang AND (has LC Amount but no invoice OR has Ext Amount but no invoice)

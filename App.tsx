@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -19,9 +20,9 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { LoginPage } from './components/LoginPage';
-import { Menu, Ship, AlertTriangle } from 'lucide-react';
+import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from '../types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -754,11 +755,12 @@ const App: React.FC = () => {
     }
   };
 
+  // --- FORCE BACKUP TO CONFIRM MISMATCH ---
   const handleConfirmMismatch = async () => {
-      // Force backup current state to server (creates new history entry matching current)
+      // Force sync current data to server to resolve mismatch
       await autoBackup();
       setDataMismatchWarning(false);
-      alert("Đã xác nhận dữ liệu hiện tại là chính xác. Server đã được cập nhật.");
+      alert("Đã xác nhận dữ liệu hiện tại là chính xác!");
   };
 
   // --- NFC AUTO BACKUP ---

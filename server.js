@@ -338,11 +338,13 @@ app.post("/data/save", async (req, res) => {
         // --- ADMIN PRIORITY LOGIC ---
         // Admin is the source of truth for Deletions.
         
-        // 1. Merge Main Data Entities
-        memoryData.jobs = mergeLists(memoryData.jobs || [], safeData.jobs || []);
-        memoryData.customers = mergeLists(memoryData.customers || [], safeData.customers || []);
-        memoryData.lines = mergeLists(memoryData.lines || [], safeData.lines || []);
-        memoryData.customReceipts = mergeLists(memoryData.customReceipts || [], safeData.customReceipts || []);
+        // 1. Merge Main Data Entities - UPDATED: OVERWRITE FOR ADMIN TO ALLOW DELETIONS
+        // We overwrite memory with the incoming list. This effectively processes deletions
+        // (missing items are gone) while adding/updating other items.
+        if (safeData.jobs) memoryData.jobs = safeData.jobs;
+        if (safeData.customers) memoryData.customers = safeData.customers;
+        if (safeData.lines) memoryData.lines = safeData.lines;
+        if (safeData.customReceipts) memoryData.customReceipts = safeData.customReceipts;
         
         // 2. Handle Payment Requests (With Deletion Tracking)
         if (safeData.paymentRequests) {

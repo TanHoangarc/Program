@@ -149,16 +149,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           if (isExtension) {
               const selectedExts = (j.extensions || []).filter(e => selectedExtIds.has(e.id));
               selectedExts.forEach(e => {
-                  if (e.invoice && e.invoice.trim()) {
-                      invoices.push(e.invoice.trim());
+                  // Safe trim: String(e.invoice) handles potential non-string values
+                  if (e.invoice && String(e.invoice).trim()) {
+                      invoices.push(String(e.invoice).trim());
                   } else {
                       missingJobCodes.push(j.jobCode);
                   }
               });
           } else {
               const inv = isMain ? mainInvoice : (j.localChargeInvoice || '');
-              if (inv && inv.trim()) {
-                  invoices.push(inv.trim());
+              // Safe trim: String(inv) handles potential non-string values
+              if (inv && String(inv).trim()) {
+                  invoices.push(String(inv).trim());
               } else {
                   missingJobCodes.push(j.jobCode);
               }
