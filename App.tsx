@@ -22,7 +22,7 @@ import { BankPage } from './pages/BankPage';
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from '../types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -474,6 +474,14 @@ const App: React.FC = () => {
     }
   };
 
+  // --- FORCE BACKUP TO CONFIRM MISMATCH ---
+  const handleConfirmMismatch = async () => {
+      // Force sync current data to server to resolve mismatch
+      await autoBackup();
+      setDataMismatchWarning(false);
+      alert("Đã xác nhận dữ liệu hiện tại là chính xác!");
+  };
+
   const handleToggleLock = (docNo: string | string[]) => {
       const newSet = new Set(lockedIds);
       
@@ -753,14 +761,6 @@ const App: React.FC = () => {
     } catch (err) {
       console.warn("AUTO BACKUP FAILED (Offline Mode)", err);
     }
-  };
-
-  // --- FORCE BACKUP TO CONFIRM MISMATCH ---
-  const handleConfirmMismatch = async () => {
-      // Force sync current data to server to resolve mismatch
-      await autoBackup();
-      setDataMismatchWarning(false);
-      alert("Đã xác nhận dữ liệu hiện tại là chính xác!");
   };
 
   // --- NFC AUTO BACKUP ---
