@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, FileDown, Copy, FileSpreadsheet, Filter, X, Upload, MoreVertical, ChevronLeft, ChevronRight, DollarSign, FileText, Anchor, AlertCircle, RotateCcw, HandCoins } from 'lucide-react';
 import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } from '../types';
@@ -443,11 +442,14 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                 const custName = (job.customerName || '').toUpperCase();
                 const isLongHoang = custName.includes('LONG HOANG') || custName.includes('LONGHOANG') || custName.includes('LHK');
 
+                // Helper: Check if invoice is missing or is a placeholder (XXX BL)
+                const isInvalidInv = (inv?: string) => !inv || inv.trim() === '' || inv.toUpperCase().includes('XXX BL');
+
                 // Missing Invoice Logic:
                 // Show warning if NOT Long Hoang AND (has LC Amount but no invoice OR has Ext Amount but no invoice)
                 const hasMissingInvoice = !isLongHoang && (
-                    (job.localChargeTotal > 0 && !job.localChargeInvoice) ||
-                    (job.extensions || []).some(ext => ext.total > 0 && !ext.invoice)
+                    (job.localChargeTotal > 0 && isInvalidInv(job.localChargeInvoice)) ||
+                    (job.extensions || []).some(ext => ext.total > 0 && isInvalidInv(ext.invoice))
                 );
 
                 return (
