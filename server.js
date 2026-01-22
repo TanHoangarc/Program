@@ -7,6 +7,7 @@
 // + ROLE BASED STORAGE (Payment.json, Staff.json)
 // + MERGE STRATEGY (Fix data loss)
 // + ADMIN PRIORITY DELETE (Fix Zombie Data)
+// + ROBUST WRITE QUEUE (Fix Race Conditions)
 //------------------------------------------------------
 
 const express = require("express");
@@ -36,7 +37,7 @@ const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, 
 const PAYMENT_PATH = path.join(ROOT_DIR, "payment.json");   // Payment Requests Only
 const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
 const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
-const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending (kept for compatibility or specific approval flows)
+const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
 const HISTORY_ROOT = path.join(ROOT_DIR, "history");
 
 const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
@@ -62,7 +63,7 @@ const SIGN_DIR = path.join(ROOT_DIR, "Sign");
 
 // Initialize files if not exist
 if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
-if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]"); // Payments are array
+if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
 if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
 if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
 if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
@@ -107,10 +108,8 @@ function mergeLists(currentList, incomingList, idField = "id") {
     if (!Array.isArray(incomingList)) return currentList || [];
     if (!Array.isArray(currentList)) return incomingList;
 
-    // Map existing data by ID
     const dataMap = new Map(currentList.map(item => [item[idField], item]));
 
-    // Update or Add incoming data
     incomingList.forEach(item => {
         if (item && item[idField]) {
             dataMap.set(item[idField], item);
@@ -121,52 +120,69 @@ function mergeLists(currentList, incomingList, idField = "id") {
 }
 
 // ======================================================
-// BACKGROUND WRITE QUEUE
+// ROBUST WRITE QUEUE (SERIALIZED)
 // ======================================================
-let isWriting = false;
-let pendingWrite = false;
+let writeLock = false;    // Is a write currently happening?
+let writePending = false; // Is a new request waiting?
 
-// Unified writer for Main Data and Payment Data
-async function processWriteQueue(role, fullDataToSave) {
-    if (isWriting) {
-        pendingWrite = true;
-        return; 
+/**
+ * Serializes writes to disk.
+ * If a write is in progress, it sets a flag.
+ * Once the current write finishes, if the flag is set, it runs again with the LATEST RAM state.
+ * This ensures no updates are lost and the file eventually matches RAM perfectly.
+ */
+async function triggerDiskSave() {
+    // 1. If we are already writing, just mark that we need to write again once finished.
+    if (writeLock) {
+        writePending = true;
+        return;
     }
 
-    isWriting = true;
-    pendingWrite = false;
+    writeLock = true;
 
     try {
-        // ADMIN: Update Everything
-        if (role === 'Admin' || role === 'Manager') {
-            // 1. Separate Payments
-            const payments = fullDataToSave.paymentRequests || [];
-            const mainData = { ...fullDataToSave };
-            delete mainData.paymentRequests; 
+        do {
+            // Reset pending flag at the start of the cycle
+            writePending = false;
 
-            // 2. Write backup.json
-            await fsp.writeFile(DATA_PATH, JSON.stringify(mainData, null, 2), "utf8");
-            
-            // 3. Write payment.json
-            await fsp.writeFile(PAYMENT_PATH, JSON.stringify(payments, null, 2), "utf8");
+            // 2. Snapshot the current RAM state (The Source of Truth)
+            const dataSnapshot = { ...memoryData };
+            const paymentSnapshot = [...memoryPayments];
 
-            // 4. Write History (Full Snapshot)
-            await writeHistoryBackup(fullDataToSave);
-        } 
-        // DOCS: Update Payments Only
-        else if (role === 'Docs') {
-            const payments = fullDataToSave.paymentRequests || [];
-            await fsp.writeFile(PAYMENT_PATH, JSON.stringify(payments, null, 2), "utf8");
-        }
-        // STAFF: Save to staff.json (No merge needed for staff specific file usually, but safer to keep as is)
-        else if (role === 'Staff') {
-            await fsp.writeFile(STAFF_PATH, JSON.stringify(fullDataToSave, null, 2), "utf8");
-        }
+            // 3. Perform I/O operations (Wait for them to finish)
+            await Promise.all([
+                fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
+                fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
+            ]);
 
+            // 4. Write History Backup (Full Snapshot)
+            // We combine them for the history file logic
+            await writeHistoryBackup({
+                ...dataSnapshot,
+                paymentRequests: paymentSnapshot
+            });
+
+            console.log("💾 Disk save completed.");
+
+            // 5. Loop condition:
+            // If `writePending` became true while we were awaiting the writes above,
+            // the loop runs again immediately with the NEW latest RAM state.
+        } while (writePending);
+        
     } catch (err) {
-        console.error("Write error:", err);
+        console.error("❌ Disk Write Error:", err);
     } finally {
-        isWriting = false;
+        // Release lock only when queue is empty
+        writeLock = false;
+    }
+}
+
+// Separate handler for Staff file to avoid blocking main thread unnecessarily
+async function saveStaffData(data) {
+    try {
+        await fsp.writeFile(STAFF_PATH, JSON.stringify(data, null, 2), "utf8");
+    } catch (e) {
+        console.error("Staff write error", e);
     }
 }
 
@@ -175,46 +191,29 @@ async function processWriteQueue(role, fullDataToSave) {
 // ======================================================
 async function writeHistoryBackup(data, maxFiles = 3) {
     try {
-        const fileName =
-            "history-" +
-            new Date().toISOString().replace(/[:.]/g, "-") +
-            ".json";
-
+        const fileName = "history-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
         const filePath = path.join(HISTORY_ROOT, fileName);
 
-        // Write snapshot
-        await fsp.writeFile(
-            filePath,
-            JSON.stringify(data, null, 2),
-            "utf8"
-        );
+        await fsp.writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
 
-        // Read history files
+        // Clean up old files
         let files = await fsp.readdir(HISTORY_ROOT);
         files = files
             .filter(f => f.startsWith("history-") && f.endsWith(".json"))
-            .map(f => ({
-                name: f,
-                path: path.join(HISTORY_ROOT, f)
-            }));
+            .map(f => ({ name: f, path: path.join(HISTORY_ROOT, f) }));
 
         if (files.length <= maxFiles) return;
 
-        // Sort by modified time (old → new)
+        // Sort: Oldest to Newest
         const filesWithTime = await Promise.all(
-            files.map(async f => ({
-                ...f,
-                time: (await fsp.stat(f.path)).mtimeMs
-            }))
+            files.map(async f => ({ ...f, time: (await fsp.stat(f.path)).mtimeMs }))
         );
-
         filesWithTime.sort((a, b) => a.time - b.time);
 
-        // Remove old files
+        // Delete oldest
         const removeCount = filesWithTime.length - maxFiles;
         for (let i = 0; i < removeCount; i++) {
             await fsp.unlink(filesWithTime[i].path);
-            console.log("🗑️ Deleted old history:", filesWithTime[i].name);
         }
 
     } catch (err) {
@@ -260,7 +259,6 @@ function broadcast(event, data) {
         const rawData = await fsp.readFile(DATA_PATH, "utf8");
         memoryData = sanitizePayload(JSON.parse(rawData || "{}"));
         
-        // Ensure deletedPaymentIds exists
         if (!memoryData.deletedPaymentIds) {
             memoryData.deletedPaymentIds = [];
         }
@@ -328,103 +326,76 @@ app.get("/data", (req, res) => {
 
 // POST: Save based on Role
 app.post("/data/save", async (req, res) => {
-    const { role, ...data } = req.body; // Extract Role
-    
-    // Sanitize incoming data
+    const { role, ...data } = req.body; 
     const safeData = sanitizePayload(data);
     
-    // Logic Branching based on Role
     if (role === 'Admin' || role === 'Manager') {
-        // --- ADMIN PRIORITY LOGIC ---
-        // Admin is the source of truth for Deletions.
+        // --- ADMIN UPDATE (SOURCE OF TRUTH) ---
         
-        // 1. Merge Main Data Entities - UPDATED: OVERWRITE FOR ADMIN TO ALLOW DELETIONS
-        // We overwrite memory with the incoming list. This effectively processes deletions
-        // (missing items are gone) while adding/updating other items.
+        // 1. Update Global RAM for Main Entities
         if (safeData.jobs) memoryData.jobs = safeData.jobs;
         if (safeData.customers) memoryData.customers = safeData.customers;
         if (safeData.lines) memoryData.lines = safeData.lines;
         if (safeData.customReceipts) memoryData.customReceipts = safeData.customReceipts;
         
-        // 2. Handle Payment Requests (With Deletion Tracking)
+        // 2. Handle Payment Deletions
         if (safeData.paymentRequests) {
-            // Check what Admin has that Server doesn't, AND what Server has that Admin doesn't.
-            // If Server has ID 'A' but Admin (current payload) DOES NOT have ID 'A', 
-            // it means Admin DELETED 'A'. We must respect this.
-            
             const adminIds = new Set(safeData.paymentRequests.map(r => r.id));
             
-            // Identify deletions: Items in memory that are NOT in Admin's list
+            // Mark items missing from Admin's list as Deleted
             memoryPayments.forEach(existing => {
                 if (!adminIds.has(existing.id)) {
-                    // This item was deleted by Admin. Add to Tombstone list.
                     if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
                     if (!memoryData.deletedPaymentIds.includes(existing.id)) {
                         memoryData.deletedPaymentIds.push(existing.id);
-                        console.log(`[Admin Delete] Marked payment ${existing.id} as deleted.`);
                     }
                 }
             });
 
-            // Update Memory:
-            // - Merge updated/new items from Admin
-            // - Filter out items that are in the deleted list (Tombstones)
+            // Update Payments
             memoryPayments = mergeLists(memoryPayments, safeData.paymentRequests);
             memoryPayments = memoryPayments.filter(p => !memoryData.deletedPaymentIds.includes(p.id));
         }
 
-        // 3. Other simple arrays
+        // 3. Update Misc Arrays
         if (safeData.lockedIds) memoryData.lockedIds = safeData.lockedIds;
         if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
         if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
 
-        // Response success
-        res.json({ success: true, saved: "full_merged_admin" });
-        
-        // Construct Full Data for Disk Write
-        const fullDataToWrite = {
-            ...memoryData,
-            paymentRequests: memoryPayments
-        };
-
-        // Background Write
-        processWriteQueue(role, fullDataToWrite);
+        // 4. Trigger Async Disk Write
+        triggerDiskSave(); // <--- ROBUST QUEUE CALLED HERE
         broadcast("data-updated", { time: Date.now(), source: 'Admin', type: 'FULL_SYNC' });
 
+        res.json({ success: true, saved: "full_merged_admin" });
+
     } else if (role === 'Docs') {
-        // --- DOCS LIMITED LOGIC ---
-        // Docs can update payments, but cannot resurrect Admin-deleted items.
-        
+        // --- DOCS UPDATE (PARTIAL) ---
         let requireReload = false;
 
         if (safeData.paymentRequests) {
-            // Filter incoming requests against the Tombstone list
+            // Check against tombstone list to prevent resurrection
             const validRequests = safeData.paymentRequests.filter(req => {
                 const isDeleted = memoryData.deletedPaymentIds && memoryData.deletedPaymentIds.includes(req.id);
                 if (isDeleted) {
-                    console.log(`[Docs Sync] Blocked resurrection of deleted payment ${req.id}`);
-                    requireReload = true; // Signal client to refresh
+                    requireReload = true;
                     return false;
                 }
                 return true;
             });
 
-            // Merge only valid requests
             memoryPayments = mergeLists(memoryPayments, validRequests);
         }
         
-        res.json({ success: true, saved: "payment_only", requireReload });
-        
-        const fullConstruct = { ...memoryData, paymentRequests: memoryPayments };
-        processWriteQueue(role, fullConstruct);
-        
-        // Only broadcast if successful updates occurred
+        // Trigger Disk Write for consistency
+        triggerDiskSave(); 
         broadcast("data-updated", { time: Date.now(), source: 'Docs' });
 
+        res.json({ success: true, saved: "payment_only", requireReload });
+
     } else if (role === 'Staff') {
-        // Staff logic remains same (File based)
+        // Staff writes to separate file, no merge needed into main memory
+        saveStaffData(safeData);
         res.json({ success: true, saved: "staff_file" });
-        processWriteQueue(role, safeData);
     } else {
         res.json({ success: false, message: "No permission to save" });
     }
@@ -440,7 +411,7 @@ app.get("/history/latest", async (req, res) => {
             return res.json({ found: false, message: "No history files found." });
         }
 
-        // Sort by time descending (newest first)
+        // Sort by time descending
         const filesWithTime = await Promise.all(
             files.map(async f => ({
                 name: f,
@@ -454,12 +425,7 @@ app.get("/history/latest", async (req, res) => {
         const raw = await fsp.readFile(latestFile.path, "utf8");
         const data = JSON.parse(raw || "{}");
 
-        res.json({ 
-            found: true, 
-            fileName: latestFile.name, 
-            timestamp: latestFile.time, 
-            data: data 
-        });
+        res.json({ found: true, fileName: latestFile.name, timestamp: latestFile.time, data: data });
     } catch (err) {
         console.error("Error reading latest history:", err);
         res.status(500).json({ error: "Failed to read history" });
@@ -538,24 +504,22 @@ app.post("/approve", async (req, res) => {
     const item = list.find(i => i.id === req.body.id);
     if (!item) return res.status(404).json({ success: false });
 
-    // When approving, act as Admin
+    // When approving, update RAM
     const fullData = sanitizePayload(item.data);
     
-    // Merge Logic for Approval too
     memoryData.jobs = mergeLists(memoryData.jobs || [], fullData.jobs || []);
     memoryData.customers = mergeLists(memoryData.customers || [], fullData.customers || []);
     memoryData.lines = mergeLists(memoryData.lines || [], fullData.lines || []);
+    
     if (fullData.paymentRequests) {
         memoryPayments = mergeLists(memoryPayments, fullData.paymentRequests);
-        // Clean up deletions just in case
         if (memoryData.deletedPaymentIds) {
             memoryPayments = memoryPayments.filter(p => !memoryData.deletedPaymentIds.includes(p.id));
         }
     }
 
-    // Construct merged state for writing
-    const dataToWrite = { ...memoryData, paymentRequests: memoryPayments };
-    processWriteQueue('Admin', dataToWrite);
+    // Trigger Disk Save
+    triggerDiskSave();
 
     item.status = "approved";
     item.approvedTime = new Date().toISOString();
@@ -632,7 +596,6 @@ app.post("/upload-unc", createUpload(UNC_DIR), (req, res) => {
 
 app.post("/upload-cvhc", createUpload(CVHC_ROOT), (req, res) => {
     if (!req.file) return res.status(400).json({ success: false });
-    // IMPORTANT: Return cvhcUrl so frontend can link it
     res.json({ success: true, fileName: req.file.filename, cvhcUrl: `/cvhc/${req.file.filename}` });
 });
 
@@ -642,17 +605,12 @@ app.post("/upload-stamp", createUpload(SIGN_DIR), (req, res) => {
 });
 
 // ======================================================
-// GENERAL UPLOAD (FOR INVOICE/DATA MANAGEMENT EXCEL)
+// GENERAL UPLOAD
 // ======================================================
 app.post("/upload-file", (req, res) => {
     const upload = multer({
         storage: multer.diskStorage({
             destination: (req, file, cb) => {
-                // req.body might not be populated yet if multer is not configured with any fields
-                // We use a custom storage or middleware order.
-                // But for simplicity with 'createUpload', we usually specific dir.
-                // Here we need dynamic dir based on body `folderPath`.
-                // Multer's destination function gives access to req.
                 const folder = req.body.folderPath ? path.join(ROOT_DIR, req.body.folderPath) : ROOT_DIR;
                 if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
                 cb(null, folder);
@@ -668,9 +626,6 @@ app.post("/upload-file", (req, res) => {
         if (err) return res.status(500).json({ success: false, message: err.message });
         if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
         
-        // Construct URL based on folderPath
-        // Note: We static serve 'uploads' -> ROOT_DIR
-        // If folderPath is 'Invoice/2023.10', then URL is /uploads/Invoice/2023.10/filename
         const relativePath = req.body.folderPath ? `${req.body.folderPath}/${req.file.filename}` : req.file.filename;
         const fullUrl = `/uploads/${relativePath}`;
         
@@ -678,17 +633,13 @@ app.post("/upload-file", (req, res) => {
     });
 });
 
-// ======================================================
-// EXCEL SAVE (EXPORT)
-// ======================================================
 app.post("/save-excel", createUpload(ROOT_DIR), (req, res) => {
-    // Just saves the file to ROOT_DIR
     if (!req.file) return res.status(400).json({ success: false });
     res.json({ success: true, message: "Saved to ServerData root" });
 });
 
 // ======================================================
-// STATIC FILE SERVERS
+// STATIC SERVERS & START
 // ======================================================
 app.use("/files/invoice", express.static(INVOICE_ROOT));
 app.use("/files/inv", express.static(INV_DIR));
@@ -697,9 +648,6 @@ app.use("/cvhc", express.static(CVHC_ROOT));
 app.use("/sign", express.static(SIGN_DIR));
 app.use("/uploads", express.static(ROOT_DIR));
 
-// ======================================================
-// START SERVER
-// ======================================================
 app.listen(PORT, () => {
     console.log("🚀 KIMBERRY BACKEND FINAL running at http://localhost:" + PORT);
 });
