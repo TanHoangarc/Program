@@ -385,7 +385,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           } else if (mode === 'refund_overpayment') {
               setAmisDocNo(generateNextDocNo(jobsForCalc, 'UNC'));
               setAmisDate(new Date().toISOString().split('T')[0]);
-              setAmisDesc(`Hoàn tiền thừa local charge BL ${deepCopyJob.jobCode} (KIM)`);
+              setAmisDesc(`Chi tiền cho KH HOÀN TIỀN THỪA BL ${deepCopyJob.jobCode} (KIM)`);
               const status = calculatePaymentStatus(deepCopyJob);
               setAmisAmount(Math.max(0, status.lcDiff));
           }
