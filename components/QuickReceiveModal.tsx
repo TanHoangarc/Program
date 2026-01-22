@@ -95,6 +95,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [amisAmount, setAmisAmount] = useState(0); 
   const [amisDate, setAmisDate] = useState(''); 
 
+  // --- NEW: STATE FOR MAIN JOB/EXTENSION INVOICE (INDEPENDENT OF MERGED RESULT) ---
+  const [mainJobInvoice, setMainJobInvoice] = useState('');
+  const [mainExtensionInvoice, setMainExtensionInvoice] = useState('');
+
   const [newExtension, setNewExtension] = useState({
     customerId: '',
     invoice: '',
@@ -137,47 +141,42 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [quickAddTarget, setQuickAddTarget] = useState<{ type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string } | null>(null);
 
   /**
-   * Helper tạo chuỗi Invoice tổng hợp: inv1+inv2... + XXX BL Job1+XXX BL Job2...
-   * FIXED: Treat each missing invoice as a distinct "XXX BL [Code]" entry
+   * Helper tạo chuỗi Invoice tổng hợp: inv1+inv2... 
+   * RESTORED: Includes XXX BL logic
    */
-  const generateMergedInvoiceString = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean, selectedExtIds: Set<string>) => {
+  const generateMergedInvoiceString = (
+      mainInvoiceVal: string, 
+      mainJobCode: string,
+      extraJobs: JobData[], 
+      isExtension: boolean, 
+      selectedExtIds: Set<string>
+  ) => {
       const invoices: string[] = [];
-      const allJobsList = [formData, ...extraJobs];
+      
+      // 1. Add Main Invoice if present or Placeholder
+      let mainInv = mainInvoiceVal ? mainInvoiceVal.trim() : '';
+      if (!mainInv) {
+          mainInv = `XXX BL ${mainJobCode}`;
+      }
+      invoices.push(mainInv);
 
-      allJobsList.forEach((j, idx) => {
-          const isMain = idx === 0;
-          const currentCode = j.jobCode;
-
+      // 2. Add Extra Jobs Invoices
+      extraJobs.forEach((j) => {
           if (isExtension) {
               const selectedExts = (j.extensions || []).filter(e => selectedExtIds.has(e.id));
               selectedExts.forEach(e => {
-                  const inv = String(e.invoice || '').trim();
-                  // Check if real invoice (not empty, not placeholder)
-                  if (inv && !inv.toUpperCase().includes('XXX BL')) {
-                      invoices.push(inv);
-                  } else {
-                      // Explicit placeholder for THIS job
-                      invoices.push(`XXX BL ${currentCode}`);
+                  let inv = String(e.invoice || '').trim();
+                  if (!inv) {
+                      inv = `XXX BL ${j.jobCode}`;
                   }
+                  invoices.push(inv);
               });
           } else {
-              // Local Charge / Main logic
-              // For Main Job: check mainInvoice arg. 
-              // PREVENT RECURSION: If mainInvoice already has '+' (merged result), fall back to original job prop or assume missing.
-              let rawInv = isMain ? mainInvoice : (j.localChargeInvoice || '');
-              
-              if (isMain && rawInv.includes('+')) {
-                  // Fallback to safe original value if input is polluted by previous merge
-                  rawInv = job.localChargeInvoice || ''; 
+              let val = String(j.localChargeInvoice || '').trim();
+              if (!val) {
+                  val = `XXX BL ${j.jobCode}`;
               }
-              
-              const val = String(rawInv).trim();
-
-              if (val && !val.toUpperCase().includes('XXX BL')) {
-                  invoices.push(val);
-              } else {
-                  invoices.push(`XXX BL ${currentCode}`);
-              }
+              invoices.push(val);
           }
       });
 
@@ -196,7 +195,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const isExtension = mode === 'extension';
       
       // 1. Tính toán chuỗi Invoice gộp mới
-      const mergedInvoice = generateMergedInvoiceString(currentMainInvoice, extraJobs, isExtension, currentSelectedExtIds);
+      const mergedInvoice = generateMergedInvoiceString(currentMainInvoice, job.jobCode, extraJobs, isExtension, currentSelectedExtIds);
       
       // 2. Tính toán Diễn giải từ Invoice gộp
       const newDesc = generateMergedDescription(mergedInvoice, isExtension);
@@ -215,7 +214,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           
           setNewExtension(prev => ({ 
               ...prev, 
-              invoice: mergedInvoice, // Tự động cập nhật ô Invoice
+              invoice: mergedInvoice, // This is the RESULT invoice string for AMIS
               amisDesc: newDesc,
               total: totalAmount,
               amisAmount: totalAmount 
@@ -225,7 +224,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           const mainAmt = job.localChargeTotal || 0; 
           const extraAmt = extraJobs.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
           
-          setFormData(prev => ({ ...prev, localChargeInvoice: mergedInvoice })); // Tự động cập nhật ô Invoice
+          setFormData(prev => ({ ...prev, localChargeInvoice: mergedInvoice })); // This is the RESULT invoice string for AMIS
           setAmisDesc(newDesc);
           setAmisAmount(mainAmt + extraAmt);
       }
@@ -235,7 +234,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const allJobs = [currentMainJob, ...extraJobs];
       const totalAmount = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
       
-      // Generate Description
       const jobCodes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
       const newDesc = `Chi tiền cho KH HOÀN CƯỢC BL ${jobCodes}`;
 
@@ -280,7 +278,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   if (!ext.amisDocNo) initialExtSet.add(ext.id);
               });
 
-              // FIX: Default customer to extension's customer if available
               if (initialExtSet.size > 0) {
                   const firstExtId = Array.from(initialExtSet)[0];
                   targetExt = (deepCopyJob.extensions || []).find((e: any) => e.id === firstExtId);
@@ -299,8 +296,19 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
           const custId = targetExt ? (targetExt.customerId || deepCopyJob.customerId) : deepCopyJob.customerId;
           
-          // Tính toán Invoice gộp ban đầu dựa trên quy tắc mới
-          const mergedInv = generateMergedInvoiceString(targetExt?.invoice || '', initialAddedJobs, true, initialExtSet);
+          // INITIALIZE MAIN EXTENSION INVOICE STATE
+          let initialExtInv = targetExt?.invoice || '';
+          
+          // Attempt to extract if currently merged
+          if (initialAddedJobs.length > 0 && initialExtInv.includes('+')) {
+               const parts = initialExtInv.split('+').map((s: string) => s.trim());
+               if (parts.length > 0) initialExtInv = parts[0];
+          }
+          
+          setMainExtensionInvoice(initialExtInv);
+
+          // Calculate merged string
+          const mergedInv = generateMergedInvoiceString(initialExtInv, job.jobCode, initialAddedJobs, true, initialExtSet);
           const desc = targetExt?.amisDesc || generateMergedDescription(mergedInv, true);
 
           setNewExtension({ 
@@ -328,7 +336,28 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
           if (mode === 'local' || mode === 'other') {
-              const mergedInv = generateMergedInvoiceString(deepCopyJob.localChargeInvoice || '', initialAddedJobs, false, new Set());
+              // INITIALIZE MAIN JOB INVOICE STATE
+              let initialMainInv = deepCopyJob.localChargeInvoice || '';
+              
+              // ATTEMPT TO CLEAN MERGED INVOICE STRING FOR DISPLAY (Separate single vs merged)
+              // If we are editing an existing merged payment, extracting the original single invoice
+              if (initialAddedJobs.length > 0 && initialMainInv.includes('+')) {
+                   const parts = initialMainInv.split('+').map((s: string) => s.trim());
+                   const addedInvs = new Set(initialAddedJobs.map(j => (j.localChargeInvoice || '').trim()));
+                   
+                   // Filter parts that are NOT in added jobs list
+                   const remaining = parts.filter((p: string) => !addedInvs.has(p) && !p.includes('XXX BL'));
+                   
+                   if (remaining.length > 0) {
+                       initialMainInv = remaining.join('+');
+                   } else if (parts.length > 0) {
+                       initialMainInv = parts[0];
+                   }
+              }
+
+              setMainJobInvoice(initialMainInv);
+
+              const mergedInv = generateMergedInvoiceString(initialMainInv, job.jobCode, initialAddedJobs, false, new Set());
               setAmisDocNo(orgDoc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
               setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
               setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
@@ -391,7 +420,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       let currentInvoice = '';
 
       if (mode === 'local' || mode === 'other') {
-          currentInvoice = formData.localChargeInvoice || '';
+          // Use FULL MERGED string for Input display
+          currentInvoice = formData.localChargeInvoice || ''; 
+          
           currentTotalReceivable = (formData.localChargeTotal || 0) + addedJobs.reduce((sum, j) => sum + (j.localChargeTotal || 0), 0);
           mainJobReceivable = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
@@ -401,7 +432,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A'; 
       } else if (mode === 'extension') {
+          // Use FULL MERGED string for Input display
           currentInvoice = newExtension.invoice;
+          
           currentTotalReceivable = newExtension.total;
           let mainPart = 0;
           (formData.extensions || []).forEach(e => { if (selectedMergedExtIds.has(e.id)) mainPart += e.total; });
@@ -456,19 +489,30 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   const handleInvoiceChange = (val: string) => {
       if (mode === 'local') { 
-          setFormData(prev => ({ ...prev, localChargeInvoice: val })); 
-          // Khi gõ tay Invoice chính, thực hiện tính toán gộp (nếu đang ở chế độ gộp)
-          recalculateMerge(val, addedJobs); 
+          // Update the Merged Result Directly
+          setFormData(prev => ({ ...prev, localChargeInvoice: val }));
+          
+          // Reverse extract main invoice part for table consistency
+          const parts = val.split('+').map(s => s.trim());
+          const extraInvoices = addedJobs.map(j => (j.localChargeInvoice || '').trim()).filter(Boolean);
+          const mainParts = parts.filter(p => !extraInvoices.includes(p));
+          setMainJobInvoice(mainParts.join('+'));
       }
       else if (mode === 'other') {
+          // For 'other', it acts as single job usually
+          setMainJobInvoice(val);
           setFormData(prev => ({ ...prev, localChargeInvoice: val }));
           const invPlaceholder = val || 'XXX';
           if (otherSubMode === 'deposit') setAmisDesc(`Thu tiền của KH CƯỢC CONT BL ${invPlaceholder}`);
           else setAmisDesc(invoiceInputMode === 'bl' ? `Thu tiền của KH theo hoá đơn XXX BL ${invPlaceholder} (LH MB)` : `Thu tiền của KH theo hoá đơn ${invPlaceholder} (LH MB)`);
       }
       else if (mode === 'extension') { 
-          setNewExtension(prev => ({ ...prev, invoice: val })); 
-          recalculateMerge(val, addedJobs); 
+          // Update Merged Result Directly
+          setNewExtension(prev => ({ ...prev, invoice: val }));
+          
+          const parts = val.split('+').map(s => s.trim());
+          // Approximate reverse for table display (simpler for extension)
+          setMainExtensionInvoice(parts.length > 0 ? parts[0] : val);
       }
   };
 
@@ -510,10 +554,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         amisDesc: newExtension.amisDesc,
                         amisAmount: isMain && ext.id === (job.extensions?.find(e => selectedMergedExtIds.has(e.id))?.id) ? newExtension.amisAmount : undefined,
                         customerId: isMain ? newExtension.customerId : ext.customerId,
-                        invoice: isMain ? newExtension.invoice : ext.invoice,
-                        invoiceDate: newExtension.amisDate, // Fixed: Update invoiceDate
-                        amisDate: newExtension.amisDate,    // Fixed: Update amisDate
-                        date: newExtension.amisDate         // Fixed: Update date
+                        invoice: ext.invoice, // Keep original
+                        invoiceDate: newExtension.amisDate, 
+                        amisDate: newExtension.amisDate,    
+                        date: newExtension.amisDate         
                     };
                 }
                 return ext;
@@ -545,8 +589,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 updates.amisLcDesc = amisDesc;
                 updates.amisLcAmount = isMainJob ? amisAmount : undefined;
                 updates.localChargeDate = amisDate;
-                // Cập nhật Invoice gộp cho các job trong nhóm
-                updates.localChargeInvoice = isMainJob ? formData.localChargeInvoice : job.localChargeInvoice;
+                // Update localChargeInvoice for ALL jobs in the merge if it's the main job
+                // Actually only Main Job needs the full merged string for reference usually
+                if (isMainJob) {
+                    updates.localChargeInvoice = formData.localChargeInvoice; 
+                }
             }
             if (index === 0) updates.additionalReceipts = additionalReceipts;
             onSave({ ...job, ...updates });
@@ -578,11 +625,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           const newSet = new Set(selectedMergedExtIds);
           (found.extensions || []).forEach(e => { if (!e.amisDocNo) newSet.add(e.id); });
           setSelectedMergedExtIds(newSet);
-          recalculateMerge(newExtension.invoice, newAddedJobs, newSet);
+          // Pass current MAIN Invoice state
+          recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
       } else if (mode === 'deposit_refund') {
           recalculateDepositRefundMerge(formData, newAddedJobs);
       } else { 
-          recalculateMerge(formData.localChargeInvoice, newAddedJobs); 
+          // Pass current MAIN Invoice state
+          recalculateMerge(mainJobInvoice, newAddedJobs); 
       }
   };
 
@@ -595,11 +644,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           const newSet = new Set(selectedMergedExtIds);
           if (jobToRemove?.extensions) jobToRemove.extensions.forEach(e => newSet.delete(e.id));
           setSelectedMergedExtIds(newSet);
-          recalculateMerge(newExtension.invoice, newAddedJobs, newSet);
+          recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
       } else if (mode === 'deposit_refund') {
           recalculateDepositRefundMerge(formData, newAddedJobs);
       } else {
-          recalculateMerge(formData.localChargeInvoice, newAddedJobs);
+          recalculateMerge(mainJobInvoice, newAddedJobs);
       }
   };
 
@@ -607,7 +656,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const newSet = new Set(selectedMergedExtIds);
       if (isChecked) newSet.add(extId); else newSet.delete(extId);
       setSelectedMergedExtIds(newSet);
-      recalculateMerge(newExtension.invoice, addedJobs, newSet);
+      recalculateMerge(mainExtensionInvoice, addedJobs, newSet);
   };
 
   if (!isOpen) return null;
@@ -657,13 +706,28 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                     {[formData, ...addedJobs].length > 0 && (
                         <div className="bg-white rounded-lg border border-blue-100 overflow-hidden">
                             <table className="w-full text-xs text-left">
-                                <thead className="bg-blue-100/50 font-bold text-blue-800"><tr><th className="px-3 py-2">Job Code</th><th className="px-3 py-2 text-right">Chi tiết</th><th className="px-3 py-2 w-8"></th></tr></thead>
+                                <thead className="bg-blue-100/50 font-bold text-blue-800">
+                                    <tr>
+                                        <th className="px-3 py-2">Job Code</th>
+                                        {(mode === 'local' || mode === 'other') && <th className="px-3 py-2">Invoice</th>}
+                                        <th className="px-3 py-2 text-right">Chi tiết</th>
+                                        <th className="px-3 py-2 w-8"></th>
+                                    </tr>
+                                </thead>
                                 <tbody className="divide-y divide-blue-50">
                                     {[formData, ...addedJobs].map(j => {
                                         const isMain = j.id === formData.id;
                                         return (
                                         <tr key={j.id} className={`group ${isMain ? 'bg-blue-50/40' : ''}`}>
                                             <td className="px-3 py-2 font-medium align-top pt-3">{j.jobCode} {isMain && <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 font-bold">CHÍNH</span>}</td>
+                                            
+                                            {(mode === 'local' || mode === 'other') && (
+                                                <td className="px-3 py-2 align-top pt-3 text-slate-500">
+                                                    {/* FOR MAIN JOB: Use the separate state 'mainJobInvoice' to show pure invoice (e.g. 0461) */}
+                                                    {isMain ? (mainJobInvoice || 'N/A') : (j.localChargeInvoice || 'N/A')}
+                                                </td>
+                                            )}
+
                                             <td className="px-3 py-2">
                                                 {mode === 'extension' ? (
                                                     <div className="space-y-1">

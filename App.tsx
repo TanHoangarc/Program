@@ -22,7 +22,7 @@ import { BankPage } from './pages/BankPage';
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from '@/types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
