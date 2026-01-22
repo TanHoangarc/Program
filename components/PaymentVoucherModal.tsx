@@ -120,12 +120,31 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       let bkNumber = '';
 
       if (booking) {
-          jobCodes = booking.jobs.map(j => j.jobCode).filter(Boolean).join('+');
+          let targetJobs = booking.jobs;
+
+          // Filter: For Extension payment, only list jobs that have Extension Revenue
+          if (type === 'extension') {
+              targetJobs = targetJobs.filter(j => {
+                  const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
+                  return extTotal > 0;
+              });
+          }
+
+          jobCodes = targetJobs.map(j => j.jobCode).filter(Boolean).join('+');
           bkNumber = booking.bookingId;
       } else if (job) {
           bkNumber = job.booking;
           if (allJobs && job.booking) {
-              const siblings = allJobs.filter(j => j.booking === job.booking);
+              let siblings = allJobs.filter(j => j.booking === job.booking);
+              
+              // Filter siblings for Extension as well
+              if (type === 'extension') {
+                  siblings = siblings.filter(j => {
+                      const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
+                      return extTotal > 0;
+                  });
+              }
+
               jobCodes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean).join('+') : job.jobCode;
           } else {
               jobCodes = job.jobCode;
