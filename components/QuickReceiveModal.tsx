@@ -137,45 +137,52 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [quickAddTarget, setQuickAddTarget] = useState<{ type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string } | null>(null);
 
   /**
-   * Helper tạo chuỗi Invoice tổng hợp: inv1+inv2... + XXX BL Job1+Job2...
+   * Helper tạo chuỗi Invoice tổng hợp: inv1+inv2... + XXX BL Job1+XXX BL Job2...
+   * FIXED: Treat each missing invoice as a distinct "XXX BL [Code]" entry
    */
   const generateMergedInvoiceString = (mainInvoice: string, extraJobs: JobData[], isExtension: boolean, selectedExtIds: Set<string>) => {
       const invoices: string[] = [];
-      const missingJobCodes: string[] = [];
       const allJobsList = [formData, ...extraJobs];
 
       allJobsList.forEach((j, idx) => {
           const isMain = idx === 0;
+          const currentCode = j.jobCode;
+
           if (isExtension) {
               const selectedExts = (j.extensions || []).filter(e => selectedExtIds.has(e.id));
               selectedExts.forEach(e => {
-                  // Safe trim: String(e.invoice) handles potential non-string values
-                  if (e.invoice && String(e.invoice).trim()) {
-                      invoices.push(String(e.invoice).trim());
+                  const inv = String(e.invoice || '').trim();
+                  // Check if real invoice (not empty, not placeholder)
+                  if (inv && !inv.toUpperCase().includes('XXX BL')) {
+                      invoices.push(inv);
                   } else {
-                      missingJobCodes.push(j.jobCode);
+                      // Explicit placeholder for THIS job
+                      invoices.push(`XXX BL ${currentCode}`);
                   }
               });
           } else {
-              const inv = isMain ? mainInvoice : (j.localChargeInvoice || '');
-              // Safe trim: String(inv) handles potential non-string values
-              if (inv && String(inv).trim()) {
-                  invoices.push(String(inv).trim());
+              // Local Charge / Main logic
+              // For Main Job: check mainInvoice arg. 
+              // PREVENT RECURSION: If mainInvoice already has '+' (merged result), fall back to original job prop or assume missing.
+              let rawInv = isMain ? mainInvoice : (j.localChargeInvoice || '');
+              
+              if (isMain && rawInv.includes('+')) {
+                  // Fallback to safe original value if input is polluted by previous merge
+                  rawInv = job.localChargeInvoice || ''; 
+              }
+              
+              const val = String(rawInv).trim();
+
+              if (val && !val.toUpperCase().includes('XXX BL')) {
+                  invoices.push(val);
               } else {
-                  missingJobCodes.push(j.jobCode);
+                  invoices.push(`XXX BL ${currentCode}`);
               }
           }
       });
 
-      const uniqueInvoices = Array.from(new Set(invoices));
-      const uniqueMissingJobs = Array.from(new Set(missingJobCodes));
-
-      let result = uniqueInvoices.join('+');
-      if (uniqueMissingJobs.length > 0) {
-          if (result.length > 0) result += '+';
-          result += `XXX BL ${uniqueMissingJobs.join('+')}`;
-      }
-      return result;
+      // Deduplicate and join
+      return Array.from(new Set(invoices)).join('+');
   };
 
   const generateMergedDescription = (mergedInvoice: string, isExtension: boolean = false) => {
