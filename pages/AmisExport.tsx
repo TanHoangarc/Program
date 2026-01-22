@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { JobData, Customer, ShippingLine, INITIAL_JOB, BookingSummary } from '../types';
+import { JobData, Customer, ShippingLine, INITIAL_JOB, BookingSummary } from './types';
 import { FileUp, FileSpreadsheet, Filter, X, Settings, Upload, CheckCircle, Save, Edit3, Calendar, CreditCard, User, FileText, DollarSign, Lock, RefreshCw, Unlock, Banknote, ShoppingCart, ShoppingBag, Loader2, Wallet, Plus, Trash2, Copy, Check, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
 import * as XLSX from 'xlsx'; 
