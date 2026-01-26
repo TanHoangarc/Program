@@ -31,7 +31,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewRecon = isAdminOrManager; // Account excluded
   const canViewData = isAdminOrManager || isStaff || isAccount; // Account can view Data
   const canViewSystem = isAdminOrManager; // Account excluded
-  const canViewToolAI = isAdminOrManager || isStaff || isAccount; // Account can view Tool AI
+  const canViewToolAI = isAdminOrManager || isStaff || isAccount || isDocs; // Broad access for AI Tools
+  const canViewNfc = isAdminOrManager; // Restricted access for NFC Cards
   
   const canSendPending = isStaff;
 
@@ -372,20 +373,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {canViewToolAI && (
-            <>
-              <MenuItem 
-                active={currentPage === 'tool-ai'}
-                onClick={() => handleNavigate('tool-ai')}
-                icon={Cpu}
-                label="Tool AI"
-              />
-              <MenuItem 
-                active={currentPage === 'nfc'}
-                onClick={() => handleNavigate('nfc')}
-                icon={IdCard}
-                label="NFC Cards"
-              />
-            </>
+            <MenuItem 
+              active={currentPage === 'tool-ai'}
+              onClick={() => handleNavigate('tool-ai')}
+              icon={Cpu}
+              label="Tool AI"
+            />
+          )}
+
+          {canViewNfc && (
+            <MenuItem 
+              active={currentPage === 'nfc'}
+              onClick={() => handleNavigate('nfc')}
+              icon={IdCard}
+              label="NFC Cards"
+            />
           )}
 
           {canViewSystem && (
