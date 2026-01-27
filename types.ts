@@ -306,6 +306,22 @@ export interface SalaryRecord {
 }
 
 // ============================================================
+// BANK TRANSACTION
+// ============================================================
+export interface BankTransaction {
+    id: string;
+    date: string; // YYYY-MM-DD
+    amount: number;
+    invoice: string;
+    desc: string;
+    originalId?: string; // Link to Job ID or Custom Receipt ID
+    type?: string;
+    jobMonth?: string;
+    jobYear?: number;
+    bankType?: 'TCB' | 'MB';
+}
+
+// ============================================================
 // USER ACCOUNT & AUTH
 // ============================================================
 

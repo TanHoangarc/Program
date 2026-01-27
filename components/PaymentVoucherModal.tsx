@@ -208,10 +208,24 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                   initialData.amount = depTotal;
                   initialData.paymentContent = generateDescription("Chi tiền cược lô");
                   initialData.receiverName = booking.line;
+                  
+                  // FIX: Auto-populate date from first deposit record if available
+                  const firstDepositDate = booking.costDetails.deposits.find(d => d.dateOut)?.dateOut;
+                  if (firstDepositDate) initialData.date = firstDepositDate;
+
               } else if (job) {
                   initialData.amount = job.chiCuoc || 0;
                   initialData.receiverName = job.line;
                   initialData.paymentContent = generateDescription("Chi tiền cược lô");
+                  
+                  // FIX: Auto-populate date from job details (Cost Details or Legacy Field)
+                  const deposits = job.bookingCostDetails?.deposits || [];
+                  const firstDepositDate = deposits.find(d => d.dateOut)?.dateOut;
+                  if (firstDepositDate) {
+                      initialData.date = firstDepositDate;
+                  } else if (job.ngayChiCuoc) {
+                      initialData.date = job.ngayChiCuoc;
+                  }
               }
           }
       }

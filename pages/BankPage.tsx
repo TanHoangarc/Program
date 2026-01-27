@@ -1,22 +1,10 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { JobData, AdditionalReceipt } from '../types';
+import { JobData, AdditionalReceipt, BankTransaction } from '../types';
 import { Landmark, Search, Filter, Plus, Edit2, Trash2, FileSpreadsheet, Upload, X, Save, Calendar, Check } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, getPaginationRange } from '../utils';
 import * as XLSX from 'xlsx';
-
-interface BankTransaction {
-    id: string;
-    date: string; // YYYY-MM-DD
-    amount: number;
-    invoice: string;
-    desc: string;
-    originalId?: string; // Link to Job ID or Custom Receipt ID
-    type?: string;
-    jobMonth?: string;
-    jobYear?: number;
-}
 
 interface BankPageProps {
     mode: 'tcb' | 'mb';
@@ -36,7 +24,7 @@ export const BankPage: React.FC<BankPageProps> = ({ mode, data, onAdd, onEdit, o
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<BankTransaction | null>(null);
     const [formData, setFormData] = useState<BankTransaction>({
-        id: '', date: new Date().toISOString().split('T')[0], amount: 0, invoice: '', desc: ''
+        id: '', date: new Date().toISOString().split('T')[0], amount: 0, invoice: '', desc: '', bankType: mode === 'tcb' ? 'TCB' : 'MB'
     });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +84,7 @@ export const BankPage: React.FC<BankPageProps> = ({ mode, data, onAdd, onEdit, o
     // Handlers
     const handleAddNew = () => {
         setEditingItem(null);
-        setFormData({ id: Date.now().toString(), date: new Date().toISOString().split('T')[0], amount: 0, invoice: '', desc: '' });
+        setFormData({ id: Date.now().toString(), date: new Date().toISOString().split('T')[0], amount: 0, invoice: '', desc: '', bankType: mode === 'tcb' ? 'TCB' : 'MB' });
         setIsModalOpen(true);
     };
 
@@ -173,7 +161,8 @@ export const BankPage: React.FC<BankPageProps> = ({ mode, data, onAdd, onEdit, o
                         date: dateStr,
                         amount,
                         invoice,
-                        desc
+                        desc,
+                        bankType: mode === 'tcb' ? 'TCB' : 'MB'
                     });
                     added++;
                 }

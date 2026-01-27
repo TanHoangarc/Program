@@ -50,6 +50,7 @@ interface ConvertJobData {
         sell: number;
         cost: number;
         amount: number; // NEW FIELD: Amount (Thực thu / Local Charge Total)
+        localChargeInvoice: string; // NEW FIELD: Invoice Number
     }[];
 }
 
@@ -482,7 +483,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               cont40: 0, 
               sell: 0, 
               cost: 0,
-              amount: 0 
+              amount: 0,
+              localChargeInvoice: '' 
           }]
       });
       setIsConvertModalOpen(true);
@@ -500,7 +502,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               cont40: 0, 
               sell: 0, 
               cost: 0,
-              amount: 0
+              amount: 0,
+              localChargeInvoice: ''
           }]
       }));
   };
@@ -599,6 +602,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               cost: row.cost,
               profit: row.sell - row.cost,
               localChargeTotal: row.amount, // Map Amount to Local Charge Total
+              localChargeInvoice: row.localChargeInvoice || ''
           };
           
           // Auto set bank if Long Hoang
@@ -1297,6 +1301,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                         <th className="px-3 py-2 w-32 text-right">Sell</th>
                                         <th className="px-3 py-2 w-32 text-right">Cost</th>
                                         <th className="px-3 py-2 w-32 text-right">Amount</th>
+                                        <th className="px-3 py-2 w-32">Invoice</th>
                                         <th className="px-3 py-2 w-10 text-center"></th>
                                     </tr>
                                 </thead>
@@ -1339,50 +1344,64 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                             <td className="px-3 py-2">
                                                 <input 
                                                     type="number" min="0"
-                                                    value={row.cont20}
+                                                    value={row.cont20 === 0 ? '' : row.cont20}
                                                     onChange={(e) => handleJobRowChange(row.id, 'cont20', Number(e.target.value))}
+                                                    placeholder="0"
                                                     className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-center text-sm"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <input 
                                                     type="number" min="0"
-                                                    value={row.cont40}
+                                                    value={row.cont40 === 0 ? '' : row.cont40}
                                                     onChange={(e) => handleJobRowChange(row.id, 'cont40', Number(e.target.value))}
+                                                    placeholder="0"
                                                     className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-center text-sm"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <input 
                                                     type="text" 
-                                                    value={new Intl.NumberFormat('en-US').format(row.sell)}
+                                                    value={row.sell === 0 ? '' : new Intl.NumberFormat('en-US').format(row.sell)}
                                                     onChange={(e) => {
                                                         const val = Number(e.target.value.replace(/,/g, ''));
                                                         if(!isNaN(val)) handleJobRowChange(row.id, 'sell', val);
                                                     }}
+                                                    placeholder="0"
                                                     className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-right text-sm font-medium text-blue-600"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <input 
                                                     type="text" 
-                                                    value={new Intl.NumberFormat('en-US').format(row.cost)}
+                                                    value={row.cost === 0 ? '' : new Intl.NumberFormat('en-US').format(row.cost)}
                                                     onChange={(e) => {
                                                         const val = Number(e.target.value.replace(/,/g, ''));
                                                         if(!isNaN(val)) handleJobRowChange(row.id, 'cost', val);
                                                     }}
+                                                    placeholder="0"
                                                     className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-right text-sm font-medium text-red-600"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
                                                 <input 
                                                     type="text" 
-                                                    value={new Intl.NumberFormat('en-US').format(row.amount)}
+                                                    value={row.amount === 0 ? '' : new Intl.NumberFormat('en-US').format(row.amount)}
                                                     onChange={(e) => {
                                                         const val = Number(e.target.value.replace(/,/g, ''));
                                                         if(!isNaN(val)) handleJobRowChange(row.id, 'amount', val);
                                                     }}
+                                                    placeholder="0"
                                                     className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-right text-sm font-bold text-green-600"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <input
+                                                    type="text"
+                                                    value={row.localChargeInvoice || ''}
+                                                    onChange={(e) => handleJobRowChange(row.id, 'localChargeInvoice', e.target.value)}
+                                                    placeholder="Số HĐ"
+                                                    className="w-full p-1.5 border rounded focus:ring-1 focus:ring-orange-500 outline-none text-sm"
                                                 />
                                             </td>
                                             <td className="px-3 py-2 text-center">
