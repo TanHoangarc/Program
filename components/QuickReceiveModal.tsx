@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Layers, HandCoins, Lock } from 'lucide-react';
@@ -478,6 +477,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const handleSelectCustomer = (customer: Customer) => {
       setCustInputVal(customer.code);
       updateCustomerData(customer.id);
+      
+      if (mode === 'local' || mode === 'other' || mode === 'refund_overpayment') {
+          setFormData(prev => ({ ...prev, customerName: customer.name }));
+      }
+
       setShowSuggestions(false);
   };
 

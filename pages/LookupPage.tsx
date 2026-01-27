@@ -1,17 +1,30 @@
 
 import React, { useState, useMemo } from 'react';
-import { JobData } from '../types';
-import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText, AlertTriangle } from 'lucide-react';
+import { JobData, Customer } from '../types';
+import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText, AlertTriangle, ListFilter, Building2, Filter, ArrowRight } from 'lucide-react';
 import { formatDateVN, calculatePaymentStatus } from '../utils';
 
 interface LookupPageProps {
   jobs: JobData[];
+  customReceipts?: any[];
+  customers?: Customer[];
 }
 
-export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
+type TabMode = 'search' | 'list';
+type EntityFilter = 'KIMBERRY' | 'LONGHOANG';
+
+export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [], customers = [] }) => {
+  const [activeTab, setActiveTab] = useState<TabMode>('search');
+  
+  // Search State
   const [searchCode, setSearchCode] = useState('');
   const [result, setResult] = useState<JobData | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // List State
+  const [fromDate, setFromDate] = useState(new Date().getFullYear() + '-01-01');
+  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedEntity, setSelectedEntity] = useState<EntityFilter>('KIMBERRY');
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,8 +53,6 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
   };
 
   // --- MERGED TOTAL CALCULATIONS ---
-  
-  // 1. Calculate Merged Local Charge Total based on AMIS Doc No
   const mergedLcTotal = useMemo(() => {
       if (!result || !result.amisLcDocNo) return 0;
       const docNo = result.amisLcDocNo;
@@ -50,7 +61,6 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
         .reduce((sum, j) => sum + j.localChargeTotal, 0);
   }, [jobs, result]);
 
-  // 2. Helper to get Merge Info for a specific Extension Payment DocNo
   const getMergeInfo = (docNo: string, currentAmount: number) => {
       if (!docNo) return { isMerged: false, total: 0, desc: '' };
 
@@ -66,47 +76,168 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
           });
       });
 
-      // It is merged if the total for this DocNo is greater than the current line item's amount
       const isMerged = total > currentAmount;
-
       return { isMerged, total, desc: firstDesc };
   };
 
-  // Job-specific Extension Total (Top Card)
   const extensionTotal = result ? (result.extensions || []).reduce((sum, ext) => sum + ext.total, 0) : 0;
-  
-  // Logic check thanh toán Local Charge
-  // Is Paid if: (Has Bank AND Date) OR (Has Bank and is TCB)
   const isTCB = result?.bank?.includes('TCB');
   const isLcPaid = (result && result.bank && result.localChargeDate) || (result && isTCB);
-  
-  // Calculate Payment Mismatch (Dư/Thiếu)
-  // PASS JOBS ARRAY FOR ACCURATE MERGE CHECK
   const paymentStatus = result ? calculatePaymentStatus(result, jobs) : null;
   
-  // Find ALL paid extensions
   const paidExtensions = useMemo(() => {
       if (!result || !result.extensions) return [];
       return result.extensions
-        .filter(e => e.amisDocNo) // Has Doc No means Paid
+        .filter(e => e.amisDocNo)
         .sort((a, b) => new Date(a.invoiceDate).getTime() - new Date(b.invoiceDate).getTime());
   }, [result]);
 
   const isExtPaid = paidExtensions.length > 0;
 
+  // --- LIST GENERATION LOGIC ---
+  const paymentList = useMemo(() => {
+      if (activeTab !== 'list') return [];
+
+      const list: any[] = [];
+      const from = new Date(fromDate).getTime();
+      const to = new Date(toDate).getTime();
+
+      const isInRange = (dateStr?: string) => {
+          if (!dateStr) return false;
+          const d = new Date(dateStr).getTime();
+          return d >= from && d <= to;
+      };
+
+      if (selectedEntity === 'KIMBERRY') {
+          // 1. Gather all Job Payments (Local Charge, Deposit, Extensions, Additional)
+          jobs.forEach(j => {
+              // Local Charge (Main)
+              if (j.localChargeTotal > 0 && isInRange(j.localChargeDate)) {
+                  list.push({
+                      date: j.localChargeDate,
+                      customer: j.customerName,
+                      bill: j.localChargeInvoice || `BL ${j.jobCode}`,
+                      amount: j.localChargeTotal,
+                      type: 'Local Charge',
+                      jobCode: j.jobCode
+                  });
+              }
+              // Deposit (Main)
+              if (j.thuCuoc > 0 && isInRange(j.ngayThuCuoc)) {
+                  list.push({
+                      date: j.ngayThuCuoc,
+                      customer: j.customerName, // Note: Could use maKhCuoc lookup but keeping simple
+                      bill: `Cược BL ${j.jobCode}`,
+                      amount: j.thuCuoc,
+                      type: 'Deposit',
+                      jobCode: j.jobCode
+                  });
+              }
+              // Extensions
+              (j.extensions || []).forEach(ext => {
+                  if (ext.total > 0 && isInRange(ext.invoiceDate)) {
+                      list.push({
+                          date: ext.invoiceDate,
+                          customer: j.customerName,
+                          bill: ext.invoice || `GH BL ${j.jobCode}`,
+                          amount: ext.total,
+                          type: 'Gia Hạn',
+                          jobCode: j.jobCode
+                      });
+                  }
+              });
+              // Additional Receipts
+              (j.additionalReceipts || []).forEach(r => {
+                  if (isInRange(r.date)) {
+                      list.push({
+                          date: r.date,
+                          customer: j.customerName,
+                          bill: `Thu thêm BL ${j.jobCode}`,
+                          amount: r.amount,
+                          type: r.type === 'deposit' ? 'Deposit (Add)' : 'Local Charge (Add)',
+                          jobCode: j.jobCode
+                      });
+                  }
+              });
+          });
+      } else {
+          // LONG HOANG = CUSTOM RECEIPTS ONLY
+          customReceipts.forEach(r => {
+              // Resolve name from code if name is empty
+              const resolveName = (code: string, name: string) => {
+                  if (name) return name;
+                  const found = customers.find(c => c.code === code || c.id === code);
+                  return found ? found.name : code;
+              };
+
+              if (isInRange(r.date)) {
+                  list.push({
+                      date: r.date,
+                      customer: resolveName(r.objCode, r.objName), 
+                      bill: r.invoice || r.docNo || 'Thu Khác',
+                      amount: r.amount,
+                      type: 'Thu Khác',
+                      jobCode: 'N/A'
+                  });
+              }
+              
+              if (r.additionalReceipts) {
+                  r.additionalReceipts.forEach((ar: any) => {
+                      if (isInRange(ar.date)) {
+                          list.push({
+                              date: ar.date,
+                              customer: resolveName(r.objCode, r.objName),
+                              bill: ar.docNo || 'Thu thêm',
+                              amount: ar.amount,
+                              type: 'Thu Khác (Add)',
+                              jobCode: 'N/A'
+                          });
+                      }
+                  });
+              }
+          });
+      }
+
+      // Sort by Date Descending
+      return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  }, [jobs, customReceipts, activeTab, fromDate, toDate, selectedEntity, customers]);
+
+  const totalAmountList = paymentList.reduce((sum, item) => sum + item.amount, 0);
+
   return (
     <div className="p-8 max-w-full h-full flex flex-col">
-      <div className="mb-8">
-         <div className="flex items-center space-x-3 text-slate-800 mb-2">
-           <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-             <Search className="w-6 h-6" />
-           </div>
-           <h1 className="text-3xl font-bold">Tra Cứu Thông Tin</h1>
+      <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+         <div>
+            <div className="flex items-center space-x-3 text-slate-800 mb-2">
+            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                <Search className="w-6 h-6" />
+            </div>
+            <h1 className="text-3xl font-bold">Tra Cứu & Lịch Sử</h1>
+            </div>
+            <p className="text-slate-500 ml-11">Tra cứu thông tin Job hoặc xem lịch sử dòng tiền thu</p>
          </div>
-         <p className="text-slate-500 ml-11">Kiểm tra trạng thái thanh toán và cược của lô hàng</p>
+
+         {/* TAB SWITCHER */}
+         <div className="bg-slate-100 p-1 rounded-xl flex gap-1 shadow-inner">
+             <button 
+                onClick={() => setActiveTab('search')}
+                className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'search' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+             >
+                 <Search className="w-4 h-4" /> Tra cứu Job
+             </button>
+             <button 
+                onClick={() => setActiveTab('list')}
+                className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+             >
+                 <ListFilter className="w-4 h-4" /> Lịch sử thu
+             </button>
+         </div>
       </div>
 
-      <div className="flex flex-col items-center justify-start flex-1 max-w-4xl mx-auto w-full">
+      {activeTab === 'search' ? (
+      /* ================= SEARCH VIEW ================= */
+      <div className="flex flex-col items-center justify-start flex-1 max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2">
         
         {/* Search Box */}
         <div className="w-full glass-panel p-8 rounded-3xl shadow-lg border border-white/50 mb-8">
@@ -326,8 +457,107 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs }) => {
                 )}
             </div>
         )}
-
       </div>
+      ) : (
+      /* ================= LIST VIEW ================= */
+      <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-4">
+          <div className="glass-panel p-5 rounded-2xl mb-6 shadow-sm border border-white/40 flex flex-col md:flex-row gap-6 items-end">
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                  {/* Company Toggle */}
+                  <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><Building2 size={12}/> Đơn vị</label>
+                      <div className="flex bg-slate-100 rounded-xl p-1 shadow-inner">
+                          <button 
+                            onClick={() => setSelectedEntity('KIMBERRY')}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${selectedEntity === 'KIMBERRY' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                              KIMBERRY
+                          </button>
+                          <button 
+                            onClick={() => setSelectedEntity('LONGHOANG')}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${selectedEntity === 'LONGHOANG' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                              LONG HOÀNG
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Date Range */}
+                  <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><Filter size={12}/> Khoảng thời gian</label>
+                      <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                              <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
+                          </div>
+                          <ArrowRight className="w-4 h-4 text-slate-300" />
+                          <div className="relative flex-1">
+                              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                              <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          {/* TABLE RESULTS */}
+          <div className="glass-panel rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col">
+              <div className="overflow-x-auto flex-1 custom-scrollbar">
+                  <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase text-xs sticky top-0 z-10 shadow-sm">
+                          <tr>
+                              <th className="px-6 py-4">Ngày thu</th>
+                              <th className="px-6 py-4">Khách hàng / Công ty</th>
+                              <th className="px-6 py-4">Số CT / Hóa đơn</th>
+                              <th className="px-6 py-4">Loại thu</th>
+                              <th className="px-6 py-4 text-right">Số tiền</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                          {paymentList.length > 0 ? paymentList.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                  <td className="px-6 py-3 font-medium text-slate-500">{formatDateVN(item.date)}</td>
+                                  <td className="px-6 py-3 font-bold text-slate-700">{item.customer}</td>
+                                  <td className="px-6 py-3 text-slate-600">{item.bill}</td>
+                                  <td className="px-6 py-3">
+                                      <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded-md border ${
+                                          item.type.includes('Deposit') ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                          item.type.includes('Gia Hạn') ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                                          item.type.includes('Thu Khác') ? 'bg-pink-50 text-pink-700 border-pink-100' :
+                                          'bg-blue-50 text-blue-700 border-blue-100'
+                                      }`}>
+                                          {item.type}
+                                      </span>
+                                  </td>
+                                  <td className="px-6 py-3 text-right font-bold text-emerald-600 text-base">
+                                      {formatCurrency(item.amount)}
+                                  </td>
+                              </tr>
+                          )) : (
+                              <tr>
+                                  <td colSpan={5} className="text-center py-12 text-slate-400 font-light flex flex-col items-center justify-center">
+                                      <Wallet className="w-10 h-10 mb-2 opacity-20" />
+                                      Không có dữ liệu thanh toán trong khoảng thời gian này
+                                  </td>
+                              </tr>
+                          )}
+                      </tbody>
+                      {paymentList.length > 0 && (
+                          <tfoot className="bg-slate-50 border-t border-slate-200 sticky bottom-0 font-bold text-slate-800 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                              <tr>
+                                  <td colSpan={4} className="px-6 py-4 text-right uppercase text-xs">Tổng cộng:</td>
+                                  <td className="px-6 py-4 text-right text-emerald-700 text-lg">{formatCurrency(totalAmountList)}</td>
+                              </tr>
+                          </tfoot>
+                      )}
+                  </table>
+              </div>
+          </div>
+          {selectedEntity === 'KIMBERRY' && (
+              <div className="text-xs text-slate-400 mt-2 italic px-2">* Danh sách Kimberry KHÔNG bao gồm các khoản Thu Khác (Xem bên tab Long Hoàng).</div>
+          )}
+      </div>
+      )}
     </div>
   );
 };

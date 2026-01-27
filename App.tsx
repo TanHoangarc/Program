@@ -1016,7 +1016,7 @@ const App: React.FC = () => {
             )}
 
             {currentPage === 'lookup' && (
-              <LookupPage jobs={jobs} />
+              <LookupPage jobs={jobs} customReceipts={customReceipts} customers={customers} />
             )}
             
             {currentPage === 'payment' && (
