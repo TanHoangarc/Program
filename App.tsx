@@ -19,6 +19,7 @@ import { SalaryPage } from './pages/SalaryPage';
 import { ToolAI } from './pages/ToolAI'; 
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
+import { AutoTool } from './pages/AutoTool';
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
 
@@ -48,7 +49,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -949,7 +950,7 @@ const App: React.FC = () => {
                     mode="ban" 
                     onUpdateJob={handleEditJob} 
                     lockedIds={lockedIds} 
-                    onToggleLock={handleToggleLock}
+                    onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
                     onUpdateCustomReceipts={setCustomReceipts}
                 />
@@ -962,7 +963,7 @@ const App: React.FC = () => {
                     mode="mua" 
                     onUpdateJob={handleEditJob} 
                     lockedIds={lockedIds} 
-                    onToggleLock={handleToggleLock}
+                    onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
                     onUpdateCustomReceipts={setCustomReceipts}
                 />
@@ -1054,6 +1055,25 @@ const App: React.FC = () => {
 
             {currentPage === 'tool-ai' && (
               <ToolAI />
+            )}
+
+            {currentPage === 'auto-payment' && (
+                <AutoTool 
+                    mode="payment"
+                    jobs={jobs}
+                    customers={customers}
+                    onUpdateJob={handleEditJob}
+                    onAddCustomReceipt={(r) => setCustomReceipts([...customReceipts, r])}
+                />
+            )}
+
+            {currentPage === 'auto-invoice' && (
+                <AutoTool 
+                    mode="invoice"
+                    jobs={jobs}
+                    customers={customers}
+                    onUpdateJob={handleEditJob}
+                />
             )}
 
             {currentPage === 'nfc' && currentUser && (

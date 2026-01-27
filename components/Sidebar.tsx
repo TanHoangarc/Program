@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb';
+  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -41,7 +41,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     deposit: false,
     amis: false,
     data: false,
-    bank: false // ADDED
+    bank: false,
+    auto: false // ADDED
   });
 
   const toggleGroup = (group: string) => {
@@ -175,6 +176,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 icon={WalletCards}
                 label="Công Nợ"
               />
+              
+              {/* Auto Tool Accordion */}
+              <div>
+                <MenuItem 
+                  active={['auto-payment', 'auto-invoice'].includes(currentPage)}
+                  onClick={() => toggleGroup('auto')}
+                  icon={Sparkles}
+                  label="Công Cụ Tự Động"
+                  hasSubmenu={true}
+                  isOpen={openGroups.auto}
+                />
+                {openGroups.auto && (
+                  <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <SubMenuItem 
+                      active={currentPage === 'auto-payment'}
+                      onClick={() => handleNavigate('auto-payment')}
+                      icon={Zap}
+                      label="Auto Payment"
+                    />
+                    <SubMenuItem 
+                      active={currentPage === 'auto-invoice'}
+                      onClick={() => handleNavigate('auto-invoice')}
+                      icon={FileInput}
+                      label="Auto Invoice"
+                    />
+                  </div>
+                )}
+              </div>
             </>
           )}
 
