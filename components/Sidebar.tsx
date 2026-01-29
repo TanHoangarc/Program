@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap } from 'lucide-react';
 
 interface SidebarProps {
@@ -36,21 +36,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
   
   const canSendPending = isStaff;
 
-  // State for Accordion Menus
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    deposit: false,
-    amis: false,
-    data: false,
-    bank: false,
-    auto: false // ADDED
-  });
+  // State for Active Menu Group (Only one active at a time)
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  
+  // Ref to detect click outside
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Toggle group on click
   const toggleGroup = (group: string) => {
-    setOpenGroups(prev => ({ ...prev, [group]: !prev[group] }));
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setActiveGroup(prev => (prev === group ? null : group));
   };
+
+  const handleMouseLeave = () => {
+    timeoutRef.current = setTimeout(() => {
+      setActiveGroup(null);
+    }, 300);
+  };
+
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
+  // Close menus when clicking outside sidebar
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
+        setActiveGroup(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [sidebarRef]);
 
   const handleNavigate = (page: any) => {
     onNavigate(page);
+    setActiveGroup(null); // Close flyout when navigating
     if (window.innerWidth < 768) {
       onClose();
     }
@@ -76,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <button
       onClick={(e) => { e.preventDefault(); onClick(); }}
       className={`w-full flex items-center justify-between px-4 py-2.5 mb-1 rounded-xl transition-all duration-200 group relative ${
-        active
+        active || isOpen // Keep highlighted if active OR if menu is open
           ? 'bg-white/20 text-white shadow-lg backdrop-blur-sm border border-white/10'
           : 'text-slate-300 hover:bg-white/10 hover:text-white'
       }`}
@@ -85,12 +115,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {statusColor ? (
            <div className={`w-2 h-2 rounded-full ${statusColor} shadow-[0_0_8px_rgba(255,255,255,0.5)]`}></div>
         ) : (
-           <Icon className={`w-5 h-5 ${active ? 'text-teal-300' : 'text-slate-400 group-hover:text-teal-200'}`} />
+           <Icon className={`w-5 h-5 ${active || isOpen ? 'text-teal-300' : 'text-slate-400 group-hover:text-teal-200'}`} />
         )}
-        <span className={`text-sm ${active ? 'font-semibold tracking-wide' : 'font-medium'}`}>{label}</span>
+        <span className={`text-sm ${active || isOpen ? 'font-semibold tracking-wide' : 'font-medium'}`}>{label}</span>
       </div>
       {hasSubmenu ? (
-        isOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />
+        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'text-white rotate-90' : ''}`} />
       ) : (
         active && <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_#2dd4bf]"></div>
       )}
@@ -100,14 +130,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const SubMenuItem = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) => (
       <button
         onClick={(e) => { e.preventDefault(); onClick(); }}
-        className={`w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-sm transition-colors mb-1 ${
-            active ? 'text-teal-300 bg-white/5 font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors mb-1 ${
+            active ? 'text-teal-300 bg-white/10 font-medium' : 'text-slate-300 hover:text-white hover:bg-white/5'
         }`}
       >
-          <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-500'}`} />
+          <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-400'}`} />
           <span>{label}</span>
       </button>
   );
+
+  // Wrapper style for flyout to bridge the gap with padding instead of margin
+  const flyoutWrapperClass = "absolute left-full top-0 pl-2 w-56 z-50 animate-in fade-in slide-in-from-left-2 duration-200";
+  const flyoutInnerClass = "bg-slate-900 border border-white/10 rounded-xl p-2 shadow-2xl w-full";
 
   return (
     <>
@@ -120,7 +154,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* Sidebar Container */}
-      <div className={`
+      <div 
+        ref={sidebarRef}
+        className={`
         fixed z-50 flex flex-col bg-slate-900 shadow-2xl border-r border-white/10 md:border md:border-white/10 transition-transform duration-300 ease-in-out
         w-64 h-full top-0 left-0 
         md:h-[96vh] md:top-[2vh] md:left-4 md:rounded-3xl
@@ -146,8 +182,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
            </button>
         </div>
 
-        {/* Menu */}
-        <nav className="relative z-10 flex-1 px-4 space-y-1 overflow-visible pt-4 overflow-y-auto custom-scrollbar pb-2">
+        {/* Menu - Changed to overflow-visible to allow flyouts */}
+        <nav className="relative z-10 flex-1 px-4 space-y-1 pt-4 pb-2 overflow-visible">
           
           {/* OVERVIEW SECTION (Admin/Manager Only) */}
           {canViewOverview && (
@@ -177,30 +213,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 label="Công Nợ"
               />
               
-              {/* Auto Tool Accordion */}
-              <div>
+              {/* Auto Tool Flyout (Click) */}
+              <div 
+                className="relative"
+                onMouseLeave={handleMouseLeave}
+                onMouseEnter={handleMouseEnter}
+              >
                 <MenuItem 
                   active={['auto-payment', 'auto-invoice'].includes(currentPage)}
                   onClick={() => toggleGroup('auto')}
                   icon={Sparkles}
                   label="Công Cụ Tự Động"
                   hasSubmenu={true}
-                  isOpen={openGroups.auto}
+                  isOpen={activeGroup === 'auto'}
                 />
-                {openGroups.auto && (
-                  <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <SubMenuItem 
-                      active={currentPage === 'auto-payment'}
-                      onClick={() => handleNavigate('auto-payment')}
-                      icon={Zap}
-                      label="Auto Payment"
-                    />
-                    <SubMenuItem 
-                      active={currentPage === 'auto-invoice'}
-                      onClick={() => handleNavigate('auto-invoice')}
-                      icon={FileInput}
-                      label="Auto Invoice"
-                    />
+                {activeGroup === 'auto' && (
+                  <div className={flyoutWrapperClass}>
+                    <div className={flyoutInnerClass}>
+                      <SubMenuItem 
+                        active={currentPage === 'auto-payment'}
+                        onClick={() => handleNavigate('auto-payment')}
+                        icon={Zap}
+                        label="Auto Payment"
+                      />
+                      <SubMenuItem 
+                        active={currentPage === 'auto-invoice'}
+                        onClick={() => handleNavigate('auto-invoice')}
+                        icon={FileInput}
+                        label="Auto Invoice"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -225,8 +267,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 statusColor="bg-blue-400"
               />
               
-              {/* Deposit Accordion */}
-              <div>
+              {/* Deposit Flyout (Click) */}
+              <div 
+                className="relative"
+                onMouseLeave={handleMouseLeave}
+                onMouseEnter={handleMouseEnter}
+              >
                  <MenuItem 
                   active={['deposit-line', 'deposit-customer'].includes(currentPage)}
                   onClick={() => toggleGroup('deposit')}
@@ -234,22 +280,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   label="Quản lý Cược"
                   statusColor="bg-purple-400"
                   hasSubmenu={true}
-                  isOpen={openGroups.deposit}
+                  isOpen={activeGroup === 'deposit'}
                 />
-                {openGroups.deposit && (
-                  <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                     <SubMenuItem 
-                        active={currentPage === 'deposit-line'}
-                        onClick={() => handleNavigate('deposit-line')}
-                        icon={Building2}
-                        label="Hãng Tàu"
-                     />
-                     <SubMenuItem 
-                        active={currentPage === 'deposit-customer'}
-                        onClick={() => handleNavigate('deposit-customer')}
-                        icon={UserCircle}
-                        label="Khách Hàng"
-                     />
+                {activeGroup === 'deposit' && (
+                  <div className={flyoutWrapperClass}>
+                     <div className={flyoutInnerClass}>
+                       <SubMenuItem 
+                          active={currentPage === 'deposit-line'}
+                          onClick={() => handleNavigate('deposit-line')}
+                          icon={Building2}
+                          label="Hãng Tàu"
+                       />
+                       <SubMenuItem 
+                          active={currentPage === 'deposit-customer'}
+                          onClick={() => handleNavigate('deposit-customer')}
+                          icon={UserCircle}
+                          label="Khách Hàng"
+                       />
+                     </div>
                   </div>
                 )}
               </div>
@@ -294,69 +342,82 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* ACCOUNTING SECTION (Admin/Manager/Account) */}
           {canViewAccounting && (
             <>
-              <div>
+              {/* AMIS Flyout (Click) */}
+              <div 
+                className="relative"
+                onMouseLeave={handleMouseLeave}
+                onMouseEnter={handleMouseEnter}
+              >
                 <MenuItem 
                   active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)}
                   onClick={() => toggleGroup('amis')}
                   icon={FileUp}
                   label="Kế Toán AMIS"
                   hasSubmenu={true}
-                  isOpen={openGroups.amis}
+                  isOpen={activeGroup === 'amis'}
                 />
-                {openGroups.amis && (
-                  <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <SubMenuItem 
-                      active={currentPage === 'amis-thu'}
-                      onClick={() => handleNavigate('amis-thu')}
-                      icon={FileText}
-                      label="Phiếu Thu"
-                    />
-                    <SubMenuItem 
-                      active={currentPage === 'amis-chi'}
-                      onClick={() => handleNavigate('amis-chi')}
-                      icon={CreditCard}
-                      label="Phiếu Chi"
-                    />
-                    <SubMenuItem 
-                      active={currentPage === 'amis-ban'}
-                      onClick={() => handleNavigate('amis-ban')}
-                      icon={ShoppingCart}
-                      label="Phiếu Bán Hàng"
-                    />
-                    <SubMenuItem 
-                      active={currentPage === 'amis-mua'}
-                      onClick={() => handleNavigate('amis-mua')}
-                      icon={Briefcase}
-                      label="Phiếu Mua Hàng"
-                    />
+                {activeGroup === 'amis' && (
+                  <div className={flyoutWrapperClass}>
+                    <div className={flyoutInnerClass}>
+                      <SubMenuItem 
+                        active={currentPage === 'amis-thu'}
+                        onClick={() => handleNavigate('amis-thu')}
+                        icon={FileText}
+                        label="Phiếu Thu"
+                      />
+                      <SubMenuItem 
+                        active={currentPage === 'amis-chi'}
+                        onClick={() => handleNavigate('amis-chi')}
+                        icon={CreditCard}
+                        label="Phiếu Chi"
+                      />
+                      <SubMenuItem 
+                        active={currentPage === 'amis-ban'}
+                        onClick={() => handleNavigate('amis-ban')}
+                        icon={ShoppingCart}
+                        label="Phiếu Bán Hàng"
+                      />
+                      <SubMenuItem 
+                        active={currentPage === 'amis-mua'}
+                        onClick={() => handleNavigate('amis-mua')}
+                        icon={Briefcase}
+                        label="Phiếu Mua Hàng"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* BANK SECTION - NEW */}
-              <div>
+              {/* BANK SECTION Flyout (Click) */}
+              <div 
+                className="relative"
+                onMouseLeave={handleMouseLeave}
+                onMouseEnter={handleMouseEnter}
+              >
                 <MenuItem 
                   active={['bank-tcb', 'bank-mb'].includes(currentPage)}
                   onClick={() => toggleGroup('bank')}
                   icon={Landmark}
                   label="Ngân hàng"
                   hasSubmenu={true}
-                  isOpen={openGroups.bank}
+                  isOpen={activeGroup === 'bank'}
                 />
-                {openGroups.bank && (
-                  <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <SubMenuItem 
-                      active={currentPage === 'bank-tcb'}
-                      onClick={() => handleNavigate('bank-tcb')}
-                      icon={Briefcase}
-                      label="Techcom Bank"
-                    />
-                    <SubMenuItem 
-                      active={currentPage === 'bank-mb'}
-                      onClick={() => handleNavigate('bank-mb')}
-                      icon={Coins}
-                      label="MB Bank"
-                    />
+                {activeGroup === 'bank' && (
+                  <div className={flyoutWrapperClass}>
+                    <div className={flyoutInnerClass}>
+                      <SubMenuItem 
+                        active={currentPage === 'bank-tcb'}
+                        onClick={() => handleNavigate('bank-tcb')}
+                        icon={Briefcase}
+                        label="Techcom Bank"
+                      />
+                      <SubMenuItem 
+                        active={currentPage === 'bank-mb'}
+                        onClick={() => handleNavigate('bank-mb')}
+                        icon={Coins}
+                        label="MB Bank"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -373,29 +434,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {canViewData && (
-            <div>
+            // Data Flyout (Click)
+            <div 
+                className="relative"
+                onMouseLeave={handleMouseLeave}
+                onMouseEnter={handleMouseEnter}
+            >
               <MenuItem 
                 active={['data-lines', 'data-customers'].includes(currentPage)}
                 onClick={() => toggleGroup('data')}
                 icon={Database}
                 label="Danh Mục"
                 hasSubmenu={true}
-                isOpen={openGroups.data}
+                isOpen={activeGroup === 'data'}
               />
-              {openGroups.data && (
-                  <div className="pl-6 pr-2 py-2 bg-black/20 rounded-xl mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                     <SubMenuItem 
-                        active={currentPage === 'data-lines'}
-                        onClick={() => handleNavigate('data-lines')}
-                        icon={Ship}
-                        label="Hãng Tàu"
-                     />
-                     <SubMenuItem 
-                        active={currentPage === 'data-customers'}
-                        onClick={() => handleNavigate('data-customers')}
-                        icon={UserCircle}
-                        label="Khách Hàng"
-                     />
+              {activeGroup === 'data' && (
+                  <div className={flyoutWrapperClass}>
+                     <div className={flyoutInnerClass}>
+                       <SubMenuItem 
+                          active={currentPage === 'data-lines'}
+                          onClick={() => handleNavigate('data-lines')}
+                          icon={Ship}
+                          label="Hãng Tàu"
+                       />
+                       <SubMenuItem 
+                          active={currentPage === 'data-customers'}
+                          onClick={() => handleNavigate('data-customers')}
+                          icon={UserCircle}
+                          label="Khách Hàng"
+                       />
+                     </div>
                   </div>
               )}
             </div>

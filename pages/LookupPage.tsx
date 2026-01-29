@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { JobData, Customer } from '../types';
-import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText, AlertTriangle, ListFilter, Building2, Filter, ArrowRight } from 'lucide-react';
+import { Search, CheckCircle, AlertCircle, Calendar, DollarSign, Wallet, RefreshCw, FileText, AlertTriangle, ListFilter, Building2, Filter, ArrowRight, Layers } from 'lucide-react';
 import { formatDateVN, calculatePaymentStatus } from '../utils';
 
 interface LookupPageProps {
@@ -40,50 +40,10 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
-  // Helper to extract just the Job Codes from the AMIS Description
-  const extractJobCodes = (desc?: string) => {
-      if (!desc) return '';
-      if (desc.includes('BL ')) {
-          let parts = desc.split('BL ');
-          if (parts.length > 1) {
-              return parts[1].replace(/\(KIM\)/i, '').trim();
-          }
-      }
-      return desc; 
-  };
-
-  // --- MERGED TOTAL CALCULATIONS ---
-  const mergedLcTotal = useMemo(() => {
-      if (!result || !result.amisLcDocNo) return 0;
-      const docNo = result.amisLcDocNo;
-      return jobs
-        .filter(j => j.amisLcDocNo === docNo)
-        .reduce((sum, j) => sum + j.localChargeTotal, 0);
-  }, [jobs, result]);
-
-  const getMergeInfo = (docNo: string, currentAmount: number) => {
-      if (!docNo) return { isMerged: false, total: 0, desc: '' };
-
-      let total = 0;
-      let firstDesc = '';
-      
-      jobs.forEach(job => {
-          (job.extensions || []).forEach(ext => {
-              if (ext.amisDocNo === docNo) {
-                  total += ext.total;
-                  if (!firstDesc) firstDesc = ext.amisDesc || '';
-              }
-          });
-      });
-
-      const isMerged = total > currentAmount;
-      return { isMerged, total, desc: firstDesc };
-  };
-
   const extensionTotal = result ? (result.extensions || []).reduce((sum, ext) => sum + ext.total, 0) : 0;
   const isTCB = result?.bank?.includes('TCB');
   const isLcPaid = (result && result.bank && result.localChargeDate) || (result && isTCB);
-  const paymentStatus = result ? calculatePaymentStatus(result, jobs) : null;
+  const paymentStatus = result ? calculatePaymentStatus(result, jobs, customReceipts) : null;
   
   const paidExtensions = useMemo(() => {
       if (!result || !result.extensions) return [];
@@ -109,30 +69,108 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
       };
 
       if (selectedEntity === 'KIMBERRY') {
-          // 1. Gather all Job Payments (Local Charge, Deposit, Extensions, Additional)
+          // --- 1. HANDLE AUTO-PAYMENT RECEIPTS (Custom Receipts with jobCodes) ---
+          const coveredJobIds = new Set<string>();
+          
+          customReceipts.forEach(r => {
+              // Check if it's an Auto Tool Receipt (has jobCodes array)
+              if (r.jobCodes && Array.isArray(r.jobCodes) && r.jobCodes.length > 0) {
+                  
+                  // EXCLUDE 'other' type (Thu Khác) - belong to Long Hoang
+                  if (r.type === 'other') return;
+
+                  if (isInRange(r.date)) {
+                      let typeLabel = 'Local Charge';
+                      if (r.type === 'deposit') typeLabel = 'Deposit';
+                      else if (r.type === 'extension') typeLabel = 'Gia Hạn';
+
+                      list.push({
+                          date: r.date,
+                          customer: r.objName || 'Khách Hàng',
+                          bill: r.invoice || r.docNo || `Phiếu thu tổng`,
+                          amount: r.amount,
+                          type: typeLabel,
+                          jobCode: r.jobCodes.join(', '),
+                          isMerged: true
+                      });
+                  }
+                  
+                  // Mark these jobs as "covered" so we don't list them individually
+                  r.jobCodes.forEach((code: string) => {
+                      const matchingJobs = jobs.filter(j => String(j.jobCode).trim().toLowerCase() === String(code).trim().toLowerCase());
+                      matchingJobs.forEach(j => coveredJobIds.add(j.id));
+                  });
+              }
+          });
+
+          // --- 2. HANDLE MANUAL GROUPING (By DocNo) ---
+          const lcGroups = new Map<string, any>();
+          const depositGroups = new Map<string, any>();
+
           jobs.forEach(j => {
-              // Local Charge (Main)
+              if (coveredJobIds.has(j.id)) return;
+
+              // Local Charge
               if (j.localChargeTotal > 0 && isInRange(j.localChargeDate)) {
-                  list.push({
-                      date: j.localChargeDate,
-                      customer: j.customerName,
-                      bill: j.localChargeInvoice || `BL ${j.jobCode}`,
-                      amount: j.localChargeTotal,
-                      type: 'Local Charge',
-                      jobCode: j.jobCode
-                  });
+                  const docNo = j.amisLcDocNo;
+                  if (docNo) {
+                      if (!lcGroups.has(docNo)) {
+                          lcGroups.set(docNo, {
+                              date: j.localChargeDate,
+                              customer: j.customerName,
+                              bill: j.localChargeInvoice || `BL ${j.jobCode}`,
+                              amount: 0,
+                              type: 'Local Charge',
+                              jobCodes: [],
+                              docNo: docNo
+                          });
+                      }
+                      const group = lcGroups.get(docNo);
+                      group.amount += j.localChargeTotal;
+                      group.jobCodes.push(j.jobCode);
+                      if (j.localChargeInvoice && j.localChargeInvoice.includes('+')) group.bill = j.localChargeInvoice;
+                  } else {
+                      list.push({
+                          date: j.localChargeDate,
+                          customer: j.customerName,
+                          bill: j.localChargeInvoice || `BL ${j.jobCode}`,
+                          amount: j.localChargeTotal,
+                          type: 'Local Charge',
+                          jobCode: j.jobCode
+                      });
+                  }
               }
-              // Deposit (Main)
+
+              // Deposit
               if (j.thuCuoc > 0 && isInRange(j.ngayThuCuoc)) {
-                  list.push({
-                      date: j.ngayThuCuoc,
-                      customer: j.customerName, // Note: Could use maKhCuoc lookup but keeping simple
-                      bill: `Cược BL ${j.jobCode}`,
-                      amount: j.thuCuoc,
-                      type: 'Deposit',
-                      jobCode: j.jobCode
-                  });
+                  const docNo = j.amisDepositDocNo;
+                  if (docNo) {
+                      if (!depositGroups.has(docNo)) {
+                          depositGroups.set(docNo, {
+                              date: j.ngayThuCuoc,
+                              customer: j.customerName,
+                              bill: `Cược BL ${j.jobCode}`,
+                              amount: 0,
+                              type: 'Deposit',
+                              jobCodes: [],
+                              docNo: docNo
+                          });
+                      }
+                      const group = depositGroups.get(docNo);
+                      group.amount += j.thuCuoc;
+                      group.jobCodes.push(j.jobCode);
+                  } else {
+                      list.push({
+                          date: j.ngayThuCuoc,
+                          customer: j.customerName,
+                          bill: `Cược BL ${j.jobCode}`,
+                          amount: j.thuCuoc,
+                          type: 'Deposit',
+                          jobCode: j.jobCode
+                      });
+                  }
               }
+
               // Extensions
               (j.extensions || []).forEach(ext => {
                   if (ext.total > 0 && isInRange(ext.invoiceDate)) {
@@ -146,6 +184,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
                       });
                   }
               });
+
               // Additional Receipts
               (j.additionalReceipts || []).forEach(r => {
                   if (isInRange(r.date)) {
@@ -160,10 +199,41 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
                   }
               });
           });
+
+          // Push Grouped Items to List
+          lcGroups.forEach(g => {
+              list.push({
+                  date: g.date,
+                  customer: g.customer,
+                  bill: g.bill,
+                  amount: g.amount,
+                  type: g.type,
+                  jobCode: g.jobCodes.join(', '),
+                  isMerged: g.jobCodes.length > 1
+              });
+          });
+
+          depositGroups.forEach(g => {
+              list.push({
+                  date: g.date,
+                  customer: g.customer,
+                  bill: g.bill,
+                  amount: g.amount,
+                  type: g.type,
+                  jobCode: g.jobCodes.join(', '),
+                  isMerged: g.jobCodes.length > 1
+              });
+          });
+
       } else {
           // LONG HOANG = CUSTOM RECEIPTS ONLY
           customReceipts.forEach(r => {
-              // Resolve name from code if name is empty
+              const isAuto = r.jobCodes && Array.isArray(r.jobCodes) && r.jobCodes.length > 0;
+              
+              // IF Auto-generated, ONLY include if type is 'other' (Thu Khác).
+              // If it's Local/Deposit/Extension auto-receipt, skip (it belongs to Kimberry).
+              if (isAuto && r.type !== 'other') return;
+
               const resolveName = (code: string, name: string) => {
                   if (name) return name;
                   const found = customers.find(c => c.code === code || c.id === code);
@@ -177,7 +247,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
                       bill: r.invoice || r.docNo || 'Thu Khác',
                       amount: r.amount,
                       type: 'Thu Khác',
-                      jobCode: 'N/A'
+                      jobCode: isAuto && r.jobCodes ? r.jobCodes.join(', ') : 'N/A'
                   });
               }
               
@@ -198,7 +268,6 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
           });
       }
 
-      // Sort by Date Descending
       return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   }, [jobs, customReceipts, activeTab, fromDate, toDate, selectedEntity, customers]);
@@ -331,20 +400,6 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
                                                     <span>Đã nhận thanh toán local charge từ khách hàng ngày {formatDateVN(result.localChargeDate)}</span>
                                                 )}
                                             </div>
-                                            
-                                            {/* Merged Payment Info */}
-                                            {!isTCB && mergedLcTotal > result.localChargeTotal && (
-                                                <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="font-bold text-green-800">Số tiền gộp:</span> 
-                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergedLcTotal)}</span>
-                                                    </div>
-                                                    <div className="flex items-start gap-2">
-                                                        <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
-                                                        <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(result.amisLcDesc)}</span>
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                     ) : (
                                         <div className="flex items-center text-slate-500 font-medium">
@@ -354,7 +409,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
                                     )}
 
                                     {/* MISMATCH WARNING - LOCAL CHARGE */}
-                                    {paymentStatus && paymentStatus.lcDiff !== 0 && (
+                                    {paymentStatus && paymentStatus.hasMismatch && paymentStatus.lcDiff !== 0 && (
                                         <div className="mt-3 p-3 bg-white/80 rounded-xl border border-yellow-200 flex items-start gap-3 shadow-sm">
                                             <div className="p-1.5 bg-yellow-100 rounded-full mt-0.5">
                                                 <AlertTriangle className="w-4 h-4 text-yellow-600" />
@@ -380,35 +435,18 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
                                         <h3 className={`text-xs font-bold uppercase mb-2 ${isExtPaid ? 'text-green-800' : 'text-orange-800'}`}>Trạng thái thanh toán Gia Hạn</h3>
                                         {isExtPaid ? (
                                             <div className="space-y-4">
-                                                {paidExtensions.map((ext, idx) => {
-                                                    const mergeInfo = getMergeInfo(ext.amisDocNo || '', ext.total);
-                                                    return (
-                                                        <div key={idx} className={`${idx > 0 ? 'border-t border-green-200/50 pt-3' : ''}`}>
-                                                            <div className="flex items-center text-green-700 font-bold text-lg mb-1">
-                                                                <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-                                                                {paidExtensions.length > 1 ? `Thu lần ${idx + 1}: ` : 'Đã nhận thanh toán: '}
-                                                                <span className="text-slate-800 mx-2">{formatCurrency(ext.total)}</span>
-                                                                <span className="text-sm font-medium text-slate-500 bg-white/50 px-2 py-0.5 rounded border border-slate-200">
-                                                                    Ngày {formatDateVN(ext.invoiceDate)}
-                                                                </span>
-                                                            </div>
-                                                            
-                                                            {/* Merged Info Block */}
-                                                            {mergeInfo.isMerged && (
-                                                                <div className="bg-white/60 p-3 rounded-xl border border-green-200 text-sm mt-2 ml-7">
-                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                        <span className="font-bold text-green-800">Số tiền gộp:</span> 
-                                                                        <span className="font-mono text-slate-700 text-lg font-bold">{formatCurrency(mergeInfo.total)}</span>
-                                                                    </div>
-                                                                    <div className="flex items-start gap-2">
-                                                                        <span className="font-bold text-green-800 whitespace-nowrap mt-0.5">Các Job đã thu:</span> 
-                                                                        <span className="text-slate-700 font-bold leading-snug">{extractJobCodes(mergeInfo.desc)}</span>
-                                                                    </div>
-                                                                </div>
-                                                            )}
+                                                {paidExtensions.map((ext, idx) => (
+                                                    <div key={idx} className={`${idx > 0 ? 'border-t border-green-200/50 pt-3' : ''}`}>
+                                                        <div className="flex items-center text-green-700 font-bold text-lg mb-1">
+                                                            <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                                                            {paidExtensions.length > 1 ? `Thu lần ${idx + 1}: ` : 'Đã nhận thanh toán: '}
+                                                            <span className="text-slate-800 mx-2">{formatCurrency(ext.total)}</span>
+                                                            <span className="text-sm font-medium text-slate-500 bg-white/50 px-2 py-0.5 rounded border border-slate-200">
+                                                                Ngày {formatDateVN(ext.invoiceDate)}
+                                                            </span>
                                                         </div>
-                                                    );
-                                                })}
+                                                    </div>
+                                                ))}
                                             </div>
                                         ) : (
                                             <div className="flex items-center text-orange-700 font-medium">
@@ -518,7 +556,9 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
                               <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                   <td className="px-6 py-3 font-medium text-slate-500">{formatDateVN(item.date)}</td>
                                   <td className="px-6 py-3 font-bold text-slate-700">{item.customer}</td>
-                                  <td className="px-6 py-3 text-slate-600">{item.bill}</td>
+                                  <td className="px-6 py-3 text-slate-600">
+                                      {item.bill}
+                                  </td>
                                   <td className="px-6 py-3">
                                       <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded-md border ${
                                           item.type.includes('Deposit') ? 'bg-purple-50 text-purple-700 border-purple-100' :
@@ -554,7 +594,7 @@ export const LookupPage: React.FC<LookupPageProps> = ({ jobs, customReceipts = [
               </div>
           </div>
           {selectedEntity === 'KIMBERRY' && (
-              <div className="text-xs text-slate-400 mt-2 italic px-2">* Danh sách Kimberry KHÔNG bao gồm các khoản Thu Khác (Xem bên tab Long Hoàng).</div>
+              <div className="text-xs text-slate-400 mt-2 italic px-2">* Danh sách Kimberry KHÔNG bao gồm các khoản Thu Khác (Xem bên tab Long Hoàng). Các phiếu thu gộp được hiển thị dưới dạng 1 dòng.</div>
           )}
       </div>
       )}

@@ -197,17 +197,50 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[], custom
   
   // Collected from job's own additional receipts
   const lcAdditional = (job.additionalReceipts || [])
-    .filter(r => r.type === 'local')
+    .filter(r => r.type === 'local' || r.type === 'other') // Include 'other' for legacy compatibility
     .reduce((sum, r) => sum + r.amount, 0);
 
   // --- NEW: Collected from global Custom Receipts (Auto Payment Tool) ---
-  const lcFromCustom = customReceipts.filter(r => {
-      const isExternal = r.type === 'external' || r.type === 'local';
-      // Match by JobCode in description or invoice matching
+  const lcFromCustom = customReceipts.reduce((sum, r) => {
+      // Filter for Revenue types
+      const isLcType = r.type === 'external' || r.type === 'local' || r.type === 'other';
+      if (!isLcType) return sum;
+
+      // 1. Check array-based match (Auto Tool generated)
+      if (r.jobCodes && Array.isArray(r.jobCodes) && r.jobCodes.length > 0) {
+          const normalizedJobCodes = r.jobCodes.map((c: any) => String(c).trim().toLowerCase());
+          const currentJobCode = job.jobCode.trim().toLowerCase();
+
+          if (normalizedJobCodes.includes(currentJobCode)) {
+              // It matches! Now check for Smart Distribution
+              if (allJobs) {
+                  // Find all jobs in the system that are listed in this receipt
+                  const jobsInGroup = allJobs.filter(j => normalizedJobCodes.includes(j.jobCode.trim().toLowerCase()));
+                  
+                  // Calculate Total Expected for this group
+                  const totalExpectedGroup = jobsInGroup.reduce((s, j) => s + (j.localChargeTotal || 0), 0);
+                  
+                  // Check if Receipt Amount matches Group Total (with tolerance)
+                  if (Math.abs((r.amount || 0) - totalExpectedGroup) < 5000) {
+                      // PERFECT MATCH: Allocate exactly what THIS job needs
+                      return sum + (job.localChargeTotal || 0);
+                  }
+              }
+              // Fallback: If amounts don't match group total, return full amount to trigger mismatch warning
+              return sum + (r.amount || 0);
+          }
+          return sum;
+      }
+
+      // 2. Legacy String Match
       const hasJobCode = r.desc && r.desc.includes(job.jobCode);
       const hasInvoice = r.invoice && job.localChargeInvoice && r.invoice === job.localChargeInvoice;
-      return isExternal && (hasJobCode || hasInvoice);
-  }).reduce((sum, r) => sum + (r.amount || 0), 0);
+      
+      if (hasJobCode || hasInvoice) {
+          return sum + (r.amount || 0);
+      }
+      return sum;
+  }, 0);
     
   const lcRefunds = (job.refunds || []).reduce((sum, r) => sum + r.amount, 0);
 
@@ -235,11 +268,36 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[], custom
     .reduce((sum, r) => sum + r.amount, 0);
 
   // --- NEW: Deposit from global Custom Receipts ---
-  const depositFromCustom = customReceipts.filter(r => {
-      const isDeposit = r.type === 'deposit' || (r.desc && r.desc.toUpperCase().includes('CƯỢC'));
+  const depositFromCustom = customReceipts.reduce((sum, r) => {
+      const isDepositType = r.type === 'deposit' || (r.desc && r.desc.toUpperCase().includes('CƯỢC'));
+      if (!isDepositType) return sum;
+
+      // 1. Array-based Match (Smart Distribution)
+      if (r.jobCodes && Array.isArray(r.jobCodes) && r.jobCodes.length > 0) {
+          const normalizedJobCodes = r.jobCodes.map((c: any) => String(c).trim().toLowerCase());
+          const currentJobCode = job.jobCode.trim().toLowerCase();
+
+          if (normalizedJobCodes.includes(currentJobCode)) {
+              if (allJobs) {
+                  const jobsInGroup = allJobs.filter(j => normalizedJobCodes.includes(j.jobCode.trim().toLowerCase()));
+                  const totalExpectedGroup = jobsInGroup.reduce((s, j) => s + (j.thuCuoc || 0), 0);
+                  
+                  if (Math.abs((r.amount || 0) - totalExpectedGroup) < 5000) {
+                      return sum + (job.thuCuoc || 0);
+                  }
+              }
+              return sum + (r.amount || 0);
+          }
+          return sum;
+      }
+
+      // 2. Legacy String Match
       const hasJobCode = r.desc && r.desc.includes(job.jobCode);
-      return isDeposit && hasJobCode;
-  }).reduce((sum, r) => sum + (r.amount || 0), 0);
+      if (hasJobCode) {
+          return sum + (r.amount || 0);
+      }
+      return sum;
+  }, 0);
 
   const totalCollectedDeposit = depositMain + depositAdditional + depositFromCustom;
   const depositDiff = totalCollectedDeposit - depositExpected;
