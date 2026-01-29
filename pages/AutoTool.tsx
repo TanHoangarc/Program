@@ -306,19 +306,22 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                 </h3>
                                 
                                 <div className="space-y-4">
-                                    <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
-                                        <label className="text-[10px] font-bold text-blue-500 block mb-2 flex items-center gap-1">
-                                            <Layers size={10} /> DANH SÁCH JOB ({parsedData.jobCodes.length})
-                                        </label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {parsedData.jobCodes.map((code, idx) => (
-                                                <span key={idx} className="bg-white px-2 py-1 rounded border border-blue-200 text-blue-700 font-bold text-xs shadow-sm">
-                                                    {code}
-                                                </span>
-                                            ))}
-                                            {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job</span>}
+                                    {/* Hide Job List if receipt type is 'other' (Thu Khác) */}
+                                    {receiptType !== 'other' && (
+                                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                                            <label className="text-[10px] font-bold text-blue-500 block mb-2 flex items-center gap-1">
+                                                <Layers size={10} /> DANH SÁCH JOB ({parsedData.jobCodes.length})
+                                            </label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {parsedData.jobCodes.map((code, idx) => (
+                                                    <span key={idx} className="bg-white px-2 py-1 rounded border border-blue-200 text-blue-700 font-bold text-xs shadow-sm">
+                                                        {code}
+                                                    </span>
+                                                ))}
+                                                {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job</span>}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -406,15 +409,18 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                     </div>
                                 </div>
 
-                                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <button
-                                        onClick={handleUpdateToJob}
-                                        disabled={isApplying || parsedData.jobCodes.length === 0}
-                                        className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50"
-                                    >
-                                        {isApplying ? <Loader2 className="animate-spin" /> : <RefreshCw size={18} />}
-                                        Cập Nhật Vào Jobs
-                                    </button>
+                                <div className={`mt-6 grid gap-4 ${receiptType !== 'other' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                                    {/* Hide 'Update to Job' button if type is 'other' */}
+                                    {receiptType !== 'other' && (
+                                        <button
+                                            onClick={handleUpdateToJob}
+                                            disabled={isApplying || parsedData.jobCodes.length === 0}
+                                            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                        >
+                                            {isApplying ? <Loader2 className="animate-spin" /> : <RefreshCw size={18} />}
+                                            Cập Nhật Vào Jobs
+                                        </button>
+                                    )}
                                     <button
                                         onClick={handleCreateReceipt}
                                         disabled={isApplying}
