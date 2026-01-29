@@ -1,5 +1,5 @@
 
-import { JobData, BookingSummary } from './types';
+import { JobData, BookingSummary, AdditionalReceipt } from './types';
 
 export const formatDateVN = (dateStr: any) => {
   if (!dateStr) return '';
@@ -160,7 +160,7 @@ export interface PaymentStatus {
   totalCollectedDeposit: number;
 }
 
-export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[]): PaymentStatus => {
+export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[], customReceipts: any[] = []): PaymentStatus => {
   // EXCLUSION LOGIC:
   // 1. Customer is LONG HOANG LOGISTICS (or variations like LHK)
   // 2. Bank is TCB Bank
@@ -179,54 +179,50 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[]): Payme
   }
 
   // 1. Local Charge
-  // Expected: localChargeTotal
-  // Collected: amisLcAmount (Lần 1) + Additional Receipts (type='local' or type='other')
-  // Minus: Refunds (Overpayment returned)
   const lcExpected = job.localChargeTotal || 0;
   
   // Determine if main receipt amount (amisLcAmount) is for a merged group
   let lcMain = job.amisLcDocNo ? (job.amisLcAmount !== undefined ? job.amisLcAmount : job.localChargeTotal) : 0;
 
   if (allJobs && job.amisLcDocNo && job.amisLcAmount !== undefined && job.amisLcAmount > lcExpected) {
-      // Potentially a merged payment held by Main Job
-      // Calculate Group Total based on DocNo
-      // CRITICAL: We must use job.localChargeTotal for the *current* job ID to account for unsaved edits in modals
-      // and use j.localChargeTotal for others.
       const groupTotal = allJobs.reduce((sum, j) => {
           if (j.amisLcDocNo !== job.amisLcDocNo) return sum;
-          const val = (j.id === job.id) ? (job.localChargeTotal || 0) : (j.localChargeTotal || 0);
-          return sum + val;
+          return sum + (j.localChargeTotal || 0);
       }, 0);
       
-      // If the collected amount matches the group total expected (within tolerance), 
-      // we treat the effective collection for *this* job as equal to its expected, to avoid "Overpayment" warning.
       if (Math.abs(job.amisLcAmount - groupTotal) < 5000) {
           lcMain = lcExpected;
       }
   }
   
+  // Collected from job's own additional receipts
   const lcAdditional = (job.additionalReceipts || [])
-    .filter(r => r.type === 'local') // 'other' thường map vào local charge trong ngữ cảnh này
+    .filter(r => r.type === 'local')
     .reduce((sum, r) => sum + r.amount, 0);
+
+  // --- NEW: Collected from global Custom Receipts (Auto Payment Tool) ---
+  const lcFromCustom = customReceipts.filter(r => {
+      const isExternal = r.type === 'external' || r.type === 'local';
+      // Match by JobCode in description or invoice matching
+      const hasJobCode = r.desc && r.desc.includes(job.jobCode);
+      const hasInvoice = r.invoice && job.localChargeInvoice && r.invoice === job.localChargeInvoice;
+      return isExternal && (hasJobCode || hasInvoice);
+  }).reduce((sum, r) => sum + (r.amount || 0), 0);
     
   const lcRefunds = (job.refunds || []).reduce((sum, r) => sum + r.amount, 0);
 
-  const totalCollectedLC = lcMain + lcAdditional - lcRefunds;
+  const totalCollectedLC = lcMain + lcAdditional + lcFromCustom - lcRefunds;
   const lcDiff = totalCollectedLC - lcExpected;
 
   // 2. Deposit
-  // Expected: thuCuoc
-  // Collected: amisDepositAmount (Lần 1) + Additional Receipts (type='deposit')
   const depositExpected = job.thuCuoc || 0;
   
   let depositMain = job.amisDepositDocNo ? (job.amisDepositAmount !== undefined ? job.amisDepositAmount : job.thuCuoc) : 0;
 
-  // Merged Deposit Logic Check
   if (allJobs && job.amisDepositDocNo && job.amisDepositAmount !== undefined && job.amisDepositAmount > depositExpected) {
       const groupTotal = allJobs.reduce((sum, j) => {
           if (j.amisDepositDocNo !== job.amisDepositDocNo) return sum;
-          const val = (j.id === job.id) ? (job.thuCuoc || 0) : (j.thuCuoc || 0);
-          return sum + val;
+          return sum + (j.thuCuoc || 0);
       }, 0);
       
       if (Math.abs(job.amisDepositAmount - groupTotal) < 5000) {
@@ -238,12 +234,18 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[]): Payme
     .filter(r => r.type === 'deposit')
     .reduce((sum, r) => sum + r.amount, 0);
 
-  const totalCollectedDeposit = depositMain + depositAdditional;
+  // --- NEW: Deposit from global Custom Receipts ---
+  const depositFromCustom = customReceipts.filter(r => {
+      const isDeposit = r.type === 'deposit' || (r.desc && r.desc.toUpperCase().includes('CƯỢC'));
+      const hasJobCode = r.desc && r.desc.includes(job.jobCode);
+      return isDeposit && hasJobCode;
+  }).reduce((sum, r) => sum + (r.amount || 0), 0);
+
+  const totalCollectedDeposit = depositMain + depositAdditional + depositFromCustom;
   const depositDiff = totalCollectedDeposit - depositExpected;
 
   // Logic: Mismatch exists if Diff != 0 AND (Expected > 0 OR Collected > 0)
-  // We ignore cases where both are 0.
-  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && Math.abs(lcDiff) > 1000; // increased tolerance
+  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && Math.abs(lcDiff) > 1000;
   const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && Math.abs(depositDiff) > 1000;
 
   return {

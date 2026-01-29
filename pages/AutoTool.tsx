@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
-import { Sparkles, Zap, FileInput, Send, CheckCircle, AlertTriangle, Loader2, RefreshCw, Trash2, Save, FileText, Search } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Sparkles, Zap, FileInput, Send, CheckCircle, AlertTriangle, Loader2, RefreshCw, Trash2, Save, FileText, Search, CreditCard, Anchor, Repeat, Wallet, Layers, RotateCcw } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { JobData, Customer } from '../types';
+import { generateNextDocNo, formatDateVN, parseDateVN } from '../utils';
 
 interface AutoToolProps {
     mode: 'payment' | 'invoice';
@@ -10,10 +11,11 @@ interface AutoToolProps {
     customers: Customer[];
     onUpdateJob: (job: JobData) => void;
     onAddCustomReceipt?: (receipt: any) => void;
+    customReceipts?: any[];
 }
 
 interface ParsedData {
-    jobCode: string;
+    jobCodes: string[];
     customerCode: string;
     amount: string;
     invoice: string;
@@ -21,43 +23,66 @@ interface ParsedData {
     companyName: string;
 }
 
-export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpdateJob, onAddCustomReceipt }) => {
+type ReceiptType = 'local' | 'deposit' | 'extension' | 'other';
+
+export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpdateJob, onAddCustomReceipt, customReceipts = [] }) => {
     const [rawInput, setRawInput] = useState('');
     const [isParsing, setIsParsing] = useState(false);
     const [parsedData, setParsedData] = useState<ParsedData | null>(null);
     const [isApplying, setIsApplying] = useState(false);
+    const [receiptType, setReceiptType] = useState<ReceiptType>('local');
+    
+    // State riêng để hiển thị ngày dạng dd/mm/yyyy
+    const [dateInput, setDateInput] = useState('');
+
+    const usedDocNos = useMemo(() => {
+        const list: string[] = [];
+        customReceipts.forEach(r => {
+            if (r.docNo) list.push(r.docNo);
+            if (r.additionalReceipts) {
+                r.additionalReceipts.forEach((ar: any) => { if(ar.docNo) list.push(ar.docNo); });
+            }
+        });
+        jobs.forEach(j => {
+            if (j.additionalReceipts) {
+                j.additionalReceipts.forEach(r => { if (r.docNo) list.push(r.docNo); });
+            }
+        });
+        return list;
+    }, [customReceipts, jobs]);
+
+    // Cập nhật dateInput khi có kết quả phân tích mới
+    useEffect(() => {
+        if (parsedData?.date) {
+            setDateInput(formatDateVN(parsedData.date));
+        }
+    }, [parsedData]);
 
     const handleParse = async () => {
         if (!rawInput.trim()) return;
         setIsParsing(true);
         setParsedData(null);
+        setDateInput('');
 
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
+            const customerContext = customers.map(c => `${c.code}: ${c.name}`).join('\n');
+
             const prompt = `Parse this bank transfer text and extract specific logistics job data.
+            IMPORTANT: If multiple bill numbers or job codes are mentioned (e.g. KMLSHA..., ONE...), extract ALL of them into an array.
             Return ONLY a valid JSON object (no markdown, no explanation).
             
+            PRIORITY: Try to match the company name or sender info in the input with one from this EXISTING CUSTOMER LIST:
+            ${customerContext}
+            If a close match is found, return that specific code as "customerCode".
+
             Fields to extract:
-            - jobCode: The shipping bill or job number (usually starts with KMLSHA, MSC, ONE, etc.)
-            - customerCode: Identify the client company code or name (shortened)
-            - amount: The numerical amount from the transfer (remove currency symbols and spaces)
+            - jobCodes: An ARRAY of all shipping bill or job numbers found.
+            - customerCode: The matched system code or shortened name.
+            - amount: The numerical amount from the transfer as a string.
             - invoice: If an invoice number is mentioned, return it. If not, return null.
             - date: The transfer date in YYYY-MM-DD format.
             - companyName: The full company name mentioned.
-
-            Example input:
-            "27/01/2026 17:03:43 + 75,103,200 843,613,022 CONG TY TNHH GIAO NHAN VIBTRANS VN Vibtrans 0106159865 TT cho Long Hoa ng theo so bill KMLSHA01180035 Ma giao dich Trace134001 Trace 13400"
-            
-            Example output:
-            {
-              "jobCode": "KMLSHA01180035",
-              "customerCode": "VIBTRANS",
-              "amount": "75,103,200",
-              "invoice": null,
-              "date": "2026-01-27",
-              "companyName": "CONG TY TNHH GIAO NHAN VIBTRANS VN"
-            }
 
             Input text:
             "${rawInput}"`;
@@ -71,48 +96,98 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
             const cleanedJson = text.replace(/```json|```/g, '').trim();
             const result = JSON.parse(cleanedJson);
             
-            // Clean amount string
-            if (result.amount) {
-                result.amount = result.amount.replace(/[^\d,.]/g, '');
+            if (result.amount !== undefined && result.amount !== null) {
+                result.amount = String(result.amount).replace(/[^\d,.]/g, '');
+            } else {
+                result.amount = '0';
             }
 
-            // Fallback invoice
-            if (!result.invoice && result.jobCode) {
-                result.invoice = `XXX BL ${result.jobCode}`;
+            if (!result.jobCodes || !Array.isArray(result.jobCodes)) {
+                result.jobCodes = result.jobCode ? [String(result.jobCode)] : [];
+            } else {
+                result.jobCodes = result.jobCodes.map((c: any) => String(c));
+            }
+
+            // Tự động tính tổng tiền từ các Job tìm thấy nếu AI không trả về hoặc trả về 0
+            if (result.jobCodes.length > 0) {
+                const calculatedTotal = result.jobCodes.reduce((sum: number, code: string) => {
+                    const j = jobs.find(job => job.jobCode.toLowerCase().trim() === String(code).toLowerCase().trim());
+                    // Ưu tiên localChargeTotal (vì đây là công cụ thanh toán)
+                    return sum + (j ? (j.localChargeTotal || 0) : 0);
+                }, 0);
+
+                if (calculatedTotal > 0 && (result.amount === '0' || !result.amount)) {
+                    result.amount = String(calculatedTotal);
+                }
+            }
+
+            if (!result.invoice && result.jobCodes.length > 0) {
+                result.invoice = `XXX BL ${result.jobCodes.join('+')}`;
             }
 
             setParsedData(result);
-        } catch (err) {
+        } catch (err: any) {
             console.error("AI Parsing Error:", err);
-            alert("Không thể tách nội dung tự động. Vui lòng kiểm tra lại định dạng hoặc thử lại sau.");
+            alert(`Không thể tách nội dung tự động. Lỗi: ${err.message || "Kiểm tra lại định dạng hoặc thử lại sau."}`);
         } finally {
             setIsParsing(false);
         }
     };
 
-    const handleUpdateToJob = () => {
+    const handleDateBlur = () => {
         if (!parsedData) return;
+        const parsed = parseDateVN(dateInput);
+        if (parsed) {
+            setParsedData({ ...parsedData, date: parsed });
+        } else {
+            // Nếu nhập sai định dạng, reset về giá trị gốc
+            setDateInput(formatDateVN(parsedData.date));
+        }
+    };
+
+    const handleResetInvoice = () => {
+        if (!parsedData) return;
+        const defaultInv = `XXX BL ${parsedData.jobCodes.join('+')}`;
+        setParsedData({ ...parsedData, invoice: defaultInv });
+    };
+
+    const handleUpdateToJob = () => {
+        if (!parsedData || parsedData.jobCodes.length === 0) return;
         setIsApplying(true);
 
-        const targetJob = jobs.find(j => j.jobCode.toLowerCase().trim() === parsedData.jobCode.toLowerCase().trim());
+        let successCount = 0;
+        const missingCodes: string[] = [];
 
-        if (!targetJob) {
-            alert(`Không tìm thấy Job có mã: ${parsedData.jobCode} trong hệ thống.`);
-            setIsApplying(false);
-            return;
+        parsedData.jobCodes.forEach(code => {
+            const targetJob = jobs.find(j => j.jobCode.toLowerCase().trim() === code.toLowerCase().trim());
+            if (targetJob) {
+                // Xử lý hoá đơn riêng biệt cho từng Job
+                let appliedInvoice = parsedData.invoice;
+                
+                // Nếu hoá đơn có định dạng "XXX BL ...", tự động chuyển thành "XXX BL [JobCode]" của chính Job đó
+                if (appliedInvoice && appliedInvoice.startsWith('XXX BL')) {
+                    appliedInvoice = `XXX BL ${targetJob.jobCode}`;
+                }
+
+                const updatedJob: JobData = {
+                    ...targetJob,
+                    localChargeInvoice: appliedInvoice,
+                    localChargeDate: parsedData.date,
+                    bank: 'MB Bank' 
+                };
+                onUpdateJob(updatedJob);
+                successCount++;
+            } else {
+                missingCodes.push(code);
+            }
+        });
+
+        if (missingCodes.length > 0) {
+            alert(`Đã cập nhật ${successCount} Job. Không tìm thấy mã: ${missingCodes.join(', ')}`);
+        } else {
+            alert(`Đã cập nhật thành công tất cả ${successCount} Job liên quan!`);
         }
-
-        const amt = Number(parsedData.amount.replace(/,/g, ''));
-        const updatedJob: JobData = {
-            ...targetJob,
-            localChargeTotal: amt,
-            localChargeInvoice: parsedData.invoice,
-            localChargeDate: parsedData.date,
-            bank: 'MB Bank' // Updated to MB Bank per user request
-        };
-
-        onUpdateJob(updatedJob);
-        alert(`Đã cập nhật Job ${parsedData.jobCode} thành công!`);
+        
         setIsApplying(false);
     };
 
@@ -120,22 +195,46 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
         if (!parsedData || !onAddCustomReceipt) return;
         setIsApplying(true);
 
-        const amt = Number(parsedData.amount.replace(/,/g, ''));
+        const amtStr = String(parsedData.amount || '0').replace(/,/g, '');
+        const amt = Number(amtStr);
+        const nextDoc = generateNextDocNo(jobs, 'NTTK', 5, usedDocNos);
+
+        let finalDesc = '';
+        const combinedJobs = parsedData.jobCodes.join('+');
+        const inv = parsedData.invoice || 'XXX';
+        
+        switch (receiptType) {
+            case 'local':
+                finalDesc = `Thu tiền của KH theo hoá đơn ${inv} (KIM)`;
+                break;
+            case 'deposit':
+                finalDesc = `Thu tiền của KH CƯỢC CONT BL ${combinedJobs}`;
+                break;
+            case 'extension':
+                finalDesc = `Thu tiền của KH theo hoá đơn GH ${inv} (KIM)`;
+                break;
+            case 'other':
+                finalDesc = `Thu tiền của KH theo hoá đơn ${inv} (LH MB)`;
+                break;
+        }
+
         const newReceipt = {
             id: `auto-rcpt-${Date.now()}`,
-            type: 'external',
+            category: 'external', // Đánh dấu là phiếu từ Auto Tool/Thu ngoài
+            type: receiptType,    // Lưu đúng loại người dùng chọn (local, deposit...)
             date: parsedData.date,
-            docNo: `NTTK${Date.now().toString().slice(-5)}`,
+            docNo: nextDoc,
             objCode: parsedData.customerCode,
             objName: parsedData.companyName,
-            desc: `Thu tiền khách hàng theo hoá đơn ${parsedData.invoice} (AUTO)`,
+            desc: finalDesc,
             amount: amt,
             invoice: parsedData.invoice,
+            jobCodes: parsedData.jobCodes, // Lưu danh sách mã Job để khi sửa có thể hiện list gộp
             additionalReceipts: []
         };
 
         onAddCustomReceipt(newReceipt);
-        alert(`Đã tạo phiếu thu tự động thành công!`);
+        alert(`Đã tạo phiếu thu gộp "${nextDoc}" cho các Job: ${parsedData.jobCodes.join(', ')}`);
         setIsApplying(false);
     };
 
@@ -158,11 +257,10 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                     </div>
                     <h1 className="text-3xl font-bold">Auto Payment Tool</h1>
                 </div>
-                <p className="text-slate-500 ml-11">Sử dụng AI để tách nội dung chuyển khoản và tự động hóa quy trình nhập liệu</p>
+                <p className="text-slate-500 ml-11">Sử dụng AI để tách nội dung chuyển khoản gộp nhiều Job</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 min-h-0">
-                {/* Input Section */}
                 <div className="flex flex-col space-y-4">
                     <div className="flex-1 glass-panel p-6 rounded-2xl border flex flex-col">
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
@@ -171,7 +269,7 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                         <textarea
                             value={rawInput}
                             onChange={(e) => setRawInput(e.target.value)}
-                            placeholder='Dán nội dung ví dụ: "27/01/2026 17:03:43 + 75,103,200..." '
+                            placeholder='Dán nội dung chuyển khoản tại đây...'
                             className="flex-1 w-full p-4 bg-slate-50 border rounded-xl focus:ring-2 focus:ring-amber-500 outline-none resize-none text-sm font-medium leading-relaxed"
                         />
                         <button
@@ -185,20 +283,19 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                     </div>
                 </div>
 
-                {/* Result Section */}
                 <div className="flex flex-col space-y-4">
                     <div className="flex-1 glass-panel p-6 rounded-2xl border flex flex-col relative overflow-hidden">
                         {!parsedData && !isParsing && (
                             <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 p-8 text-center">
                                 <Search size={48} className="opacity-10 mb-4" />
-                                <p className="text-sm">Kết quả phân tích sẽ hiển thị tại đây sau khi bấm "Tách Dữ Liệu"</p>
+                                <p className="text-sm">Kết quả phân tích sẽ hiển thị tại đây</p>
                             </div>
                         )}
                         
                         {isParsing && (
                             <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
                                 <Loader2 className="w-10 h-10 animate-spin text-amber-500 mb-2" />
-                                <p className="text-amber-700 font-bold animate-pulse">AI đang phân tích...</p>
+                                <p className="text-amber-700 font-bold animate-pulse">AI đang phân tích gộp Job...</p>
                             </div>
                         )}
 
@@ -208,37 +305,42 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                     <CheckCircle size={14} className="text-green-500" /> Dữ liệu đã tách
                                 </h3>
                                 
-                                <div className="space-y-5">
+                                <div className="space-y-4">
+                                    <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                                        <label className="text-[10px] font-bold text-blue-500 block mb-2 flex items-center gap-1">
+                                            <Layers size={10} /> DANH SÁCH JOB ({parsedData.jobCodes.length})
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {parsedData.jobCodes.map((code, idx) => (
+                                                <span key={idx} className="bg-white px-2 py-1 rounded border border-blue-200 text-blue-700 font-bold text-xs shadow-sm">
+                                                    {code}
+                                                </span>
+                                            ))}
+                                            {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job</span>}
+                                        </div>
+                                    </div>
+
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                            <label className="text-[10px] font-bold text-slate-400 block mb-1">JOB CODE</label>
-                                            <input 
-                                                value={parsedData.jobCode} 
-                                                onChange={e => setParsedData({...parsedData, jobCode: e.target.value})}
-                                                className="w-full bg-transparent font-bold text-blue-700 outline-none focus:text-blue-900"
-                                            />
-                                        </div>
-                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                            <label className="text-[10px] font-bold text-slate-400 block mb-1">MÃ KH</label>
+                                            <label className="text-[10px] font-bold text-slate-400 block mb-1">MÃ KH (HỆ THỐNG)</label>
                                             <input 
                                                 value={parsedData.customerCode} 
                                                 onChange={e => setParsedData({...parsedData, customerCode: e.target.value})}
-                                                className="w-full bg-transparent font-bold text-orange-700 outline-none focus:text-orange-900"
+                                                className="w-full bg-transparent font-bold text-orange-700 outline-none"
+                                            />
+                                        </div>
+                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                            <label className="text-[10px] font-bold text-slate-400 block mb-1">CÔNG TY</label>
+                                            <input 
+                                                value={parsedData.companyName} 
+                                                onChange={e => setParsedData({...parsedData, companyName: e.target.value})}
+                                                className="w-full bg-transparent font-bold text-slate-700 outline-none truncate"
                                             />
                                         </div>
                                     </div>
 
                                     <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                        <label className="text-[10px] font-bold text-slate-400 block mb-1">CÔNG TY</label>
-                                        <input 
-                                            value={parsedData.companyName} 
-                                            onChange={e => setParsedData({...parsedData, companyName: e.target.value})}
-                                            className="w-full bg-transparent font-bold text-slate-700 outline-none"
-                                        />
-                                    </div>
-
-                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                        <label className="text-[10px] font-bold text-slate-400 block mb-1">SỐ TIỀN THU</label>
+                                        <label className="text-[10px] font-bold text-slate-400 block mb-1">TỔNG TIỀN THU</label>
                                         <input 
                                             value={parsedData.amount} 
                                             onChange={e => setParsedData({...parsedData, amount: e.target.value})}
@@ -250,31 +352,68 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                                             <label className="text-[10px] font-bold text-slate-400 block mb-1">NGÀY THU</label>
                                             <input 
-                                                type="date"
-                                                value={parsedData.date} 
-                                                onChange={e => setParsedData({...parsedData, date: e.target.value})}
+                                                type="text"
+                                                value={dateInput} 
+                                                onChange={e => setDateInput(e.target.value)}
+                                                onBlur={handleDateBlur}
+                                                placeholder="dd/mm/yyyy"
                                                 className="w-full bg-transparent font-bold text-slate-700 outline-none"
                                             />
                                         </div>
-                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 relative group">
                                             <label className="text-[10px] font-bold text-slate-400 block mb-1">HÓA ĐƠN</label>
-                                            <input 
-                                                value={parsedData.invoice || ''} 
-                                                onChange={e => setParsedData({...parsedData, invoice: e.target.value})}
-                                                className="w-full bg-transparent font-bold text-slate-700 outline-none"
-                                            />
+                                            <div className="flex items-center">
+                                                <input 
+                                                    value={parsedData.invoice || ''} 
+                                                    onChange={e => setParsedData({...parsedData, invoice: e.target.value})}
+                                                    className="w-full bg-transparent font-bold text-slate-700 outline-none pr-6"
+                                                />
+                                                <button 
+                                                    onClick={handleResetInvoice}
+                                                    title="Reset về mặc định (XXX BL ...)"
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600 bg-white p-1 rounded-full shadow-sm mt-3"
+                                                >
+                                                    <RotateCcw size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-2">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Loại hình phiếu thu</label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                            {[
+                                                { id: 'local', label: 'Local Charge', icon: CreditCard },
+                                                { id: 'deposit', label: 'Thu Cược', icon: Anchor },
+                                                { id: 'extension', label: 'Gia Hạn', icon: Repeat },
+                                                { id: 'other', label: 'Thu Khác', icon: Wallet }
+                                            ].map((t) => (
+                                                <button
+                                                    key={t.id}
+                                                    type="button"
+                                                    onClick={() => setReceiptType(t.id as ReceiptType)}
+                                                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                                                        receiptType === t.id 
+                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
+                                                            : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+                                                    }`}
+                                                >
+                                                    <t.icon size={16} className="mb-1" />
+                                                    <span className="text-[10px] font-bold uppercase">{t.label}</span>
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <button
                                         onClick={handleUpdateToJob}
-                                        disabled={isApplying}
-                                        className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95"
+                                        disabled={isApplying || parsedData.jobCodes.length === 0}
+                                        className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50"
                                     >
                                         {isApplying ? <Loader2 className="animate-spin" /> : <RefreshCw size={18} />}
-                                        Cập Nhật Vào Job
+                                        Cập Nhật Vào Jobs
                                     </button>
                                     <button
                                         onClick={handleCreateReceipt}
@@ -284,11 +423,6 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                         {isApplying ? <Loader2 className="animate-spin" /> : <Save size={18} />}
                                         Tạo Phiếu Thu
                                     </button>
-                                </div>
-                                
-                                <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-[10px] text-blue-700 leading-relaxed italic">
-                                    <AlertTriangle size={12} className="inline mr-1 mb-0.5" />
-                                    Vui lòng kiểm tra lại độ chính xác của các trường thông tin trước khi thực hiện cập nhật hệ thống.
                                 </div>
                             </div>
                         )}

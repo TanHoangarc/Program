@@ -243,7 +243,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           ngayChiCuoc: row['Ngày Chi Cược'] || '',
           ngayChiHoan: row['Ngày Chi Hoàn'] || '',
           localChargeTotal: Number(row['Thu Payment (Local Charge)']) || Number(row['Thu Payment']) || 0,
-          // Force string conversion to prevent TypeError: inv.trim is not a function
           localChargeInvoice: String(row['Invoice Thu'] || row['Invoice'] || ''),
           bank: row['Ngân hàng'] || '',
           thuCuoc: Number(row['Thu Cược']) || 0,
@@ -439,17 +438,15 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           <tbody className="divide-y divide-gray-100">
             {paginatedJobs.length > 0 ? (
               paginatedJobs.map((job) => {
-                const paymentStatus = calculatePaymentStatus(job, jobs);
+                const paymentStatus = calculatePaymentStatus(job, jobs, customReceipts);
                 
                 const custName = (job.customerName || '').toUpperCase();
                 const isLongHoang = custName.includes('LONG HOANG') || custName.includes('LONGHOANG') || custName.includes('LHK');
 
                 // Helper: Check if invoice is missing or is a placeholder (XXX BL)
-                // Use String() to safely handle non-string values
                 const isInvalidInv = (inv?: any) => !inv || String(inv).trim() === '' || String(inv).toUpperCase().includes('XXX BL');
 
                 // Missing Invoice Logic:
-                // Show warning if NOT Long Hoang AND (has LC Amount but no invoice OR has Ext Amount but no invoice)
                 const hasMissingInvoice = !isLongHoang && (
                     (job.localChargeTotal > 0 && isInvalidInv(job.localChargeInvoice)) ||
                     (job.extensions || []).some(ext => ext.total > 0 && isInvalidInv(ext.invoice))
@@ -620,6 +617,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           onSwitchToEdit={() => setIsViewMode(false)} 
           existingJobs={jobs}
           onAddCustomer={onAddCustomer}
+          customReceipts={customReceipts}
         />
       )}
       

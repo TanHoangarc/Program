@@ -20,6 +20,7 @@ interface JobModalProps {
   onSwitchToEdit?: () => void;
   existingJobs?: JobData[];
   onAddCustomer: (customer: Customer) => void;
+  customReceipts?: any[];
 }
 
 // Compact Styled Components
@@ -328,7 +329,7 @@ const MoneyInput: React.FC<{
 
 export const JobModal: React.FC<JobModalProps> = ({ 
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
-  isViewMode = false, onSwitchToEdit, existingJobs, onAddCustomer
+  isViewMode = false, onSwitchToEdit, existingJobs, onAddCustomer, customReceipts = []
 }) => {
   const [formData, setFormData] = useState<JobData>(() => {
     if (initialData) {
@@ -743,8 +744,8 @@ export const JobModal: React.FC<JobModalProps> = ({
                       codeLowerLongHoang.includes('longhoang') ||
                       codeLowerLongHoang.includes('lhk');
 
-  // PASS EXISTING JOBS FOR ACCURATE CALCULATION
-  const paymentStatus = calculatePaymentStatus(formData, existingJobs);
+  // PASS EXISTING JOBS AND CUSTOM RECEIPTS FOR ACCURATE CALCULATION
+  const paymentStatus = calculatePaymentStatus(formData, existingJobs, customReceipts);
 
   if (!isOpen) return null;
 

@@ -1062,6 +1062,7 @@ const App: React.FC = () => {
                     mode="payment"
                     jobs={jobs}
                     customers={customers}
+                    customReceipts={customReceipts}
                     onUpdateJob={handleEditJob}
                     onAddCustomReceipt={(r) => setCustomReceipts([...customReceipts, r])}
                 />
