@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye, Edit3 } from 'lucide-react';
+import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { JobModal } from '../components/JobModal';
@@ -181,6 +181,67 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           return { url: uploadedUrl, name: finalFileName };
       }
       throw new Error(res.data?.message || "Upload failed");
+  };
+
+  // --- BATCH PAYMENT CREATION ---
+  const handleBatchCreatePayment = () => {
+      const validRows = rows.filter(r => r.jobId);
+      if (validRows.length === 0) {
+          alert("Chưa có Job nào được nhận diện (Có số BL hợp lệ) để tạo phiếu chi.");
+          return;
+      }
+
+      if (!window.confirm(`Bạn có chắc chắn muốn tạo ${validRows.length} phiếu chi hoàn cược nối tiếp cho danh sách này không?`)) return;
+
+      // 1. Calculate base Max Number from existing jobs to ensure sequence
+      let maxNum = 0;
+      const regex = /^UNC(\d+)$/i;
+      
+      const checkVal = (val?: string) => {
+          if (!val) return;
+          const match = val.match(regex);
+          if (match) {
+              const n = parseInt(match[1], 10);
+              if (!isNaN(n) && n > maxNum) maxNum = n;
+          }
+      };
+
+      jobs.forEach(j => {
+          checkVal(j.amisPaymentDocNo);
+          checkVal(j.amisDepositOutDocNo);
+          checkVal(j.amisExtensionPaymentDocNo);
+          checkVal(j.amisDepositRefundDocNo);
+          (j.extensions || []).forEach(e => checkVal(e.amisDocNo));
+          (j.refunds || []).forEach(r => checkVal(r.docNo));
+          (j.additionalReceipts || []).forEach(r => checkVal(r.docNo));
+      });
+
+      // 2. Loop and Update
+      let count = 0;
+      const today = new Date().toISOString().split('T')[0];
+
+      validRows.forEach((row, index) => {
+          const job = jobs.find(j => j.id === row.jobId);
+          if (job) {
+              const nextVal = maxNum + 1 + index;
+              const docNo = `UNC${String(nextVal).padStart(5, '0')}`;
+              
+              const updatedJob = {
+                  ...job,
+                  amisDepositRefundDocNo: docNo,
+                  amisDepositRefundDate: today,
+                  amisDepositRefundDesc: `Chi hoàn cược BL ${job.jobCode}`,
+                  // Update amount/customer if changed in table
+                  thuCuoc: row.amount || job.thuCuoc,
+                  maKhCuocId: row.customerId || job.maKhCuocId
+              };
+              
+              onUpdateJob(updatedJob);
+              count++;
+          }
+      });
+
+      alert(`Đã tạo thành công ${count} phiếu chi hoàn cược.\n(Từ UNC${String(maxNum + 1).padStart(5, '0')} đến UNC${String(maxNum + count).padStart(5, '0')})`);
   };
 
   const handleSubmit = async () => {
@@ -529,6 +590,18 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   <div className="px-4 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold text-sm">
                       Tổng tiền: <span className="text-indigo-600 ml-2 text-lg">{formatCurrency(rows.reduce((s, r) => s + r.amount, 0))}</span>
                   </div>
+                  
+                  {/* NEW: Batch Payment Button for Combined Mode */}
+                  {mode === 'combined' && (
+                      <button 
+                          onClick={handleBatchCreatePayment}
+                          className="px-4 py-2 bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 rounded-lg font-bold shadow-sm transition-all flex items-center"
+                          title="Tạo phiếu chi hoàn cược cho tất cả các Job trong danh sách"
+                      >
+                          <Banknote className="w-4 h-4 mr-2" /> Tạo Phiếu Chi
+                      </button>
+                  )}
+
                   <button 
                       onClick={handleSubmit}
                       disabled={isUploading}
