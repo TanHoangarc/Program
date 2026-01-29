@@ -36,40 +36,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   
   const canSendPending = isStaff;
 
-  // State for Active Menu Group (Only one active at a time)
+  // State for Active Menu Group
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   
   // Ref to detect click outside
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Toggle group on click
   const toggleGroup = (group: string) => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
     setActiveGroup(prev => (prev === group ? null : group));
   };
 
-  const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => {
-      setActiveGroup(null);
-    }, 300);
-  };
-
-  const handleMouseEnter = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  };
-
-  // Close menus when clicking outside sidebar
+  // Close menus when clicking outside sidebar (Mobile mostly)
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
-        setActiveGroup(null);
+        // Optional: Close active group on outside click? 
+        // For accordion style, we usually keep it open until explicit close or navigation.
+        // Keeping this for mobile drawer closing behavior if needed.
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -80,7 +64,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleNavigate = (page: any) => {
     onNavigate(page);
-    setActiveGroup(null); // Close flyout when navigating
+    // Don't close group on navigate for better UX (keeps context), or close it if preferred.
+    // setActiveGroup(null); 
     if (window.innerWidth < 768) {
       onClose();
     }
@@ -106,9 +91,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <button
       onClick={(e) => { e.preventDefault(); onClick(); }}
       className={`w-full flex items-center justify-between px-4 py-2.5 mb-1 rounded-xl transition-all duration-200 group relative ${
-        active || isOpen // Keep highlighted if active OR if menu is open
-          ? 'bg-white/20 text-white shadow-lg backdrop-blur-sm border border-white/10'
-          : 'text-slate-300 hover:bg-white/10 hover:text-white'
+        active || isOpen
+          ? 'bg-white/10 text-white shadow-sm border border-white/5'
+          : 'text-slate-300 hover:bg-white/5 hover:text-white'
       }`}
     >
       <div className="flex items-center space-x-3">
@@ -131,17 +116,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <button
         onClick={(e) => { e.preventDefault(); onClick(); }}
         className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors mb-1 ${
-            active ? 'text-teal-300 bg-white/10 font-medium' : 'text-slate-300 hover:text-white hover:bg-white/5'
+            active ? 'text-teal-300 bg-white/10 font-medium' : 'text-slate-400 hover:text-white hover:bg-white/5'
         }`}
       >
-          <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-400'}`} />
+          <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-500'}`} />
           <span>{label}</span>
       </button>
   );
 
-  // Wrapper style for flyout to bridge the gap with padding instead of margin
-  const flyoutWrapperClass = "absolute left-full top-0 pl-2 w-56 z-50 animate-in fade-in slide-in-from-left-2 duration-200";
-  const flyoutInnerClass = "bg-slate-900 border border-white/10 rounded-xl p-2 shadow-2xl w-full";
+  // Accordion Styles
+  const accordionWrapperClass = "w-full z-10 animate-in fade-in slide-in-from-top-1 duration-200 overflow-hidden";
+  const accordionInnerClass = "bg-black/20 rounded-xl p-1 mx-2 mb-2 mt-1 border border-white/5";
 
   return (
     <>
@@ -166,7 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-800 to-teal-900 z-0 md:rounded-3xl overflow-hidden pointer-events-none"></div>
         
         {/* Header */}
-        <div className="relative z-10 px-6 py-6 border-b border-white/5 flex justify-between items-center">
+        <div className="relative z-10 px-6 py-6 border-b border-white/5 flex justify-between items-center shrink-0">
            <div className="flex items-center space-x-3 text-white">
               <div className="p-2 bg-gradient-to-tr from-teal-400 to-blue-500 rounded-lg shadow-lg">
                  <Ship className="w-6 h-6 text-white" />
@@ -182,8 +167,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
            </button>
         </div>
 
-        {/* Menu - Changed to overflow-visible to allow flyouts */}
-        <nav className="relative z-10 flex-1 px-4 space-y-1 pt-4 pb-2 overflow-visible">
+        {/* Menu - SCROLLABLE AREA */}
+        <nav className="relative z-10 flex-1 px-4 space-y-1 pt-4 pb-2 overflow-y-auto overflow-x-hidden custom-scrollbar">
           
           {/* OVERVIEW SECTION (Admin/Manager Only) */}
           {canViewOverview && (
@@ -213,12 +198,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 label="Công Nợ"
               />
               
-              {/* Auto Tool Flyout (Click) */}
-              <div 
-                className="relative"
-                onMouseLeave={handleMouseLeave}
-                onMouseEnter={handleMouseEnter}
-              >
+              {/* Auto Tool Accordion */}
+              <div className="relative">
                 <MenuItem 
                   active={['auto-payment', 'auto-invoice'].includes(currentPage)}
                   onClick={() => toggleGroup('auto')}
@@ -228,8 +209,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   isOpen={activeGroup === 'auto'}
                 />
                 {activeGroup === 'auto' && (
-                  <div className={flyoutWrapperClass}>
-                    <div className={flyoutInnerClass}>
+                  <div className={accordionWrapperClass}>
+                    <div className={accordionInnerClass}>
                       <SubMenuItem 
                         active={currentPage === 'auto-payment'}
                         onClick={() => handleNavigate('auto-payment')}
@@ -267,12 +248,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 statusColor="bg-blue-400"
               />
               
-              {/* Deposit Flyout (Click) */}
-              <div 
-                className="relative"
-                onMouseLeave={handleMouseLeave}
-                onMouseEnter={handleMouseEnter}
-              >
+              {/* Deposit Accordion */}
+              <div className="relative">
                  <MenuItem 
                   active={['deposit-line', 'deposit-customer'].includes(currentPage)}
                   onClick={() => toggleGroup('deposit')}
@@ -283,8 +260,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   isOpen={activeGroup === 'deposit'}
                 />
                 {activeGroup === 'deposit' && (
-                  <div className={flyoutWrapperClass}>
-                     <div className={flyoutInnerClass}>
+                  <div className={accordionWrapperClass}>
+                     <div className={accordionInnerClass}>
                        <SubMenuItem 
                           active={currentPage === 'deposit-line'}
                           onClick={() => handleNavigate('deposit-line')}
@@ -342,12 +319,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* ACCOUNTING SECTION (Admin/Manager/Account) */}
           {canViewAccounting && (
             <>
-              {/* AMIS Flyout (Click) */}
-              <div 
-                className="relative"
-                onMouseLeave={handleMouseLeave}
-                onMouseEnter={handleMouseEnter}
-              >
+              {/* AMIS Accordion */}
+              <div className="relative">
                 <MenuItem 
                   active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)}
                   onClick={() => toggleGroup('amis')}
@@ -357,8 +330,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   isOpen={activeGroup === 'amis'}
                 />
                 {activeGroup === 'amis' && (
-                  <div className={flyoutWrapperClass}>
-                    <div className={flyoutInnerClass}>
+                  <div className={accordionWrapperClass}>
+                    <div className={accordionInnerClass}>
                       <SubMenuItem 
                         active={currentPage === 'amis-thu'}
                         onClick={() => handleNavigate('amis-thu')}
@@ -388,12 +361,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
 
-              {/* BANK SECTION Flyout (Click) */}
-              <div 
-                className="relative"
-                onMouseLeave={handleMouseLeave}
-                onMouseEnter={handleMouseEnter}
-              >
+              {/* BANK SECTION Accordion */}
+              <div className="relative">
                 <MenuItem 
                   active={['bank-tcb', 'bank-mb'].includes(currentPage)}
                   onClick={() => toggleGroup('bank')}
@@ -403,8 +372,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   isOpen={activeGroup === 'bank'}
                 />
                 {activeGroup === 'bank' && (
-                  <div className={flyoutWrapperClass}>
-                    <div className={flyoutInnerClass}>
+                  <div className={accordionWrapperClass}>
+                    <div className={accordionInnerClass}>
                       <SubMenuItem 
                         active={currentPage === 'bank-tcb'}
                         onClick={() => handleNavigate('bank-tcb')}
@@ -434,12 +403,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {canViewData && (
-            // Data Flyout (Click)
-            <div 
-                className="relative"
-                onMouseLeave={handleMouseLeave}
-                onMouseEnter={handleMouseEnter}
-            >
+            // Data Accordion
+            <div className="relative">
               <MenuItem 
                 active={['data-lines', 'data-customers'].includes(currentPage)}
                 onClick={() => toggleGroup('data')}
@@ -449,8 +414,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 isOpen={activeGroup === 'data'}
               />
               {activeGroup === 'data' && (
-                  <div className={flyoutWrapperClass}>
-                     <div className={flyoutInnerClass}>
+                  <div className={accordionWrapperClass}>
+                     <div className={accordionInnerClass}>
                        <SubMenuItem 
                           active={currentPage === 'data-lines'}
                           onClick={() => handleNavigate('data-lines')}
@@ -498,7 +463,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         {/* Footer */}
-        <div className="relative z-10 p-4 mt-auto border-t border-white/5 bg-black/20 space-y-3">
+        <div className="relative z-10 p-4 mt-auto border-t border-white/5 bg-black/20 space-y-3 shrink-0">
           {/* Send Pending Button - Visible ONLY for Staff */}
           {canSendPending && (
             <button
