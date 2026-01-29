@@ -24,48 +24,73 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isAccount = role === 'Account';
 
   // Permission Logic
-  const canViewOverview = isAdminOrManager; // Account excluded from overview
-  const canViewOperations = isAdminOrManager || isStaff || isAccount; // Account can view Operations
-  const canViewDataPayment = isAdminOrManager || isDocs || isAccount; // Account can view Payment/Lookup
-  const canViewAccounting = isAdminOrManager || isAccount; // Account can view Amis
-  const canViewRecon = isAdminOrManager; // Account excluded
-  const canViewData = isAdminOrManager || isStaff || isAccount; // Account can view Data
-  const canViewSystem = isAdminOrManager; // Account excluded
-  const canViewToolAI = isAdminOrManager || isStaff || isAccount || isDocs; // Broad access for AI Tools
-  const canViewNfc = isAdminOrManager; // Restricted access for NFC Cards
+  const canViewOverview = isAdminOrManager; 
+  const canViewOperations = isAdminOrManager || isStaff || isAccount; 
+  const canViewDataPayment = isAdminOrManager || isDocs || isAccount; 
+  const canViewAccounting = isAdminOrManager || isAccount; 
+  const canViewRecon = isAdminOrManager; 
+  const canViewData = isAdminOrManager || isStaff || isAccount; 
+  const canViewSystem = isAdminOrManager; 
+  const canViewToolAI = isAdminOrManager || isStaff || isAccount || isDocs; 
+  const canViewNfc = isAdminOrManager; 
   
   const canSendPending = isStaff;
 
-  // State for Active Menu Group
+  // State for Flyout Menu
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   
-  // Ref to detect click outside
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
 
-  // Toggle group on click
-  const toggleGroup = (group: string) => {
-    setActiveGroup(prev => (prev === group ? null : group));
-  };
+  // Close menu on scroll to prevent misalignment
+  useEffect(() => {
+      const handleScroll = () => {
+          if (activeGroup) setActiveGroup(null);
+      };
+      const navEl = navRef.current;
+      if (navEl) navEl.addEventListener('scroll', handleScroll);
+      return () => navEl?.removeEventListener('scroll', handleScroll);
+  }, [activeGroup]);
 
-  // Close menus when clicking outside sidebar (Mobile mostly)
+  // Close menus when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
-        // Optional: Close active group on outside click? 
-        // For accordion style, we usually keep it open until explicit close or navigation.
-        // Keeping this for mobile drawer closing behavior if needed.
+      // If clicking inside the sidebar or the flyout menu, ignore
+      // Note: We stop propagation on menu click, so this mainly catches outside clicks
+      if (activeGroup) {
+          setActiveGroup(null);
       }
     }
+    // Use capture to catch clicks before they might be stopped elsewhere, or bubble is fine
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [sidebarRef]);
+  }, [activeGroup]);
+
+  const handleGroupClick = (e: React.MouseEvent, group: string) => {
+    e.stopPropagation(); // Prevent triggering document click listener immediately
+    e.preventDefault();
+
+    if (activeGroup === group) {
+        setActiveGroup(null);
+        return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Calculate position: Right of sidebar, aligned with item top
+    setMenuStyle({
+        top: rect.top,
+        left: rect.right + 12, // 12px margin
+        position: 'fixed'
+    });
+    setActiveGroup(group);
+  };
 
   const handleNavigate = (page: any) => {
     onNavigate(page);
-    // Don't close group on navigate for better UX (keeps context), or close it if preferred.
-    // setActiveGroup(null); 
+    setActiveGroup(null);
     if (window.innerWidth < 768) {
       onClose();
     }
@@ -81,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     isOpen = false
   }: { 
     active: boolean; 
-    onClick: () => void; 
+    onClick: (e: React.MouseEvent) => void; 
     icon: any; 
     label: string; 
     statusColor?: string; 
@@ -89,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     isOpen?: boolean;
   }) => (
     <button
-      onClick={(e) => { e.preventDefault(); onClick(); }}
+      onClick={onClick}
       className={`w-full flex items-center justify-between px-4 py-2.5 mb-1 rounded-xl transition-all duration-200 group relative ${
         active || isOpen
           ? 'bg-white/10 text-white shadow-sm border border-white/5'
@@ -115,8 +140,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const SubMenuItem = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) => (
       <button
         onClick={(e) => { e.preventDefault(); onClick(); }}
-        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors mb-1 ${
-            active ? 'text-teal-300 bg-white/10 font-medium' : 'text-slate-400 hover:text-white hover:bg-white/5'
+        className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 ${
+            active ? 'text-teal-300 bg-white/10 font-medium' : 'text-slate-300 hover:text-white hover:bg-white/5'
         }`}
       >
           <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-500'}`} />
@@ -124,9 +149,69 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </button>
   );
 
-  // Accordion Styles
-  const accordionWrapperClass = "w-full z-10 animate-in fade-in slide-in-from-top-1 duration-200 overflow-hidden";
-  const accordionInnerClass = "bg-black/20 rounded-xl p-1 mx-2 mb-2 mt-1 border border-white/5";
+  // --- FLOATING MENU RENDERER ---
+  const renderFloatingMenu = () => {
+      if (!activeGroup) return null;
+
+      let content = null;
+
+      switch (activeGroup) {
+          case 'auto':
+              content = (
+                  <>
+                      <SubMenuItem active={currentPage === 'auto-payment'} onClick={() => handleNavigate('auto-payment')} icon={Zap} label="Auto Payment" />
+                      <SubMenuItem active={currentPage === 'auto-invoice'} onClick={() => handleNavigate('auto-invoice')} icon={FileInput} label="Auto Invoice" />
+                  </>
+              );
+              break;
+          case 'deposit':
+              content = (
+                  <>
+                      <SubMenuItem active={currentPage === 'deposit-line'} onClick={() => handleNavigate('deposit-line')} icon={Building2} label="Hãng Tàu" />
+                      <SubMenuItem active={currentPage === 'deposit-customer'} onClick={() => handleNavigate('deposit-customer')} icon={UserCircle} label="Khách Hàng" />
+                  </>
+              );
+              break;
+          case 'amis':
+              content = (
+                  <>
+                      <SubMenuItem active={currentPage === 'amis-thu'} onClick={() => handleNavigate('amis-thu')} icon={FileText} label="Phiếu Thu" />
+                      <SubMenuItem active={currentPage === 'amis-chi'} onClick={() => handleNavigate('amis-chi')} icon={CreditCard} label="Phiếu Chi" />
+                      <SubMenuItem active={currentPage === 'amis-ban'} onClick={() => handleNavigate('amis-ban')} icon={ShoppingCart} label="Phiếu Bán Hàng" />
+                      <SubMenuItem active={currentPage === 'amis-mua'} onClick={() => handleNavigate('amis-mua')} icon={Briefcase} label="Phiếu Mua Hàng" />
+                  </>
+              );
+              break;
+          case 'bank':
+              content = (
+                  <>
+                      <SubMenuItem active={currentPage === 'bank-tcb'} onClick={() => handleNavigate('bank-tcb')} icon={Briefcase} label="Techcom Bank" />
+                      <SubMenuItem active={currentPage === 'bank-mb'} onClick={() => handleNavigate('bank-mb')} icon={Coins} label="MB Bank" />
+                  </>
+              );
+              break;
+          case 'data':
+              content = (
+                  <>
+                      <SubMenuItem active={currentPage === 'data-lines'} onClick={() => handleNavigate('data-lines')} icon={Ship} label="Hãng Tàu" />
+                      <SubMenuItem active={currentPage === 'data-customers'} onClick={() => handleNavigate('data-customers')} icon={UserCircle} label="Khách Hàng" />
+                  </>
+              );
+              break;
+      }
+
+      if (!content) return null;
+
+      return (
+          <div 
+            className="fixed z-[60] w-56 bg-slate-800 rounded-xl shadow-2xl border border-white/10 p-2 animate-in fade-in slide-in-from-left-2 duration-200"
+            style={menuStyle}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+          >
+             {content}
+          </div>
+      );
+  };
 
   return (
     <>
@@ -168,303 +253,115 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Menu - SCROLLABLE AREA */}
-        <nav className="relative z-10 flex-1 px-4 space-y-1 pt-4 pb-2 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <nav 
+            ref={navRef}
+            className="relative z-10 flex-1 px-4 space-y-1 pt-4 pb-2 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent custom-scrollbar"
+        >
           
-          {/* OVERVIEW SECTION (Admin/Manager Only) */}
+          {/* OVERVIEW SECTION */}
           {canViewOverview && (
             <>
-              <MenuItem 
-                active={currentPage === 'reports'}
-                onClick={() => handleNavigate('reports')}
-                icon={LayoutDashboard}
-                label="Dashboard"
-              />
-              <MenuItem 
-                active={currentPage === 'profit'}
-                onClick={() => handleNavigate('profit')}
-                icon={BadgeDollarSign}
-                label="Lợi Nhuận"
-              />
-              <MenuItem 
-                active={currentPage === 'salary'}
-                onClick={() => handleNavigate('salary')}
-                icon={Coins}
-                label="Quản Lý Lương"
-              />
-              <MenuItem 
-                active={currentPage === 'debt'}
-                onClick={() => handleNavigate('debt')}
-                icon={WalletCards}
-                label="Công Nợ"
-              />
+              <MenuItem active={currentPage === 'reports'} onClick={() => handleNavigate('reports')} icon={LayoutDashboard} label="Dashboard" />
+              <MenuItem active={currentPage === 'profit'} onClick={() => handleNavigate('profit')} icon={BadgeDollarSign} label="Lợi Nhuận" />
+              <MenuItem active={currentPage === 'salary'} onClick={() => handleNavigate('salary')} icon={Coins} label="Quản Lý Lương" />
+              <MenuItem active={currentPage === 'debt'} onClick={() => handleNavigate('debt')} icon={WalletCards} label="Công Nợ" />
               
-              {/* Auto Tool Accordion */}
-              <div className="relative">
-                <MenuItem 
+              <MenuItem 
                   active={['auto-payment', 'auto-invoice'].includes(currentPage)}
-                  onClick={() => toggleGroup('auto')}
+                  onClick={(e) => handleGroupClick(e, 'auto')}
                   icon={Sparkles}
                   label="Công Cụ Tự Động"
                   hasSubmenu={true}
                   isOpen={activeGroup === 'auto'}
-                />
-                {activeGroup === 'auto' && (
-                  <div className={accordionWrapperClass}>
-                    <div className={accordionInnerClass}>
-                      <SubMenuItem 
-                        active={currentPage === 'auto-payment'}
-                        onClick={() => handleNavigate('auto-payment')}
-                        icon={Zap}
-                        label="Auto Payment"
-                      />
-                      <SubMenuItem 
-                        active={currentPage === 'auto-invoice'}
-                        onClick={() => handleNavigate('auto-invoice')}
-                        icon={FileInput}
-                        label="Auto Invoice"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              />
             </>
           )}
 
-          {/* OPERATIONS SECTION (Admin/Manager/Staff/Account) */}
+          {/* OPERATIONS SECTION */}
           {canViewOperations && (
             <>
-              <MenuItem 
-                active={currentPage === 'entry'}
-                onClick={() => handleNavigate('entry')}
-                icon={FileInput}
-                label="Nhập Job"
-                statusColor="bg-teal-400"
-              />
-              <MenuItem 
-                active={currentPage === 'booking'}
-                onClick={() => handleNavigate('booking')}
-                icon={Container}
-                label="Booking"
-                statusColor="bg-blue-400"
-              />
+              <MenuItem active={currentPage === 'entry'} onClick={() => handleNavigate('entry')} icon={FileInput} label="Nhập Job" statusColor="bg-teal-400" />
+              <MenuItem active={currentPage === 'booking'} onClick={() => handleNavigate('booking')} icon={Container} label="Booking" statusColor="bg-blue-400" />
               
-              {/* Deposit Accordion */}
-              <div className="relative">
-                 <MenuItem 
+              <MenuItem 
                   active={['deposit-line', 'deposit-customer'].includes(currentPage)}
-                  onClick={() => toggleGroup('deposit')}
+                  onClick={(e) => handleGroupClick(e, 'deposit')}
                   icon={ArrowRightLeft}
                   label="Quản lý Cược"
                   statusColor="bg-purple-400"
                   hasSubmenu={true}
                   isOpen={activeGroup === 'deposit'}
-                />
-                {activeGroup === 'deposit' && (
-                  <div className={accordionWrapperClass}>
-                     <div className={accordionInnerClass}>
-                       <SubMenuItem 
-                          active={currentPage === 'deposit-line'}
-                          onClick={() => handleNavigate('deposit-line')}
-                          icon={Building2}
-                          label="Hãng Tàu"
-                       />
-                       <SubMenuItem 
-                          active={currentPage === 'deposit-customer'}
-                          onClick={() => handleNavigate('deposit-customer')}
-                          icon={UserCircle}
-                          label="Khách Hàng"
-                       />
-                     </div>
-                  </div>
-                )}
-              </div>
+              />
 
               {!isAccount && (
-                <MenuItem 
-                  active={currentPage === 'lhk'}
-                  onClick={() => handleNavigate('lhk')}
-                  icon={Briefcase}
-                  label="LHK Jobs"
-                />
+                <MenuItem active={currentPage === 'lhk'} onClick={() => handleNavigate('lhk')} icon={Briefcase} label="LHK Jobs" />
               )}
             </>
           )}
 
-          {/* DATA AND PAYMENT SECTION (Admin/Manager/Docs/Account) */}
+          {/* DATA AND PAYMENT SECTION */}
           {canViewDataPayment && (
             <>
-              <MenuItem 
-                active={currentPage === 'lookup'}
-                onClick={() => handleNavigate('lookup')}
-                icon={Search}
-                label="Tra cứu"
-              />
-              <MenuItem 
-                active={currentPage === 'payment'}
-                onClick={() => handleNavigate('payment')}
-                icon={Landmark}
-                label="Thanh Toán"
-              />
+              <MenuItem active={currentPage === 'lookup'} onClick={() => handleNavigate('lookup')} icon={Search} label="Tra cứu" />
+              <MenuItem active={currentPage === 'payment'} onClick={() => handleNavigate('payment')} icon={Landmark} label="Thanh Toán" />
               {!isAccount && (
-                <MenuItem 
-                  active={currentPage === 'cvhc'}
-                  onClick={() => handleNavigate('cvhc')}
-                  icon={FileCheck}
-                  label="Nộp CVHC"
-                />
+                <MenuItem active={currentPage === 'cvhc'} onClick={() => handleNavigate('cvhc')} icon={FileCheck} label="Nộp CVHC" />
               )}
             </>
           )}
 
-          {/* ACCOUNTING SECTION (Admin/Manager/Account) */}
+          {/* ACCOUNTING SECTION */}
           {canViewAccounting && (
             <>
-              {/* AMIS Accordion */}
-              <div className="relative">
-                <MenuItem 
+              <MenuItem 
                   active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)}
-                  onClick={() => toggleGroup('amis')}
+                  onClick={(e) => handleGroupClick(e, 'amis')}
                   icon={FileUp}
                   label="Kế Toán AMIS"
                   hasSubmenu={true}
                   isOpen={activeGroup === 'amis'}
-                />
-                {activeGroup === 'amis' && (
-                  <div className={accordionWrapperClass}>
-                    <div className={accordionInnerClass}>
-                      <SubMenuItem 
-                        active={currentPage === 'amis-thu'}
-                        onClick={() => handleNavigate('amis-thu')}
-                        icon={FileText}
-                        label="Phiếu Thu"
-                      />
-                      <SubMenuItem 
-                        active={currentPage === 'amis-chi'}
-                        onClick={() => handleNavigate('amis-chi')}
-                        icon={CreditCard}
-                        label="Phiếu Chi"
-                      />
-                      <SubMenuItem 
-                        active={currentPage === 'amis-ban'}
-                        onClick={() => handleNavigate('amis-ban')}
-                        icon={ShoppingCart}
-                        label="Phiếu Bán Hàng"
-                      />
-                      <SubMenuItem 
-                        active={currentPage === 'amis-mua'}
-                        onClick={() => handleNavigate('amis-mua')}
-                        icon={Briefcase}
-                        label="Phiếu Mua Hàng"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* BANK SECTION Accordion */}
-              <div className="relative">
-                <MenuItem 
+              />
+              <MenuItem 
                   active={['bank-tcb', 'bank-mb'].includes(currentPage)}
-                  onClick={() => toggleGroup('bank')}
+                  onClick={(e) => handleGroupClick(e, 'bank')}
                   icon={Landmark}
                   label="Ngân hàng"
                   hasSubmenu={true}
                   isOpen={activeGroup === 'bank'}
-                />
-                {activeGroup === 'bank' && (
-                  <div className={accordionWrapperClass}>
-                    <div className={accordionInnerClass}>
-                      <SubMenuItem 
-                        active={currentPage === 'bank-tcb'}
-                        onClick={() => handleNavigate('bank-tcb')}
-                        icon={Briefcase}
-                        label="Techcom Bank"
-                      />
-                      <SubMenuItem 
-                        active={currentPage === 'bank-mb'}
-                        onClick={() => handleNavigate('bank-mb')}
-                        icon={Coins}
-                        label="MB Bank"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              />
             </>
           )}
 
           {canViewRecon && (
-            <MenuItem 
-              active={currentPage === 'reconciliation'}
-              onClick={() => handleNavigate('reconciliation')}
-              icon={Scale}
-              label="Đối Chiếu"
-            />
+            <MenuItem active={currentPage === 'reconciliation'} onClick={() => handleNavigate('reconciliation')} icon={Scale} label="Đối Chiếu" />
           )}
 
           {canViewData && (
-            // Data Accordion
-            <div className="relative">
-              <MenuItem 
+            <MenuItem 
                 active={['data-lines', 'data-customers'].includes(currentPage)}
-                onClick={() => toggleGroup('data')}
+                onClick={(e) => handleGroupClick(e, 'data')}
                 icon={Database}
                 label="Danh Mục"
                 hasSubmenu={true}
                 isOpen={activeGroup === 'data'}
-              />
-              {activeGroup === 'data' && (
-                  <div className={accordionWrapperClass}>
-                     <div className={accordionInnerClass}>
-                       <SubMenuItem 
-                          active={currentPage === 'data-lines'}
-                          onClick={() => handleNavigate('data-lines')}
-                          icon={Ship}
-                          label="Hãng Tàu"
-                       />
-                       <SubMenuItem 
-                          active={currentPage === 'data-customers'}
-                          onClick={() => handleNavigate('data-customers')}
-                          icon={UserCircle}
-                          label="Khách Hàng"
-                       />
-                     </div>
-                  </div>
-              )}
-            </div>
+            />
           )}
 
           {canViewToolAI && (
-            <MenuItem 
-              active={currentPage === 'tool-ai'}
-              onClick={() => handleNavigate('tool-ai')}
-              icon={Cpu}
-              label="Tool AI"
-            />
+            <MenuItem active={currentPage === 'tool-ai'} onClick={() => handleNavigate('tool-ai')} icon={Cpu} label="Tool AI" />
           )}
 
           {canViewNfc && (
-            <MenuItem 
-              active={currentPage === 'nfc'}
-              onClick={() => handleNavigate('nfc')}
-              icon={IdCard}
-              label="NFC Cards"
-            />
+            <MenuItem active={currentPage === 'nfc'} onClick={() => handleNavigate('nfc')} icon={IdCard} label="NFC Cards" />
           )}
 
           {canViewSystem && (
-            <MenuItem 
-              active={currentPage === 'system'}
-              onClick={() => handleNavigate('system')}
-              icon={Settings}
-              label="Hệ Thống"
-            />
+            <MenuItem active={currentPage === 'system'} onClick={() => handleNavigate('system')} icon={Settings} label="Hệ Thống" />
           )}
         </nav>
 
         {/* Footer */}
         <div className="relative z-10 p-4 mt-auto border-t border-white/5 bg-black/20 space-y-3 shrink-0">
-          {/* Send Pending Button - Visible ONLY for Staff */}
           {canSendPending && (
             <button
               onClick={(e) => { e.preventDefault(); onSendPending(); }}
@@ -493,6 +390,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Render Floating Menu Outside the Sidebar structure to avoid clipping */}
+      {renderFloatingMenu()}
     </>
   );
 };
