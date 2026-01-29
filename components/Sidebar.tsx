@@ -12,6 +12,60 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+// --- STABLE COMPONENTS (DEFINED OUTSIDE SIDEBAR) ---
+const MenuItem = ({ 
+  active, 
+  onClick, 
+  icon: Icon, 
+  label, 
+  statusColor,
+  hasSubmenu = false,
+  isOpen = false
+}: { 
+  active: boolean; 
+  onClick: (e: React.MouseEvent) => void; 
+  icon: any; 
+  label: string; 
+  statusColor?: string; 
+  hasSubmenu?: boolean;
+  isOpen?: boolean;
+}) => (
+  <button
+    onClick={onClick}
+    className={`w-full flex items-center justify-between px-4 py-2.5 mb-1 rounded-xl transition-all duration-200 group border outline-none ${
+      active || isOpen
+        ? 'bg-white/10 text-white shadow-sm border-white/5'
+        : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
+    }`}
+  >
+    <div className="flex items-center space-x-3">
+      {statusColor ? (
+         <div className={`w-2 h-2 rounded-full ${statusColor} shadow-[0_0_8px_rgba(255,255,255,0.5)]`}></div>
+      ) : (
+         <Icon className={`w-5 h-5 ${active || isOpen ? 'text-teal-300' : 'text-slate-400 group-hover:text-teal-200'}`} />
+      )}
+      <span className={`text-sm ${active || isOpen ? 'font-semibold tracking-wide' : 'font-medium'}`}>{label}</span>
+    </div>
+    {hasSubmenu ? (
+      <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'text-white rotate-90' : ''}`} />
+    ) : (
+      active && <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_#2dd4bf]"></div>
+    )}
+  </button>
+);
+
+const SubMenuItem = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: (e: React.MouseEvent) => void, icon: any, label: string }) => (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 outline-none ${
+          active ? 'text-teal-300 bg-white/10 font-medium' : 'text-slate-300 hover:text-white hover:bg-white/5'
+      }`}
+    >
+        <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-500'}`} />
+        <span>{label}</span>
+    </button>
+);
+
 export const Sidebar: React.FC<SidebarProps> = ({ 
   currentPage, onNavigate, currentUser, onLogout, onSendPending,
   isOpen, onClose 
@@ -42,44 +96,71 @@ export const Sidebar: React.FC<SidebarProps> = ({
   
   const sidebarRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
+  const floatingMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Timer ref for auto-close delay
+  const closeTimerRef = useRef<any>(null);
+  // Ref to prevent immediate closing on scroll momentum
+  const lastOpenTimeRef = useRef<number>(0);
 
   // Close menu on scroll to prevent misalignment
   useEffect(() => {
       const handleScroll = () => {
-          if (activeGroup) setActiveGroup(null);
+          // Only close if enough time has passed since opening (300ms)
+          // This prevents residual scroll momentum from closing the menu immediately after clicking
+          if (activeGroup && Date.now() - lastOpenTimeRef.current > 300) {
+              setActiveGroup(null);
+          }
       };
       const navEl = navRef.current;
-      if (navEl) navEl.addEventListener('scroll', handleScroll);
+      if (navEl) navEl.addEventListener('scroll', handleScroll, { passive: true });
       return () => navEl?.removeEventListener('scroll', handleScroll);
   }, [activeGroup]);
 
   // Close menus when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      // If clicking inside the sidebar or the flyout menu, ignore
-      // Note: We stop propagation on menu click, so this mainly catches outside clicks
       if (activeGroup) {
+          const target = event.target as Node;
+          // If click is inside sidebar or floating menu, let the specific handlers deal with it
+          if (sidebarRef.current?.contains(target) || floatingMenuRef.current?.contains(target)) {
+              return;
+          }
           setActiveGroup(null);
       }
     }
-    // Use capture to catch clicks before they might be stopped elsewhere, or bubble is fine
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [activeGroup]);
 
+  // --- MOUSE HANDLERS FOR AUTO-CLOSE ---
+  const handleMouseEnter = () => {
+      if (closeTimerRef.current) {
+          clearTimeout(closeTimerRef.current);
+          closeTimerRef.current = null;
+      }
+  };
+
+  const handleMouseLeave = () => {
+      closeTimerRef.current = setTimeout(() => {
+          setActiveGroup(null);
+      }, 300);
+  };
+
   const handleGroupClick = (e: React.MouseEvent, group: string) => {
-    e.stopPropagation(); // Prevent triggering document click listener immediately
     e.preventDefault();
+    e.stopPropagation();
 
     if (activeGroup === group) {
         setActiveGroup(null);
         return;
     }
 
+    lastOpenTimeRef.current = Date.now();
+
     const rect = e.currentTarget.getBoundingClientRect();
-    // Calculate position: Right of sidebar, aligned with item top
     setMenuStyle({
         top: rect.top,
         left: rect.right + 12, // 12px margin
@@ -88,66 +169,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setActiveGroup(group);
   };
 
-  const handleNavigate = (page: any) => {
+  const handleNavigate = (e: React.MouseEvent, page: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     onNavigate(page);
     setActiveGroup(null);
     if (window.innerWidth < 768) {
       onClose();
     }
   };
-
-  const MenuItem = ({ 
-    active, 
-    onClick, 
-    icon: Icon, 
-    label, 
-    statusColor,
-    hasSubmenu = false,
-    isOpen = false
-  }: { 
-    active: boolean; 
-    onClick: (e: React.MouseEvent) => void; 
-    icon: any; 
-    label: string; 
-    statusColor?: string; 
-    hasSubmenu?: boolean;
-    isOpen?: boolean;
-  }) => (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center justify-between px-4 py-2.5 mb-1 rounded-xl transition-all duration-200 group relative ${
-        active || isOpen
-          ? 'bg-white/10 text-white shadow-sm border border-white/5'
-          : 'text-slate-300 hover:bg-white/5 hover:text-white'
-      }`}
-    >
-      <div className="flex items-center space-x-3">
-        {statusColor ? (
-           <div className={`w-2 h-2 rounded-full ${statusColor} shadow-[0_0_8px_rgba(255,255,255,0.5)]`}></div>
-        ) : (
-           <Icon className={`w-5 h-5 ${active || isOpen ? 'text-teal-300' : 'text-slate-400 group-hover:text-teal-200'}`} />
-        )}
-        <span className={`text-sm ${active || isOpen ? 'font-semibold tracking-wide' : 'font-medium'}`}>{label}</span>
-      </div>
-      {hasSubmenu ? (
-        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'text-white rotate-90' : ''}`} />
-      ) : (
-        active && <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_#2dd4bf]"></div>
-      )}
-    </button>
-  );
-
-  const SubMenuItem = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) => (
-      <button
-        onClick={(e) => { e.preventDefault(); onClick(); }}
-        className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 ${
-            active ? 'text-teal-300 bg-white/10 font-medium' : 'text-slate-300 hover:text-white hover:bg-white/5'
-        }`}
-      >
-          <Icon className={`w-4 h-4 ${active ? 'text-teal-300' : 'text-slate-500'}`} />
-          <span>{label}</span>
-      </button>
-  );
 
   // --- FLOATING MENU RENDERER ---
   const renderFloatingMenu = () => {
@@ -159,42 +190,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
           case 'auto':
               content = (
                   <>
-                      <SubMenuItem active={currentPage === 'auto-payment'} onClick={() => handleNavigate('auto-payment')} icon={Zap} label="Auto Payment" />
-                      <SubMenuItem active={currentPage === 'auto-invoice'} onClick={() => handleNavigate('auto-invoice')} icon={FileInput} label="Auto Invoice" />
+                      <SubMenuItem active={currentPage === 'auto-payment'} onClick={(e) => handleNavigate(e, 'auto-payment')} icon={Zap} label="Auto Payment" />
+                      <SubMenuItem active={currentPage === 'auto-invoice'} onClick={(e) => handleNavigate(e, 'auto-invoice')} icon={FileInput} label="Auto Invoice" />
                   </>
               );
               break;
           case 'deposit':
               content = (
                   <>
-                      <SubMenuItem active={currentPage === 'deposit-line'} onClick={() => handleNavigate('deposit-line')} icon={Building2} label="Hãng Tàu" />
-                      <SubMenuItem active={currentPage === 'deposit-customer'} onClick={() => handleNavigate('deposit-customer')} icon={UserCircle} label="Khách Hàng" />
+                      <SubMenuItem active={currentPage === 'deposit-line'} onClick={(e) => handleNavigate(e, 'deposit-line')} icon={Building2} label="Hãng Tàu" />
+                      <SubMenuItem active={currentPage === 'deposit-customer'} onClick={(e) => handleNavigate(e, 'deposit-customer')} icon={UserCircle} label="Khách Hàng" />
                   </>
               );
               break;
           case 'amis':
               content = (
                   <>
-                      <SubMenuItem active={currentPage === 'amis-thu'} onClick={() => handleNavigate('amis-thu')} icon={FileText} label="Phiếu Thu" />
-                      <SubMenuItem active={currentPage === 'amis-chi'} onClick={() => handleNavigate('amis-chi')} icon={CreditCard} label="Phiếu Chi" />
-                      <SubMenuItem active={currentPage === 'amis-ban'} onClick={() => handleNavigate('amis-ban')} icon={ShoppingCart} label="Phiếu Bán Hàng" />
-                      <SubMenuItem active={currentPage === 'amis-mua'} onClick={() => handleNavigate('amis-mua')} icon={Briefcase} label="Phiếu Mua Hàng" />
+                      <SubMenuItem active={currentPage === 'amis-thu'} onClick={(e) => handleNavigate(e, 'amis-thu')} icon={FileText} label="Phiếu Thu" />
+                      <SubMenuItem active={currentPage === 'amis-chi'} onClick={(e) => handleNavigate(e, 'amis-chi')} icon={CreditCard} label="Phiếu Chi" />
+                      <SubMenuItem active={currentPage === 'amis-ban'} onClick={(e) => handleNavigate(e, 'amis-ban')} icon={ShoppingCart} label="Phiếu Bán Hàng" />
+                      <SubMenuItem active={currentPage === 'amis-mua'} onClick={(e) => handleNavigate(e, 'amis-mua')} icon={Briefcase} label="Phiếu Mua Hàng" />
                   </>
               );
               break;
           case 'bank':
               content = (
                   <>
-                      <SubMenuItem active={currentPage === 'bank-tcb'} onClick={() => handleNavigate('bank-tcb')} icon={Briefcase} label="Techcom Bank" />
-                      <SubMenuItem active={currentPage === 'bank-mb'} onClick={() => handleNavigate('bank-mb')} icon={Coins} label="MB Bank" />
+                      <SubMenuItem active={currentPage === 'bank-tcb'} onClick={(e) => handleNavigate(e, 'bank-tcb')} icon={Briefcase} label="Techcom Bank" />
+                      <SubMenuItem active={currentPage === 'bank-mb'} onClick={(e) => handleNavigate(e, 'bank-mb')} icon={Coins} label="MB Bank" />
                   </>
               );
               break;
           case 'data':
               content = (
                   <>
-                      <SubMenuItem active={currentPage === 'data-lines'} onClick={() => handleNavigate('data-lines')} icon={Ship} label="Hãng Tàu" />
-                      <SubMenuItem active={currentPage === 'data-customers'} onClick={() => handleNavigate('data-customers')} icon={UserCircle} label="Khách Hàng" />
+                      <SubMenuItem active={currentPage === 'data-lines'} onClick={(e) => handleNavigate(e, 'data-lines')} icon={Ship} label="Hãng Tàu" />
+                      <SubMenuItem active={currentPage === 'data-customers'} onClick={(e) => handleNavigate(e, 'data-customers')} icon={UserCircle} label="Khách Hàng" />
                   </>
               );
               break;
@@ -204,9 +235,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       return (
           <div 
+            ref={floatingMenuRef}
             className="fixed z-[60] w-56 bg-slate-800 rounded-xl shadow-2xl border border-white/10 p-2 animate-in fade-in slide-in-from-left-2 duration-200"
             style={menuStyle}
-            onMouseDown={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseEnter={handleMouseEnter} // Keep open when hovering the menu itself
+            onMouseLeave={handleMouseLeave} // Close when leaving the menu
           >
              {content}
           </div>
@@ -226,6 +260,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Sidebar Container */}
       <div 
         ref={sidebarRef}
+        // Attach Mouse Handlers to the Sidebar Container
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         className={`
         fixed z-50 flex flex-col bg-slate-900 shadow-2xl border-r border-white/10 md:border md:border-white/10 transition-transform duration-300 ease-in-out
         w-64 h-full top-0 left-0 
@@ -261,10 +298,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* OVERVIEW SECTION */}
           {canViewOverview && (
             <>
-              <MenuItem active={currentPage === 'reports'} onClick={() => handleNavigate('reports')} icon={LayoutDashboard} label="Dashboard" />
-              <MenuItem active={currentPage === 'profit'} onClick={() => handleNavigate('profit')} icon={BadgeDollarSign} label="Lợi Nhuận" />
-              <MenuItem active={currentPage === 'salary'} onClick={() => handleNavigate('salary')} icon={Coins} label="Quản Lý Lương" />
-              <MenuItem active={currentPage === 'debt'} onClick={() => handleNavigate('debt')} icon={WalletCards} label="Công Nợ" />
+              <MenuItem active={currentPage === 'reports'} onClick={(e) => handleNavigate(e, 'reports')} icon={LayoutDashboard} label="Dashboard" />
+              <MenuItem active={currentPage === 'profit'} onClick={(e) => handleNavigate(e, 'profit')} icon={BadgeDollarSign} label="Lợi Nhuận" />
+              <MenuItem active={currentPage === 'salary'} onClick={(e) => handleNavigate(e, 'salary')} icon={Coins} label="Quản Lý Lương" />
+              <MenuItem active={currentPage === 'debt'} onClick={(e) => handleNavigate(e, 'debt')} icon={WalletCards} label="Công Nợ" />
               
               <MenuItem 
                   active={['auto-payment', 'auto-invoice'].includes(currentPage)}
@@ -280,8 +317,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* OPERATIONS SECTION */}
           {canViewOperations && (
             <>
-              <MenuItem active={currentPage === 'entry'} onClick={() => handleNavigate('entry')} icon={FileInput} label="Nhập Job" statusColor="bg-teal-400" />
-              <MenuItem active={currentPage === 'booking'} onClick={() => handleNavigate('booking')} icon={Container} label="Booking" statusColor="bg-blue-400" />
+              <MenuItem active={currentPage === 'entry'} onClick={(e) => handleNavigate(e, 'entry')} icon={FileInput} label="Nhập Job" statusColor="bg-teal-400" />
+              <MenuItem active={currentPage === 'booking'} onClick={(e) => handleNavigate(e, 'booking')} icon={Container} label="Booking" statusColor="bg-blue-400" />
               
               <MenuItem 
                   active={['deposit-line', 'deposit-customer'].includes(currentPage)}
@@ -294,7 +331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               />
 
               {!isAccount && (
-                <MenuItem active={currentPage === 'lhk'} onClick={() => handleNavigate('lhk')} icon={Briefcase} label="LHK Jobs" />
+                <MenuItem active={currentPage === 'lhk'} onClick={(e) => handleNavigate(e, 'lhk')} icon={Briefcase} label="LHK Jobs" />
               )}
             </>
           )}
@@ -302,10 +339,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* DATA AND PAYMENT SECTION */}
           {canViewDataPayment && (
             <>
-              <MenuItem active={currentPage === 'lookup'} onClick={() => handleNavigate('lookup')} icon={Search} label="Tra cứu" />
-              <MenuItem active={currentPage === 'payment'} onClick={() => handleNavigate('payment')} icon={Landmark} label="Thanh Toán" />
+              <MenuItem active={currentPage === 'lookup'} onClick={(e) => handleNavigate(e, 'lookup')} icon={Search} label="Tra cứu" />
+              <MenuItem active={currentPage === 'payment'} onClick={(e) => handleNavigate(e, 'payment')} icon={Landmark} label="Thanh Toán" />
               {!isAccount && (
-                <MenuItem active={currentPage === 'cvhc'} onClick={() => handleNavigate('cvhc')} icon={FileCheck} label="Nộp CVHC" />
+                <MenuItem active={currentPage === 'cvhc'} onClick={(e) => handleNavigate(e, 'cvhc')} icon={FileCheck} label="Nộp CVHC" />
               )}
             </>
           )}
@@ -333,7 +370,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {canViewRecon && (
-            <MenuItem active={currentPage === 'reconciliation'} onClick={() => handleNavigate('reconciliation')} icon={Scale} label="Đối Chiếu" />
+            <MenuItem active={currentPage === 'reconciliation'} onClick={(e) => handleNavigate(e, 'reconciliation')} icon={Scale} label="Đối Chiếu" />
           )}
 
           {canViewData && (
@@ -348,15 +385,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {canViewToolAI && (
-            <MenuItem active={currentPage === 'tool-ai'} onClick={() => handleNavigate('tool-ai')} icon={Cpu} label="Tool AI" />
+            <MenuItem active={currentPage === 'tool-ai'} onClick={(e) => handleNavigate(e, 'tool-ai')} icon={Cpu} label="Tool AI" />
           )}
 
           {canViewNfc && (
-            <MenuItem active={currentPage === 'nfc'} onClick={() => handleNavigate('nfc')} icon={IdCard} label="NFC Cards" />
+            <MenuItem active={currentPage === 'nfc'} onClick={(e) => handleNavigate(e, 'nfc')} icon={IdCard} label="NFC Cards" />
           )}
 
           {canViewSystem && (
-            <MenuItem active={currentPage === 'system'} onClick={() => handleNavigate('system')} icon={Settings} label="Hệ Thống" />
+            <MenuItem active={currentPage === 'system'} onClick={(e) => handleNavigate(e, 'system')} icon={Settings} label="Hệ Thống" />
           )}
         </nav>
 
