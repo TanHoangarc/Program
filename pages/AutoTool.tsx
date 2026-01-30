@@ -157,24 +157,92 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
 
         let successCount = 0;
         const missingCodes: string[] = [];
+        
+        // Parse amount once
+        const numericAmount = parseFloat(parsedData.amount.replace(/,/g, '')) || 0;
 
         parsedData.jobCodes.forEach(code => {
             const targetJob = jobs.find(j => j.jobCode.toLowerCase().trim() === code.toLowerCase().trim());
             if (targetJob) {
-                // Xử lý hoá đơn riêng biệt cho từng Job
-                let appliedInvoice = parsedData.invoice;
+                let updatedJob = { ...targetJob };
                 
-                // Nếu hoá đơn có định dạng "XXX BL ...", tự động chuyển thành "XXX BL [JobCode]" của chính Job đó
-                if (appliedInvoice && appliedInvoice.startsWith('XXX BL')) {
-                    appliedInvoice = `XXX BL ${targetJob.jobCode}`;
+                // Find Customer by Code or Name
+                const foundCust = customers.find(c => 
+                    (c.code && c.code === parsedData.customerCode) || 
+                    (c.name && c.name === parsedData.companyName)
+                );
+                const custId = foundCust ? foundCust.id : (parsedData.customerCode || '');
+
+                if (receiptType === 'deposit') {
+                    // Update Deposit Info
+                    updatedJob.ngayThuCuoc = parsedData.date;
+                    if (custId) updatedJob.maKhCuocId = custId;
+                    
+                    // Update Amount only if single job to avoid duplicating total across multiple jobs
+                    if (parsedData.jobCodes.length === 1) {
+                        updatedJob.thuCuoc = numericAmount;
+                    }
+                } 
+                else if (receiptType === 'extension') {
+                    // Update Extension Info
+                    let inv = parsedData.invoice || '';
+                    if (inv.startsWith('XXX BL')) inv = `XXX BL ${targetJob.jobCode}`;
+                    
+                    let extensions = [...(targetJob.extensions || [])];
+                    
+                    // Logic: Find existing extension by invoice number, or create new
+                    // If invoice is placeholder XXX BL..., find match.
+                    const existingIdx = extensions.findIndex(e => e.invoice === inv);
+                    
+                    const extAmount = parsedData.jobCodes.length === 1 ? numericAmount : 0;
+
+                    if (existingIdx >= 0) {
+                        // Update existing
+                        extensions[existingIdx] = {
+                            ...extensions[existingIdx],
+                            customerId: custId || extensions[existingIdx].customerId,
+                            invoiceDate: parsedData.date,
+                            // If single job, update total. If multi, preserve existing unless 0.
+                            total: (parsedData.jobCodes.length === 1 && extAmount > 0) ? extAmount : extensions[existingIdx].total
+                        };
+                        // Update net/vat if total changed
+                        if (parsedData.jobCodes.length === 1 && extAmount > 0) {
+                             extensions[existingIdx].net = Math.round(extAmount / 1.08);
+                             extensions[existingIdx].vat = extAmount - extensions[existingIdx].net;
+                        }
+                    } else {
+                        // Add new
+                        extensions.push({
+                            id: Date.now().toString() + Math.random(),
+                            customerId: custId || targetJob.customerId,
+                            invoice: inv || `GH BL ${targetJob.jobCode}`,
+                            invoiceDate: parsedData.date,
+                            total: extAmount,
+                            net: Math.round(extAmount / 1.08),
+                            vat: extAmount - Math.round(extAmount / 1.08),
+                            amisDocNo: '', amisDesc: '', amisAmount: 0 // Init AMIS fields
+                        });
+                    }
+                    updatedJob.extensions = extensions;
+                }
+                else {
+                    // Default: Local Charge
+                    let appliedInvoice = parsedData.invoice;
+                    if (appliedInvoice && appliedInvoice.startsWith('XXX BL')) {
+                        appliedInvoice = `XXX BL ${targetJob.jobCode}`;
+                    }
+                    
+                    updatedJob.localChargeInvoice = appliedInvoice;
+                    updatedJob.localChargeDate = parsedData.date;
+                    updatedJob.bank = 'MB Bank';
+                    
+                    // For Local Charge, we can also update customer if needed
+                    if (receiptType === 'local' && custId) {
+                        updatedJob.customerId = custId;
+                        if (foundCust) updatedJob.customerName = foundCust.name;
+                    }
                 }
 
-                const updatedJob: JobData = {
-                    ...targetJob,
-                    localChargeInvoice: appliedInvoice,
-                    localChargeDate: parsedData.date,
-                    bank: 'MB Bank' 
-                };
                 onUpdateJob(updatedJob);
                 successCount++;
             } else {
