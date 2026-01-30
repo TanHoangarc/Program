@@ -1,10 +1,11 @@
 
 import React, { useState, useRef } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote } from 'lucide-react';
+import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { JobModal } from '../components/JobModal';
+import { GoogleGenAI } from "@google/genai";
 
 interface CVHCPageProps {
   jobs: JobData[];
@@ -21,6 +22,7 @@ interface CVHCRow {
   customerName: string;
   customerId: string;
   amount: number;
+  accountNumber?: string; // New field: Số tài khoản
   jobId?: string; // Link to actual job if found
   previewUrl?: string; // Preview URL for PDF page
 }
@@ -32,12 +34,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 }) => {
   const [mode, setMode] = useState<'single' | 'multi' | 'combined'>('single');
   const [rows, setRows] = useState<CVHCRow[]>([
-    { id: '1', jobCode: '', customerName: '', customerId: '', amount: 0 }
+    { id: '1', jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }
   ]);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [pageCount, setPageCount] = useState<number>(1); // For combined mode
+  const [isScanning, setIsScanning] = useState(false); // For AI Scan
 
   // Modal State
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
@@ -56,7 +59,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 
   const handleModeChange = (newMode: 'single' | 'multi' | 'combined') => {
     setMode(newMode);
-    setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0 }]);
+    setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
     setFile(null);
     setUploadProgress('');
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -92,7 +95,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   };
 
   const addRow = () => {
-    setRows(prev => [...prev, { id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0 }]);
+    setRows(prev => [...prev, { id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
   };
 
   const removeRow = (id: string) => {
@@ -100,7 +103,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       setRows(prev => prev.filter(r => r.id !== id));
     } else {
       // If only 1 row, just clear it
-      setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0 }]);
+      setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
     }
   };
 
@@ -109,7 +112,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       // Generate rows based on count
       const newRows: CVHCRow[] = [];
       for(let i=0; i<count; i++) {
-          newRows.push({ id: `page-${i}`, jobCode: '', customerName: '', customerId: '', amount: 0 });
+          newRows.push({ id: `page-${i}`, jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' });
       }
       setRows(newRows);
   };
@@ -148,6 +151,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                       customerName: '',
                       customerId: '',
                       amount: 0,
+                      accountNumber: '',
                       previewUrl: url // Attach blob URL
                   });
               }
@@ -161,6 +165,114 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           }
       }
     }
+  };
+
+  // --- AI SCAN LOGIC ---
+  const handleAutoScan = async () => {
+      if (mode !== 'combined') return;
+      
+      const rowsToScan = rows.filter(r => r.previewUrl);
+      if (rowsToScan.length === 0) {
+          alert("Không có trang nào để quét (Cần file PDF ở chế độ Tổng Hợp).");
+          return;
+      }
+
+      setIsScanning(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const model = "gemini-3-flash-preview";
+
+      let successCount = 0;
+
+      for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row.previewUrl) continue;
+
+          try {
+              // 1. Fetch Blob
+              const response = await fetch(row.previewUrl);
+              const blob = await response.blob();
+              
+              // 2. Convert to Base64
+              const reader = new FileReader();
+              const base64Promise = new Promise<string>((resolve, reject) => {
+                  reader.onloadend = () => {
+                      const base64String = reader.result as string;
+                      // Remove data URL prefix (e.g. "data:application/pdf;base64,")
+                      const base64Data = base64String.split(',')[1]; 
+                      resolve(base64Data);
+                  };
+                  reader.onerror = reject;
+              });
+              reader.readAsDataURL(blob);
+              const base64Data = await base64Promise;
+
+              // 3. Call AI
+              const result = await ai.models.generateContent({
+                  model: model,
+                  contents: {
+                      parts: [
+                          { inlineData: { mimeType: "application/pdf", data: base64Data } },
+                          { text: "Extract the Bill of Lading Number (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản). If multiple, take the most prominent one. Return ONLY valid JSON: { \"jobCode\": string, \"accountNumber\": string }. If not found, return empty strings." }
+                      ]
+                  }
+              });
+
+              const jsonText = result.text || "";
+              const jsonStr = jsonText.replace(/```json|```/g, '').trim();
+              const data = JSON.parse(jsonStr);
+
+              // 4. Update Row
+              if (data.jobCode || data.accountNumber) {
+                  // If jobCode found, verify against database using existing handleJobCodeChange logic
+                  if (data.jobCode) {
+                      // We can't call handleJobCodeChange directly easily inside loop due to state closure
+                      // So we replicate the logic: find job in 'jobs'
+                      const foundJob = findJob(data.jobCode);
+                      
+                      setRows(currentRows => currentRows.map(r => {
+                          if (r.id === row.id) {
+                              if (foundJob) {
+                                  const custId = foundJob.maKhCuocId || foundJob.customerId;
+                                  const custName = findCustomer(custId)?.name || foundJob.customerName;
+                                  return {
+                                      ...r,
+                                      jobCode: data.jobCode,
+                                      jobId: foundJob.id,
+                                      amount: foundJob.thuCuoc,
+                                      customerId: custId,
+                                      customerName: custName,
+                                      accountNumber: data.accountNumber || r.accountNumber
+                                  };
+                              } else {
+                                  return {
+                                      ...r,
+                                      jobCode: data.jobCode,
+                                      accountNumber: data.accountNumber || r.accountNumber
+                                  };
+                              }
+                          }
+                          return r;
+                      }));
+                  } else {
+                      // Only update account number
+                      setRows(currentRows => currentRows.map(r => 
+                          r.id === row.id ? { ...r, accountNumber: data.accountNumber } : r
+                      ));
+                  }
+                  successCount++;
+              }
+
+          } catch (e) {
+              console.error(`AI Scan Error at page ${i+1}:`, e);
+          }
+      }
+
+      setIsScanning(false);
+      if (successCount > 0) {
+          alert(`Đã quét xong! Cập nhật dữ liệu cho ${successCount} dòng.`);
+      } else {
+          alert("Quét xong nhưng không tìm thấy thông tin phù hợp.");
+      }
   };
 
   const uploadSingleFile = async (fileToUpload: File, fileName: string): Promise<{ url: string, name: string }> => {
@@ -226,11 +338,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               const nextVal = maxNum + 1 + index;
               const docNo = `UNC${String(nextVal).padStart(5, '0')}`;
               
+              const accountDesc = row.accountNumber ? ` - STK: ${row.accountNumber}` : '';
+
               const updatedJob = {
                   ...job,
                   amisDepositRefundDocNo: docNo,
                   amisDepositRefundDate: today,
-                  amisDepositRefundDesc: `Chi hoàn cược BL ${job.jobCode}`,
+                  amisDepositRefundDesc: `Chi hoàn cược BL ${job.jobCode}${accountDesc}`,
                   // Update amount/customer if changed in table
                   thuCuoc: row.amount || job.thuCuoc,
                   maKhCuocId: row.customerId || job.maKhCuocId
@@ -461,21 +575,33 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               </div>
           </div>
 
-          {/* COMBINED MODE: Page Count Input */}
+          {/* COMBINED MODE: Page Count Input & AI SCAN */}
           {mode === 'combined' && (
-              <div className="mb-6 flex items-center space-x-3 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                  <AlertCircle className="w-5 h-5 text-blue-500" />
-                  <label className="font-bold text-slate-700">Số lượng trang PDF (Số Job):</label>
-                  <input 
-                      type="number" 
-                      min="1" 
-                      value={pageCount} 
-                      onChange={(e) => handlePageCountChange(Number(e.target.value))}
-                      className="w-24 px-3 py-2 border border-blue-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                  <span className="text-xs text-slate-500 italic">
-                      (Đã tự động đếm số trang từ file PDF của bạn)
-                  </span>
+              <div className="mb-6 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
+                  <div className="flex items-center space-x-3">
+                      <AlertCircle className="w-5 h-5 text-blue-500" />
+                      <label className="font-bold text-slate-700">Số lượng trang PDF (Số Job):</label>
+                      <input 
+                          type="number" 
+                          min="1" 
+                          value={pageCount} 
+                          onChange={(e) => handlePageCountChange(Number(e.target.value))}
+                          className="w-24 px-3 py-2 border border-blue-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                      <span className="text-xs text-slate-500 italic">
+                          (Đã tự động đếm số trang từ file PDF của bạn)
+                      </span>
+                  </div>
+                  
+                  {/* AI SCAN BUTTON */}
+                  <button 
+                      onClick={handleAutoScan}
+                      disabled={isScanning || !file}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                      {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      AI Tự Điền (Quét Bill & STK)
+                  </button>
               </div>
           )}
 
@@ -490,6 +616,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                           <th className="px-4 py-3 w-64">Số BL (Job Code)</th>
                           <th className="px-4 py-3">Khách hàng (Cược)</th>
                           <th className="px-4 py-3 w-48 text-right">Số tiền cược</th>
+                          {mode === 'combined' && <th className="px-4 py-3 w-48">Số tài khoản</th>}
                           {mode === 'combined' && <th className="px-4 py-3 w-16 text-center">Xem</th>}
                           {(mode === 'multi' || mode === 'single') && <th className="px-4 py-3 w-16 text-center"></th>}
                       </tr>
@@ -544,6 +671,17 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       placeholder="0"
                                   />
                               </td>
+                              {mode === 'combined' && (
+                                  <td className="px-4 py-3">
+                                      <input 
+                                          type="text" 
+                                          value={row.accountNumber || ''}
+                                          onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
+                                          className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+                                          placeholder="STK Ngân hàng"
+                                      />
+                                  </td>
+                              )}
                               {mode === 'combined' && (
                                   <td className="px-4 py-3 text-center">
                                       {row.previewUrl ? (
