@@ -396,54 +396,80 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   // --- AI ANALYSIS HANDLER ---
   const handleAnalyzeInvoice = async () => {
-      if (!localCharge.fileUrl) return;
+      // 1. Determine File URL (Local or Payment Request)
+      let targetUrl = localCharge.fileUrl;
+
+      // If no local file, try to find in Payment Requests
+      if (!targetUrl) {
+          const reqs = getPaymentRequests();
+          const targetBk = normalize(booking.bookingId);
+          const relevant = reqs
+              .filter((r: any) => {
+                  const rBk = normalize(r.booking);
+                  const rType = r.type || 'Local Charge';
+                  return rBk === targetBk && rType === 'Local Charge' && r.invoiceUrl;
+              })
+              .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          
+          if (relevant.length > 0) {
+              targetUrl = relevant[0].invoiceUrl;
+          }
+      }
+
+      if (!targetUrl) {
+          alert("Không tìm thấy file hóa đơn (Đính kèm hoặc Payment Request).");
+          return;
+      }
+
       setIsAnalyzing(true);
       try {
-          // 1. Fetch file as blob
-          const response = await fetch(localCharge.fileUrl);
+          // 2. Fetch file
+          const response = await fetch(targetUrl);
           const blob = await response.blob();
           
-          // 2. Convert to Base64
+          // 3. Convert to Base64
           const reader = new FileReader();
           reader.readAsDataURL(blob);
           await new Promise(resolve => reader.onload = resolve);
           const base64Data = (reader.result as string).split(',')[1];
           
-          // Determine mimeType (Default to PDF if unknown, but handle images)
           const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
 
-          // 3. AI
+          // 4. AI Call
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const model = 'gemini-2.5-flash-latest'; 
+          const model = 'gemini-3-flash-preview'; 
           
           const result = await ai.models.generateContent({
               model: model,
               contents: {
                   parts: [
                       { inlineData: { mimeType, data: base64Data } },
-                      { text: "Extract invoice details in JSON: { invoice: string, date: string (dd/mm/yyyy), net: number, vat: number }. If date not found, use empty string. Net and Vat must be numbers." }
+                      { text: "Extract the Invoice Number, Invoice Date (DD/MM/YYYY), Total Net Amount (pre-tax), and Total VAT Amount. Return ONLY valid JSON: { \"invoice\": string, \"date\": string, \"net\": number, \"vat\": number }. Return 0 or empty string if not found." }
                   ]
               }
           });
 
-          const text = result.response.text;
-          const jsonStr = text.replace(/```json|```/g, '').trim();
+          const jsonText = result.text || "";
+          const jsonStr = jsonText.replace(/```json|```/g, '').trim();
           const data = JSON.parse(jsonStr);
 
           if (data) {
               setLocalCharge(prev => {
-                  const newNet = data.net !== undefined ? data.net : prev.net;
-                  const newVat = data.vat !== undefined ? data.vat : prev.vat;
+                  const newNet = data.net !== undefined ? Number(data.net) : prev.net;
+                  const newVat = data.vat !== undefined ? Number(data.vat) : prev.vat;
+                  // Handle Date: AI returns DD/MM/YYYY, parseDateVN handles that to YYYY-MM-DD
+                  const newDate = data.date ? (parseDateVN(data.date) || prev.date) : prev.date;
+                  
                   return {
                       ...prev,
                       invoice: data.invoice || prev.invoice,
-                      date: (data.date && data.date.includes('/')) ? data.date : prev.date,
+                      date: newDate,
                       net: newNet,
                       vat: newVat,
                       total: newNet + newVat
                   };
               });
-              alert("Đã trích xuất thông tin thành công!");
+              alert(`Đã cập nhật từ hóa đơn!\nSố HĐ: ${data.invoice}\nNgày: ${data.date}\nNet: ${new Intl.NumberFormat('en-US').format(data.net)}\nVAT: ${new Intl.NumberFormat('en-US').format(data.vat)}`);
           }
 
       } catch (error) {
@@ -708,13 +734,13 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-red-600" 
                         rightContent={
                             <div className="flex items-center gap-3">
-                                {/* AI Extraction Button */}
-                                {localCharge.hasInvoice && localCharge.fileUrl && (
+                                {/* AI Extraction Button - MODIFIED CONDITION */}
+                                {localCharge.hasInvoice && (
                                     <button
                                         onClick={handleAnalyzeInvoice}
                                         disabled={isAnalyzing}
                                         className="text-purple-600 p-1.5 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors flex items-center gap-1"
-                                        title="AI Trích xuất thông tin hóa đơn"
+                                        title="AI Trích xuất thông tin hóa đơn (File đính kèm hoặc Payment Request)"
                                     >
                                         {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                                     </button>
