@@ -396,7 +396,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   // --- AI ANALYSIS HANDLER ---
   const handleAnalyzeInvoice = async () => {
-      // 1. Determine File URL (Local or Payment Request)
+      // 1. Determine File URL (Priority: Local Upload > Payment Request)
       let targetUrl = localCharge.fileUrl;
 
       // If no local file, try to find in Payment Requests
@@ -417,7 +417,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       }
 
       if (!targetUrl) {
-          alert("Không tìm thấy file hóa đơn (Đính kèm hoặc Payment Request).");
+          alert("Không tìm thấy file hóa đơn (Vui lòng upload file hoặc tạo Payment Request).");
           return;
       }
 
@@ -435,16 +435,25 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           
           const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
 
-          // 4. AI Call
+          // 4. AI Call with Refined Prompt for Vietnamese Invoice
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const model = 'gemini-3-flash-preview'; 
           
+          const prompt = `Analyze this Vietnamese invoice. Extract the following details:
+          1. Invoice Number (Số hóa đơn, Ký hiệu, Invoice No)
+          2. Invoice Date (Ngày hóa đơn, Ngày tháng năm) formatted as DD/MM/YYYY.
+          3. Total Net Amount (Cộng tiền hàng, Trị giá tính thuế, Net Amount).
+          4. Total VAT Amount (Tiền thuế GTGT, VAT Amount).
+          
+          Return ONLY valid JSON: { "invoice": string, "date": string, "net": number, "vat": number }.
+          If any field is missing, return empty string or 0.`;
+
           const result = await ai.models.generateContent({
               model: model,
               contents: {
                   parts: [
                       { inlineData: { mimeType, data: base64Data } },
-                      { text: "Extract the Invoice Number, Invoice Date (DD/MM/YYYY), Total Net Amount (pre-tax), and Total VAT Amount. Return ONLY valid JSON: { \"invoice\": string, \"date\": string, \"net\": number, \"vat\": number }. Return 0 or empty string if not found." }
+                      { text: prompt }
                   ]
               }
           });
@@ -734,7 +743,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-red-600" 
                         rightContent={
                             <div className="flex items-center gap-3">
-                                {/* AI Extraction Button - MODIFIED CONDITION */}
+                                {/* AI Extraction Button - MODIFIED CONDITION: Always show if "Has Invoice" is checked */}
                                 {localCharge.hasInvoice && (
                                     <button
                                         onClick={handleAnalyzeInvoice}
