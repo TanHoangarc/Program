@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { JobData, Customer, ShippingLine, BookingSummary, BookingCostDetails } from '../types';
-import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight, FileCheck, Upload, Loader2 } from 'lucide-react';
+import { Search, Building2, UserCircle, Filter, X, ChevronLeft, ChevronRight, FileCheck, Upload, Loader2, Sparkles, FolderOpen } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
 import { formatDateVN, getPaginationRange, calculateBookingSummary } from '../utils';
 import { JobModal } from '../components/JobModal';
@@ -42,6 +42,11 @@ export const DepositList: React.FC<DepositListProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [targetJobIdForUpload, setTargetJobIdForUpload] = useState<string | null>(null);
+
+  // AI Auto Upload State
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [isAutoUploading, setIsAutoUploading] = useState(false);
+  const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
   useEffect(() => {
     setCurrentPage(1);
@@ -223,6 +228,73 @@ export const DepositList: React.FC<DepositListProps> = ({
       .sort((a, b) => Number(b.month) - Number(a.month));
   }, [jobs, customers, mode, filterMonth, filterYear, filterEntity, filterStatus]);
 
+  // --- AUTO UPLOAD FOLDER ---
+  const handleAutoUploadFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+
+      setIsAutoUploading(true);
+      let successCount = 0;
+      const fileList = Array.from(files);
+      
+      // Use customerDeposits to target currently filtered/visible jobs that need CVHC
+      // FILTER: Only jobs that are Completed (dateOut) AND missing CVHC file
+      const targetList = customerDeposits.filter(item => item.dateOut && !item.cvhcUrl); 
+
+      for (let i = 0; i < targetList.length; i++) {
+          const item = targetList[i];
+          const searchKey = item.jobCode.trim().toLowerCase();
+          if (!searchKey) continue;
+
+          // Find file containing job code
+          const matchedFile = fileList.find(f => f.name.toLowerCase().includes(searchKey));
+          
+          if (matchedFile) {
+              setAutoUploadProgress(`Đang upload cho Job ${item.jobCode}...`);
+              
+              try {
+                  const safeJobCode = item.jobCode.replace(/[^a-zA-Z0-9-_]/g, '');
+                  const ext = matchedFile.name.split('.').pop();
+                  const fileName = `CVHC_BL_${safeJobCode}_AUTO_${Date.now()}.${ext}`;
+
+                  const formData = new FormData();
+                  formData.append("fileName", fileName);
+                  formData.append("file", matchedFile);
+
+                  const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
+                      headers: { 'Content-Type': 'multipart/form-data' }
+                  });
+
+                  if (res.data && res.data.success) {
+                      let uploadedUrl = res.data.cvhcUrl;
+                      if (uploadedUrl && !uploadedUrl.startsWith('http')) {
+                          uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
+                      }
+
+                      // Find original job to update in the main state
+                      const originalJob = jobs.find(j => j.id === item.id);
+                      if (originalJob) {
+                          const updatedJob = { 
+                              ...originalJob, 
+                              cvhcUrl: uploadedUrl,
+                              cvhcFileName: res.data.fileName || fileName
+                          };
+                          onEditJob(updatedJob);
+                          successCount++;
+                      }
+                  }
+              } catch (err) {
+                  console.error(`Failed to upload for job ${item.jobCode}`, err);
+              }
+          }
+      }
+
+      alert(`Hoàn tất quét thư mục! Đã cập nhật CVHC cho ${successCount} Job.`);
+      setIsAutoUploading(false);
+      setAutoUploadProgress('');
+      if (folderInputRef.current) folderInputRef.current.value = '';
+  };
+
   const currentList = mode === 'line' ? lineDeposits : customerDeposits;
   const totalAmount = currentList.reduce((sum, item) => sum + item.amount, 0);
 
@@ -273,6 +345,13 @@ export const DepositList: React.FC<DepositListProps> = ({
   return (
     <div className="w-full h-full pb-10">
       <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="*/*" />
+      <input 
+          type="file" 
+          ref={folderInputRef} 
+          onChange={handleAutoUploadFolder} 
+          className="hidden" 
+          {...({ webkitdirectory: "", directory: "" } as any)} 
+      />
 
       <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6 px-2">
         <div className="flex items-center space-x-3 text-slate-800">
@@ -296,6 +375,23 @@ export const DepositList: React.FC<DepositListProps> = ({
             </p>
           </div>
         </div>
+
+        {mode === 'customer' && (
+            <div className="flex items-center gap-3">
+                {isAutoUploading ? (
+                    <span className="text-sm font-bold text-indigo-600 animate-pulse flex items-center bg-white px-3 py-2 rounded-lg shadow-sm border border-indigo-100">
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin"/> {autoUploadProgress}
+                    </span>
+                ) : (
+                    <button 
+                        onClick={() => folderInputRef.current?.click()}
+                        className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 transform active:scale-95"
+                    >
+                        <FolderOpen className="w-4 h-4" /> <Sparkles className="w-3 h-3 text-yellow-300" /> AI Auto-Match CVHC
+                    </button>
+                )}
+            </div>
+        )}
       </div>
 
       {/* Filters Bar */}
