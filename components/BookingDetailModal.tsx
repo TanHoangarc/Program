@@ -2,9 +2,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2 } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
+import { GoogleGenAI } from "@google/genai";
 
 interface BookingDetailModalProps {
   booking: BookingSummary;
@@ -201,6 +202,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // AI Analysis State
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   // -----------------------------
   // BALANCING LOGIC (DISTRIBUTION)
   // -----------------------------
@@ -387,6 +391,66 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           }
       } else {
           alert(`Không tìm thấy file hóa đơn trong các yêu cầu thanh toán của Booking "${booking.bookingId}".`);
+      }
+  };
+
+  // --- AI ANALYSIS HANDLER ---
+  const handleAnalyzeInvoice = async () => {
+      if (!localCharge.fileUrl) return;
+      setIsAnalyzing(true);
+      try {
+          // 1. Fetch file as blob
+          const response = await fetch(localCharge.fileUrl);
+          const blob = await response.blob();
+          
+          // 2. Convert to Base64
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          await new Promise(resolve => reader.onload = resolve);
+          const base64Data = (reader.result as string).split(',')[1];
+          
+          // Determine mimeType (Default to PDF if unknown, but handle images)
+          const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
+
+          // 3. AI
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const model = 'gemini-2.5-flash-latest'; 
+          
+          const result = await ai.models.generateContent({
+              model: model,
+              contents: {
+                  parts: [
+                      { inlineData: { mimeType, data: base64Data } },
+                      { text: "Extract invoice details in JSON: { invoice: string, date: string (dd/mm/yyyy), net: number, vat: number }. If date not found, use empty string. Net and Vat must be numbers." }
+                  ]
+              }
+          });
+
+          const text = result.response.text;
+          const jsonStr = text.replace(/```json|```/g, '').trim();
+          const data = JSON.parse(jsonStr);
+
+          if (data) {
+              setLocalCharge(prev => {
+                  const newNet = data.net !== undefined ? data.net : prev.net;
+                  const newVat = data.vat !== undefined ? data.vat : prev.vat;
+                  return {
+                      ...prev,
+                      invoice: data.invoice || prev.invoice,
+                      date: (data.date && data.date.includes('/')) ? data.date : prev.date,
+                      net: newNet,
+                      vat: newVat,
+                      total: newNet + newVat
+                  };
+              });
+              alert("Đã trích xuất thông tin thành công!");
+          }
+
+      } catch (error) {
+          console.error("AI Error", error);
+          alert("Không thể trích xuất thông tin. Vui lòng kiểm tra file hoặc thử lại.");
+      } finally {
+          setIsAnalyzing(false);
       }
   };
 
@@ -644,6 +708,18 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         color="text-red-600" 
                         rightContent={
                             <div className="flex items-center gap-3">
+                                {/* AI Extraction Button */}
+                                {localCharge.hasInvoice && localCharge.fileUrl && (
+                                    <button
+                                        onClick={handleAnalyzeInvoice}
+                                        disabled={isAnalyzing}
+                                        className="text-purple-600 p-1.5 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors flex items-center gap-1"
+                                        title="AI Trích xuất thông tin hóa đơn"
+                                    >
+                                        {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                    </button>
+                                )}
+
                                 {/* SYNC BUTTON */}
                                 {!localCharge.hasInvoice && (
                                     <button 
