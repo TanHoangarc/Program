@@ -108,6 +108,9 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                 result.jobCodes = result.jobCodes.map((c: any) => String(c));
             }
 
+            // FILTER: Only allow job codes containing "KML" (case insensitive)
+            result.jobCodes = result.jobCodes.filter((code: string) => code.toUpperCase().includes('KML'));
+
             // Tự động tính tổng tiền từ các Job tìm thấy nếu AI không trả về hoặc trả về 0
             if (result.jobCodes.length > 0) {
                 const calculatedTotal = result.jobCodes.reduce((sum: number, code: string) => {
@@ -386,7 +389,7 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                                         {code}
                                                     </span>
                                                 ))}
-                                                {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job</span>}
+                                                {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job (Dạng KML...)</span>}
                                             </div>
                                         </div>
                                     )}
