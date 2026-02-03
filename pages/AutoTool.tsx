@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Sparkles, Zap, FileInput, Send, CheckCircle, AlertTriangle, Loader2, RefreshCw, Trash2, Save, FileText, Search, CreditCard, Anchor, Repeat, Wallet, Layers, RotateCcw } from 'lucide-react';
+import { Sparkles, Zap, FileInput, Send, CheckCircle, AlertTriangle, Loader2, RefreshCw, Trash2, Save, FileText, Search, CreditCard, Anchor, Repeat, Wallet, Layers, RotateCcw, Plus } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { JobData, Customer } from '../types';
 import { generateNextDocNo, formatDateVN, parseDateVN } from '../utils';
+import { CustomerModal } from '../components/CustomerModal';
 
 interface AutoToolProps {
     mode: 'payment' | 'invoice';
@@ -12,6 +13,7 @@ interface AutoToolProps {
     onUpdateJob: (job: JobData) => void;
     onAddCustomReceipt?: (receipt: any) => void;
     customReceipts?: any[];
+    onAddCustomer?: (customer: Customer) => void; // Added prop
 }
 
 interface ParsedData {
@@ -25,12 +27,15 @@ interface ParsedData {
 
 type ReceiptType = 'local' | 'deposit' | 'extension' | 'other';
 
-export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpdateJob, onAddCustomReceipt, customReceipts = [] }) => {
+export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpdateJob, onAddCustomReceipt, customReceipts = [], onAddCustomer }) => {
     const [rawInput, setRawInput] = useState('');
     const [isParsing, setIsParsing] = useState(false);
     const [parsedData, setParsedData] = useState<ParsedData | null>(null);
     const [isApplying, setIsApplying] = useState(false);
     const [receiptType, setReceiptType] = useState<ReceiptType>('local');
+    
+    // State for New Customer Modal
+    const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     
     // State riêng để hiển thị ngày dạng dd/mm/yyyy
     const [dateInput, setDateInput] = useState('');
@@ -50,6 +55,20 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
         });
         return list;
     }, [customReceipts, jobs]);
+
+    // Check if parsed customer exists in database
+    const existingCustomer = useMemo(() => {
+        if (!parsedData?.customerCode) return null;
+        const code = parsedData.customerCode.trim().toLowerCase();
+        return customers.find(c => c.code.toLowerCase() === code || c.id === code);
+    }, [parsedData?.customerCode, customers]);
+
+    // Update Company Name if existing customer found
+    useEffect(() => {
+        if (existingCustomer && parsedData) {
+            setParsedData(prev => prev ? ({ ...prev, companyName: existingCustomer.name }) : null);
+        }
+    }, [existingCustomer]);
 
     // Cập nhật dateInput khi có kết quả phân tích mới
     useEffect(() => {
@@ -108,8 +127,11 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                 result.jobCodes = result.jobCodes.map((c: any) => String(c));
             }
 
-            // FILTER: Only allow job codes containing "KML" (case insensitive)
-            result.jobCodes = result.jobCodes.filter((code: string) => code.toUpperCase().includes('KML'));
+            // FILTER: Only allow job codes containing "KML" AND exactly 14 characters
+            result.jobCodes = result.jobCodes.filter((code: string) => {
+                const c = code.toUpperCase().trim();
+                return c.includes('KML') && c.length === 14;
+            });
 
             // Tự động tính tổng tiền từ các Job tìm thấy nếu AI không trả về hoặc trả về 0
             if (result.jobCodes.length > 0) {
@@ -152,6 +174,20 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
         if (!parsedData) return;
         const defaultInv = `XXX BL ${parsedData.jobCodes.join('+')}`;
         setParsedData({ ...parsedData, invoice: defaultInv });
+    };
+
+    const handleSaveNewCustomer = (newCustomer: Customer) => {
+        if (onAddCustomer) {
+            onAddCustomer(newCustomer);
+            if (parsedData) {
+                setParsedData({ 
+                    ...parsedData, 
+                    customerCode: newCustomer.code, 
+                    companyName: newCustomer.name 
+                });
+            }
+        }
+        setIsCustomerModalOpen(false);
     };
 
     const handleUpdateToJob = () => {
@@ -389,7 +425,7 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                                         {code}
                                                     </span>
                                                 ))}
-                                                {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job (Dạng KML...)</span>}
+                                                {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job (KML... 14 ký tự)</span>}
                                             </div>
                                         </div>
                                     )}
@@ -397,18 +433,30 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                                             <label className="text-[10px] font-bold text-slate-400 block mb-1">MÃ KH (HỆ THỐNG)</label>
-                                            <input 
-                                                value={parsedData.customerCode} 
-                                                onChange={e => setParsedData({...parsedData, customerCode: e.target.value})}
-                                                className="w-full bg-transparent font-bold text-orange-700 outline-none"
-                                            />
+                                            <div className="flex items-center gap-1">
+                                                <input 
+                                                    value={parsedData.customerCode} 
+                                                    onChange={e => setParsedData({...parsedData, customerCode: e.target.value})}
+                                                    className="w-full bg-transparent font-bold text-orange-700 outline-none"
+                                                />
+                                                {!existingCustomer && (
+                                                    <button 
+                                                        onClick={() => setIsCustomerModalOpen(true)}
+                                                        className="p-1 text-blue-600 bg-blue-100 rounded hover:bg-blue-200"
+                                                        title="Thêm khách hàng mới"
+                                                    >
+                                                        <Plus size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                            <label className="text-[10px] font-bold text-slate-400 block mb-1">CÔNG TY</label>
+                                        <div className={`p-3 rounded-xl border ${existingCustomer ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-100'}`}>
+                                            <label className="text-[10px] font-bold text-slate-400 block mb-1">CÔNG TY {existingCustomer && <span className="text-green-600">(Đã khớp)</span>}</label>
                                             <input 
                                                 value={parsedData.companyName} 
                                                 onChange={e => setParsedData({...parsedData, companyName: e.target.value})}
-                                                className="w-full bg-transparent font-bold text-slate-700 outline-none truncate"
+                                                readOnly={!!existingCustomer}
+                                                className={`w-full bg-transparent font-bold outline-none truncate ${existingCustomer ? 'text-green-800' : 'text-slate-700'}`}
                                             />
                                         </div>
                                     </div>
@@ -506,6 +554,14 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                     </div>
                 </div>
             </div>
+
+            {/* Modal for adding new customer */}
+            <CustomerModal 
+                isOpen={isCustomerModalOpen} 
+                onClose={() => setIsCustomerModalOpen(false)} 
+                onSave={handleSaveNewCustomer} 
+                initialData={parsedData ? { id: '', code: parsedData.customerCode, name: parsedData.companyName, mst: '' } : null}
+            />
         </div>
     );
 };
