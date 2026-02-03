@@ -127,14 +127,18 @@ const AttachmentRow = ({
     fileName, 
     onUpload, 
     onDelete, 
-    isUploading 
+    isUploading,
+    onAnalyze,
+    isAnalyzing
 }: { 
     hasInvoice?: boolean, 
     fileUrl?: string, 
     fileName?: string, 
     onUpload: () => void, 
     onDelete: () => void,
-    isUploading: boolean
+    isUploading: boolean,
+    onAnalyze?: () => void,
+    isAnalyzing?: boolean
 }) => {
     if (hasInvoice === false) return null; // Don't show if "Chưa HĐ"
 
@@ -151,6 +155,18 @@ const AttachmentRow = ({
                 )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
+                {fileUrl && onAnalyze && (
+                    <button
+                        type="button"
+                        onClick={onAnalyze}
+                        disabled={isAnalyzing}
+                        className="text-[10px] bg-purple-50 border border-purple-200 px-2 py-0.5 rounded hover:bg-purple-100 text-purple-600 flex items-center transition-colors disabled:opacity-50"
+                        title="AI tự động đọc hóa đơn"
+                    >
+                        {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                        AI Read
+                    </button>
+                )}
                 {!fileUrl && (
                     <button 
                         type="button"
@@ -159,7 +175,7 @@ const AttachmentRow = ({
                         className="text-[10px] bg-white border border-slate-300 px-2 py-0.5 rounded hover:bg-blue-50 text-slate-600 flex items-center transition-colors disabled:opacity-50"
                     >
                         {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3 mr-1" />}
-                        {isUploading ? "Uploading..." : "Đính kèm"}
+                        {isUploading ? "..." : "Đính kèm"}
                     </button>
                 )}
                 {fileUrl && (
@@ -203,7 +219,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // AI Analysis State
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false); // For Main LC
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null); // For Specific Rows (Extension/Additional)
 
   // -----------------------------
   // BALANCING LOGIC (DISTRIBUTION)
@@ -369,6 +386,36 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       }
   };
 
+  // SYNC FROM PAYMENT REQUEST (EXTENSION)
+  const handleSyncExtension = () => {
+      const reqs = getPaymentRequests();
+      const targetBk = normalize(booking.bookingId);
+
+      // Filter for 'Demurrage' type which represents Extension/Gia Hạn
+      const relevant = reqs.filter((r: any) => {
+          const rBk = normalize(r.booking);
+          return rBk === targetBk && r.type === 'Demurrage';
+      });
+
+      if (relevant.length > 0) {
+          const newExtensions = relevant.map((r: any) => ({
+              id: Date.now().toString() + Math.random(),
+              invoice: '',
+              date: r.completedAt ? r.completedAt.split('T')[0] : new Date().toISOString().split('T')[0],
+              net: Math.round((r.amount || 0) / 1.08),
+              vat: (r.amount || 0) - Math.round((r.amount || 0) / 1.08),
+              total: r.amount || 0,
+              fileUrl: r.invoiceUrl,
+              fileName: r.invoiceFileName
+          }));
+          
+          setExtensionCosts(newExtensions);
+          alert(`Đã đồng bộ ${relevant.length} khoản thanh toán gia hạn từ Payment Requests.`);
+      } else {
+          alert("Không tìm thấy yêu cầu thanh toán Gia Hạn (Demurrage) nào cho Booking này.");
+      }
+  };
+
   // VIEW INVOICE FROM PAYMENT REQUEST
   const handleViewPaymentInvoice = () => {
       const reqs = getPaymentRequests();
@@ -423,19 +470,14 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
       setIsAnalyzing(true);
       try {
-          // 2. Fetch file
           const response = await fetch(targetUrl);
           const blob = await response.blob();
-          
-          // 3. Convert to Base64
           const reader = new FileReader();
           reader.readAsDataURL(blob);
           await new Promise(resolve => reader.onload = resolve);
           const base64Data = (reader.result as string).split(',')[1];
-          
           const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
 
-          // 4. AI Call with Refined Prompt for Vietnamese Invoice
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const model = 'gemini-3-flash-preview'; 
           
@@ -466,7 +508,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
               setLocalCharge(prev => {
                   const newNet = data.net !== undefined ? Number(data.net) : prev.net;
                   const newVat = data.vat !== undefined ? Number(data.vat) : prev.vat;
-                  // Handle Date: AI returns DD/MM/YYYY, parseDateVN handles that to YYYY-MM-DD
                   const newDate = data.date ? (parseDateVN(data.date) || prev.date) : prev.date;
                   
                   return {
@@ -486,6 +527,66 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           alert("Không thể trích xuất thông tin. Vui lòng kiểm tra file hoặc thử lại.");
       } finally {
           setIsAnalyzing(false);
+      }
+  };
+
+  // --- AI ANALYSIS FOR EXTENSION ROW ---
+  const handleAnalyzeExtension = async (id: string) => {
+      const extItem = extensionCosts.find(e => e.id === id);
+      if (!extItem || !extItem.fileUrl) {
+          alert("Vui lòng đính kèm file hóa đơn cho dòng này trước khi phân tích.");
+          return;
+      }
+
+      setAnalyzingId(id);
+      try {
+          const response = await fetch(extItem.fileUrl);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          await new Promise(resolve => reader.onload = resolve);
+          const base64Data = (reader.result as string).split(',')[1];
+          const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
+
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const model = 'gemini-3-flash-preview'; 
+          
+          const prompt = `Analyze this Vietnamese invoice (Gia Hạn / Extension). Extract:
+          1. Invoice Number (Số hóa đơn)
+          2. Invoice Date (Ngày hóa đơn) formatted as DD/MM/YYYY.
+          3. Total Net Amount (Tiền hàng / Net).
+          4. Total VAT Amount (Tiền thuế / VAT).
+          
+          Return ONLY valid JSON: { "invoice": string, "date": string, "net": number, "vat": number }.`;
+
+          const result = await ai.models.generateContent({
+              model: model,
+              contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }
+          });
+
+          const jsonText = result.text || "";
+          const jsonStr = jsonText.replace(/```json|```/g, '').trim();
+          const data = JSON.parse(jsonStr);
+
+          if (data) {
+              const newNet = data.net !== undefined ? Number(data.net) : extItem.net;
+              const newVat = data.vat !== undefined ? Number(data.vat) : extItem.vat;
+              const newTotal = newNet + newVat;
+              const newDate = data.date ? (parseDateVN(data.date) || extItem.date) : extItem.date;
+
+              handleUpdateExtensionCost(id, 'invoice', data.invoice || extItem.invoice);
+              handleUpdateExtensionCost(id, 'date', newDate);
+              handleUpdateExtensionCost(id, 'net', newNet);
+              handleUpdateExtensionCost(id, 'vat', newVat);
+              // Note: Total updates automatically inside handleUpdateExtensionCost based on net/vat change
+              
+              alert(`Đã cập nhật dòng gia hạn!\nHĐ: ${data.invoice}\nTiền: ${new Intl.NumberFormat('en-US').format(newTotal)}`);
+          }
+      } catch (error) {
+          console.error("AI Ext Error", error);
+          alert("Không thể phân tích hóa đơn gia hạn này.");
+      } finally {
+          setAnalyzingId(null);
       }
   };
 
@@ -845,7 +946,18 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         icon={Copy} 
                         title="Gia Hạn" 
                         color="text-orange-600" 
-                        rightContent={<button onClick={handleAddExtensionCost} className="text-[10px] bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-100 hover:bg-orange-100 flex items-center"><Plus className="w-3 h-3 mr-1"/>Thêm</button>}
+                        rightContent={
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={handleSyncExtension}
+                                    className="text-orange-600 p-1.5 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors"
+                                    title="Đồng bộ Gia Hạn từ Payment Requests (Type: Demurrage)"
+                                >
+                                    <RefreshCw className="w-4 h-4" />
+                                </button>
+                                <button onClick={handleAddExtensionCost} className="text-[10px] bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-100 hover:bg-orange-100 flex items-center"><Plus className="w-3 h-3 mr-1"/>Thêm</button>
+                            </div>
+                        }
                     />
                     <div className="space-y-2">
                         {extensionCosts.map(ext => (
@@ -854,7 +966,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                     <div className="col-span-3"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white" /></div>
                                     <div className="col-span-3"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7" /></div>
                                     <div className="col-span-3"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} className="h-7 bg-white" /></div>
-                                    <div className="col-span-3"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} className="h-7 bg-white" /></div>
+                                    <div className="col-span-2"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} className="h-7 bg-white" /></div>
                                     <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
                                 </div>
                                 
@@ -866,6 +978,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                     onUpload={() => handleUploadClick({ type: 'EXTENSION', id: ext.id })}
                                     onDelete={() => handleDeleteFile({ type: 'EXTENSION', id: ext.id })}
                                     isUploading={isUploading && uploadTarget?.type === 'EXTENSION' && uploadTarget?.id === ext.id}
+                                    onAnalyze={() => handleAnalyzeExtension(ext.id)}
+                                    isAnalyzing={analyzingId === ext.id}
                                 />
                             </div>
                         ))}

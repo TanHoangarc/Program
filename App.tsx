@@ -352,6 +352,12 @@ const App: React.FC = () => {
               amisLcDesc: item.desc,
               bank: 'TCB Bank'
           });
+      } else {
+          // If not a job, check custom receipts (for TCB mixed items)
+          const receiptIndex = customReceipts.findIndex(r => r.id === item.id);
+          if (receiptIndex !== -1) {
+              setCustomReceipts(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r));
+          }
       }
   };
   const handleBankTCBDelete = (id: string) => {
@@ -362,16 +368,24 @@ const App: React.FC = () => {
           } else {
               handleEditJob({ ...job, bank: '' });
           }
+      } else {
+          // If not a job, delete from custom receipts
+          setCustomReceipts(prev => prev.filter(r => r.id !== id));
       }
   };
 
   const handleBankMBAdd = (item: any) => {
+      let desc = item.desc || '';
+      // Automatically append (LH MB) if missing to ensure it matches the filter
+      if (!desc.includes('(LH MB)')) {
+          desc = `${desc} (LH MB)`.trim();
+      }
       const newReceipt = {
           id: item.id,
           date: item.date,
           amount: item.amount,
           invoice: item.invoice,
-          desc: item.desc,
+          desc: desc,
           docNo: '', 
           type: 'other'
       };
@@ -1065,6 +1079,7 @@ const App: React.FC = () => {
                     customReceipts={customReceipts}
                     onUpdateJob={handleEditJob}
                     onAddCustomReceipt={(r) => setCustomReceipts([...customReceipts, r])}
+                    onAddCustomer={(c) => setCustomers([...customers, c])}
                 />
             )}
 
@@ -1112,19 +1127,45 @@ const App: React.FC = () => {
             {currentPage === 'bank-tcb' && (
                 <BankPage 
                     mode="tcb"
-                    data={jobs.filter(j => {
-                        const bank = (j.bank || '').toUpperCase();
-                        return bank.includes('TCB') || bank.includes('TECHCOM');
-                    }).map(j => ({
-                        id: j.id, 
-                        originalId: j.id,
-                        date: j.localChargeDate || '',
-                        amount: j.localChargeTotal || 0,
-                        invoice: j.localChargeInvoice || '',
-                        desc: j.amisLcDesc || j.customerName || '',
-                        jobMonth: j.month,
-                        jobYear: j.year
-                    }))}
+                    data={[
+                        ...jobs.filter(j => {
+                            const bank = (j.bank || '').toUpperCase();
+                            return bank.includes('TCB') || bank.includes('TECHCOM');
+                        }).map(j => ({
+                            id: j.id, 
+                            originalId: j.id,
+                            date: j.localChargeDate || '',
+                            amount: j.localChargeTotal || 0,
+                            invoice: j.localChargeInvoice || '',
+                            desc: j.amisLcDesc || j.customerName || '',
+                            jobMonth: j.month,
+                            jobYear: j.year
+                        })),
+                        ...customReceipts.filter(r => {
+                            // Exclude explicit MB receipts
+                            if (r.desc && r.desc.includes('(LH MB)')) return false;
+                            
+                            // Exclude Auto Tool receipts (unless type is 'other')
+                            if (r.id.startsWith('auto-rcpt-') && r.type !== 'other') return false;
+                            
+                            // Exclude Deposit type receipts
+                            if (r.type === 'deposit') return false;
+
+                            // NEW: Exclude text-based deposits (often "Thu Khác" from Auto Tool intended for MB)
+                            const descUpper = (r.desc || '').toUpperCase();
+                            if (descUpper.includes('CƯỢC') || descUpper.includes('DEPOSIT')) return false;
+
+                            return true;
+                        }).map(r => ({
+                            id: r.id,
+                            originalId: r.id,
+                            date: r.date,
+                            amount: r.amount,
+                            invoice: r.invoice || '',
+                            desc: r.desc || '',
+                            type: 'other'
+                        }))
+                    ]}
                     onAdd={handleBankTCBAdd}
                     onEdit={handleBankTCBEdit}
                     onDelete={handleBankTCBDelete}
@@ -1134,7 +1175,9 @@ const App: React.FC = () => {
             {currentPage === 'bank-mb' && (
                 <BankPage 
                     mode="mb"
-                    data={customReceipts.map(r => ({
+                    data={customReceipts
+                        .filter(r => r.desc && r.desc.includes('(LH MB)'))
+                        .map(r => ({
                         id: r.id,
                         originalId: r.id,
                         date: r.date,
