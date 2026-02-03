@@ -13,7 +13,7 @@ interface AutoToolProps {
     onUpdateJob: (job: JobData) => void;
     onAddCustomReceipt?: (receipt: any) => void;
     customReceipts?: any[];
-    onAddCustomer?: (customer: Customer) => void; // Added prop
+    onAddCustomer?: (customer: Customer) => void;
 }
 
 interface ParsedData {
@@ -60,15 +60,16 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
     const existingCustomer = useMemo(() => {
         if (!parsedData?.customerCode) return null;
         const code = parsedData.customerCode.trim().toLowerCase();
+        // Check exact match on Code or ID
         return customers.find(c => c.code.toLowerCase() === code || c.id === code);
     }, [parsedData?.customerCode, customers]);
 
-    // Update Company Name if existing customer found
+    // Update Company Name automatically if existing customer found
     useEffect(() => {
         if (existingCustomer && parsedData) {
             setParsedData(prev => prev ? ({ ...prev, companyName: existingCustomer.name }) : null);
         }
-    }, [existingCustomer]);
+    }, [existingCustomer]); 
 
     // Cập nhật dateInput khi có kết quả phân tích mới
     useEffect(() => {
@@ -127,11 +128,13 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                 result.jobCodes = result.jobCodes.map((c: any) => String(c));
             }
 
-            // FILTER: Only allow job codes containing "KML" AND exactly 14 characters
-            result.jobCodes = result.jobCodes.filter((code: string) => {
-                const c = code.toUpperCase().trim();
-                return c.includes('KML') && c.length === 14;
-            });
+            // CLEAN & FILTER JOB CODES
+            // 1. Remove all spaces
+            // 2. Must contain KML
+            // 3. Length must be around 13-16 chars (e.g. KMLSHA0122009 is 13)
+            result.jobCodes = result.jobCodes
+                .map((code: string) => code.toUpperCase().replace(/\s+/g, '').trim())
+                .filter((code: string) => code.includes('KML') && code.length >= 13 && code.length <= 16);
 
             // Tự động tính tổng tiền từ các Job tìm thấy nếu AI không trả về hoặc trả về 0
             if (result.jobCodes.length > 0) {
@@ -273,7 +276,7 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                     
                     updatedJob.localChargeInvoice = appliedInvoice;
                     updatedJob.localChargeDate = parsedData.date;
-                    updatedJob.bank = 'MB Bank';
+                    updatedJob.bank = 'MB Bank'; // Default Bank for Auto Tool
                     
                     // For Local Charge, we can also update customer if needed
                     if (receiptType === 'local' && custId) {
@@ -425,7 +428,7 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                                         {code}
                                                     </span>
                                                 ))}
-                                                {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job (KML... 14 ký tự)</span>}
+                                                {parsedData.jobCodes.length === 0 && <span className="text-xs text-slate-400 italic">Không tìm thấy mã Job (KML... 13-16 ký tự)</span>}
                                             </div>
                                         </div>
                                     )}
@@ -435,10 +438,18 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                             <label className="text-[10px] font-bold text-slate-400 block mb-1">MÃ KH (HỆ THỐNG)</label>
                                             <div className="flex items-center gap-1">
                                                 <input 
+                                                    list="customer-list"
                                                     value={parsedData.customerCode} 
                                                     onChange={e => setParsedData({...parsedData, customerCode: e.target.value})}
                                                     className="w-full bg-transparent font-bold text-orange-700 outline-none"
+                                                    placeholder="Nhập mã hoặc chọn..."
                                                 />
+                                                <datalist id="customer-list">
+                                                    {customers.map(c => (
+                                                        <option key={c.id} value={c.code}>{c.name}</option>
+                                                    ))}
+                                                </datalist>
+
                                                 {!existingCustomer && (
                                                     <button 
                                                         onClick={() => setIsCustomerModalOpen(true)}
@@ -455,7 +466,7 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
                                             <input 
                                                 value={parsedData.companyName} 
                                                 onChange={e => setParsedData({...parsedData, companyName: e.target.value})}
-                                                readOnly={!!existingCustomer}
+                                                readOnly={!!existingCustomer} // Locked if matches system customer
                                                 className={`w-full bg-transparent font-bold outline-none truncate ${existingCustomer ? 'text-green-800' : 'text-slate-700'}`}
                                             />
                                         </div>
