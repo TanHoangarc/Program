@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Layers, HandCoins, Lock } from 'lucide-react';
@@ -626,7 +627,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setSearchJobCode('');
       
       if (mode === 'extension') {
-          const newSet = new Set(selectedMergedExtIds);
+          const newSet = new Set<string>(selectedMergedExtIds); // FIXED
           (found.extensions || []).forEach(e => { if (!e.amisDocNo) newSet.add(e.id); });
           setSelectedMergedExtIds(newSet);
           // Pass current MAIN Invoice state
@@ -645,7 +646,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setAddedJobs(newAddedJobs);
       
       if (mode === 'extension') {
-          const newSet = new Set(selectedMergedExtIds);
+          const newSet = new Set<string>(selectedMergedExtIds); // FIXED
           if (jobToRemove?.extensions) jobToRemove.extensions.forEach(e => newSet.delete(e.id));
           setSelectedMergedExtIds(newSet);
           recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
@@ -657,7 +658,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const handleToggleMergedExtension = (extId: string, isChecked: boolean) => {
-      const newSet = new Set(selectedMergedExtIds);
+      const newSet = new Set<string>(selectedMergedExtIds); // FIXED
       if (isChecked) newSet.add(extId); else newSet.delete(extId);
       setSelectedMergedExtIds(newSet);
       recalculateMerge(mainExtensionInvoice, addedJobs, newSet);

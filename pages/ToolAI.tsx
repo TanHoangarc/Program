@@ -888,7 +888,7 @@ const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any 
         if (e.target.files && e.target.files.length > 0) {
             setIsAdding(true);
             try {
-                const files = Array.from(e.target.files);
+                const files: File[] = Array.from(e.target.files); // FIXED
                 
                 // Upload each file to server
                 for (const file of files) {

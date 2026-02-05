@@ -1026,7 +1026,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                     onClick={() => {
                         const nextDocNo = generateNextDocNo(jobs, 'NTTK', 5, customDocNos);
                         const dummyJob = { 
-                            ...INITIAL_JOB, id: `EXT-${Date.now()}`, jobCode: 'THU-KHAC', localChargeDate: new Date().toISOString().split('T')[0], amisLcDocNo: nextDocNo, amisLcDesc: 'Thu tiền khác' 
+                            ...INITIAL_JOB, id: `rcpt-${Date.now()}`, jobCode: 'THU-KHAC', localChargeDate: new Date().toISOString().split('T')[0], amisLcDocNo: nextDocNo, amisLcDesc: 'Thu tiền khác' 
                         };
                         setQuickReceiveJob(dummyJob);
                         setQuickReceiveMode('other');
@@ -1103,7 +1103,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               isOpen={isQuickReceiveOpen}
               onClose={() => setIsQuickReceiveOpen(false)}
               onSave={(updatedJob) => {
-                  if (onUpdateCustomReceipts && (updatedJob.id.startsWith('auto-rcpt') || updatedJob.id.startsWith('rcpt'))) {
+                  if (onUpdateCustomReceipts && (updatedJob.id.startsWith('auto-rcpt') || updatedJob.id.startsWith('rcpt') || quickReceiveMode === 'other')) {
                       const foundCust = customers.find(c => c.id === updatedJob.customerId);
                       const finalObjCode = foundCust ? foundCust.code : updatedJob.customerId;
                       const originalReceipt = customReceipts.find(r => r.id === updatedJob.id);

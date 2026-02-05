@@ -235,7 +235,7 @@ export const DepositList: React.FC<DepositListProps> = ({
 
       setIsAutoUploading(true);
       let successCount = 0;
-      const fileList = Array.from(files);
+      const fileList: File[] = Array.from(files);
       
       // Use customerDeposits to target currently filtered/visible jobs that need CVHC
       // FILTER: Only jobs that are Completed (dateOut) AND missing CVHC file
