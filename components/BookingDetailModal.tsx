@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
@@ -13,6 +13,7 @@ interface BookingDetailModalProps {
   onSave: (data: BookingCostDetails, shouldClose?: boolean) => void;
   zIndex?: string;
   onViewJob?: (jobId: string) => void;
+  onViewPayment?: (docNo: string, type: 'local' | 'deposit' | 'extension') => void;
 }
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
@@ -193,7 +194,7 @@ const AttachmentRow = ({
     );
 };
 
-export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, onViewJob, zIndex }) => {
+export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onSave, onViewJob, zIndex, onViewPayment }) => {
 
   const [localCharge, setLocalCharge] = useState({
     ...booking.costDetails.localCharge,
@@ -737,6 +738,44 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   const formatMoney = (v: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(v);
 
+  // --- EXTRACT PAYMENT DOCS FOR HEADER ---
+  const paymentDocs = useMemo(() => {
+      const docs: { type: string, docNo: string, label: string }[] = [];
+      const jobs = booking.jobs;
+      if (!jobs || jobs.length === 0) return docs;
+
+      // Local Charge Payment Doc (Assume Merged Group, check first job)
+      if (jobs[0].amisPaymentDocNo) {
+          docs.push({ type: 'local', docNo: jobs[0].amisPaymentDocNo, label: 'LC' });
+      }
+      
+      // Deposit Payment Doc (Assume Merged Group)
+      if (jobs[0].amisDepositOutDocNo) {
+          docs.push({ type: 'deposit', docNo: jobs[0].amisDepositOutDocNo, label: 'Cược' });
+      }
+
+      // Extension Payment Docs
+      const extDocsSet = new Set<string>();
+      
+      // Check from Cost Details first (More accurate for extensions)
+      booking.costDetails.extensionCosts.forEach(ext => {
+          if (ext.amisDocNo && !extDocsSet.has(ext.amisDocNo)) {
+              extDocsSet.add(ext.amisDocNo);
+              docs.push({ type: 'extension', docNo: ext.amisDocNo, label: 'GH' });
+          }
+      });
+
+      // Fallback check legacy fields if missing
+      jobs.forEach(j => {
+          if (j.amisExtensionPaymentDocNo && !extDocsSet.has(j.amisExtensionPaymentDocNo)) {
+              extDocsSet.add(j.amisExtensionPaymentDocNo);
+              docs.push({ type: 'extension', docNo: j.amisExtensionPaymentDocNo, label: 'GH' });
+          }
+      });
+
+      return docs;
+  }, [booking]);
+
   return createPortal(
     <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${zIndex || 'z-[100]'}`}>
       {/* Hidden File Input used by all attachment rows */}
@@ -746,17 +785,35 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
         {/* ================= HEADER ================= */}
         <div className="px-5 py-3 border-b border-slate-200/60 flex justify-between items-center bg-white/50 shrink-0">
-          <div className="flex items-center gap-4">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center">
-              Booking <span className="ml-2 text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-base border border-blue-100 font-mono">
-                {booking.bookingId}
-              </span>
-            </h2>
-            <div className="h-4 w-px bg-slate-300"></div>
-            <div className="flex space-x-3 text-xs font-medium text-slate-500">
-              <span className="flex items-center"><Ship className="w-3.5 h-3.5 mr-1" /> {booking.line}</span>
-              <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1" /> Tháng {booking.month}</span>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-4">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center">
+                Booking <span className="ml-2 text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-base border border-blue-100 font-mono">
+                    {booking.bookingId}
+                </span>
+                </h2>
+                <div className="h-4 w-px bg-slate-300"></div>
+                <div className="flex space-x-3 text-xs font-medium text-slate-500">
+                <span className="flex items-center"><Ship className="w-3.5 h-3.5 mr-1" /> {booking.line}</span>
+                <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1" /> Tháng {booking.month}</span>
+                </div>
             </div>
+            
+            {/* Payment Doc Badges */}
+            {paymentDocs.length > 0 && (
+                <div className="flex gap-2">
+                    {paymentDocs.map((doc, idx) => (
+                        <button 
+                            key={idx}
+                            onClick={() => onViewPayment && onViewPayment(doc.docNo, doc.type as any)}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center gap-1 transition-colors"
+                            title="Click để xem phiếu chi"
+                        >
+                            <CreditCard className="w-3 h-3" /> {doc.label}: {doc.docNo}
+                        </button>
+                    ))}
+                </div>
+            )}
           </div>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-red-500 transition-all">
             <X className="w-5 h-5" />

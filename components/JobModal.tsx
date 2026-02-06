@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
@@ -21,6 +21,7 @@ interface JobModalProps {
   existingJobs?: JobData[];
   onAddCustomer: (customer: Customer) => void;
   customReceipts?: any[];
+  onViewReceipt?: (job: JobData, mode: 'local' | 'deposit' | 'extension') => void;
 }
 
 // Compact Styled Components
@@ -329,7 +330,7 @@ const MoneyInput: React.FC<{
 
 export const JobModal: React.FC<JobModalProps> = ({ 
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
-  isViewMode = false, onSwitchToEdit, existingJobs, onAddCustomer, customReceipts = []
+  isViewMode = false, onSwitchToEdit, existingJobs, onAddCustomer, customReceipts = [], onViewReceipt
 }) => {
   const [formData, setFormData] = useState<JobData>(() => {
     if (initialData) {
@@ -747,6 +748,22 @@ export const JobModal: React.FC<JobModalProps> = ({
   // PASS EXISTING JOBS AND CUSTOM RECEIPTS FOR ACCURATE CALCULATION
   const paymentStatus = calculatePaymentStatus(formData, existingJobs, customReceipts);
 
+  // Extract receipt doc numbers for display
+  const receiptDocs = useMemo(() => {
+      const docs = [];
+      if (formData.amisLcDocNo) docs.push({ type: 'local', docNo: formData.amisLcDocNo, label: 'LC' });
+      if (formData.amisDepositDocNo) docs.push({ type: 'deposit', docNo: formData.amisDepositDocNo, label: 'Cược' });
+      
+      const extDocs = new Set();
+      (formData.extensions || []).forEach(ext => {
+          if (ext.amisDocNo && !extDocs.has(ext.amisDocNo)) {
+              extDocs.add(ext.amisDocNo);
+              docs.push({ type: 'extension', docNo: ext.amisDocNo, label: 'GH' });
+          }
+      });
+      return docs;
+  }, [formData]);
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -759,6 +776,21 @@ export const JobModal: React.FC<JobModalProps> = ({
             <h2 className="text-lg font-bold text-slate-800">
               {isViewMode ? 'Chi Tiết Job' : (initialData ? 'Chỉnh sửa Job' : 'Thêm Job Mới')}
             </h2>
+            {/* Display Related Receipts */}
+            {receiptDocs.length > 0 && isViewMode && (
+                <div className="flex gap-2 mt-1">
+                    {receiptDocs.map((doc, idx) => (
+                        <button 
+                            key={idx}
+                            onClick={() => onViewReceipt && onViewReceipt(formData, doc.type as any)}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 flex items-center gap-1 transition-colors"
+                            title="Click để xem phiếu thu"
+                        >
+                            <Receipt className="w-3 h-3" /> {doc.label}: {doc.docNo}
+                        </button>
+                    ))}
+                </div>
+            )}
           </div>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-red-500 transition-all">
             <X className="w-5 h-5" />

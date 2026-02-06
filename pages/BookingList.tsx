@@ -40,6 +40,7 @@ export const BookingList: React.FC<BookingListProps> = ({
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
   const [targetBookingForPayment, setTargetBookingForPayment] = useState<BookingSummary | null>(null);
+  const [paymentModalInitialDocNo, setPaymentModalInitialDocNo] = useState<string | undefined>(undefined);
 
   // Purchase Invoice State
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
@@ -144,6 +145,7 @@ export const BookingList: React.FC<BookingListProps> = ({
 
   const handleMenuAction = (booking: BookingSummary, action: string) => {
     setActiveMenuId(null);
+    setPaymentModalInitialDocNo(undefined);
     
     if (action === 'view' || action === 'edit') {
         setSelectedBooking(booking);
@@ -465,6 +467,12 @@ export const BookingList: React.FC<BookingListProps> = ({
             onClose={() => setSelectedBooking(null)} 
             onSave={handleSaveDetails} 
             onViewJob={handleViewJob} 
+            onViewPayment={(docNo, type) => {
+                setTargetBookingForPayment(selectedBooking);
+                setPaymentType(type);
+                setPaymentModalInitialDocNo(docNo);
+                setPaymentModalOpen(true);
+            }}
         />
       )}
 
@@ -477,6 +485,7 @@ export const BookingList: React.FC<BookingListProps> = ({
              type={paymentType}
              onSave={handleSavePayment}
              allJobs={jobs}
+             initialDocNo={paymentModalInitialDocNo}
           />
       )}
 

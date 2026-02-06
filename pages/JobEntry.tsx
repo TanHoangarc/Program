@@ -618,6 +618,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           existingJobs={jobs}
           onAddCustomer={onAddCustomer}
           customReceipts={customReceipts}
+          onViewReceipt={(job, mode) => handleQuickReceive(job, mode)}
         />
       )}
       

@@ -303,8 +303,9 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[], custom
   const depositDiff = totalCollectedDeposit - depositExpected;
 
   // Logic: Mismatch exists if Diff != 0 AND (Expected > 0 OR Collected > 0)
-  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && Math.abs(lcDiff) > 1000;
-  const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && Math.abs(depositDiff) > 1000;
+  // UPDATED: Lower threshold from 1000 to 10 to catch small discrepancies like 60 VND
+  const lcMismatch = (lcExpected > 0 || totalCollectedLC > 0) && Math.abs(lcDiff) > 10;
+  const depositMismatch = (depositExpected > 0 || totalCollectedDeposit > 0) && Math.abs(depositDiff) > 10;
 
   return {
     lcDiff,
