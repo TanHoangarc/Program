@@ -393,27 +393,56 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       const targetBk = normalize(booking.bookingId);
 
       // Filter for 'Demurrage' type which represents Extension/Gia Hạn
-      const relevant = reqs.filter((r: any) => {
+      const relevantRequests = reqs.filter((r: any) => {
           const rBk = normalize(r.booking);
           return rBk === targetBk && r.type === 'Demurrage';
       });
 
-      if (relevant.length > 0) {
-          const newExtensions = relevant.map((r: any) => ({
-              id: Date.now().toString() + Math.random(),
-              invoice: '',
-              date: r.completedAt ? r.completedAt.split('T')[0] : new Date().toISOString().split('T')[0],
-              net: Math.round((r.amount || 0) / 1.08),
-              vat: (r.amount || 0) - Math.round((r.amount || 0) / 1.08),
-              total: r.amount || 0,
-              fileUrl: r.invoiceUrl,
-              fileName: r.invoiceFileName
-          }));
-          
-          setExtensionCosts(newExtensions);
-          alert(`Đã đồng bộ ${relevant.length} khoản thanh toán gia hạn từ Payment Requests.`);
-      } else {
+      if (relevantRequests.length === 0) {
           alert("Không tìm thấy yêu cầu thanh toán Gia Hạn (Demurrage) nào cho Booking này.");
+          return;
+      }
+
+      const newExtensions: BookingExtensionCost[] = [];
+      let skippedCount = 0;
+
+      relevantRequests.forEach((r: any) => {
+          // Check if this request is already in the list
+          // 1. Check by File URL (Strong match)
+          // 2. Check by File Name (Medium match)
+          // 3. Check by Amount + Date (Weak match, but necessary if no file)
+          const exists = extensionCosts.some(existing => {
+              if (r.invoiceUrl && existing.fileUrl === r.invoiceUrl) return true;
+              if (r.invoiceFileName && existing.fileName === r.invoiceFileName) return true;
+              
+              // Fallback: Check amount match
+              const reqDate = r.completedAt ? r.completedAt.split('T')[0] : (r.createdAt ? r.createdAt.split('T')[0] : '');
+              const amtMatch = Math.abs(existing.total - (r.amount || 0)) < 100;
+              // We are lenient on date comparison as manual entry might differ slightly, but amount usually matches
+              return amtMatch && existing.date === reqDate;
+          });
+
+          if (!exists) {
+              newExtensions.push({
+                  id: Date.now().toString() + Math.random(),
+                  invoice: '',
+                  date: r.completedAt ? r.completedAt.split('T')[0] : new Date().toISOString().split('T')[0],
+                  net: Math.round((r.amount || 0) / 1.08),
+                  vat: (r.amount || 0) - Math.round((r.amount || 0) / 1.08),
+                  total: r.amount || 0,
+                  fileUrl: r.invoiceUrl,
+                  fileName: r.invoiceFileName
+              });
+          } else {
+              skippedCount++;
+          }
+      });
+      
+      if (newExtensions.length > 0) {
+          setExtensionCosts(prev => [...prev, ...newExtensions]);
+          alert(`Đã đồng bộ thêm ${newExtensions.length} khoản gia hạn mới. (Bỏ qua ${skippedCount} khoản đã tồn tại)`);
+      } else {
+          alert(`Không có khoản gia hạn mới. Tất cả ${skippedCount} khoản thanh toán đã tồn tại trong danh sách.`);
       }
   };
 
