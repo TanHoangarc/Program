@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -941,6 +940,7 @@ const App: React.FC = () => {
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
                     onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
             {currentPage === 'amis-chi' && (
@@ -954,6 +954,7 @@ const App: React.FC = () => {
                     onToggleLock={handleToggleLock}
                     customReceipts={customReceipts}
                     onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
             {currentPage === 'amis-ban' && (
@@ -967,6 +968,7 @@ const App: React.FC = () => {
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
                     onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
             {currentPage === 'amis-mua' && (
@@ -980,6 +982,7 @@ const App: React.FC = () => {
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
                     onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
 
