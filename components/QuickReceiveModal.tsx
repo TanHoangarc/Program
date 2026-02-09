@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Layers, HandCoins, Lock } from 'lucide-react';
@@ -339,9 +338,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               // INITIALIZE MAIN JOB INVOICE STATE
               let initialMainInv = deepCopyJob.localChargeInvoice || '';
               
-              // ATTEMPT TO CLEAN MERGED INVOICE STRING FOR DISPLAY (Separate single vs merged)
-              // If we are editing an existing merged payment, extracting the original single invoice
-              if (initialAddedJobs.length > 0 && initialMainInv.includes('+')) {
+              // CLEAN UP DIRTY DATA: If invoice is already merged (contains + and XXX) from a previous save, try to extract the correct part for this job
+              if (initialMainInv.includes('+') && initialMainInv.includes('XXX')) {
+                  const parts = initialMainInv.split('+');
+                  // Find the part that contains this job's code
+                  const selfPart = parts.find((p: string) => p.includes(job.jobCode));
+                  if (selfPart) {
+                      initialMainInv = selfPart.trim();
+                  } else {
+                      // Fallback
+                      initialMainInv = `XXX BL ${job.jobCode}`;
+                  }
+              }
+              // Normal separation logic for clean data
+              else if (initialAddedJobs.length > 0 && initialMainInv.includes('+')) {
                    const parts = initialMainInv.split('+').map((s: string) => s.trim());
                    const addedInvs = new Set(initialAddedJobs.map(j => (j.localChargeInvoice || '').trim()));
                    
@@ -357,7 +367,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
               setMainJobInvoice(initialMainInv);
 
+              // RE-GENERATE MERGED STRING BASED ON CLEAN MAIN INVOICE + ADDED JOBS
               const mergedInv = generateMergedInvoiceString(initialMainInv, job.jobCode, initialAddedJobs, false, new Set());
+              
               setAmisDocNo(orgDoc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
               setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
               setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
@@ -594,10 +606,32 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 updates.amisLcDesc = amisDesc;
                 updates.amisLcAmount = isMainJob ? amisAmount : undefined;
                 updates.localChargeDate = amisDate;
-                // Update localChargeInvoice for ALL jobs in the merge if it's the main job
-                // Actually only Main Job needs the full merged string for reference usually
+                
+                // CORRECTED LOGIC FOR SAVING INVOICE (With Strict Check against Generated Merge String)
                 if (isMainJob) {
-                    updates.localChargeInvoice = formData.localChargeInvoice; 
+                    const inputInv = formData.localChargeInvoice || '';
+                    
+                    // Re-generate what the merged string would look like for this specific set of jobs
+                    const calculatedMerge = generateMergedInvoiceString(
+                        mainJobInvoice, // Use the clean individual invoice
+                        job.jobCode, 
+                        addedJobs, 
+                        false, 
+                        new Set()
+                    );
+                    
+                    // Logic: 
+                    // 1. If user didn't change the auto-generated merged string, revert to individual.
+                    // 2. If user changed it, but it still looks like a placeholder, revert to individual.
+                    // 3. Otherwise, save what they typed.
+                    
+                    if (inputInv === calculatedMerge) {
+                        updates.localChargeInvoice = mainJobInvoice || `XXX BL ${job.jobCode}`;
+                    } else if (inputInv.includes('+') && inputInv.includes('XXX')) {
+                         updates.localChargeInvoice = `XXX BL ${job.jobCode}`;
+                    } else {
+                         updates.localChargeInvoice = inputInv;
+                    }
                 }
             }
             if (index === 0) updates.additionalReceipts = additionalReceipts;
