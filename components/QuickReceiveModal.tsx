@@ -706,8 +706,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     }
   };
 
-  return (
-    createPortal(
+  return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] border border-slate-200">
         
@@ -868,6 +867,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         </div>
       </div>
       <CustomerModal isOpen={!!quickAddTarget} onClose={() => setQuickAddTarget(null)} onSave={handleSaveQuickCustomer} />
-    </div>
-  , document.body);
+    </div>,
+    document.body
+  );
 };

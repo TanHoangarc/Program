@@ -63,7 +63,7 @@ export const YearlyProfitPage: React.FC<YearlyProfitPageProps> = ({
               taxUSD: config.tax,
               salaryUSD,
               netProfitUSD,
-              salaryVND, // Return Salary VND for display
+              salaryVND, // Included
               note: config.note
           };
       });
