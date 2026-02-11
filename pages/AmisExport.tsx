@@ -60,6 +60,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
   const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
   const [targetExtensionId, setTargetExtensionId] = useState<string | null>(null);
+  const [targetRefundId, setTargetRefundId] = useState<string | null>(null);
   const [quickReceiveMergedJobs, setQuickReceiveMergedJobs] = useState<JobData[]>([]); 
   
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -458,6 +459,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                             objCode: getCustomerCode(j.customerId), objName: getCustomerName(j.customerId), desc: ref.desc, amount: ref.amount,
                             reason: 'Chi hoàn tiền thừa', paymentContent: ref.desc, paymentAccount: '345673979999', paymentBank: 'Ngân hàng TMCP Quân đội',
                             currency: 'VND', description: ref.desc, tkNo: '13111', tkCo: '1121',
+                            refundId: ref.id // Added ID to track specific refund
                         });
                     }
                 });
@@ -650,6 +652,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const handleEdit = (row: any) => {
       const job = jobs.find(j => j.id === row.jobId);
       setTargetExtensionId(null);
+      setTargetRefundId(null);
       setQuickReceiveMergedJobs([]); 
       setPaymentModalInitialDocNo(undefined);
 
@@ -734,6 +737,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           } else if (row.type === 'refund_overpayment') {
               setQuickReceiveJob(job);
               setQuickReceiveMode('refund_overpayment');
+              setTargetRefundId(row.refundId); // Pass Refund ID
               const matchingJobs = jobs.filter(j => 
                   j.id !== job.id && 
                   (j.refunds || []).some(r => r.docNo === row.docNo)
@@ -1131,6 +1135,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               mode={quickReceiveMode}
               customers={customers}
               targetExtensionId={targetExtensionId}
+              targetRefundId={targetRefundId} // Pass target Refund ID
               allJobs={jobs}
               usedDocNos={customDocNos}
               initialAddedJobs={quickReceiveMergedJobs}

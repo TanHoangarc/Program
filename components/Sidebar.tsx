@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice';
+  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice' | 'yearly-profit';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -221,6 +221,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </>
               );
               break;
+          case 'management':
+              content = (
+                  <>
+                      <SubMenuItem active={currentPage === 'salary'} onClick={(e) => handleNavigate(e, 'salary')} icon={Coins} label="Quản lý lương" />
+                      <SubMenuItem active={currentPage === 'yearly-profit'} onClick={(e) => handleNavigate(e, 'yearly-profit')} icon={TrendingUp} label="Profit năm" />
+                  </>
+              );
+              break;
           case 'data':
               content = (
                   <>
@@ -300,7 +308,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <>
               <MenuItem active={currentPage === 'reports'} onClick={(e) => handleNavigate(e, 'reports')} icon={LayoutDashboard} label="Dashboard" />
               <MenuItem active={currentPage === 'profit'} onClick={(e) => handleNavigate(e, 'profit')} icon={BadgeDollarSign} label="Lợi Nhuận" />
-              <MenuItem active={currentPage === 'salary'} onClick={(e) => handleNavigate(e, 'salary')} icon={Coins} label="Quản Lý Lương" />
+              
+              <MenuItem 
+                  active={['salary', 'yearly-profit'].includes(currentPage)}
+                  onClick={(e) => handleGroupClick(e, 'management')}
+                  icon={Briefcase}
+                  label="Quản Lý"
+                  hasSubmenu={true}
+                  isOpen={activeGroup === 'management'}
+              />
+
               <MenuItem active={currentPage === 'debt'} onClick={(e) => handleNavigate(e, 'debt')} icon={WalletCards} label="Công Nợ" />
               
               <MenuItem 

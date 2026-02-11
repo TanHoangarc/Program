@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, FileText, User, CheckCircle, Wallet, RotateCcw, Plus, Search, Trash2, ChevronDown, Anchor, History, Receipt, ToggleLeft, ToggleRight, Layers, HandCoins, Lock } from 'lucide-react';
@@ -16,6 +17,7 @@ interface QuickReceiveModalProps {
   customers: Customer[];
   allJobs?: JobData[];
   targetExtensionId?: string | null;
+  targetRefundId?: string | null; // Added prop
   usedDocNos?: string[]; 
   initialAddedJobs?: JobData[];
   onAddCustomer?: (customer: Customer) => void;
@@ -82,7 +84,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
-  isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, usedDocNos = [], initialAddedJobs = [], onAddCustomer
+  isOpen, onClose, onSave, job, mode, customers, allJobs, targetExtensionId, targetRefundId, usedDocNos = [], initialAddedJobs = [], onAddCustomer
 }) => {
   const [formData, setFormData] = useState<JobData>(job);
   const [otherSubMode, setOtherSubMode] = useState<'local' | 'deposit'>('local');
@@ -338,36 +340,23 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               // INITIALIZE MAIN JOB INVOICE STATE
               let initialMainInv = deepCopyJob.localChargeInvoice || '';
               
-              // CLEAN UP DIRTY DATA: If invoice is already merged (contains + and XXX) from a previous save, try to extract the correct part for this job
+              // CLEAN UP DIRTY DATA
               if (initialMainInv.includes('+') && initialMainInv.includes('XXX')) {
                   const parts = initialMainInv.split('+');
-                  // Find the part that contains this job's code
                   const selfPart = parts.find((p: string) => p.includes(job.jobCode));
-                  if (selfPart) {
-                      initialMainInv = selfPart.trim();
-                  } else {
-                      // Fallback
-                      initialMainInv = `XXX BL ${job.jobCode}`;
-                  }
+                  if (selfPart) initialMainInv = selfPart.trim();
+                  else initialMainInv = `XXX BL ${job.jobCode}`;
               }
-              // Normal separation logic for clean data
               else if (initialAddedJobs.length > 0 && initialMainInv.includes('+')) {
                    const parts = initialMainInv.split('+').map((s: string) => s.trim());
                    const addedInvs = new Set(initialAddedJobs.map(j => (j.localChargeInvoice || '').trim()));
-                   
-                   // Filter parts that are NOT in added jobs list
                    const remaining = parts.filter((p: string) => !addedInvs.has(p) && !p.includes('XXX BL'));
-                   
-                   if (remaining.length > 0) {
-                       initialMainInv = remaining.join('+');
-                   } else if (parts.length > 0) {
-                       initialMainInv = parts[0];
-                   }
+                   if (remaining.length > 0) initialMainInv = remaining.join('+');
+                   else if (parts.length > 0) initialMainInv = parts[0];
               }
 
               setMainJobInvoice(initialMainInv);
 
-              // RE-GENERATE MERGED STRING BASED ON CLEAN MAIN INVOICE + ADDED JOBS
               const mergedInv = generateMergedInvoiceString(initialMainInv, job.jobCode, initialAddedJobs, false, new Set());
               
               setAmisDocNo(orgDoc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
@@ -395,15 +384,27 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   setAmisAmount(deepCopyJob.thuCuoc || 0); 
               }
           } else if (mode === 'refund_overpayment') {
-              setAmisDocNo(generateNextDocNo(jobsForCalc, 'UNC'));
-              setAmisDate(new Date().toISOString().split('T')[0]);
-              setAmisDesc(`Chi tiền cho KH HOÀN TIỀN THỪA BL ${deepCopyJob.jobCode} (KIM)`);
-              const status = calculatePaymentStatus(deepCopyJob);
-              setAmisAmount(Math.max(0, status.lcDiff));
+              // EDIT MODE check via targetRefundId
+              const existingRefund = targetRefundId ? deepCopyJob.refunds?.find((r: any) => r.id === targetRefundId) : null;
+              
+              if (existingRefund) {
+                  // LOAD EXISTING DATA (This fixes the 0 amount issue)
+                  setAmisDocNo(existingRefund.docNo);
+                  setAmisDate(existingRefund.date);
+                  setAmisDesc(existingRefund.desc);
+                  setAmisAmount(existingRefund.amount);
+              } else {
+                  // CREATE NEW MODE
+                  setAmisDocNo(generateNextDocNo(jobsForCalc, 'UNC'));
+                  setAmisDate(new Date().toISOString().split('T')[0]);
+                  setAmisDesc(`Chi tiền cho KH HOÀN TIỀN THỪA BL ${deepCopyJob.jobCode} (KIM)`);
+                  const status = calculatePaymentStatus(deepCopyJob, allJobs || []);
+                  setAmisAmount(Math.max(0, status.lcDiff));
+              }
           }
       }
     }
-  }, [isOpen, job.id, mode, targetExtensionId, customers]);
+  }, [isOpen, job.id, mode, targetExtensionId, targetRefundId, customers]);
 
   const handleOpenQuickAdd = (type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string) => {
       setQuickAddTarget({ type, extId });
@@ -607,23 +608,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 updates.amisLcAmount = isMainJob ? amisAmount : undefined;
                 updates.localChargeDate = amisDate;
                 
-                // CORRECTED LOGIC FOR SAVING INVOICE (With Strict Check against Generated Merge String)
                 if (isMainJob) {
                     const inputInv = formData.localChargeInvoice || '';
-                    
-                    // Re-generate what the merged string would look like for this specific set of jobs
-                    const calculatedMerge = generateMergedInvoiceString(
-                        mainJobInvoice, // Use the clean individual invoice
-                        job.jobCode, 
-                        addedJobs, 
-                        false, 
-                        new Set()
-                    );
-                    
-                    // Logic: 
-                    // 1. If user didn't change the auto-generated merged string, revert to individual.
-                    // 2. If user changed it, but it still looks like a placeholder, revert to individual.
-                    // 3. Otherwise, save what they typed.
+                    const calculatedMerge = generateMergedInvoiceString(mainJobInvoice, job.jobCode, addedJobs, false, new Set());
                     
                     if (inputInv === calculatedMerge) {
                         updates.localChargeInvoice = mainJobInvoice || `XXX BL ${job.jobCode}`;
@@ -645,8 +632,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         mergedList.forEach(j => onSave({ ...j, amisDepositRefundDocNo: amisDocNo, amisDepositRefundDesc: amisDesc, amisDepositRefundDate: amisDate, ngayThuHoan: amisDate }));
         removedJobs.forEach(remJob => onSave({ ...remJob, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', ngayThuHoan: '' }));
     } else if (mode === 'refund_overpayment') {
-        const newRef = { id: Date.now().toString(), date: amisDate, docNo: amisDocNo, amount: amisAmount, desc: amisDesc };
-        onSave({ ...formData, refunds: [...(formData.refunds || []), newRef] });
+        let updatedRefunds = [...(formData.refunds || [])];
+        
+        if (targetRefundId) {
+             // UPDATE existing refund
+             updatedRefunds = updatedRefunds.map(r => r.id === targetRefundId ? { ...r, date: amisDate, docNo: amisDocNo, amount: amisAmount, desc: amisDesc } : r);
+        } else {
+             // CREATE new refund
+             const newRef = { id: Date.now().toString(), date: amisDate, docNo: amisDocNo, amount: amisAmount, desc: amisDesc };
+             updatedRefunds.push(newRef);
+        }
+        
+        onSave({ ...formData, refunds: updatedRefunds });
     }
     onClose();
   };
@@ -661,15 +658,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setSearchJobCode('');
       
       if (mode === 'extension') {
-          const newSet = new Set<string>(selectedMergedExtIds); // FIXED
+          const newSet = new Set<string>(selectedMergedExtIds);
           (found.extensions || []).forEach(e => { if (!e.amisDocNo) newSet.add(e.id); });
           setSelectedMergedExtIds(newSet);
-          // Pass current MAIN Invoice state
           recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
       } else if (mode === 'deposit_refund') {
           recalculateDepositRefundMerge(formData, newAddedJobs);
       } else { 
-          // Pass current MAIN Invoice state
           recalculateMerge(mainJobInvoice, newAddedJobs); 
       }
   };
@@ -680,7 +675,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       setAddedJobs(newAddedJobs);
       
       if (mode === 'extension') {
-          const newSet = new Set<string>(selectedMergedExtIds); // FIXED
+          const newSet = new Set<string>(selectedMergedExtIds);
           if (jobToRemove?.extensions) jobToRemove.extensions.forEach(e => newSet.delete(e.id));
           setSelectedMergedExtIds(newSet);
           recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
@@ -692,7 +687,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   };
 
   const handleToggleMergedExtension = (extId: string, isChecked: boolean) => {
-      const newSet = new Set<string>(selectedMergedExtIds); // FIXED
+      const newSet = new Set<string>(selectedMergedExtIds);
       if (isChecked) newSet.add(extId); else newSet.delete(extId);
       setSelectedMergedExtIds(newSet);
       recalculateMerge(mainExtensionInvoice, addedJobs, newSet);
@@ -873,8 +868,6 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         </div>
       </div>
       <CustomerModal isOpen={!!quickAddTarget} onClose={() => setQuickAddTarget(null)} onSave={handleSaveQuickCustomer} />
-    </div>,
-    document.body
-    )
-  );
+    </div>
+  , document.body);
 };

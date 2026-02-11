@@ -306,6 +306,16 @@ export interface SalaryRecord {
 }
 
 // ============================================================
+// YEARLY PROFIT CONFIG
+// ============================================================
+export interface YearlyConfig {
+  year: number;
+  exchangeRate: number;
+  tax: number;
+  note?: string; // Added Note
+}
+
+// ============================================================
 // BANK TRANSACTION
 // ============================================================
 export interface BankTransaction {

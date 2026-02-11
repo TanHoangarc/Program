@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, DollarSign, Calendar, CreditCard, User, FileText, Check, Lock, AlertCircle } from 'lucide-react';
@@ -171,18 +170,48 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
       if (type === 'local') {
           initialData.tkNo = '3311'; 
-          if (initialDocNo || job?.amisPaymentDocNo) {
-              const doc = initialDocNo || job?.amisPaymentDocNo;
-              initialData.docNo = doc!;
-              initialData.paymentContent = job?.amisPaymentDesc || '';
-              initialData.date = job?.amisPaymentDate || today;
-              initialData.amount = job?.chiPayment || 0;
-              initialData.receiverName = job?.line || '';
+          const targetDoc = initialDocNo || job?.amisPaymentDocNo;
+
+          if (targetDoc) {
+              // EDIT/VIEW MODE
+              initialData.docNo = targetDoc;
+              
+              // Find representative job for metadata (Desc, Date, Receiver)
+              const refJob = job || (allJobs ? allJobs.find(j => j.amisPaymentDocNo === targetDoc) : undefined);
+              
+              initialData.paymentContent = refJob?.amisPaymentDesc || '';
+              initialData.date = refJob?.amisPaymentDate || today;
+              initialData.receiverName = refJob?.line || booking?.line || '';
+
+              // CALCULATE AMOUNT FROM BOOKING COST DETAILS IF AVAILABLE
+              if (booking) {
+                  const lc = booking.costDetails.localCharge;
+                  // Use Net+Vat if invoice exists, else Total
+                  const main = (lc.hasInvoice === false) ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
+                  const add = (booking.costDetails.additionalLocalCharges || []).reduce((s, a) => {
+                      const val = (a.hasInvoice === false) ? (a.total || 0) : ((a.net || 0) + (a.vat || 0));
+                      return s + val;
+                  }, 0);
+                  initialData.amount = main + add;
+              } else if (allJobs) {
+                  // Fallback: Sum from all jobs sharing this DocNo
+                  const groupJobs = allJobs.filter(j => j.amisPaymentDocNo === targetDoc);
+                  initialData.amount = groupJobs.reduce((s, j) => s + (j.chiPayment || 0), 0);
+              } else {
+                  initialData.amount = job?.chiPayment || 0;
+              }
           } else {
+              // CREATE MODE
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
               if (booking) {
                 const summary = booking.costDetails.localCharge;
-                initialData.amount = summary.hasInvoice ? (summary.net + summary.vat) : summary.total;
+                const main = (summary.hasInvoice === false) ? (summary.total || 0) : ((summary.net || 0) + (summary.vat || 0));
+                const add = (booking.costDetails.additionalLocalCharges || []).reduce((s, a) => {
+                    const val = (a.hasInvoice === false) ? (a.total || 0) : ((a.net || 0) + (a.vat || 0));
+                    return s + val;
+                }, 0);
+                initialData.amount = main + add;
+                
                 initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
                 initialData.receiverName = booking.line;
               } else if (job) {
@@ -194,22 +223,37 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       } 
       else if (type === 'deposit') {
           initialData.tkNo = '3311';
-          if (initialDocNo || job?.amisDepositOutDocNo) {
-              const doc = initialDocNo || job?.amisDepositOutDocNo;
-              initialData.docNo = doc!;
-              initialData.paymentContent = job?.amisDepositOutDesc || '';
-              initialData.date = job?.amisDepositOutDate || today;
-              initialData.amount = job?.chiCuoc || 0;
-              initialData.receiverName = job?.line || '';
+          const targetDoc = initialDocNo || job?.amisDepositOutDocNo;
+
+          if (targetDoc) {
+              // EDIT/VIEW MODE
+              initialData.docNo = targetDoc;
+              
+              const refJob = job || (allJobs ? allJobs.find(j => j.amisDepositOutDocNo === targetDoc) : undefined);
+
+              initialData.paymentContent = refJob?.amisDepositOutDesc || '';
+              initialData.date = refJob?.amisDepositOutDate || today;
+              initialData.receiverName = refJob?.line || booking?.line || '';
+
+              // CALCULATE AMOUNT FROM BOOKING COST DETAILS
+              if (booking) {
+                  const depTotal = (booking.costDetails.deposits || []).reduce((s,d) => s + (d.amount || 0), 0);
+                  initialData.amount = depTotal;
+              } else if (allJobs) {
+                  const groupJobs = allJobs.filter(j => j.amisDepositOutDocNo === targetDoc);
+                  initialData.amount = groupJobs.reduce((s, j) => s + (j.chiCuoc || 0), 0);
+              } else {
+                  initialData.amount = job?.chiCuoc || 0;
+              }
           } else {
+              // CREATE MODE
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
               if (booking) {
-                  const depTotal = booking.costDetails.deposits.reduce((s,d) => s+d.amount, 0);
+                  const depTotal = (booking.costDetails.deposits || []).reduce((s,d) => s + (d.amount || 0), 0);
                   initialData.amount = depTotal;
                   initialData.paymentContent = generateDescription("Chi tiền cược lô");
                   initialData.receiverName = booking.line;
                   
-                  // FIX: Auto-populate date from first deposit record if available
                   const firstDepositDate = booking.costDetails.deposits.find(d => d.dateOut)?.dateOut;
                   if (firstDepositDate) initialData.date = firstDepositDate;
 
@@ -218,7 +262,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                   initialData.receiverName = job.line;
                   initialData.paymentContent = generateDescription("Chi tiền cược lô");
                   
-                  // FIX: Auto-populate date from job details (Cost Details or Legacy Field)
                   const deposits = job.bookingCostDetails?.deposits || [];
                   const firstDepositDate = deposits.find(d => d.dateOut)?.dateOut;
                   if (firstDepositDate) {
@@ -536,6 +579,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
       </div>
     </div>,
-    document.body
+    document.body // Add this
   );
 };

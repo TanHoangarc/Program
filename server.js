@@ -1,4 +1,5 @@
 
+
 //------------------------------------------------------
 // KIMBERRY BACKEND – FINAL REALTIME (FULL FUNCTION – NO LOSS)
 // RAM-first | Anti-duplicate | Multi-user lock
@@ -361,6 +362,7 @@ app.post("/data/save", async (req, res) => {
         if (safeData.lockedIds) memoryData.lockedIds = safeData.lockedIds;
         if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
         if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
+        if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; // ADDED YEARLY CONFIGS
 
         // 4. Trigger Async Disk Write
         triggerDiskSave(); // <--- ROBUST QUEUE CALLED HERE
@@ -510,6 +512,7 @@ app.post("/approve", async (req, res) => {
     memoryData.jobs = mergeLists(memoryData.jobs || [], fullData.jobs || []);
     memoryData.customers = mergeLists(memoryData.customers || [], fullData.customers || []);
     memoryData.lines = mergeLists(memoryData.lines || [], fullData.lines || []);
+    if (fullData.yearlyConfigs) memoryData.yearlyConfigs = fullData.yearlyConfigs; // Merge yearly configs
     
     if (fullData.paymentRequests) {
         memoryPayments = mergeLists(memoryPayments, fullData.paymentRequests);

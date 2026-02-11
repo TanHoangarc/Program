@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { JobEntry } from './pages/JobEntry';
@@ -19,10 +20,11 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { AutoTool } from './pages/AutoTool';
+import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, INITIAL_JOB } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -48,7 +50,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice' | 'yearly-profit'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -179,6 +181,16 @@ const App: React.FC = () => {
       }
   });
 
+  // --- YEARLY CONFIG STATE (PROFIT PAGE) ---
+  const [yearlyConfigs, setYearlyConfigs] = useState<YearlyConfig[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_yearly_configs');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
   // --- NFC STATE ---
   const [nfcProfiles, setNfcProfiles] = useState<WebNfcProfile[]>(() => {
       try {
@@ -298,6 +310,17 @@ const App: React.FC = () => {
   // --- SALARY HANDLERS ---
   const handleUpdateSalaries = (newSalaries: SalaryRecord[]) => {
       setSalaries(newSalaries);
+  };
+
+  // --- YEARLY CONFIG HANDLERS ---
+  const handleUpdateYearlyConfig = (config: YearlyConfig) => {
+      setYearlyConfigs(prev => {
+          const exists = prev.some(c => c.year === config.year);
+          if (exists) {
+              return prev.map(c => c.year === config.year ? config : c);
+          }
+          return [...prev, config];
+      });
   };
 
   // --- NFC HANDLERS ---
@@ -444,6 +467,7 @@ const App: React.FC = () => {
             lines: [...lines],
             customReceipts: [...customReceipts],
             salaries: [...salaries], 
+            yearlyConfigs: [...yearlyConfigs],
             lockedIds: Array.from(lockedIds) 
         };
     }
@@ -540,6 +564,7 @@ const App: React.FC = () => {
       const incLines = Array.isArray(incomingData.lines) ? incomingData.lines : (incomingData.data?.lines || incomingData.payload?.lines || []);
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
+      const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
@@ -547,6 +572,14 @@ const App: React.FC = () => {
       const newLines = mergeArrays(lines, incLines);
       const newReceipts = mergeArrays(customReceipts, incReceipts);
       const newSalaries = mergeArrays(salaries, incSalaries);
+      
+      // Yearly Config Merge Logic (Merge based on Year)
+      const newConfigs = [...yearlyConfigs];
+      incConfigs.forEach((c: YearlyConfig) => {
+          const idx = newConfigs.findIndex(x => x.year === c.year);
+          if (idx >= 0) newConfigs[idx] = c;
+          else newConfigs.push(c);
+      });
 
       setJobs(sanitizeData(newJobs)); // Ensure years are populated
       setPaymentRequests(newPayments);
@@ -554,6 +587,7 @@ const App: React.FC = () => {
       setLines(newLines);
       setCustomReceipts(newReceipts);
       setSalaries(newSalaries);
+      setYearlyConfigs(newConfigs);
 
       await handleRejectRequest(requestId);
   };
@@ -644,6 +678,10 @@ const App: React.FC = () => {
 
         if (data.salaries && Array.isArray(data.salaries)) {
             setSalaries(data.salaries);
+        }
+
+        if (data.yearlyConfigs && Array.isArray(data.yearlyConfigs)) {
+            setYearlyConfigs(data.yearlyConfigs);
         }
 
         // LOAD NFC
@@ -742,7 +780,8 @@ const App: React.FC = () => {
         lockedIds: Array.from(lockedIds),
         processedRequestIds: Array.from(localDeletedIds),
         customReceipts,
-        salaries
+        salaries,
+        yearlyConfigs
         // NFC EXCLUDED FROM GENERAL BACKUP
       };
 
@@ -801,7 +840,7 @@ const App: React.FC = () => {
     }, 500); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, isServerAvailable]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -811,6 +850,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
+  useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
   useEffect(() => {
@@ -1067,6 +1107,15 @@ const App: React.FC = () => {
                 <SalaryPage 
                     salaries={salaries}
                     onUpdateSalaries={handleUpdateSalaries}
+                />
+            )}
+
+            {currentPage === 'yearly-profit' && (
+                <YearlyProfitPage 
+                    jobs={jobs} 
+                    salaries={salaries} 
+                    yearlyConfigs={yearlyConfigs} 
+                    onUpdateConfig={handleUpdateYearlyConfig}
                 />
             )}
 
