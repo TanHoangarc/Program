@@ -21,7 +21,7 @@ interface JobModalProps {
   existingJobs?: JobData[];
   onAddCustomer: (customer: Customer) => void;
   customReceipts?: any[];
-  onViewReceipt?: (job: JobData, mode: 'local' | 'deposit' | 'extension') => void;
+  onViewReceipt?: (job: JobData, mode: 'local' | 'deposit' | 'extension', targetId?: string) => void;
 }
 
 // Compact Styled Components
@@ -782,7 +782,15 @@ export const JobModal: React.FC<JobModalProps> = ({
                     {receiptDocs.map((doc, idx) => (
                         <button 
                             key={idx}
-                            onClick={() => onViewReceipt && onViewReceipt(formData, doc.type as any)}
+                            onClick={() => {
+                                // Find an extension ID associated with this docNo if type is extension
+                                let targetId = undefined;
+                                if (doc.type === 'extension') {
+                                    const ext = formData.extensions?.find(e => e.amisDocNo === doc.docNo);
+                                    targetId = ext?.id;
+                                }
+                                onViewReceipt && onViewReceipt(formData, doc.type as any, targetId);
+                            }}
                             className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 flex items-center gap-1 transition-colors"
                             title="Click để xem phiếu thu"
                         >

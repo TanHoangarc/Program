@@ -37,6 +37,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
+  const [targetExtensionId, setTargetExtensionId] = useState<string | null>(null); // Added State
   const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
 
   // Filters
@@ -160,9 +161,10 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     setActiveMenuId(null);
   };
 
-  const handleQuickReceive = (job: JobData, mode: ReceiveMode) => {
+  const handleQuickReceive = (job: JobData, mode: ReceiveMode, extId?: string) => {
     setQuickReceiveJob(job);
     setQuickReceiveMode(mode);
+    setTargetExtensionId(extId || null); // Capture specific extension ID
     setIsQuickReceiveOpen(true);
     setActiveMenuId(null);
     setSelectedRowId(job.id); // Highlight when quick receiving
@@ -618,7 +620,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           existingJobs={jobs}
           onAddCustomer={onAddCustomer}
           customReceipts={customReceipts}
-          onViewReceipt={(job, mode) => handleQuickReceive(job, mode)}
+          onViewReceipt={(job, mode, id) => handleQuickReceive(job, mode, id)} // Updated to pass ID
         />
       )}
       
@@ -630,6 +632,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
             onSave={handleSaveQuickReceive} 
             job={quickReceiveJob} 
             mode={quickReceiveMode} 
+            targetExtensionId={targetExtensionId} // Pass target ID
             customers={customers} 
             allJobs={jobs}
             usedDocNos={usedDocNos}

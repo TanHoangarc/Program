@@ -275,9 +275,26 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               }
           } else {
               orgDoc = ''; 
-              (deepCopyJob.extensions || []).forEach((ext: any) => {
-                  if (!ext.amisDocNo) initialExtSet.add(ext.id);
-              });
+              
+              // 1. Try finding UNPAID extensions first
+              const unpaidExts = (deepCopyJob.extensions || []).filter((e: any) => !e.amisDocNo);
+              
+              if (unpaidExts.length > 0) {
+                  unpaidExts.forEach((ext: any) => initialExtSet.add(ext.id));
+              } else {
+                  // 2. If no unpaid, find PAID extensions to show (Edit Mode) - Default to the most recent paid
+                  const paidExts = (deepCopyJob.extensions || []).filter((e: any) => !!e.amisDocNo);
+                  if (paidExts.length > 0) {
+                      // Get the DocNo of the last item (assuming chronological order)
+                      const lastExt = paidExts[paidExts.length - 1];
+                      orgDoc = lastExt.amisDocNo;
+                      
+                      // Select all extensions with this DocNo
+                      paidExts.forEach((e: any) => {
+                          if (e.amisDocNo === orgDoc) initialExtSet.add(e.id);
+                      });
+                  }
+              }
 
               if (initialExtSet.size > 0) {
                   const firstExtId = Array.from(initialExtSet)[0];
@@ -309,8 +326,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setMainExtensionInvoice(initialExtInv);
 
           // Calculate merged string
-          const mergedInv = generateMergedInvoiceString(initialExtInv, job.jobCode, initialAddedJobs, true, initialExtSet);
+          let mergedInv = generateMergedInvoiceString(initialExtInv, job.jobCode, initialAddedJobs, true, initialExtSet);
+          
+          // FIX: If mergedInv became XXX placeholder but we have a valid single extension invoice, force use the valid invoice
+          if (mergedInv.includes('XXX BL') && initialExtInv && !initialExtInv.includes('XXX BL') && initialAddedJobs.length === 0) {
+              mergedInv = initialExtInv;
+          }
+
           const desc = targetExt?.amisDesc || generateMergedDescription(mergedInv, true);
+
+          // FIX: If stored amisAmount is 0 but we have a calculated total, fallback to calculated total
+          const storedAmount = targetExt?.amisAmount;
+          const finalAmount = (storedAmount && storedAmount > 0) ? storedAmount : initTotal;
 
           setNewExtension({ 
             customerId: custId || '', 
@@ -319,7 +346,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             total: initTotal,
             amisDocNo: currentDocNo,
             amisDesc: desc,
-            amisAmount: targetExt?.amisAmount !== undefined ? targetExt.amisAmount : initTotal,
+            amisAmount: finalAmount, // Use Fixed Amount
             amisDate: targetExt?.amisDate || targetExt?.invoiceDate || new Date().toISOString().split('T')[0]
           });
 
@@ -562,6 +589,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
     if (mode === 'extension') {
         const currentDocNo = newExtension.amisDocNo;
+        const inputInv = newExtension.invoice || '';
+        // If input is a specific invoice (not a merged string/placeholder), apply it to the extensions
+        const shouldUpdateInvoice = !inputInv.includes('+') && !inputInv.includes('XXX BL');
+
         mergedList.forEach((job, idx) => {
             const isMain = idx === 0;
             const updatedExtensions = (job.extensions || []).map(ext => {
@@ -572,7 +603,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         amisDesc: newExtension.amisDesc,
                         amisAmount: isMain && ext.id === (job.extensions?.find(e => selectedMergedExtIds.has(e.id))?.id) ? newExtension.amisAmount : undefined,
                         customerId: isMain ? newExtension.customerId : ext.customerId,
-                        invoice: ext.invoice, // Keep original
+                        
+                        // UPDATE INVOICE HERE
+                        invoice: shouldUpdateInvoice ? inputInv : ext.invoice,
+                        
                         invoiceDate: newExtension.amisDate, 
                         amisDate: newExtension.amisDate,    
                         date: newExtension.amisDate         
