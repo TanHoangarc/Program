@@ -700,14 +700,19 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       maximumFractionDigits: 0
     }).format(v);
 
-  const getLineDisplay = (req: PaymentRequest) =>
-    req.lineCode === "MSC" ? (
-      <span className="font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded">
+  const getLineDisplay = (req: PaymentRequest) => {
+    const isEntered = jobs?.some(j => j.booking === req.booking);
+    const isSpecialType = req.type === 'Deposit' || req.type === 'Demurrage';
+    const colorClass = (isEntered || isSpecialType) ? "text-black" : "text-blue-900";
+    
+    return req.lineCode === "MSC" ? (
+      <span className={`font-bold ${colorClass} bg-blue-50 px-2 py-1 rounded`}>
         MSC-{req.pod}
       </span>
     ) : (
-      <span className="font-bold">{req.lineCode}</span>
+      <span className={`font-bold ${colorClass}`}>{req.lineCode}</span>
     );
+  };
 
   const getTypeBadge = (type?: string) => {
       switch(type) {
