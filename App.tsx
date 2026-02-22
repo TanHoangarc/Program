@@ -71,6 +71,9 @@ const App: React.FC = () => {
   
   // --- DATA INTEGRITY WARNING ---
   const [dataMismatchWarning, setDataMismatchWarning] = useState(false);
+  
+  // --- SYNC STATUS ---
+  const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
 
   // --- TRACKING CHANGES ---
   const [modifiedJobIds, setModifiedJobIds] = useState<Set<string>>(() => {
@@ -101,6 +104,15 @@ const App: React.FC = () => {
       }
   });
 
+  const [deletedJobIds, setDeletedJobIds] = useState<Set<string>>(() => {
+      try {
+          const saved = localStorage.getItem('kb_deleted_job_ids');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch {
+          return new Set();
+      }
+  });
+
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
       try {
@@ -115,6 +127,10 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('kb_deleted_reqs', JSON.stringify(Array.from(localDeletedIds)));
   }, [localDeletedIds]);
+
+  useEffect(() => {
+      localStorage.setItem('kb_deleted_job_ids', JSON.stringify(Array.from(deletedJobIds)));
+  }, [deletedJobIds]);
 
   useEffect(() => {
       localStorage.setItem('kb_modified_job_ids', JSON.stringify(Array.from(modifiedJobIds)));
@@ -279,6 +295,7 @@ const App: React.FC = () => {
 
   const handleDeleteJob = (id: string) => {
       setJobs(prev => prev.filter(x => x.id !== id));
+      setDeletedJobIds(prev => new Set(prev).add(id));
       setModifiedJobIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(id);
@@ -684,17 +701,14 @@ const App: React.FC = () => {
             setYearlyConfigs(data.yearlyConfigs);
         }
 
-        // LOAD NFC
-        if (nfcRes.ok) {
-            const nfcData = await nfcRes.json();
-            if (Array.isArray(nfcData)) setNfcProfiles(nfcData);
-        }
-
+        setIsInitialSyncDone(true);
         setIsServerAvailable(true);
 
       } catch (err) {
         console.warn("Server unavailable (Offline Mode): Using local data.");
         setIsServerAvailable(false);
+        // Even if server is down, we consider initial "sync" attempt done to allow local usage
+        setIsInitialSyncDone(true); 
       }
     };
 
@@ -766,19 +780,20 @@ const App: React.FC = () => {
   const autoBackup = async () => {
     // UPDATED: Check for Admin, Manager, Docs, or Staff (staff saves to their own file)
     if (!currentUser || !["Admin", "Manager", "Docs", "Staff"].includes(currentUser.role)) return;
-    if (!isServerAvailable) return; 
+    if (!isServerAvailable || !isInitialSyncDone) return; 
 
     try {
       const data = {
         role: currentUser.role, // VITAL: Pass Role for Server Filtering
         timestamp: new Date().toISOString(),
-        version: "2.3",
+        version: "2.4",
         jobs,
         paymentRequests,
         customers,
         lines,
         lockedIds: Array.from(lockedIds),
         processedRequestIds: Array.from(localDeletedIds),
+        deletedJobIds: Array.from(deletedJobIds),
         customReceipts,
         salaries,
         yearlyConfigs
@@ -809,6 +824,8 @@ const App: React.FC = () => {
           }, 1000);
       } else {
           console.log("AUTO BACKUP SUCCESS");
+          // Clear deleted IDs once server has processed them
+          if (deletedJobIds.size > 0) setDeletedJobIds(new Set());
       }
 
     } catch (err) {
@@ -866,6 +883,24 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-slate-50">
+      {/* Server Offline Warning */}
+      {!isServerAvailable && (
+        <div className="fixed top-0 left-0 right-0 bg-red-600 text-white px-4 py-2 flex items-center justify-between z-[9999] shadow-lg">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-5 h-5 animate-pulse" />
+            <span className="font-bold text-sm uppercase tracking-wider">
+              CẢNH BÁO: Mất kết nối với Server (Node.js) - Đang chạy chế độ Offline
+            </span>
+          </div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-white text-red-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-red-50 transition-colors"
+          >
+            Thử kết nối lại
+          </button>
+        </div>
+      )}
+
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200 z-30 shrink-0 sticky top-0">
          <div className="flex items-center space-x-2">
