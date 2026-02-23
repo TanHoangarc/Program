@@ -350,6 +350,28 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               }
           }
       });
+
+      const refundThuGroupMap = new Map<string, any[]>();
+      jobs.forEach(j => {
+          // Only include in 'Thu' if it's a receipt (starts with NTTK or explicitly meant as Thu)
+          if (j.amisDepositRefundDocNo && j.amisDepositRefundDocNo.startsWith('NTTK') && checkDateFilter(j.amisDepositRefundDate)) {
+              const docNo = j.amisDepositRefundDocNo;
+              if (!refundThuGroupMap.has(docNo)) refundThuGroupMap.set(docNo, []);
+              refundThuGroupMap.get(docNo)?.push(j);
+          }
+      });
+      refundThuGroupMap.forEach((groupJobs, docNo) => {
+          const mainJob = groupJobs[0];
+          const totalRefund = groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
+          rows.push({
+              jobId: mainJob.id, type: 'refund_thu', rowId: `ref-thu-${mainJob.id}`,
+              date: mainJob.amisDepositRefundDate, docNo: mainJob.amisDepositRefundDocNo,
+              objCode: mainJob.line, objName: '', 
+              desc: mainJob.amisDepositRefundDesc || `Thu hoàn cược lô ${mainJob.jobCode}`,
+              amount: totalRefund,
+              tkNo: '1121', tkCo: '1388'
+          });
+      });
     } 
     else if (mode === 'chi') {
         rows = [];
@@ -438,7 +460,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         });
         const processedRefunds = new Set<string>();
         jobs.forEach(j => {
-            if (j.amisDepositRefundDocNo && !processedRefunds.has(j.amisDepositRefundDocNo) && checkDateFilter(j.amisDepositRefundDate)) {
+            // Only include in 'Chi' if it's NOT a receipt (doesn't start with NTTK)
+            if (j.amisDepositRefundDocNo && !j.amisDepositRefundDocNo.startsWith('NTTK') && !processedRefunds.has(j.amisDepositRefundDocNo) && checkDateFilter(j.amisDepositRefundDate)) {
                 processedRefunds.add(j.amisDepositRefundDocNo);
                 const groupJobs = jobs.filter(subJ => subJ.amisDepositRefundDocNo === j.amisDepositRefundDocNo);
                 const totalRefund = groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
@@ -657,7 +680,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       setPaymentModalInitialDocNo(undefined);
 
       if (mode === 'thu') {
-          if (row.type === 'external') {
+          if (row.type === 'refund_thu') {
+              setQuickReceiveJob(job!);
+              setQuickReceiveMode('deposit_refund_thu');
+              const matchingJobs = jobs.filter(j => j.id !== job?.id && j.amisDepositRefundDocNo === row.docNo);
+              setQuickReceiveMergedJobs(matchingJobs);
+              setIsQuickReceiveOpen(true);
+          } else if (row.type === 'external') {
                const receiptId = row.jobId || row.id;
                const fullReceipt = customReceipts.find(r => r.id === receiptId);
                
@@ -1145,7 +1174,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       {isPaymentModalOpen && selectedJobForModal && (
           <PaymentVoucherModal 
-              isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} onSave={handleSavePayment} job={selectedJobForModal} type={paymentType} allJobs={jobs} initialDocNo={paymentModalInitialDocNo}
+              isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} onSave={handleSavePayment} job={selectedJobForModal} type={paymentType} allJobs={jobs} initialDocNo={paymentModalInitialDocNo} extraDocNos={customDocNos}
           />
       )}
 

@@ -6,7 +6,7 @@ import { JobData, Customer, AdditionalReceipt } from '../types';
 import { formatDateVN, parseDateVN, generateNextDocNo, calculatePaymentStatus } from '../utils';
 import { CustomerModal } from './CustomerModal';
 
-export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'extension' | 'other' | 'refund_overpayment';
+export type ReceiveMode = 'local' | 'deposit' | 'deposit_refund' | 'deposit_refund_thu' | 'extension' | 'other' | 'refund_overpayment';
 
 interface QuickReceiveModalProps {
   isOpen: boolean;
@@ -396,18 +396,20 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               setAmisAmount(deepCopyJob.amisDepositAmount !== undefined ? deepCopyJob.amisDepositAmount : (deepCopyJob.thuCuoc || 0));
               setAmisDate(deepCopyJob.ngayThuCuoc || new Date().toISOString().split('T')[0]);
               setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
-          } else if (mode === 'deposit_refund') {
-              setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, 'UNC')); 
+          } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
+              setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, mode === 'deposit_refund_thu' ? 'NTTK' : 'UNC')); 
               setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
               
               if (initialAddedJobs.length > 0) {
                   const allJobs = [deepCopyJob, ...initialAddedJobs];
                   const total = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
                   const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
-                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${codes}`);
+                  const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${codes}`);
                   setAmisAmount(total); 
               } else {
-                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
+                  const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${deepCopyJob.jobCode}`);
                   setAmisAmount(deepCopyJob.thuCuoc || 0); 
               }
           } else if (mode === 'refund_overpayment') {
@@ -662,7 +664,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             const clearUpdates: any = isDeposit ? { amisDepositDocNo: '', amisDepositDesc: '', amisDepositAmount: 0 } : { amisLcDocNo: '', amisLcDesc: '', amisLcAmount: 0 };
             onSave({ ...remJob, ...clearUpdates });
         });
-    } else if (mode === 'deposit_refund') {
+    } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
         mergedList.forEach(j => onSave({ ...j, amisDepositRefundDocNo: amisDocNo, amisDepositRefundDesc: amisDesc, amisDepositRefundDate: amisDate, ngayThuHoan: amisDate }));
         removedJobs.forEach(remJob => onSave({ ...remJob, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', ngayThuHoan: '' }));
     } else if (mode === 'refund_overpayment') {
@@ -696,7 +698,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           (found.extensions || []).forEach(e => { if (!e.amisDocNo) newSet.add(e.id); });
           setSelectedMergedExtIds(newSet);
           recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
-      } else if (mode === 'deposit_refund') {
+      } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
           recalculateDepositRefundMerge(formData, newAddedJobs);
       } else { 
           recalculateMerge(mainJobInvoice, newAddedJobs); 
@@ -713,7 +715,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           if (jobToRemove?.extensions) jobToRemove.extensions.forEach(e => newSet.delete(e.id));
           setSelectedMergedExtIds(newSet);
           recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
-      } else if (mode === 'deposit_refund') {
+      } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
           recalculateDepositRefundMerge(formData, newAddedJobs);
       } else {
           recalculateMerge(mainJobInvoice, newAddedJobs);
@@ -735,6 +737,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         case 'other': return 'Thu Tiền Khác';
         case 'deposit': return 'Thu Tiền Cược';
         case 'deposit_refund': return 'Chi Hoàn Cược';
+        case 'deposit_refund_thu': return 'Thu Hoàn Cược';
         case 'extension': return 'Thu Tiền Gia Hạn';
         case 'refund_overpayment': return 'Chi Hoàn Tiền Thừa';
     }

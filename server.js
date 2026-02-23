@@ -316,6 +316,9 @@ app.post("/ai/generate", async (req, res) => {
 // DATA API
 // ======================================================
 
+// Health check
+app.get("/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
+
 // GET: Combine Main Data + Payments
 app.get("/data", (req, res) => {
     const combinedData = {
@@ -333,13 +336,32 @@ app.post("/data/save", async (req, res) => {
     if (role === 'Admin' || role === 'Manager') {
         // --- ADMIN UPDATE (SOURCE OF TRUTH) ---
         
-        // 1. Update Global RAM for Main Entities
-        if (safeData.jobs) memoryData.jobs = safeData.jobs;
-        if (safeData.customers) memoryData.customers = safeData.customers;
-        if (safeData.lines) memoryData.lines = safeData.lines;
-        if (safeData.customReceipts) memoryData.customReceipts = safeData.customReceipts;
+        // 1. Update Global RAM for Main Entities with MERGE to prevent data loss
+        // We use mergeLists to ensure that if a client has stale data (missing some items), 
+        // those items are NOT deleted from the server unless explicitly requested.
         
-        // 2. Handle Payment Deletions
+        if (safeData.jobs) {
+            memoryData.jobs = mergeLists(memoryData.jobs || [], safeData.jobs);
+        }
+        if (safeData.customers) {
+            memoryData.customers = mergeLists(memoryData.customers || [], safeData.customers);
+        }
+        if (safeData.lines) {
+            memoryData.lines = mergeLists(memoryData.lines || [], safeData.lines);
+        }
+        if (safeData.customReceipts) {
+            memoryData.customReceipts = mergeLists(memoryData.customReceipts || [], safeData.customReceipts);
+        }
+        
+        // 2. Handle Deletions (Explicitly requested by client)
+        if (safeData.deletedJobIds && Array.isArray(safeData.deletedJobIds)) {
+            if (!memoryData.deletedJobIds) memoryData.deletedJobIds = [];
+            safeData.deletedJobIds.forEach(id => {
+                if (!memoryData.deletedJobIds.includes(id)) memoryData.deletedJobIds.push(id);
+            });
+            memoryData.jobs = (memoryData.jobs || []).filter(j => !memoryData.deletedJobIds.includes(j.id));
+        }
+
         if (safeData.paymentRequests) {
             const adminIds = new Set(safeData.paymentRequests.map(r => r.id));
             
@@ -362,10 +384,10 @@ app.post("/data/save", async (req, res) => {
         if (safeData.lockedIds) memoryData.lockedIds = safeData.lockedIds;
         if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
         if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
-        if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; // ADDED YEARLY CONFIGS
+        if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
 
         // 4. Trigger Async Disk Write
-        triggerDiskSave(); // <--- ROBUST QUEUE CALLED HERE
+        triggerDiskSave(); 
         broadcast("data-updated", { time: Date.now(), source: 'Admin', type: 'FULL_SYNC' });
 
         res.json({ success: true, saved: "full_merged_admin" });

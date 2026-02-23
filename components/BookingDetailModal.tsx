@@ -783,6 +783,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           docs.push({ type: 'deposit', docNo: jobs[0].amisDepositOutDocNo, label: 'Cược' });
       }
 
+      // Refund (Thu Hoàn) Payment Doc
+      if (jobs[0].amisDepositRefundDocNo) {
+          docs.push({ type: 'refund', docNo: jobs[0].amisDepositRefundDocNo, label: 'Thu Hoàn' });
+      }
+
       // Extension Payment Docs
       const extDocsSet = new Set<string>();
       
@@ -835,8 +840,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         <button 
                             key={idx}
                             onClick={() => onViewPayment && onViewPayment(doc.docNo, doc.type as any)}
-                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center gap-1 transition-colors"
-                            title="Click để xem phiếu chi"
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 transition-colors ${doc.type === 'refund' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'}`}
+                            title={doc.type === 'refund' ? 'Click để xem phiếu thu' : 'Click để xem phiếu chi'}
                         >
                             <CreditCard className="w-3 h-3" /> {doc.label}: {doc.docNo}
                         </button>

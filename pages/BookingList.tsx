@@ -18,11 +18,12 @@ interface BookingListProps {
   lines: ShippingLine[];
   onAddCustomer: (c: Customer) => void;
   onAddLine: (l: string) => void;
+  customReceipts: any[];
 }
 
 export const BookingList: React.FC<BookingListProps> = ({ 
     jobs, onEditJob, initialBookingId, onClearTargetBooking, 
-    customers, lines, onAddCustomer, onAddLine 
+    customers, lines, onAddCustomer, onAddLine, customReceipts
 }) => {
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -38,7 +39,7 @@ export const BookingList: React.FC<BookingListProps> = ({
 
   // Payment Voucher State
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension'>('local');
+  const [paymentType, setPaymentType] = useState<'local' | 'deposit' | 'extension' | 'refund'>('local');
   const [targetBookingForPayment, setTargetBookingForPayment] = useState<BookingSummary | null>(null);
   const [paymentModalInitialDocNo, setPaymentModalInitialDocNo] = useState<string | undefined>(undefined);
 
@@ -188,6 +189,11 @@ export const BookingList: React.FC<BookingListProps> = ({
         setPaymentType('extension');
         setPaymentModalOpen(true);
     } 
+    else if (action === 'payment-refund') {
+        setTargetBookingForPayment(booking);
+        setPaymentType('refund');
+        setPaymentModalOpen(true);
+    }
     else if (action === 'purchase') {
         setTargetBookingForPurchase(booking);
         setPurchaseModalOpen(true);
@@ -208,6 +214,13 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositOutDocNo = data.docNo;
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
+              } else if (paymentType === 'refund') {
+                  updatedJob.amisDepositRefundDocNo = data.docNo;
+                  updatedJob.amisDepositRefundDesc = data.paymentContent;
+                  updatedJob.amisDepositRefundDate = data.date;
+                  
+                  // Also update legacy fields if needed
+                  updatedJob.ngayThuHoan = data.date;
               } else if (paymentType === 'extension') {
                   // For extensions, we primarily use the detailed structure in bookingCostDetails.
                   // We can update the legacy Job fields as a "last used" reference, but core logic is in details.
@@ -424,6 +437,7 @@ export const BookingList: React.FC<BookingListProps> = ({
                            <button onClick={() => handleMenuAction(booking, 'payment-lc')} className="w-full text-left px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium"><Banknote className="w-4 h-4 mr-2.5" /> Phiếu chi Local Charge</button>
                            <button onClick={() => handleMenuAction(booking, 'payment-deposit')} className="w-full text-left px-4 py-2.5 text-xs text-indigo-600 hover:bg-indigo-50 flex items-center transition-colors font-medium"><Anchor className="w-4 h-4 mr-2.5" /> Chi Cược (Deposit)</button>
                            <button onClick={() => handleMenuAction(booking, 'payment-ext')} className="w-full text-left px-4 py-2.5 text-xs text-orange-600 hover:bg-orange-50 flex items-center transition-colors font-medium"><DollarSign className="w-4 h-4 mr-2.5" /> Chi Gia Hạn</button>
+                           <button onClick={() => handleMenuAction(booking, 'payment-refund')} className="w-full text-left px-4 py-2.5 text-xs text-emerald-600 hover:bg-emerald-50 flex items-center transition-colors font-medium"><Banknote className="w-4 h-4 mr-2.5" /> Thu Hoàn (Deposit)</button>
                            <button onClick={() => handleMenuAction(booking, 'purchase')} className="w-full text-left px-4 py-2.5 text-xs text-teal-600 hover:bg-teal-50 flex items-center transition-colors font-medium rounded-b-xl"><ShoppingBag className="w-4 h-4 mr-2.5" /> Phiếu mua hàng</button>
                          </div>
                        )}
@@ -469,7 +483,7 @@ export const BookingList: React.FC<BookingListProps> = ({
             onViewJob={handleViewJob} 
             onViewPayment={(docNo, type) => {
                 setTargetBookingForPayment(selectedBooking);
-                setPaymentType(type);
+                setPaymentType(type as any);
                 setPaymentModalInitialDocNo(docNo);
                 setPaymentModalOpen(true);
             }}
@@ -486,6 +500,7 @@ export const BookingList: React.FC<BookingListProps> = ({
              onSave={handleSavePayment}
              allJobs={jobs}
              initialDocNo={paymentModalInitialDocNo}
+             extraDocNos={customReceipts.map(r => r.docNo).filter(Boolean)}
           />
       )}
 

@@ -974,6 +974,7 @@ const App: React.FC = () => {
                     lines={lines}
                     onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
                     onAddCustomer={(c) => setCustomers([...customers, c])}
+                    customReceipts={customReceipts}
                 />
             )}
             

@@ -10,9 +10,10 @@ interface PaymentVoucherModalProps {
   onSave: (data: any) => void;
   job?: JobData;
   booking?: BookingSummary;
-  type: 'local' | 'deposit' | 'extension';
+  type: 'local' | 'deposit' | 'extension' | 'refund';
   allJobs?: JobData[];
   initialDocNo?: string; // Critical: The specific DocNo being edited (if any)
+  extraDocNos?: string[];
 }
 
 const DateInput = ({ 
@@ -75,7 +76,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
-  isOpen, onClose, onSave, job, booking, type, allJobs, initialDocNo
+  isOpen, onClose, onSave, job, booking, type, allJobs, initialDocNo, extraDocNos
 }) => {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -114,7 +115,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
   }, [booking, job, type, allJobs]);
 
   // Generate default description
-  const generateDescription = (prefix: string) => {
+  const generateDescription = (prefix: string, bookingLabel: string = "BL") => {
       let jobCodes = '';
       let bkNumber = '';
 
@@ -149,7 +150,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               jobCodes = job.jobCode;
           }
       }
-      return `${prefix} ${jobCodes} BL ${bkNumber} (kimberry)`;
+      return `${prefix} ${jobCodes} ${bookingLabel} ${bkNumber} (kimberry)`;
   };
 
   useEffect(() => {
@@ -272,47 +273,41 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               }
           }
       }
-      else if (type === 'extension') {
-          initialData.tkNo = '3311';
+      else if (type === 'refund') {
+          initialData.tkNo = '1121';
+          initialData.tkCo = '3311';
+          initialData.reason = 'Thu hoàn cược';
           
-          // Determine if we are Editing (Specific DocNo passed) or Creating New
-          const targetDocNo = initialDocNo; 
-
-          if (targetDocNo) {
-              // EDIT MODE
-              initialData.docNo = targetDocNo;
+          const targetDoc = initialDocNo || job?.amisDepositRefundDocNo; // Reusing field or we might need a new one?
+          // Actually, let's check if there's a specific field for Thu Hoàn from Line.
+          // In JobData, we have ngayThuHoan.
+          
+          if (targetDoc) {
+              initialData.docNo = targetDoc;
+              const refJob = job || (allJobs ? allJobs.find(j => j.amisDepositRefundDocNo === targetDoc) : undefined);
+              initialData.paymentContent = refJob?.amisDepositRefundDesc || '';
+              initialData.date = refJob?.amisDepositRefundDate || today;
+              initialData.receiverName = refJob?.line || booking?.line || '';
               
-              const refExt = allExtensions.find(e => e.amisDocNo === targetDocNo);
-              if (refExt) {
-                  initialData.paymentContent = refExt.amisDesc || '';
-                  initialData.date = refExt.amisDate || today;
+              if (booking) {
+                  initialData.amount = (booking.costDetails.deposits || []).reduce((s,d) => s + (d.amount || 0), 0);
               } else {
-                  initialData.paymentContent = job?.amisExtensionPaymentDesc || '';
-                  initialData.date = job?.amisExtensionPaymentDate || today;
+                  initialData.amount = job?.thuCuoc || 0;
               }
-              initialData.receiverName = job?.line || booking?.line || '';
-              
-              const initialSet = new Set<string>();
-              let total = 0;
-              allExtensions.forEach(e => {
-                  // Only select items that match the EXACT DocNo we are editing
-                  if (e.amisDocNo === targetDocNo) {
-                      initialSet.add(e.id);
-                      total += e.total;
-                  }
-              });
-              setSelectedExtensionIds(initialSet);
-              initialData.amount = total;
-
           } else {
-              // CREATE MODE
-              initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
-              initialData.paymentContent = generateDescription("Chi tiền cho ncc GH lô");
-              if (booking) initialData.receiverName = booking.line;
-              else if (job) initialData.receiverName = job.line;
-              
-              setSelectedExtensionIds(new Set());
-              initialData.amount = 0; 
+              initialData.docNo = generateNextDocNo(jobsForCalc, 'NTTK', 5, extraDocNos);
+              if (booking) {
+                  initialData.amount = (booking.costDetails.deposits || []).reduce((s,d) => s + (d.amount || 0), 0);
+                  initialData.paymentContent = generateDescription("Thu tiền của ncc HOÀN CƯỢC CONT lô", "BILL");
+                  initialData.receiverName = booking.line;
+                  const firstDepositDate = booking.costDetails.deposits.find(d => d.dateIn)?.dateIn;
+                  if (firstDepositDate) initialData.date = firstDepositDate;
+              } else if (job) {
+                  initialData.amount = job.thuCuoc || 0;
+                  initialData.receiverName = job.line;
+                  initialData.paymentContent = generateDescription("Thu tiền của ncc HOÀN CƯỢC CONT lô", "BILL");
+                  if (job.ngayThuHoan) initialData.date = job.ngayThuHoan;
+              }
           }
       }
 
@@ -365,14 +360,16 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-in zoom-in-95 duration-200 border border-slate-200 flex flex-col max-h-[90vh]">
         
-        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-red-50 rounded-t-2xl shrink-0">
+        <div className={`px-6 py-4 border-b border-slate-100 flex justify-between items-center ${type === 'refund' ? 'bg-emerald-50' : 'bg-red-50'} rounded-t-2xl shrink-0`}>
             <div className="flex items-center space-x-3">
-            <div className="p-2 bg-red-100 text-red-600 rounded-lg shadow-sm border border-red-200">
+            <div className={`p-2 ${type === 'refund' ? 'bg-emerald-100 text-emerald-600 border-emerald-200' : 'bg-red-100 text-red-600 border-red-200'} rounded-lg shadow-sm border`}>
                 <CreditCard className="w-5 h-5" />
             </div>
             <div>
-                <h2 className="text-lg font-bold text-slate-800">Phiếu Chi Tiền</h2>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{type === 'local' ? 'Local Charge' : type === 'deposit' ? 'Cược (Deposit)' : 'Gia Hạn (Extension)'}</p>
+                <h2 className="text-lg font-bold text-slate-800">{type === 'refund' ? 'Phiếu Thu Tiền' : 'Phiếu Chi Tiền'}</h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    {type === 'local' ? 'Local Charge' : type === 'deposit' ? 'Cược (Deposit)' : type === 'extension' ? 'Gia Hạn (Extension)' : 'Thu Hoàn (Deposit)'}
+                </p>
             </div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all">
@@ -463,53 +460,53 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                     </div>
                 )}
 
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                   <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
-                       <Calendar className="w-4 h-4 mr-2 text-red-500" /> Thông tin chung
-                   </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="space-y-1.5">
-                         <Label>Ngày Hạch toán</Label>
-                         <DateInput value={formData.date} onChange={handleDateChange} />
-                      </div>
-                      <div className="space-y-1.5">
-                         <Label>Số chứng từ</Label>
-                         <input 
-                            type="text" 
-                            name="docNo" 
-                            value={formData.docNo} 
-                            onChange={handleChange}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-red-600 outline-none focus:ring-2 focus:ring-red-500" 
-                         />
-                      </div>
-                   </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                   <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
-                       <User className="w-4 h-4 mr-2 text-red-500" /> Đối tượng & Nội dung
-                   </h3>
-                   <div className="space-y-4">
-                      <div className="space-y-1.5">
-                         <Label>Người nhận</Label>
-                         <input 
-                            type="text" 
-                            name="receiverName" 
-                            value={formData.receiverName} 
-                            onChange={handleChange}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500" 
-                         />
-                      </div>
-                      <div className="space-y-1.5">
-                         <Label>Lý do chi</Label>
-                         <input 
-                            type="text" 
-                            name="reason" 
-                            value={formData.reason} 
-                            onChange={handleChange}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500" 
-                         />
-                      </div>
+                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
+                        <Calendar className="w-4 h-4 mr-2 text-blue-500" /> Thông tin chung
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                       <div className="space-y-1.5">
+                          <Label>Ngày Hạch toán</Label>
+                          <DateInput value={formData.date} onChange={handleDateChange} />
+                       </div>
+                       <div className="space-y-1.5">
+                          <Label>Số chứng từ</Label>
+                          <input 
+                             type="text" 
+                             name="docNo" 
+                             value={formData.docNo} 
+                             onChange={handleChange}
+                             className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold outline-none focus:ring-2 ${type === 'refund' ? 'text-emerald-600 focus:ring-emerald-500' : 'text-red-600 focus:ring-red-500'}`} 
+                          />
+                       </div>
+                    </div>
+                 </div>
+ 
+                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
+                        <User className="w-4 h-4 mr-2 text-blue-500" /> Đối tượng & Nội dung
+                    </h3>
+                    <div className="space-y-4">
+                       <div className="space-y-1.5">
+                          <Label>{type === 'refund' ? 'Người nộp' : 'Người nhận'}</Label>
+                          <input 
+                             type="text" 
+                             name="receiverName" 
+                             value={formData.receiverName} 
+                             onChange={handleChange}
+                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                          />
+                       </div>
+                       <div className="space-y-1.5">
+                          <Label>{type === 'refund' ? 'Lý do thu' : 'Lý do chi'}</Label>
+                          <input 
+                             type="text" 
+                             name="reason" 
+                             value={formData.reason} 
+                             onChange={handleChange}
+                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                          />
+                       </div>
                       <div className="space-y-1.5">
                          <Label>Diễn giải chi tiết</Label>
                          <textarea 
@@ -523,47 +520,47 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                    </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                   <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
-                       <DollarSign className="w-4 h-4 mr-2 text-red-500" /> Hạch toán (VND)
-                   </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
-                      <div className="space-y-1.5">
-                         <Label>TK Nợ</Label>
-                         <input 
-                            type="text" 
-                            name="tkNo" 
-                            value={formData.tkNo} 
-                            onChange={handleChange}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-center text-slate-700 focus:outline-none focus:ring-2 focus:ring-red-500" 
-                         />
-                      </div>
-                      <div className="space-y-1.5">
-                         <Label>TK Có</Label>
-                         <input 
-                            type="text" 
-                            name="tkCo" 
-                            value={formData.tkCo} 
-                            onChange={handleChange}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-center text-blue-700 focus:outline-none focus:ring-2 focus:ring-red-500" 
-                         />
-                      </div>
-                      <div className="space-y-1.5">
-                           <Label>Số Tiền</Label>
-                           <input 
-                               type="text" 
-                               value={new Intl.NumberFormat('en-US').format(formData.amount)} 
-                               onChange={(e) => {
-                                   const val = Number(e.target.value.replace(/,/g, ''));
-                                   if (!isNaN(val)) handleAmountChange(val);
-                               }}
-                               // Lock amount input for extension type to force calculation from checkboxes
-                               readOnly={type === 'extension'}
-                               className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-red-600 text-right focus:outline-none focus:ring-2 focus:ring-red-500 ${type === 'extension' ? 'bg-slate-100 cursor-not-allowed text-slate-500' : 'bg-white'}`}
-                           />
-                      </div>
-                   </div>
-                </div>
+                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-800 uppercase mb-4 flex items-center">
+                        <DollarSign className="w-4 h-4 mr-2 text-blue-500" /> Hạch toán (VND)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
+                       <div className="space-y-1.5">
+                          <Label>TK Nợ</Label>
+                          <input 
+                             type="text" 
+                             name="tkNo" 
+                             value={formData.tkNo} 
+                             onChange={handleChange}
+                             className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-center focus:outline-none focus:ring-2 ${type === 'refund' ? 'text-blue-700 focus:ring-emerald-500' : 'text-slate-700 focus:ring-red-500'}`} 
+                          />
+                       </div>
+                       <div className="space-y-1.5">
+                          <Label>TK Có</Label>
+                          <input 
+                             type="text" 
+                             name="tkCo" 
+                             value={formData.tkCo} 
+                             onChange={handleChange}
+                             className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-center focus:outline-none focus:ring-2 ${type === 'refund' ? 'text-slate-700 focus:ring-emerald-500' : 'text-blue-700 focus:ring-red-500'}`} 
+                          />
+                       </div>
+                       <div className="space-y-1.5">
+                            <Label>Số Tiền</Label>
+                            <input 
+                                type="text" 
+                                value={new Intl.NumberFormat('en-US').format(formData.amount)} 
+                                onChange={(e) => {
+                                    const val = Number(e.target.value.replace(/,/g, ''));
+                                    if (!isNaN(val)) handleAmountChange(val);
+                                }}
+                                // Lock amount input for extension type to force calculation from checkboxes
+                                readOnly={type === 'extension'}
+                                className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-right focus:outline-none focus:ring-2 ${type === 'refund' ? 'text-emerald-600 focus:ring-emerald-500' : 'text-red-600 focus:ring-red-500'} ${type === 'extension' ? 'bg-slate-100 cursor-not-allowed text-slate-500' : 'bg-white'}`}
+                            />
+                       </div>
+                    </div>
+                 </div>
 
             </form>
         </div>
@@ -572,7 +569,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
             <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors shadow-sm">
             Hủy bỏ
             </button>
-            <button onClick={handleSubmit} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100">
+            <button onClick={handleSubmit} className={`px-5 py-2.5 rounded-lg text-sm font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center transform active:scale-95 duration-100 ${type === 'refund' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
             <Save className="w-4 h-4 mr-2" /> Lưu Thay Đổi
             </button>
         </div>
