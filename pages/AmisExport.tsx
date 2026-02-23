@@ -12,6 +12,7 @@ import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
 import { JobModal } from '../components/JobModal';
 import axios from 'axios';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface AmisExportProps {
   jobs: JobData[];
@@ -43,6 +44,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     jobs, customers, lines = [], onAddLine, onAddCustomer,
     mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts 
 }) => {
+  const { alert, confirm } = useNotification();
   const [filterMonth, setFilterMonth] = useState('');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [filterDesc, setFilterDesc] = useState(''); 
@@ -162,10 +164,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               formData.append("fileName", currentTemplateFileName);
               formData.append("file", file);
               await axios.post(`${BACKEND_URL}/upload-file`, formData);
-              alert(`Đã lưu mẫu "${displayName}" cho phần ${mode.toUpperCase()} thành công!`);
+              alert(`Đã lưu mẫu "${displayName}" cho phần ${mode.toUpperCase()} thành công!`, "Thành công");
           } catch (err) {
               console.error("Lỗi upload mẫu:", err);
-              alert("Lưu mẫu lên server thất bại, nhưng sẽ dùng mẫu này tạm thời.");
+              alert("Lưu mẫu lên server thất bại, nhưng sẽ dùng mẫu này tạm thời.", "Cảnh báo");
           } finally {
               setIsUploadingTemplate(false);
               if (fileInputRef.current) fileInputRef.current.value = '';
@@ -844,30 +846,43 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       setIsPurchaseModalOpen(false);
   };
 
-  const handleDelete = (row: any) => {
-      if (!window.confirm("Bạn có chắc muốn xóa chứng từ này khỏi danh sách AMIS? (Dữ liệu gốc vẫn giữ, chỉ xóa số chứng từ)")) return;
+  const handleDelete = async (row: any) => {
+      if (!await confirm("Bạn có chắc muốn xóa chứng từ này khỏi danh sách AMIS? (Dữ liệu gốc vẫn giữ, chỉ xóa số chứng từ)")) return;
       if (row.type === 'external' && onUpdateCustomReceipts) {
           const newR = customReceipts.filter(r => r.id !== row.id);
           onUpdateCustomReceipts(newR);
           return;
       }
-      const job = jobs.find(j => j.id === row.jobId);
-      if (job && onUpdateJob) {
-          const updatedJob = { ...job };
-          if (row.type === 'deposit_thu') {
-              if (row.rowId.includes('add')) updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId);
-              else { updatedJob.amisDepositDocNo = ''; updatedJob.amisDepositDesc = ''; updatedJob.amisDepositAmount = 0; }
-          } else if (row.type === 'lc_thu') {
-              if (row.rowId.includes('add')) updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId);
-              else { updatedJob.amisLcDocNo = ''; updatedJob.amisLcDesc = ''; updatedJob.amisLcAmount = 0; }
-          } else if (row.type === 'ext_thu') {
-              if (row.rowId.includes('add')) updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId);
-              else updatedJob.extensions = (updatedJob.extensions || []).map(e => e.id === row.extensionId ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0 } : e);
-          } else if (row.type === 'payment_chi') {
-              updatedJob.amisPaymentDocNo = ''; updatedJob.amisPaymentDesc = ''; updatedJob.amisPaymentDate = '';
-          } else if (row.type === 'payment_deposit') {
-              updatedJob.amisDepositOutDocNo = ''; updatedJob.amisDepositOutDesc = ''; updatedJob.amisDepositOutDate = '';
-          } else if (row.type === 'payment_ext') {
+
+      if (!onUpdateJob) return;
+
+      // Handle grouped vouchers (clearing for all jobs sharing the same DocNo)
+      if (row.type === 'deposit_thu' && !row.rowId.includes('add')) {
+          jobs.filter(j => j.amisDepositDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositDocNo: '', amisDepositDesc: '', amisDepositAmount: 0 }));
+          return;
+      }
+      if (row.type === 'lc_thu' && !row.rowId.includes('add')) {
+          jobs.filter(j => j.amisLcDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisLcDocNo: '', amisLcDesc: '', amisLcAmount: 0 }));
+          return;
+      }
+      if (row.type === 'ext_thu' && !row.rowId.includes('add')) {
+          jobs.filter(j => (j.extensions || []).some(e => e.amisDocNo === row.docNo)).forEach(j => {
+              const updatedExtensions = (j.extensions || []).map(e => e.amisDocNo === row.docNo ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0 } : e);
+              onUpdateJob({ ...j, extensions: updatedExtensions });
+          });
+          return;
+      }
+      if (row.type === 'payment_chi') {
+          jobs.filter(j => j.amisPaymentDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisPaymentDocNo: '', amisPaymentDesc: '', amisPaymentDate: '' }));
+          return;
+      }
+      if (row.type === 'payment_deposit') {
+          jobs.filter(j => j.amisDepositOutDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositOutDocNo: '', amisDepositOutDesc: '', amisDepositOutDate: '' }));
+          return;
+      }
+      if (row.type === 'payment_ext') {
+          jobs.filter(j => j.amisExtensionPaymentDocNo === row.docNo || (j.bookingCostDetails?.extensionCosts || []).some(e => e.amisDocNo === row.docNo)).forEach(j => {
+              const updatedJob = { ...j };
               if (updatedJob.bookingCostDetails) {
                   updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
                       ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo, amisDesc: e.amisDocNo === row.docNo ? '' : e.amisDesc, amisDate: e.amisDocNo === row.docNo ? '' : e.amisDate
@@ -876,8 +891,25 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               if (updatedJob.amisExtensionPaymentDocNo === row.docNo) {
                   updatedJob.amisExtensionPaymentDocNo = ''; updatedJob.amisExtensionPaymentDesc = ''; updatedJob.amisExtensionPaymentDate = ''; updatedJob.amisExtensionPaymentAmount = 0;
               }
-          } else if (row.type === 'payment_refund') {
-              updatedJob.amisDepositRefundDocNo = ''; updatedJob.amisDepositRefundDesc = ''; updatedJob.amisDepositRefundDate = '';
+              onUpdateJob(updatedJob);
+          });
+          return;
+      }
+      if (row.type === 'payment_refund' || row.type === 'refund_thu') {
+          jobs.filter(j => j.amisDepositRefundDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', ngayThuHoan: '' }));
+          return;
+      }
+
+      // Fallback for single job types or additional receipts
+      const job = jobs.find(j => j.id === row.jobId);
+      if (job) {
+          const updatedJob = { ...job };
+          if (row.type === 'deposit_thu' && row.rowId.includes('add')) {
+              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId);
+          } else if (row.type === 'lc_thu' && row.rowId.includes('add')) {
+              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId);
+          } else if (row.type === 'ext_thu' && row.rowId.includes('add')) {
+              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId);
           } else if (row.type === 'refund_overpayment') {
               updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo);
           }
@@ -934,15 +966,15 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       }
   };
 
-  const handleBulkLock = () => {
+  const handleBulkLock = async () => {
       const idsToLock = Array.from(selectedIds);
       if (idsToLock.length === 0) return;
-      if (window.confirm(`Xác nhận khóa ${idsToLock.length} phiếu đã chọn?`)) { onToggleLock(idsToLock); setSelectedIds(new Set()); }
+      if (await confirm(`Xác nhận khóa ${idsToLock.length} phiếu đã chọn?`)) { onToggleLock(idsToLock); setSelectedIds(new Set()); }
   };
 
   const handleExport = async () => {
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
-    if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel."); return; }
+    if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.", "Thông báo"); return; }
     const workbook = new ExcelJS.Workbook();
     if (templateBuffer) await workbook.xlsx.load(templateBuffer);
     else workbook.addWorksheet("Amis Export");
@@ -984,7 +1016,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
         const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-        if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`);
+        if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
         else throw new Error(response.data?.message || "Server did not confirm save.");
     } catch (err) {
         console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);

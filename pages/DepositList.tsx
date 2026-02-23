@@ -6,6 +6,7 @@ import { MONTHS, YEARS } from '../constants';
 import { formatDateVN, getPaginationRange, calculateBookingSummary } from '../utils';
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
+import { useNotification } from '../contexts/NotificationContext';
 import axios from 'axios';
 
 interface DepositListProps {
@@ -23,6 +24,7 @@ const BACKEND_URL = "https://api.kimberry.id.vn";
 export const DepositList: React.FC<DepositListProps> = ({ 
     mode, jobs, customers, lines, onEditJob, onAddLine, onAddCustomer 
 }) => {
+  const { alert, confirm } = useNotification();
   // Filters
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
   const [filterEntity, setFilterEntity] = useState(''); // Stores Line Name or Job Code Search Text
@@ -117,13 +119,13 @@ export const DepositList: React.FC<DepositListProps> = ({
               };
               
               onEditJob(updatedJob);
-              alert("Upload CVHC thành công!");
+              alert("Upload CVHC thành công!", "Thành công");
           } else {
               throw new Error(res.data?.message || "Upload failed");
           }
       } catch (err) {
           console.error("Upload Error:", err);
-          alert("Có lỗi xảy ra khi upload file. Vui lòng thử lại.");
+          alert("Có lỗi xảy ra khi upload file. Vui lòng thử lại.", "Lỗi");
       } finally {
           setUploadingId(null);
           setTargetJobIdForUpload(null);
@@ -289,7 +291,7 @@ export const DepositList: React.FC<DepositListProps> = ({
           }
       }
 
-      alert(`Hoàn tất quét thư mục! Đã cập nhật CVHC cho ${successCount} Job.`);
+      alert(`Hoàn tất quét thư mục! Đã cập nhật CVHC cho ${successCount} Job.`, "Thành công");
       setIsAutoUploading(false);
       setAutoUploadProgress('');
       if (folderInputRef.current) folderInputRef.current.value = '';

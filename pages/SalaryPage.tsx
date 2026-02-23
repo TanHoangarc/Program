@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { SalaryRecord } from '../types';
 import { Coins, Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 import { MONTHS } from '../constants';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface SalaryPageProps {
   salaries: SalaryRecord[];
@@ -10,6 +11,7 @@ interface SalaryPageProps {
 }
 
 export const SalaryPage: React.FC<SalaryPageProps> = ({ salaries, onUpdateSalaries }) => {
+  const { alert, confirm } = useNotification();
   const currentYear = new Date().getFullYear();
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -42,20 +44,20 @@ export const SalaryPage: React.FC<SalaryPageProps> = ({ salaries, onUpdateSalari
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm("Bạn có chắc muốn xóa khoản lương này?")) {
+  const handleDelete = async (id: string) => {
+    if (await confirm("Bạn có chắc muốn xóa khoản lương này?", "Xác nhận xóa")) {
       onUpdateSalaries(salaries.filter(s => s.id !== id));
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId) {
       onUpdateSalaries(salaries.map(s => s.id === editingId ? formData : s));
     } else {
       // Check for existing salary for same month/year
       const exists = salaries.some(s => s.month === formData.month && s.year === formData.year);
-      if (exists && !window.confirm(`Đã có lương cho tháng ${formData.month}/${formData.year}. Bạn có muốn thêm dòng mới (Cộng dồn) không?`)) {
+      if (exists && !await confirm(`Đã có lương cho tháng ${formData.month}/${formData.year}. Bạn có muốn thêm dòng mới (Cộng dồn) không?`, "Xác nhận thêm")) {
           return;
       }
       onUpdateSalaries([...salaries, { ...formData, id: Date.now().toString() }]);

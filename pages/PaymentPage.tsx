@@ -14,6 +14,7 @@ import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
 import { formatDateVN } from '../utils';
 import { CustomerModal } from '../components/CustomerModal';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface PaymentPageProps {
   lines: ShippingLine[];
@@ -141,6 +142,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   customers = [],
   onAddCustomer
 }) => {
+  const { alert, confirm } = useNotification();
 
   // ----------------- STATES -----------------
   const [line, setLine] = useState("");
@@ -214,7 +216,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
       return data;
     } catch (err) {
-      alert("Không thể upload file. Kiểm tra server.");
+      alert("Không thể upload file. Kiểm tra server.", "Lỗi");
       return null;
     }
   };
@@ -226,7 +228,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!line || !booking || !amount) {
-      alert("Vui lòng nhập đầy đủ thông tin!");
+      alert("Vui lòng nhập đầy đủ thông tin!", "Thông báo");
       return;
     }
 
@@ -312,8 +314,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // DELETE REQUEST
   // ============================================================
 
-  const handleDelete = (id: string) => {
-    if (!window.confirm("Bạn chắc chắn muốn xóa?")) return;
+  const handleDelete = async (id: string) => {
+    if (!await confirm("Bạn chắc chắn muốn xóa?", "Xác nhận xóa")) return;
     const updatedRequests = requests.filter(r => r.id !== id);
     onUpdateRequests(updatedRequests);
     
@@ -341,7 +343,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
   const confirmComplete = async () => {
     if (!completingId || !uncFile) {
-      alert("Vui lòng chọn file UNC.");
+      alert("Vui lòng chọn file UNC.", "Thông báo");
       return;
     }
 
@@ -395,9 +397,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // SYNC PAYMENT TO BOOKING (ADMIN ONLY)
   // ============================================================
   
-  const handleSyncPayment = (req: PaymentRequest) => {
+  const handleSyncPayment = async (req: PaymentRequest) => {
       if (!jobs || !onUpdateJob) {
-          alert("Dữ liệu Job chưa được tải.");
+          alert("Dữ liệu Job chưa được tải.", "Lỗi");
           return;
       }
 
@@ -412,7 +414,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       const syncType = req.type || 'Local Charge';
       const confirmMsg = `Bạn có muốn đồng bộ số tiền ${formatCurrency(req.amount)} (${syncType}) vào ${associatedJobs.length} Job của Booking ${req.booking}?`;
       
-      if (!window.confirm(confirmMsg)) return;
+      if (!await confirm(confirmMsg, "Xác nhận đồng bộ")) return;
 
       // Update logic
       associatedJobs.forEach(job => {
@@ -454,7 +456,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           onUpdateJob(updatedJob);
       });
 
-      alert("Đã đồng bộ thành công!");
+      alert("Đã đồng bộ thành công!", "Thành công");
   };
 
   // ============================================================
@@ -558,10 +560,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       setQuickAddRowId(null);
   };
 
-  const handleSaveConvert = () => {
+  const handleSaveConvert = async () => {
       if (!onAddJob) return;
       if (!convertData.booking || !convertData.line || convertData.jobRows.length === 0) {
-          alert("Vui lòng nhập đầy đủ thông tin bắt buộc (Booking, Line, ít nhất 1 Job).");
+          alert("Vui lòng nhập đầy đủ thông tin bắt buộc (Booking, Line, ít nhất 1 Job).", "Thông báo");
           return;
       }
 
@@ -575,7 +577,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
           if (duplicates.length > 0) {
               const duplicateCodes = duplicates.map(d => d.jobCode).join(', ');
-              alert(`Cảnh báo: Các mã Job sau đã tồn tại trong hệ thống: ${duplicateCodes}.\nVui lòng kiểm tra lại hoặc đổi mã khác.`);
+              alert(`Cảnh báo: Các mã Job sau đã tồn tại trong hệ thống: ${duplicateCodes}.\nVui lòng kiểm tra lại hoặc đổi mã khác.`, "Cảnh báo");
               return;
           }
       }
@@ -615,7 +617,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       });
 
       setIsConvertModalOpen(false);
-      alert(`Đã nhập ${createdCount} Job vào hệ thống thành công!`);
+      alert(`Đã nhập ${createdCount} Job vào hệ thống thành công!`, "Thành công");
   };
 
   // ============================================================
@@ -637,7 +639,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         }
     }
 
-    if (!url) return alert("Không tìm thấy file!");
+    if (!url) {
+        alert("Không tìm thấy file!", "Lỗi");
+        return;
+    }
     window.open(url, "_blank");
   };
 
@@ -651,7 +656,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     }
 
     if (!url) {
-      alert("Không tìm thấy file UNC!");
+      alert("Không tìm thấy file UNC!", "Lỗi");
       return;
     }
 
@@ -672,7 +677,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       URL.revokeObjectURL(finalBlobUrl);
       link.remove();
     } catch {
-      alert("Không thể tải UNC. Kiểm tra Server hoặc Cloudflare.");
+      alert("Không thể tải UNC. Kiểm tra Server hoặc Cloudflare.", "Lỗi");
     }
   };
 

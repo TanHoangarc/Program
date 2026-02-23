@@ -8,6 +8,7 @@ import { MONTHS, YEARS } from '../constants';
 import { PaymentVoucherModal } from '../components/PaymentVoucherModal';
 import { PurchaseInvoiceModal } from '../components/PurchaseInvoiceModal';
 import { JobModal } from '../components/JobModal';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface BookingListProps {
   jobs: JobData[];
@@ -25,6 +26,7 @@ export const BookingList: React.FC<BookingListProps> = ({
     jobs, onEditJob, initialBookingId, onClearTargetBooking, 
     customers, lines, onAddCustomer, onAddLine, customReceipts
 }) => {
+  const { alert, confirm } = useNotification();
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterMonth, setFilterMonth] = useState('');
@@ -144,7 +146,7 @@ export const BookingList: React.FC<BookingListProps> = ({
     }
   };
 
-  const handleMenuAction = (booking: BookingSummary, action: string) => {
+  const handleMenuAction = async (booking: BookingSummary, action: string) => {
     setActiveMenuId(null);
     setPaymentModalInitialDocNo(undefined);
     
@@ -162,7 +164,7 @@ export const BookingList: React.FC<BookingListProps> = ({
         const hasDeposits = booking.costDetails.deposits && booking.costDetails.deposits.length > 0;
         
         if (!hasDeposits) {
-            if (window.confirm("Booking này chưa có thông tin Cược (Deposit). Bạn có muốn mở chi tiết Booking để cập nhật không?")) {
+            if (await confirm("Booking này chưa có thông tin Cược (Deposit). Bạn có muốn mở chi tiết Booking để cập nhật không?", "Thông báo")) {
                 setSelectedBooking(booking);
                 setSelectedRowId(booking.bookingId); // Highlight
             }
@@ -178,7 +180,7 @@ export const BookingList: React.FC<BookingListProps> = ({
         const extensionCosts = booking.costDetails.extensionCosts || [];
         
         if (extensionCosts.length === 0) {
-            if (window.confirm("Booking này chưa có thông tin Gia Hạn. Bạn có muốn mở chi tiết Booking để thêm không?")) {
+            if (await confirm("Booking này chưa có thông tin Gia Hạn. Bạn có muốn mở chi tiết Booking để thêm không?", "Thông báo")) {
                 setSelectedBooking(booking);
                 setSelectedRowId(booking.bookingId); // Highlight
             }
@@ -262,13 +264,13 @@ export const BookingList: React.FC<BookingListProps> = ({
               }
               onEditJob(updatedJob);
           });
-          alert("Đã lưu thông tin phiếu chi thành công!");
+          alert("Đã lưu thông tin phiếu chi thành công!", "Thành công");
       }
   };
 
   const handleSavePurchase = (data: any) => {
       console.log("Saved Purchase Invoice Data:", data);
-      alert("Đã lưu thông tin phiếu mua hàng (Dữ liệu tạm thời).");
+      alert("Đã lưu thông tin phiếu mua hàng (Dữ liệu tạm thời).", "Thành công");
   };
 
   // --- JOB MODAL HANDLERS ---

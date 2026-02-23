@@ -5,6 +5,7 @@ import { Plus, Edit2, Trash2, Search, Save, X, Upload, FileSpreadsheet, ChevronL
 import * as XLSX from 'xlsx';
 import { getPaginationRange } from '../utils';
 import { CustomerModal } from '../components/CustomerModal';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface DataManagementProps {
   mode: 'customers' | 'lines';
@@ -15,6 +16,7 @@ interface DataManagementProps {
 }
 
 export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAdd, onEdit, onDelete }) => {
+  const { alert, confirm } = useNotification();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Customer | ShippingLine | null>(null);
@@ -51,8 +53,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa ${title.toLowerCase()} này không?`)) {
+  const handleDelete = async (id: string) => {
+    if (await confirm(`Bạn có chắc chắn muốn xóa ${title.toLowerCase()} này không?`, "Xác nhận xóa")) {
       onDelete(id);
     }
   };
@@ -158,7 +160,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
         }
       });
 
-      alert(`Hoàn tất nhập dữ liệu:\n- Thêm mới: ${added}\n- Cập nhật: ${updated}`);
+      alert(`Hoàn tất nhập dữ liệu:\n- Thêm mới: ${added}\n- Cập nhật: ${updated}`, "Thành công");
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsBinaryString(file);

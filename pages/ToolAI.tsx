@@ -11,6 +11,7 @@ import {
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsMod from 'pdfjs-dist';
+import { useNotification } from '../contexts/NotificationContext';
 // REMOVED DIRECT GOOGLE SDK IMPORT TO USE BACKEND PROXY
 // import { GoogleGenAI } from "@google/genai";
 import axios from 'axios';

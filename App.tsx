@@ -23,6 +23,7 @@ import { AutoTool } from './pages/AutoTool';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LoginPage } from './components/LoginPage';
 import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
+import { useNotification } from './contexts/NotificationContext';
 
 import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
@@ -39,6 +40,7 @@ const DEFAULT_USERS: UserAccount[] = [
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
 
 const App: React.FC = () => {
+  const { alert, confirm } = useNotification();
 
   // Track server availability
   const [isServerAvailable, setIsServerAvailable] = useState(true);
@@ -358,8 +360,8 @@ const App: React.FC = () => {
       setNfcProfiles(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
-  const handleDeleteNfcProfile = (id: string) => {
-      if (window.confirm("Are you sure you want to delete this profile?")) {
+  const handleDeleteNfcProfile = async (id: string) => {
+      if (await confirm("Are you sure you want to delete this profile?", "Confirm Delete")) {
           setNfcProfiles(prev => prev.filter(p => p.id !== id));
       }
   };
@@ -458,7 +460,7 @@ const App: React.FC = () => {
 
   const sendPendingToServer = async (directPayload?: any) => {
     if (!currentUser || !currentUser.username) {
-        alert("Lỗi: Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.");
+        alert("Lỗi: Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.", "Lỗi");
         return;
     }
     
@@ -471,7 +473,7 @@ const App: React.FC = () => {
         const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0;
         
         if (!hasChanges) {
-            alert("Không có thay đổi nào mới (Job hoặc Thanh toán) để gửi đi.");
+            alert("Không có thay đổi nào mới (Job hoặc Thanh toán) để gửi đi.", "Thông báo");
             return;
         }
 
@@ -490,7 +492,7 @@ const App: React.FC = () => {
     }
     
     if (!isServerAvailable) {
-        alert("Không thể kết nối với máy chủ (Chế độ Offline). Vui lòng thử lại sau.");
+        alert("Không thể kết nối với máy chủ (Chế độ Offline). Vui lòng thử lại sau.", "Thông báo");
         return;
     }
 
@@ -512,7 +514,7 @@ const App: React.FC = () => {
               if (payload.jobs?.length > 0) msgParts.push(`${payload.jobs.length} Job`);
               if (payload.paymentRequests?.length > 0) msgParts.push(`${payload.paymentRequests.length} Thanh toán`);
               
-              alert(`Đã gửi thành công: ${msgParts.join(', ')}!`);
+              alert(`Đã gửi thành công: ${msgParts.join(', ')}!`, "Thành công");
               
               setModifiedJobIds(new Set());
               setModifiedPaymentIds(new Set());
@@ -524,7 +526,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Gửi pending thất bại:", err);
       if (!directPayload) {
-          alert("Gửi thất bại: Có lỗi khi kết nối đến máy chủ.");
+          alert("Gửi thất bại: Có lỗi khi kết nối đến máy chủ.", "Lỗi");
       }
     }
   };
@@ -534,7 +536,7 @@ const App: React.FC = () => {
       // Force sync current data to server to resolve mismatch
       await autoBackup();
       setDataMismatchWarning(false);
-      alert("Đã xác nhận dữ liệu hiện tại là chính xác!");
+      alert("Đã xác nhận dữ liệu hiện tại là chính xác!", "Thành công");
   };
 
   const handleToggleLock = (docNo: string | string[]) => {

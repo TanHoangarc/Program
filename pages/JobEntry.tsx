@@ -5,6 +5,7 @@ import { JobData, Customer, BookingSummary, BookingCostDetails, ShippingLine } f
 import { JobModal } from '../components/JobModal';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
+import { useNotification } from '../contexts/NotificationContext';
 import { calculateBookingSummary, getPaginationRange, formatDateVN, calculatePaymentStatus } from '../utils';
 import { MONTHS, YEARS } from '../constants';
 import * as XLSX from 'xlsx';
@@ -27,6 +28,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   jobs, onAddJob, onEditJob, onDeleteJob, customers, onAddCustomer, lines, onAddLine,
   initialJobId, onClearTargetJob, customReceipts = []
 }) => {
+  const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
   const [isViewMode, setIsViewMode] = useState(false);
@@ -139,7 +141,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       setIsModalOpen(true);
     } catch (err) {
       console.error("Error parsing job data", err);
-      alert("Có lỗi khi mở Job này. Vui lòng kiểm tra lại dữ liệu.");
+      alert("Có lỗi khi mở Job này. Vui lòng kiểm tra lại dữ liệu.", "Lỗi");
     }
   };
 
@@ -154,8 +156,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     setActiveMenuId(null);
   };
 
-  const handleDelete = (id: string) => {
-    if(window.confirm("Bạn có chắc chắn muốn xóa Job này?")) {
+  const handleDelete = async (id: string) => {
+    if(await confirm("Bạn có chắc chắn muốn xóa Job này?", "Xác nhận xóa")) {
         onDeleteJob(id);
     }
     setActiveMenuId(null);
@@ -274,7 +276,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           addedCount++;
         }
       });
-      alert(`Hoàn tất nhập dữ liệu:\n- Thêm mới: ${addedCount}\n- Cập nhật: ${updatedCount}`);
+      alert(`Hoàn tất nhập dữ liệu:\n- Thêm mới: ${addedCount}\n- Cập nhật: ${updatedCount}`, "Thành công");
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsBinaryString(file);

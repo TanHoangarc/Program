@@ -4,6 +4,7 @@ import { JobData, AdditionalReceipt, BankTransaction } from '../types';
 import { Landmark, Search, Filter, Plus, Edit2, Trash2, FileSpreadsheet, Upload, X, Save, Calendar, Check } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, getPaginationRange } from '../utils';
+import { useNotification } from '../contexts/NotificationContext';
 import * as XLSX from 'xlsx';
 
 interface BankPageProps {
@@ -15,6 +16,7 @@ interface BankPageProps {
 }
 
 export const BankPage: React.FC<BankPageProps> = ({ mode, data, onAdd, onEdit, onDelete }) => {
+    const { alert, confirm } = useNotification();
     const [filterMonth, setFilterMonth] = useState('');
     const [filterYear, setFilterYear] = useState(''); // Default to ALL years to show data
     const [searchTerm, setSearchTerm] = useState('');
@@ -94,8 +96,8 @@ export const BankPage: React.FC<BankPageProps> = ({ mode, data, onAdd, onEdit, o
         setIsModalOpen(true);
     };
 
-    const handleDelete = (item: BankTransaction) => {
-        if(window.confirm("Bạn chắc chắn muốn xóa giao dịch này?")) {
+    const handleDelete = async (item: BankTransaction) => {
+        if(await confirm("Bạn chắc chắn muốn xóa giao dịch này?", "Xác nhận xóa")) {
             onDelete(item.id, item.originalId);
         }
     };
@@ -167,7 +169,7 @@ export const BankPage: React.FC<BankPageProps> = ({ mode, data, onAdd, onEdit, o
                     added++;
                 }
             });
-            alert(`Đã nhập ${added} giao dịch.`);
+            alert(`Đã nhập ${added} giao dịch.`, "Thành công");
             if (fileInputRef.current) fileInputRef.current.value = '';
         };
         reader.readAsBinaryString(file);

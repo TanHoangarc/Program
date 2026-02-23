@@ -6,12 +6,14 @@ import { MONTHS, YEARS } from '../constants';
 import { getPaginationRange } from '../utils';
 import * as XLSX from 'xlsx';
 import { SalesInvoiceModal } from '../components/SalesInvoiceModal';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface LhkListProps {
   jobs: JobData[];
 }
 
 export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
+  const { alert, confirm } = useNotification();
   const [filterMonth, setFilterMonth] = useState('');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); // ADDED
   const [searchTerm, setSearchTerm] = useState('');
@@ -97,7 +99,7 @@ export const LhkList: React.FC<LhkListProps> = ({ jobs }) => {
 
   const handleSaveSalesInvoice = (data: any) => {
     console.log("Sales Invoice Saved", data);
-    alert("Đã lưu thông tin Phiếu Bán Hàng tạm thời.");
+    alert("Đã lưu thông tin Phiếu Bán Hàng tạm thời.", "Thành công");
   };
 
   // Export Excel Function

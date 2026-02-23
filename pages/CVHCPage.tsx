@@ -6,6 +6,7 @@ import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { JobModal } from '../components/JobModal';
 import { GoogleGenAI } from "@google/genai";
+import { useNotification } from '../contexts/NotificationContext';
 
 interface CVHCPageProps {
   jobs: JobData[];
@@ -32,6 +33,7 @@ const BACKEND_URL = "https://api.kimberry.id.vn";
 export const CVHCPage: React.FC<CVHCPageProps> = ({ 
   jobs, customers, lines, onUpdateJob, onAddLine, onAddCustomer 
 }) => {
+  const { alert, confirm } = useNotification();
   const [mode, setMode] = useState<'single' | 'multi' | 'combined'>('single');
   const [rows, setRows] = useState<CVHCRow[]>([
     { id: '1', jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }
@@ -158,7 +160,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               setRows(newRows);
           } catch (error) {
               console.error("Error splitting PDF preview:", error);
-              alert("Không thể đọc file PDF. Vui lòng kiểm tra lại file.");
+              alert("Không thể đọc file PDF. Vui lòng kiểm tra lại file.", "Lỗi");
           } finally {
               setIsUploading(false);
               setUploadProgress('');
@@ -173,7 +175,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       
       const rowsToScan = rows.filter(r => r.previewUrl);
       if (rowsToScan.length === 0) {
-          alert("Không có trang nào để quét (Cần file PDF ở chế độ Tổng Hợp).");
+          alert("Không có trang nào để quét (Cần file PDF ở chế độ Tổng Hợp).", "Thông báo");
           return;
       }
 
@@ -269,9 +271,9 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 
       setIsScanning(false);
       if (successCount > 0) {
-          alert(`Đã quét xong! Cập nhật dữ liệu cho ${successCount} dòng.`);
+          alert(`Đã quét xong! Cập nhật dữ liệu cho ${successCount} dòng.`, "Thành công");
       } else {
-          alert("Quét xong nhưng không tìm thấy thông tin phù hợp.");
+          alert("Quét xong nhưng không tìm thấy thông tin phù hợp.", "Thông báo");
       }
   };
 
@@ -296,14 +298,14 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   };
 
   // --- BATCH PAYMENT CREATION ---
-  const handleBatchCreatePayment = () => {
+  const handleBatchCreatePayment = async () => {
       const validRows = rows.filter(r => r.jobId);
       if (validRows.length === 0) {
-          alert("Chưa có Job nào được nhận diện (Có số BL hợp lệ) để tạo phiếu chi.");
+          alert("Chưa có Job nào được nhận diện (Có số BL hợp lệ) để tạo phiếu chi.", "Thông báo");
           return;
       }
 
-      if (!window.confirm(`Bạn có chắc chắn muốn tạo ${validRows.length} phiếu chi hoàn cược nối tiếp cho danh sách này không?`)) return;
+      if (!await confirm(`Bạn có chắc chắn muốn tạo ${validRows.length} phiếu chi hoàn cược nối tiếp cho danh sách này không?`, "Xác nhận tạo phiếu")) return;
 
       // 1. Calculate base Max Number from existing jobs to ensure sequence
       let maxNum = 0;
@@ -355,18 +357,18 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           }
       });
 
-      alert(`Đã tạo thành công ${count} phiếu chi hoàn cược.\n(Từ UNC${String(maxNum + 1).padStart(5, '0')} đến UNC${String(maxNum + count).padStart(5, '0')})`);
+      alert(`Đã tạo thành công ${count} phiếu chi hoàn cược.\n(Từ UNC${String(maxNum + 1).padStart(5, '0')} đến UNC${String(maxNum + count).padStart(5, '0')})`, "Thành công");
   };
 
   const handleSubmit = async () => {
     // 1. Validation
     if (!file) {
-      alert("Vui lòng chọn file đính kèm!");
+      alert("Vui lòng chọn file đính kèm!", "Thông báo");
       return;
     }
     const invalidRows = rows.filter(r => !r.jobCode || !r.jobId);
     if (invalidRows.length > 0) {
-      alert("Vui lòng nhập đúng Số BL (Job Code) cho tất cả các dòng. Hệ thống cần tìm thấy Job tương ứng.");
+      alert("Vui lòng nhập đúng Số BL (Job Code) cho tất cả các dòng. Hệ thống cần tìm thấy Job tương ứng.", "Cảnh báo");
       return;
     }
 
@@ -424,7 +426,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               }
           }
           
-          alert(`Hoàn tất! Đã tách file và cập nhật CVHC cho ${successCount} Job.`);
+          alert(`Hoàn tất! Đã tách file và cập nhật CVHC cho ${successCount} Job.`, "Thành công");
 
       } else {
           // MODE SINGLE / MULTI (One file for all)
@@ -457,7 +459,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
              }
           });
           
-          alert(`Đã nộp CVHC thành công cho ${updatedCount} Job! File: ${result.name}`);
+          alert(`Đã nộp CVHC thành công cho ${updatedCount} Job! File: ${result.name}`, "Thành công");
       }
 
       // Reset form
@@ -466,7 +468,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
     } catch (err: any) {
       console.error("Submit Error:", err);
       const msg = err.response?.data?.message || err.message || "Unknown Error";
-      alert(`Có lỗi xảy ra: ${msg}`);
+      alert(`Có lỗi xảy ra: ${msg}`, "Lỗi");
     } finally {
       setIsUploading(false);
       setUploadProgress('');
