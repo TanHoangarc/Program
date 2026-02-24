@@ -6,6 +6,7 @@
     "dev": "vite",
     "server": "node server.js",
     "build": "vite build",
+    "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {

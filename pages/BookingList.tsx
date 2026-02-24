@@ -220,6 +220,7 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositRefundDocNo = data.docNo;
                   updatedJob.amisDepositRefundDesc = data.paymentContent;
                   updatedJob.amisDepositRefundDate = data.date;
+                  updatedJob.amisDepositRefundAmount = data.amount;
                   
                   // Also update legacy fields if needed
                   updatedJob.ngayThuHoan = data.date;

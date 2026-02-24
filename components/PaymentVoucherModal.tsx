@@ -150,6 +150,10 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               jobCodes = job.jobCode;
           }
       }
+      if (type === 'refund') {
+          return `${prefix} ${bkNumber || jobCodes}`;
+      }
+
       return `${prefix} ${jobCodes} ${bookingLabel} ${bkNumber} (kimberry)`;
   };
 
@@ -273,6 +277,54 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               }
           }
       }
+      else if (type === 'extension') {
+          initialData.tkNo = '3311';
+          
+          // Try to find if we are editing an existing voucher
+          // For extensions, we might have multiple extensions sharing the same docNo
+          const targetDoc = initialDocNo || (job?.extensions?.find(e => e.amisDocNo)?.amisDocNo);
+
+          if (targetDoc) {
+              // VIEW/EDIT MODE
+              initialData.docNo = targetDoc;
+              
+              // Find any extension with this docNo to get metadata
+              const refExt = allExtensions.find(e => e.amisDocNo === targetDoc);
+              
+              if (refExt) {
+                  initialData.paymentContent = refExt.amisDesc || '';
+                  initialData.date = refExt.amisDate || today;
+                  
+                  // Calculate total amount for this voucher
+                  const total = allExtensions.filter(e => e.amisDocNo === targetDoc).reduce((sum, e) => sum + e.total, 0);
+                  initialData.amount = total;
+                  
+                  // Set receiver name
+                  initialData.receiverName = job?.line || booking?.line || '';
+                  
+                  // Pre-select checkboxes
+                  const ids = new Set(allExtensions.filter(e => e.amisDocNo === targetDoc).map(e => e.id));
+                  setSelectedExtensionIds(ids);
+              }
+          } else {
+              // CREATE MODE
+              initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5, extraDocNos);
+              initialData.receiverName = job?.line || booking?.line || '';
+              initialData.paymentContent = generateDescription("Chi tiền gia hạn lô");
+              
+              // Default select all unpaid extensions
+              const unpaid = allExtensions.filter(e => !e.amisDocNo);
+              const total = unpaid.reduce((sum, e) => sum + e.total, 0);
+              initialData.amount = total;
+              
+              const ids = new Set(unpaid.map(e => e.id));
+              setSelectedExtensionIds(ids);
+              
+              if (unpaid.length > 0 && unpaid[0].date) {
+                  initialData.date = unpaid[0].date;
+              }
+          }
+      }
       else if (type === 'refund') {
           initialData.tkNo = '1121';
           initialData.tkCo = '3311';
@@ -289,8 +341,14 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               initialData.date = refJob?.amisDepositRefundDate || today;
               initialData.receiverName = refJob?.line || booking?.line || '';
               
-              if (booking) {
+              if (refJob?.amisDepositRefundAmount !== undefined) {
+                  initialData.amount = refJob.amisDepositRefundAmount;
+              } else if (booking) {
                   initialData.amount = (booking.costDetails.deposits || []).reduce((s,d) => s + (d.amount || 0), 0);
+              } else if (allJobs) {
+                  // Sum from all jobs sharing this DocNo (Merged Receipt)
+                  const groupJobs = allJobs.filter(j => j.amisDepositRefundDocNo === targetDoc);
+                  initialData.amount = groupJobs.reduce((s, j) => s + (j.thuCuoc || 0), 0);
               } else {
                   initialData.amount = job?.thuCuoc || 0;
               }
@@ -326,7 +384,17 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           if (newSet.has(ext.id)) return sum + ext.total;
           return sum;
       }, 0);
-      setFormData(prev => ({ ...prev, amount: total }));
+      
+      setFormData(prev => {
+          const newData = { ...prev, amount: total };
+          if (isChecked) {
+              const ext = allExtensions.find(e => e.id === extId);
+              if (ext && ext.date) {
+                  newData.date = ext.date;
+              }
+          }
+          return newData;
+      });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

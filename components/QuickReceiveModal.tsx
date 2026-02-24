@@ -235,8 +235,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const allJobs = [currentMainJob, ...extraJobs];
       const totalAmount = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
       
-      const jobCodes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
-      const newDesc = `Chi tiền cho KH HOÀN CƯỢC BL ${jobCodes}`;
+      const codes = Array.from(new Set(allJobs.map(j => j.booking || j.jobCode))).join('+');
+      const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
+      const newDesc = `${prefix} BL ${codes}`;
 
       setAmisAmount(totalAmount);
       setAmisDesc(newDesc);
@@ -250,7 +251,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
 
       setFormData(deepCopyJob);
-      setAddedJobs(initialAddedJobs); 
+      let mergedJobs = [...initialAddedJobs];
       setAdditionalReceipts(deepCopyJob.additionalReceipts || []);
       
       const initialExtSet = new Set<string>();
@@ -264,10 +265,16 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               targetExt = deepCopyJob.extensions?.find((e: any) => e.id === targetExtensionId);
               if (targetExt) {
                   orgDoc = targetExt.amisDocNo || '';
+                  
+                  // AUTO-FIND MERGED JOBS IF NONE PROVIDED
+                  if (mergedJobs.length === 0 && allJobs && orgDoc) {
+                      mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && (j.extensions || []).some(e => e.amisDocNo === orgDoc));
+                  }
+
                   (deepCopyJob.extensions || []).forEach((ext: any) => {
                       if (ext.amisDocNo === orgDoc) initialExtSet.add(ext.id);
                   });
-                  initialAddedJobs.forEach(mergedJob => {
+                  mergedJobs.forEach(mergedJob => {
                       (mergedJob.extensions || []).forEach(ext => {
                           if (ext.amisDocNo === orgDoc) initialExtSet.add(ext.id);
                       });
@@ -303,6 +310,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           }
 
           setOriginalGroupDocNo(orgDoc);
+          setAddedJobs(mergedJobs);
           setSelectedMergedExtIds(initialExtSet);
 
           const nextNewDocNo = generateNextDocNo(jobsForCalc, 'NTTK', 5, extra);
@@ -310,7 +318,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
           let initTotal = 0;
           (deepCopyJob.extensions || []).forEach((e: any) => { if (initialExtSet.has(e.id)) initTotal += e.total; });
-          initialAddedJobs.forEach(j => { (j.extensions || []).forEach(e => { if (initialExtSet.has(e.id)) initTotal += e.total; }); });
+          mergedJobs.forEach(j => { (j.extensions || []).forEach(e => { if (initialExtSet.has(e.id)) initTotal += e.total; }); });
 
           const custId = targetExt ? (targetExt.customerId || deepCopyJob.customerId) : deepCopyJob.customerId;
           
@@ -318,7 +326,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           let initialExtInv = targetExt?.invoice || '';
           
           // Attempt to extract if currently merged
-          if (initialAddedJobs.length > 0 && initialExtInv.includes('+')) {
+          if (mergedJobs.length > 0 && initialExtInv.includes('+')) {
                const parts = initialExtInv.split('+').map((s: string) => s.trim());
                if (parts.length > 0) initialExtInv = parts[0];
           }
@@ -326,10 +334,10 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           setMainExtensionInvoice(initialExtInv);
 
           // Calculate merged string
-          let mergedInv = generateMergedInvoiceString(initialExtInv, job.jobCode, initialAddedJobs, true, initialExtSet);
+          let mergedInv = generateMergedInvoiceString(initialExtInv, job.jobCode, mergedJobs, true, initialExtSet);
           
           // FIX: If mergedInv became XXX placeholder but we have a valid single extension invoice, force use the valid invoice
-          if (mergedInv.includes('XXX BL') && initialExtInv && !initialExtInv.includes('XXX BL') && initialAddedJobs.length === 0) {
+          if (mergedInv.includes('XXX BL') && initialExtInv && !initialExtInv.includes('XXX BL') && mergedJobs.length === 0) {
               mergedInv = initialExtInv;
           }
 
@@ -356,8 +364,21 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       } else {
           if (mode === 'local' || mode === 'other' || mode === 'refund_overpayment') orgDoc = deepCopyJob.amisLcDocNo || '';
           else if (mode === 'deposit') orgDoc = deepCopyJob.amisDepositDocNo || '';
+          else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') orgDoc = deepCopyJob.amisDepositRefundDocNo || '';
           
           setOriginalGroupDocNo(orgDoc);
+
+          // AUTO-FIND MERGED JOBS IF NONE PROVIDED
+          if (mergedJobs.length === 0 && allJobs && orgDoc) {
+              if (mode === 'local' || mode === 'other') {
+                  mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisLcDocNo === orgDoc);
+              } else if (mode === 'deposit') {
+                  mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisDepositDocNo === orgDoc);
+              } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
+                  mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisDepositRefundDocNo === orgDoc);
+              }
+          }
+          setAddedJobs(mergedJobs);
 
           let initialCustId = (mode === 'deposit' || mode === 'deposit_refund') ? deepCopyJob.maKhCuocId : deepCopyJob.customerId;
           const foundCust = customers.find(c => c.id === initialCustId);
@@ -374,9 +395,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   if (selfPart) initialMainInv = selfPart.trim();
                   else initialMainInv = `XXX BL ${job.jobCode}`;
               }
-              else if (initialAddedJobs.length > 0 && initialMainInv.includes('+')) {
+              else if (mergedJobs.length > 0 && initialMainInv.includes('+')) {
                    const parts = initialMainInv.split('+').map((s: string) => s.trim());
-                   const addedInvs = new Set(initialAddedJobs.map(j => (j.localChargeInvoice || '').trim()));
+                   const addedInvs = new Set(mergedJobs.map(j => (j.localChargeInvoice || '').trim()));
                    const remaining = parts.filter((p: string) => !addedInvs.has(p) && !p.includes('XXX BL'));
                    if (remaining.length > 0) initialMainInv = remaining.join('+');
                    else if (parts.length > 0) initialMainInv = parts[0];
@@ -384,7 +405,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
               setMainJobInvoice(initialMainInv);
 
-              const mergedInv = generateMergedInvoiceString(initialMainInv, job.jobCode, initialAddedJobs, false, new Set());
+              const mergedInv = generateMergedInvoiceString(initialMainInv, job.jobCode, mergedJobs, false, new Set());
               
               setAmisDocNo(orgDoc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
               setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
@@ -400,17 +421,25 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, mode === 'deposit_refund_thu' ? 'NTTK' : 'UNC')); 
               setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
               
-              if (initialAddedJobs.length > 0) {
-                  const allJobs = [deepCopyJob, ...initialAddedJobs];
+              if (mergedJobs.length > 0) {
+                  const allJobs = [deepCopyJob, ...mergedJobs];
                   const total = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-                  const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
+                  const codes = Array.from(new Set(allJobs.map(j => j.booking || j.jobCode))).join('+');
                   const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
                   setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${codes}`);
-                  setAmisAmount(total); 
+                  
+                  // Use saved amount if available, otherwise use calculated total
+                  setAmisAmount(deepCopyJob.amisDepositRefundAmount !== undefined ? deepCopyJob.amisDepositRefundAmount : total); 
               } else {
                   const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
-                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${deepCopyJob.jobCode}`);
-                  setAmisAmount(deepCopyJob.thuCuoc || 0); 
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${deepCopyJob.booking || deepCopyJob.jobCode}`);
+                  
+                  // Calculate total deposit from booking if available
+                  const bookingDeposit = (deepCopyJob.bookingCostDetails?.deposits || []).reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+                  const defaultAmount = bookingDeposit > 0 ? bookingDeposit : (deepCopyJob.thuCuoc || 0);
+
+                  // Use saved amount if available, otherwise use default
+                  setAmisAmount(deepCopyJob.amisDepositRefundAmount !== undefined ? deepCopyJob.amisDepositRefundAmount : defaultAmount); 
               }
           } else if (mode === 'refund_overpayment') {
               // EDIT MODE check via targetRefundId
@@ -665,8 +694,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             onSave({ ...remJob, ...clearUpdates });
         });
     } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
-        mergedList.forEach(j => onSave({ ...j, amisDepositRefundDocNo: amisDocNo, amisDepositRefundDesc: amisDesc, amisDepositRefundDate: amisDate, ngayThuHoan: amisDate }));
-        removedJobs.forEach(remJob => onSave({ ...remJob, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', ngayThuHoan: '' }));
+        mergedList.forEach((j, index) => {
+            const isMainJob = index === 0;
+            onSave({ 
+                ...j, 
+                amisDepositRefundDocNo: amisDocNo, 
+                amisDepositRefundDesc: amisDesc, 
+                amisDepositRefundDate: amisDate, 
+                amisDepositRefundAmount: isMainJob ? amisAmount : undefined,
+                ngayThuHoan: amisDate 
+            });
+        });
+        removedJobs.forEach(remJob => onSave({ ...remJob, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', amisDepositRefundAmount: 0, ngayThuHoan: '' }));
     } else if (mode === 'refund_overpayment') {
         let updatedRefunds = [...(formData.refunds || [])];
         
@@ -754,7 +793,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             </div>
             <div>
                 <h2 className="text-lg font-bold text-slate-800">{getTitle()}</h2>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">Job: <span className="font-bold text-blue-700">{job.jobCode}</span></p>
+                {(mode === 'deposit_refund' || mode === 'deposit_refund_thu') ? (
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">Booking: <span className="font-bold text-blue-700">{job.booking || job.jobCode}</span></p>
+                ) : (
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">Job: <span className="font-bold text-blue-700">{job.jobCode}</span></p>
+                )}
             </div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all"><X className="w-5 h-5" /></button>

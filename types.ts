@@ -215,6 +215,7 @@ export interface JobData {
   amisDepositRefundDocNo?: string;
   amisDepositRefundDesc?: string;
   amisDepositRefundDate?: string;
+  amisDepositRefundAmount?: number;
 
   // NEW: CVHC File Info
   cvhcUrl?: string;

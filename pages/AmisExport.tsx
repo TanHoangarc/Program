@@ -364,12 +364,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       });
       refundThuGroupMap.forEach((groupJobs, docNo) => {
           const mainJob = groupJobs[0];
-          const totalRefund = groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
+          const savedAmount = groupJobs.find(j => j.amisDepositRefundAmount !== undefined)?.amisDepositRefundAmount;
+          const totalRefund = savedAmount !== undefined ? savedAmount : groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
           rows.push({
               jobId: mainJob.id, type: 'refund_thu', rowId: `ref-thu-${mainJob.id}`,
               date: mainJob.amisDepositRefundDate, docNo: mainJob.amisDepositRefundDocNo,
               objCode: mainJob.line, objName: '', 
-              desc: mainJob.amisDepositRefundDesc || `Thu hoàn cược lô ${mainJob.jobCode}`,
+              desc: mainJob.amisDepositRefundDesc || `Thu hoàn cược lô ${mainJob.booking || mainJob.jobCode}`,
               amount: totalRefund,
               tkNo: '1121', tkCo: '1388'
           });
@@ -466,7 +467,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             if (j.amisDepositRefundDocNo && !j.amisDepositRefundDocNo.startsWith('NTTK') && !processedRefunds.has(j.amisDepositRefundDocNo) && checkDateFilter(j.amisDepositRefundDate)) {
                 processedRefunds.add(j.amisDepositRefundDocNo);
                 const groupJobs = jobs.filter(subJ => subJ.amisDepositRefundDocNo === j.amisDepositRefundDocNo);
-                const totalRefund = groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
+                const savedAmount = groupJobs.find(subJ => subJ.amisDepositRefundAmount !== undefined)?.amisDepositRefundAmount;
+                const totalRefund = savedAmount !== undefined ? savedAmount : groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
                 rows.push({
                      jobId: j.id, type: 'payment_refund', rowId: `pay-ref-${j.id}`, date: j.amisDepositRefundDate || todayStr, docNo: j.amisDepositRefundDocNo,
                      objCode: getCustomerCode(j.maKhCuocId || j.customerId), objName: getCustomerName(j.maKhCuocId || j.customerId), desc: j.amisDepositRefundDesc, amount: totalRefund,
