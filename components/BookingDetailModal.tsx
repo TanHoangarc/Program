@@ -773,31 +773,49 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       const jobs = booking.jobs;
       if (!jobs || jobs.length === 0) return docs;
 
-      // Local Charge Payment Doc (Assume Merged Group, check first job)
-      if (jobs[0].amisPaymentDocNo) {
+      const processedDocNos = new Set<string>();
+
+      // 1. Local Charge Payment Doc (Main)
+      if (jobs[0].amisPaymentDocNo && !processedDocNos.has(jobs[0].amisPaymentDocNo)) {
           docs.push({ type: 'local', docNo: jobs[0].amisPaymentDocNo, label: 'LC' });
+          processedDocNos.add(jobs[0].amisPaymentDocNo);
+      }
+
+      // 2. Additional Local Charges Payment Docs
+      if (booking.costDetails.additionalLocalCharges) {
+          booking.costDetails.additionalLocalCharges.forEach(item => {
+              if (item.amisDocNo && !processedDocNos.has(item.amisDocNo)) {
+                  docs.push({ type: 'local', docNo: item.amisDocNo, label: 'LC' });
+                  processedDocNos.add(item.amisDocNo);
+              }
+          });
       }
       
-      // Deposit Payment Doc (Assume Merged Group)
-      if (jobs[0].amisDepositOutDocNo) {
+      // 3. Deposit Payment Doc (Chi Cược)
+      if (jobs[0].amisDepositOutDocNo && !processedDocNos.has(jobs[0].amisDepositOutDocNo)) {
           docs.push({ type: 'deposit', docNo: jobs[0].amisDepositOutDocNo, label: 'Cược' });
+          processedDocNos.add(jobs[0].amisDepositOutDocNo);
       }
 
-      // Refund (Thu Hoàn) Payment Doc
-      if (jobs[0].amisDepositRefundDocNo) {
+      // 4. Refund (Thu Hoàn) Payment Doc
+      if (jobs[0].amisDepositRefundDocNo && !processedDocNos.has(jobs[0].amisDepositRefundDocNo)) {
           docs.push({ type: 'refund', docNo: jobs[0].amisDepositRefundDocNo, label: 'Thu Hoàn' });
+          processedDocNos.add(jobs[0].amisDepositRefundDocNo);
       }
 
-      // Extension Payment Docs
+      // 5. Extension Payment Docs
       const extDocsSet = new Set<string>();
       
       // Check from Cost Details first (More accurate for extensions)
-      booking.costDetails.extensionCosts.forEach(ext => {
-          if (ext.amisDocNo && !extDocsSet.has(ext.amisDocNo)) {
-              extDocsSet.add(ext.amisDocNo);
-              docs.push({ type: 'extension', docNo: ext.amisDocNo, label: 'GH' });
-          }
-      });
+      if (booking.costDetails.extensionCosts) {
+          booking.costDetails.extensionCosts.forEach(ext => {
+              if (ext.amisDocNo && !extDocsSet.has(ext.amisDocNo) && !processedDocNos.has(ext.amisDocNo)) {
+                  extDocsSet.add(ext.amisDocNo);
+                  processedDocNos.add(ext.amisDocNo);
+                  docs.push({ type: 'extension', docNo: ext.amisDocNo, label: 'GH' });
+              }
+          });
+      }
 
       // Fallback check legacy fields if missing
       jobs.forEach(j => {

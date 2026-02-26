@@ -35,6 +35,7 @@ app.use(cors({ origin: "*" }));
 const ROOT_DIR = "E:/ServerData";
 
 const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, Customers, etc.)
+const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting Data (Admin Only) - Renamed to lowercase
 const PAYMENT_PATH = path.join(ROOT_DIR, "payment.json");   // Payment Requests Only
 const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
 const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
@@ -64,6 +65,7 @@ const SIGN_DIR = path.join(ROOT_DIR, "Sign");
 
 // Initialize files if not exist
 if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
+if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
 if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
 if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
 if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
@@ -121,10 +123,155 @@ function mergeLists(currentList, incomingList, idField = "id") {
 }
 
 // ======================================================
+// AMIS DATA HANDLERS (SEPARATION LOGIC)
+// ======================================================
+const AMIS_JOB_FIELDS = [
+    "amisPaymentDocNo", "amisPaymentDesc", "amisPaymentDate",
+    "amisDepositOutDocNo", "amisDepositOutDesc", "amisDepositOutDate",
+    "amisExtensionPaymentDocNo", "amisExtensionPaymentDesc", "amisExtensionPaymentDate", "amisExtensionPaymentAmount",
+    "amisLcDocNo", "amisLcDesc", "amisLcAmount",
+    "amisDepositDocNo", "amisDepositDesc", "amisDepositAmount",
+    "amisDepositRefundDocNo", "amisDepositRefundDesc", "amisDepositRefundDate", "amisDepositRefundAmount"
+];
+const AMIS_EXT_FIELDS = ["amisDocNo", "amisDesc", "amisAmount", "amisDate"];
+
+// Helper to restore Amis fields from memory if missing in incoming update
+function preserveAmisData(currentList, incomingList) {
+    if (!currentList || !incomingList) return incomingList;
+    
+    const currentMap = new Map(currentList.map(j => [j.id, j]));
+    
+    return incomingList.map(incomingJob => {
+        const existingJob = currentMap.get(incomingJob.id);
+        if (!existingJob) return incomingJob;
+
+        // Clone incoming to avoid mutation side effects
+        const mergedJob = { ...incomingJob };
+
+        // Restore Job-level Amis fields if missing in incoming
+        AMIS_JOB_FIELDS.forEach(field => {
+            if (mergedJob[field] === undefined && existingJob[field] !== undefined) {
+                mergedJob[field] = existingJob[field];
+            }
+        });
+
+        // Restore Extension-level Amis fields
+        if (Array.isArray(mergedJob.extensions) && Array.isArray(existingJob.extensions)) {
+            const existingExtMap = new Map(existingJob.extensions.map(e => [e.id, e]));
+            
+            mergedJob.extensions = mergedJob.extensions.map(incExt => {
+                const existExt = existingExtMap.get(incExt.id);
+                if (!existExt) return incExt;
+                
+                const mergedExt = { ...incExt };
+                AMIS_EXT_FIELDS.forEach(field => {
+                    if (mergedExt[field] === undefined && existExt[field] !== undefined) {
+                        mergedExt[field] = existExt[field];
+                    }
+                });
+                return mergedExt;
+            });
+        }
+        
+        return mergedJob;
+    });
+}
+
+function splitAmisData(sourceData) {
+    // Deep clone to avoid mutating source
+    const cleanData = JSON.parse(JSON.stringify(sourceData));
+    const amisData = { jobs: {} };
+    let hasAmisData = false;
+    let extractedCount = 0;
+
+    if (Array.isArray(cleanData.jobs)) {
+        cleanData.jobs.forEach(job => {
+            const jobAmis = {};
+            let jobHasAmis = false;
+
+            // Extract Job-level Amis fields
+            AMIS_JOB_FIELDS.forEach(field => {
+                if (job[field] !== undefined) {
+                    jobAmis[field] = job[field];
+                    delete job[field]; // Remove from clean data
+                    jobHasAmis = true;
+                    extractedCount++;
+                }
+            });
+
+            // Extract Extension-level Amis fields
+            if (Array.isArray(job.extensions)) {
+                const extAmisMap = {};
+                let extHasAmis = false;
+                
+                job.extensions.forEach(ext => {
+                    const singleExtAmis = {};
+                    let singleExtHas = false;
+                    AMIS_EXT_FIELDS.forEach(field => {
+                        if (ext[field] !== undefined) {
+                            singleExtAmis[field] = ext[field];
+                            delete ext[field]; // Remove from clean data
+                            singleExtHas = true;
+                            extractedCount++;
+                        }
+                    });
+
+                    if (singleExtHas) {
+                        extAmisMap[ext.id] = singleExtAmis;
+                        extHasAmis = true;
+                    }
+                });
+
+                if (extHasAmis) {
+                    jobAmis.extensions = extAmisMap;
+                    jobHasAmis = true;
+                }
+            }
+
+            if (jobHasAmis) {
+                amisData.jobs[job.id] = jobAmis;
+                hasAmisData = true;
+            }
+        });
+    }
+    
+    console.log(`[splitAmisData] Extracted ${extractedCount} Amis fields from ${cleanData.jobs ? cleanData.jobs.length : 0} jobs.`);
+    return { cleanData, amisData, hasAmisData };
+}
+
+function mergeAmisData(mainData, amisData) {
+    if (!mainData.jobs || !Array.isArray(mainData.jobs)) return;
+    if (!amisData || !amisData.jobs) return;
+
+    mainData.jobs.forEach(job => {
+        const amisEntry = amisData.jobs[job.id];
+        if (amisEntry) {
+            // Merge Job-level fields
+            Object.keys(amisEntry).forEach(key => {
+                if (key !== 'extensions') {
+                    job[key] = amisEntry[key];
+                }
+            });
+
+            // Merge Extension-level fields
+            if (amisEntry.extensions && Array.isArray(job.extensions)) {
+                job.extensions.forEach(ext => {
+                    const extAmis = amisEntry.extensions[ext.id];
+                    if (extAmis) {
+                        Object.assign(ext, extAmis);
+                    }
+                });
+            }
+        }
+    });
+}
+
+// ======================================================
 // ROBUST WRITE QUEUE (SERIALIZED)
 // ======================================================
 let writeLock = false;    // Is a write currently happening?
 let writePending = false; // Is a new request waiting?
+let pendingWriteIsAdmin = false; // Tracks if any pending write is from Admin
 
 /**
  * Serializes writes to disk.
@@ -132,40 +279,58 @@ let writePending = false; // Is a new request waiting?
  * Once the current write finishes, if the flag is set, it runs again with the LATEST RAM state.
  * This ensures no updates are lost and the file eventually matches RAM perfectly.
  */
-async function triggerDiskSave() {
+async function triggerDiskSave(isAdmin = false) {
     // 1. If we are already writing, just mark that we need to write again once finished.
     if (writeLock) {
         writePending = true;
+        if (isAdmin) pendingWriteIsAdmin = true; // Upgrade pending write to Admin
         return;
     }
 
     writeLock = true;
+    if (isAdmin) pendingWriteIsAdmin = true;
 
     try {
         do {
             // Reset pending flag at the start of the cycle
             writePending = false;
+            
+            // Capture if this cycle should write Amis data
+            const shouldWriteAmis = pendingWriteIsAdmin;
+            pendingWriteIsAdmin = false; // Reset for next cycle
 
             // 2. Snapshot the current RAM state (The Source of Truth)
             const dataSnapshot = { ...memoryData };
             const paymentSnapshot = [...memoryPayments];
 
-            // 3. Perform I/O operations (Wait for them to finish)
-            await Promise.all([
+            // 3. Split Data for Storage
+            // We separate Amis data to save to amis.json (Admin only).
+            // BUT we now KEEP the full data in backup.json as requested (redundancy).
+            const { amisData } = splitAmisData(dataSnapshot);
+
+            // 4. Perform I/O operations (Wait for them to finish)
+            const writePromises = [
+                // Save FULL data (including Amis) to backup.json
                 fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
                 fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
-            ]);
+            ];
 
-            // 4. Write History Backup (Full Snapshot)
+            if (shouldWriteAmis) {
+                writePromises.push(fsp.writeFile(AMIS_PATH, JSON.stringify(amisData, null, 2), "utf8"));
+            }
+
+            await Promise.all(writePromises);
+
+            // 5. Write History Backup (Full Snapshot - Merged)
             // We combine them for the history file logic
             await writeHistoryBackup({
-                ...dataSnapshot,
+                ...dataSnapshot, // This is the original merged snapshot from RAM
                 paymentRequests: paymentSnapshot
             });
 
-            console.log("💾 Disk save completed.");
+            console.log(`💾 Disk save completed. (Amis Saved: ${shouldWriteAmis})`);
 
-            // 5. Loop condition:
+            // 6. Loop condition:
             // If `writePending` became true while we were awaiting the writes above,
             // the loop runs again immediately with the NEW latest RAM state.
         } while (writePending);
@@ -260,6 +425,26 @@ function broadcast(event, data) {
         const rawData = await fsp.readFile(DATA_PATH, "utf8");
         memoryData = sanitizePayload(JSON.parse(rawData || "{}"));
         
+        // Check Amis count in Backup
+        let backupAmisCount = 0;
+        const backupAmisCheck = splitAmisData(memoryData);
+        if (backupAmisCheck.hasAmisData) {
+             backupAmisCount = Object.keys(backupAmisCheck.amisData.jobs || {}).length;
+        }
+
+        // 1b. Load Amis Data (Admin Only File) & Merge
+        let amisFileCount = 0;
+        try {
+            const rawAmis = await fsp.readFile(AMIS_PATH, "utf8");
+            const amisData = JSON.parse(rawAmis || "{}");
+            amisFileCount = Object.keys(amisData.jobs || {}).length;
+
+            mergeAmisData(memoryData, amisData);
+            console.log(`✅ Loaded: Backup has ${backupAmisCount} Amis jobs | Amis.json has ${amisFileCount} Amis jobs`);
+        } catch (e) {
+            console.warn("⚠️ Amis Data load failed or empty:", e.message);
+        }
+        
         if (!memoryData.deletedPaymentIds) {
             memoryData.deletedPaymentIds = [];
         }
@@ -272,6 +457,22 @@ function broadcast(event, data) {
         nfcMemoryData = JSON.parse(await fsp.readFile(NFC_PATH, "utf8") || "[]");
 
         console.log("✅ Database (Main + Payment + NFC) loaded into RAM");
+
+        // 4. Auto-Sync: Compare and Sync
+        const { hasAmisData, amisData: mergedAmis } = splitAmisData(memoryData);
+        const mergedCount = Object.keys(mergedAmis.jobs || {}).length;
+
+        if (hasAmisData) {
+            // If counts differ, it means one had more or different data than the other.
+            // We sync the merged result to BOTH files.
+            if (backupAmisCount !== mergedCount || amisFileCount !== mergedCount) {
+                console.log(`🔄 Syncing Amis Data: Merged total is ${mergedCount}. Updating files to match...`);
+                await triggerDiskSave(true);
+            } else {
+                console.log("✅ Amis data is already synchronized across files.");
+            }
+        }
+
     } catch (err) {
         console.error("Startup load error:", err);
         memoryData = { deletedPaymentIds: [] };
@@ -333,15 +534,25 @@ app.post("/data/save", async (req, res) => {
     const { role, ...data } = req.body; 
     const safeData = sanitizePayload(data);
     
-    if (role === 'Admin' || role === 'Manager') {
-        // --- ADMIN UPDATE (SOURCE OF TRUTH) ---
+    // Normalize role for checking
+    const userRole = (role || '').toLowerCase();
+    const isAdmin = userRole === 'admin';
+    const isManager = userRole === 'manager';
+    const isAccount = userRole === 'account';
+    const isDocs = userRole === 'docs';
+    const isStaff = userRole === 'staff';
+
+    if (isAdmin || isManager || isAccount) {
+        // --- ADMIN/MANAGER/ACCOUNT UPDATE (SOURCE OF TRUTH) ---
         
         // 1. Update Global RAM for Main Entities with MERGE to prevent data loss
         // We use mergeLists to ensure that if a client has stale data (missing some items), 
         // those items are NOT deleted from the server unless explicitly requested.
         
         if (safeData.jobs) {
-            memoryData.jobs = mergeLists(memoryData.jobs || [], safeData.jobs);
+            // CRITICAL: Preserve Amis fields if missing in incoming update (e.g. from Docs/Staff)
+            const enrichedJobs = preserveAmisData(memoryData.jobs || [], safeData.jobs);
+            memoryData.jobs = mergeLists(memoryData.jobs || [], enrichedJobs);
         }
         if (safeData.customers) {
             memoryData.customers = mergeLists(memoryData.customers || [], safeData.customers);
@@ -387,12 +598,12 @@ app.post("/data/save", async (req, res) => {
         if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
 
         // 4. Trigger Async Disk Write
-        triggerDiskSave(); 
-        broadcast("data-updated", { time: Date.now(), source: 'Admin', type: 'FULL_SYNC' });
+        triggerDiskSave(isAdmin || isAccount || isManager); 
+        broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
 
         res.json({ success: true, saved: "full_merged_admin" });
 
-    } else if (role === 'Docs') {
+    } else if (isDocs) {
         // --- DOCS UPDATE (PARTIAL) ---
         let requireReload = false;
 
@@ -410,13 +621,13 @@ app.post("/data/save", async (req, res) => {
             memoryPayments = mergeLists(memoryPayments, validRequests);
         }
         
-        // Trigger Disk Write for consistency
-        triggerDiskSave(); 
+        // Trigger Disk Write for consistency (Docs cannot save Amis)
+        triggerDiskSave(false); 
         broadcast("data-updated", { time: Date.now(), source: 'Docs' });
 
         res.json({ success: true, saved: "payment_only", requireReload });
 
-    } else if (role === 'Staff') {
+    } else if (isStaff) {
         // Staff writes to separate file, no merge needed into main memory
         saveStaffData(safeData);
         res.json({ success: true, saved: "staff_file" });

@@ -90,6 +90,71 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
   });
 
   const [selectedExtensionIds, setSelectedExtensionIds] = useState<Set<string>>(new Set());
+  const [selectedLocalChargeIds, setSelectedLocalChargeIds] = useState<Set<string>>(new Set());
+
+  // RE-CALCULATE LOCAL CHARGES FROM BOOKING/JOB
+  const allLocalCharges = useMemo(() => {
+      if (type !== 'local') return [];
+      const items: { id: string, invoice: string, date: string, total: number, amisDocNo?: string, isMain: boolean }[] = [];
+
+      if (booking) {
+          const lc = booking.costDetails.localCharge;
+          // Main Local Charge
+          if (lc.total > 0 || lc.net > 0 || lc.vat > 0) {
+             const total = (lc.hasInvoice === false) ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
+             // Assume first job's amisPaymentDocNo is the main one
+             const mainDocNo = booking.jobs[0]?.amisPaymentDocNo;
+             
+             items.push({
+                 id: 'MAIN_LC',
+                 invoice: lc.invoice || 'N/A',
+                 date: lc.date || '',
+                 total: total,
+                 amisDocNo: mainDocNo,
+                 isMain: true
+             });
+          }
+
+          // Additional Local Charges
+          (booking.costDetails.additionalLocalCharges || []).forEach(add => {
+              const total = (add.hasInvoice === false) ? (add.total || 0) : ((add.net || 0) + (add.vat || 0));
+              items.push({
+                  id: add.id,
+                  invoice: add.invoice || 'N/A',
+                  date: add.date || '',
+                  total: total,
+                  amisDocNo: add.amisDocNo,
+                  isMain: false
+              });
+          });
+      } else if (job) {
+          // Single Job Context (Fallback)
+          const lc = job.bookingCostDetails?.localCharge;
+          if (lc && (lc.total > 0 || lc.net > 0)) {
+             const total = (lc.hasInvoice === false) ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
+             items.push({
+                 id: 'MAIN_LC',
+                 invoice: lc.invoice || 'N/A',
+                 date: lc.date || '',
+                 total: total,
+                 amisDocNo: job.amisPaymentDocNo,
+                 isMain: true
+             });
+          }
+          (job.bookingCostDetails?.additionalLocalCharges || []).forEach(add => {
+              const total = (add.hasInvoice === false) ? (add.total || 0) : ((add.net || 0) + (add.vat || 0));
+              items.push({
+                  id: add.id,
+                  invoice: add.invoice || 'N/A',
+                  date: add.date || '',
+                  total: total,
+                  amisDocNo: add.amisDocNo,
+                  isMain: false
+              });
+          });
+      }
+      return items;
+  }, [booking, job, type]);
 
   // RE-CALCULATE EXTENSIONS FROM ALLJOBS TO ENSURE FRESHNESS
   // This fixes the issue where 'booking' prop might be stale when opening from lists
@@ -188,37 +253,28 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               initialData.date = refJob?.amisPaymentDate || today;
               initialData.receiverName = refJob?.line || booking?.line || '';
 
-              // CALCULATE AMOUNT FROM BOOKING COST DETAILS IF AVAILABLE
-              if (booking) {
-                  const lc = booking.costDetails.localCharge;
-                  // Use Net+Vat if invoice exists, else Total
-                  const main = (lc.hasInvoice === false) ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
-                  const add = (booking.costDetails.additionalLocalCharges || []).reduce((s, a) => {
-                      const val = (a.hasInvoice === false) ? (a.total || 0) : ((a.net || 0) + (a.vat || 0));
-                      return s + val;
-                  }, 0);
-                  initialData.amount = main + add;
-              } else if (allJobs) {
-                  // Fallback: Sum from all jobs sharing this DocNo
-                  const groupJobs = allJobs.filter(j => j.amisPaymentDocNo === targetDoc);
-                  initialData.amount = groupJobs.reduce((s, j) => s + (j.chiPayment || 0), 0);
-              } else {
-                  initialData.amount = job?.chiPayment || 0;
-              }
+              // CALCULATE AMOUNT FROM SELECTED ITEMS
+              const selectedItems = allLocalCharges.filter(item => item.amisDocNo === targetDoc);
+              const total = selectedItems.reduce((s, item) => s + item.total, 0);
+              initialData.amount = total;
+              
+              const ids = new Set(selectedItems.map(item => item.id));
+              setSelectedLocalChargeIds(ids);
+
           } else {
               // CREATE MODE
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5);
               if (booking) {
-                const summary = booking.costDetails.localCharge;
-                const main = (summary.hasInvoice === false) ? (summary.total || 0) : ((summary.net || 0) + (summary.vat || 0));
-                const add = (booking.costDetails.additionalLocalCharges || []).reduce((s, a) => {
-                    const val = (a.hasInvoice === false) ? (a.total || 0) : ((a.net || 0) + (a.vat || 0));
-                    return s + val;
-                }, 0);
-                initialData.amount = main + add;
-                
                 initialData.paymentContent = generateDescription("Chi tiền cho ncc lô");
                 initialData.receiverName = booking.line;
+                
+                // Select all UNPAID items
+                const unpaid = allLocalCharges.filter(item => !item.amisDocNo);
+                const total = unpaid.reduce((s, item) => s + item.total, 0);
+                initialData.amount = total;
+                const ids = new Set(unpaid.map(item => item.id));
+                setSelectedLocalChargeIds(ids);
+
               } else if (job) {
                 initialData.amount = job.chiPayment || 0; 
                 initialData.receiverName = job.line;
@@ -397,6 +453,21 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       });
   };
 
+  const handleToggleLocalCharge = (itemId: string, isChecked: boolean) => {
+      const newSet = new Set(selectedLocalChargeIds);
+      if (isChecked) newSet.add(itemId);
+      else newSet.delete(itemId);
+      
+      setSelectedLocalChargeIds(newSet);
+
+      const total = allLocalCharges.reduce((sum, item) => {
+          if (newSet.has(item.id)) return sum + item.total;
+          return sum;
+      }, 0);
+      
+      setFormData(prev => ({ ...prev, amount: total }));
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -407,8 +478,8 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
   };
 
   const handleAmountChange = (val: number) => {
-    // For extension, amount is calculated from checkboxes, don't allow manual override via this handler if caught here
-    if (type === 'extension') return; 
+    // For extension and local, amount is calculated from checkboxes, don't allow manual override via this handler if caught here
+    if (type === 'extension' || type === 'local') return; 
     setFormData(prev => ({ ...prev, amount: val }));
   };
 
@@ -417,6 +488,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     onSave({
         ...formData,
         selectedExtensionIds: Array.from(selectedExtensionIds),
+        selectedLocalChargeIds: Array.from(selectedLocalChargeIds),
         originalDocNo: initialDocNo // Pass this to identify what we are editing
     });
     onClose();
@@ -448,6 +520,73 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
             <form onSubmit={handleSubmit} className="space-y-5">
                 
+                {/* LIST OF LOCAL CHARGES WITH CHECKBOXES */}
+                {type === 'local' && allLocalCharges.length > 0 && (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-top-2">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3 flex items-center">
+                            <Check className="w-3.5 h-3.5 mr-1.5 text-blue-500" /> Chọn các khoản Local Charge để chi
+                        </h3>
+                        <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                            {allLocalCharges.map((item, idx) => {
+                                const ownerDocNo = item.amisDocNo;
+                                const isLocked = !!ownerDocNo && (initialDocNo ? ownerDocNo !== initialDocNo : true);
+                                const isCurrentVoucher = !!ownerDocNo && ownerDocNo === initialDocNo;
+
+                                return (
+                                    <label 
+                                        key={item.id} 
+                                        className={`flex items-center p-2.5 rounded-lg border transition-all ${
+                                            isLocked 
+                                                ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed' 
+                                                : selectedLocalChargeIds.has(item.id) 
+                                                    ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                                                    : 'bg-white border-slate-100 hover:border-blue-200 cursor-pointer'
+                                        }`}
+                                    >
+                                        <div className="flex items-center h-5">
+                                            {isLocked ? (
+                                                <Lock className="w-4 h-4 text-slate-400" />
+                                            ) : (
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedLocalChargeIds.has(item.id)} 
+                                                    onChange={(e) => handleToggleLocalCharge(item.id, e.target.checked)}
+                                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                                />
+                                            )}
+                                        </div>
+                                        <div className="ml-3 flex-1 flex justify-between items-center text-sm">
+                                            <div className="flex flex-col">
+                                                <span className={`font-bold ${isLocked ? 'text-slate-500' : 'text-slate-700'}`}>
+                                                    {item.isMain ? 'Main LC' : 'Add. LC'}: {item.invoice || 'N/A'}
+                                                </span>
+                                                <span className="text-xs text-slate-400 font-medium">
+                                                    Ngày: {formatDateVN(item.date)}
+                                                </span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className={`font-bold ${isLocked ? 'text-slate-500' : 'text-blue-700'}`}>
+                                                    {new Intl.NumberFormat('en-US').format(item.total)} VND
+                                                </div>
+                                                {isLocked && (
+                                                    <div className="text-[10px] text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100 inline-block mt-0.5" title={`Đã chi ở phiếu ${ownerDocNo}`}>
+                                                        Đã lập: {ownerDocNo}
+                                                    </div>
+                                                )}
+                                                {isCurrentVoucher && !isLocked && (
+                                                    <div className="text-[10px] text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded border border-green-100 inline-block mt-0.5">
+                                                        Đang sửa
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* LIST OF EXTENSIONS WITH CHECKBOXES */}
                 {type === 'extension' && allExtensions.length > 0 && (
                     <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-top-2">

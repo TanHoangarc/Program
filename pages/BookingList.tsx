@@ -209,9 +209,36 @@ export const BookingList: React.FC<BookingListProps> = ({
               const updatedJob = { ...job };
               
               if (paymentType === 'local') {
-                  updatedJob.amisPaymentDocNo = data.docNo;
-                  updatedJob.amisPaymentDesc = data.paymentContent;
-                  updatedJob.amisPaymentDate = data.date;
+                  if (data.selectedLocalChargeIds) {
+                      // 1. Update Main Local Charge
+                      if (data.selectedLocalChargeIds.includes('MAIN_LC')) {
+                          updatedJob.amisPaymentDocNo = data.docNo;
+                          updatedJob.amisPaymentDesc = data.paymentContent;
+                          updatedJob.amisPaymentDate = data.date;
+                      } else if (data.originalDocNo && updatedJob.amisPaymentDocNo === data.originalDocNo) {
+                          // Deselected Main
+                          updatedJob.amisPaymentDocNo = '';
+                          updatedJob.amisPaymentDesc = '';
+                          updatedJob.amisPaymentDate = '';
+                      }
+
+                      // 2. Update Additional Local Charges
+                      if (updatedJob.bookingCostDetails && updatedJob.bookingCostDetails.additionalLocalCharges) {
+                          updatedJob.bookingCostDetails.additionalLocalCharges = updatedJob.bookingCostDetails.additionalLocalCharges.map(item => {
+                              if (data.selectedLocalChargeIds.includes(item.id)) {
+                                  return { ...item, amisDocNo: data.docNo, amisDesc: data.paymentContent, amisDate: data.date };
+                              } else if (data.originalDocNo && item.amisDocNo === data.originalDocNo) {
+                                  return { ...item, amisDocNo: undefined, amisDesc: undefined, amisDate: undefined };
+                              }
+                              return item;
+                          });
+                      }
+                  } else {
+                      // Fallback
+                      updatedJob.amisPaymentDocNo = data.docNo;
+                      updatedJob.amisPaymentDesc = data.paymentContent;
+                      updatedJob.amisPaymentDate = data.date;
+                  }
               } else if (paymentType === 'deposit') {
                   updatedJob.amisDepositOutDocNo = data.docNo;
                   updatedJob.amisDepositOutDesc = data.paymentContent;
