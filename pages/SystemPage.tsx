@@ -50,7 +50,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       if (!window.confirm("Bạn có chắc chắn muốn sao lưu dữ liệu hiện tại vào thư mục Mydata?")) return;
       setIsBackingUp(true);
       try {
-          const res = await fetch('https://api.kimberry.id.vn/api/manual-backup', { method: 'POST' });
+          const res = await fetch('/api/manual-backup', { method: 'POST' });
           const data = await res.json();
           if (data.success) {
               alert(`Sao lưu thành công!\nFile: ${data.path}`);
@@ -69,7 +69,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       if (!window.confirm("CẢNH BÁO: Hành động này sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại bằng file backup trong thư mục Mydata.\nBạn có chắc chắn muốn tiếp tục?")) return;
       setIsRestoring(true);
       try {
-          const res = await fetch('https://api.kimberry.id.vn/api/manual-restore', { method: 'POST' });
+          const res = await fetch('/api/manual-restore', { method: 'POST' });
           const data = await res.json();
           if (data.success) {
               alert("Khôi phục dữ liệu thành công! Hệ thống sẽ tự động cập nhật.");
