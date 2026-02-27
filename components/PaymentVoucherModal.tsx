@@ -91,6 +91,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
   const [selectedExtensionIds, setSelectedExtensionIds] = useState<Set<string>>(new Set());
   const [selectedLocalChargeIds, setSelectedLocalChargeIds] = useState<Set<string>>(new Set());
+  const [detectedDocNo, setDetectedDocNo] = useState<string | undefined>(undefined);
 
   // RE-CALCULATE LOCAL CHARGES FROM BOOKING/JOB
   const allLocalCharges = useMemo(() => {
@@ -241,6 +242,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       if (type === 'local') {
           initialData.tkNo = '3311'; 
           const targetDoc = initialDocNo || job?.amisPaymentDocNo;
+          setDetectedDocNo(targetDoc);
 
           if (targetDoc) {
               // EDIT/VIEW MODE
@@ -285,6 +287,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       else if (type === 'deposit') {
           initialData.tkNo = '3311';
           const targetDoc = initialDocNo || job?.amisDepositOutDocNo;
+          setDetectedDocNo(targetDoc);
 
           if (targetDoc) {
               // EDIT/VIEW MODE
@@ -339,6 +342,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           // Try to find if we are editing an existing voucher
           // For extensions, we might have multiple extensions sharing the same docNo
           const targetDoc = initialDocNo || (job?.extensions?.find(e => e.amisDocNo)?.amisDocNo);
+          setDetectedDocNo(targetDoc);
 
           if (targetDoc) {
               // VIEW/EDIT MODE
@@ -387,8 +391,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           initialData.reason = 'Thu hoàn cược';
           
           const targetDoc = initialDocNo || job?.amisDepositRefundDocNo; // Reusing field or we might need a new one?
-          // Actually, let's check if there's a specific field for Thu Hoàn from Line.
-          // In JobData, we have ngayThuHoan.
+          setDetectedDocNo(targetDoc);
           
           if (targetDoc) {
               initialData.docNo = targetDoc;
@@ -489,7 +492,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         ...formData,
         selectedExtensionIds: Array.from(selectedExtensionIds),
         selectedLocalChargeIds: Array.from(selectedLocalChargeIds),
-        originalDocNo: initialDocNo // Pass this to identify what we are editing
+        originalDocNo: detectedDocNo || initialDocNo // Pass this to identify what we are editing
     });
     onClose();
   };

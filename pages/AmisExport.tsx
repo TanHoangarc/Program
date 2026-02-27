@@ -378,36 +378,93 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     } 
     else if (mode === 'chi') {
         rows = [];
-        const processedDocNos = new Set<string>();
-        const processedExtensionIds = new Set<string>();
+        const processedBookings = new Set<string>();
+        const lcDocMap = new Map<string, any>();
         const todayStr = new Date().toISOString().split('T')[0];
+
+        // Helper to aggregate amounts by DocNo
+        const addToLcMap = (docNo: string, amount: number, job: JobData, date: string, desc: string) => {
+            if (!lcDocMap.has(docNo)) {
+                lcDocMap.set(docNo, {
+                    jobId: job.id, 
+                    type: 'payment_chi', 
+                    rowId: `pay-${docNo}`, 
+                    date: date, 
+                    docNo: docNo,
+                    objCode: job.line, 
+                    objName: '', 
+                    desc: desc, 
+                    amount: 0,
+                    reason: 'Chi khác', 
+                    paymentContent: desc, 
+                    paymentAccount: '345673979999', 
+                    paymentBank: 'Ngân hàng TMCP Quân đội',
+                    currency: 'VND', 
+                    description: desc, 
+                    tkNo: '3311', 
+                    tkCo: '1121',
+                });
+            }
+            lcDocMap.get(docNo).amount += amount;
+        };
+
         jobs.forEach(j => {
-             const date = j.amisPaymentDate || todayStr;
-             if (j.amisPaymentDocNo && !processedDocNos.has(j.amisPaymentDocNo) && checkDateFilter(date)) {
-                 processedDocNos.add(j.amisPaymentDocNo);
-                 let amount = 0;
-                 if (j.booking) {
-                     const summary = calculateBookingSummary(jobs, j.booking);
-                     if (summary) {
+             // HANDLE LOCAL CHARGES (Main + Additional)
+             if (j.booking) {
+                 if (processedBookings.has(j.booking)) return;
+                 processedBookings.add(j.booking);
+
+                 const summary = calculateBookingSummary(jobs, j.booking);
+                 if (summary) {
+                     // 1. Main Local Charge
+                     // Use the current job's DocNo as the representative for the booking's Main LC
+                     // (Assuming all jobs in booking are synced)
+                     if (j.amisPaymentDocNo && checkDateFilter(j.amisPaymentDate)) {
                          const lc = summary.costDetails.localCharge;
-                         const mainAmount = (lc.hasInvoice === false) ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
-                         const addAmount = (summary.costDetails.additionalLocalCharges || []).reduce((sum, item) => sum + (item.hasInvoice === false ? (item.total || 0) : ((item.net || 0) + (item.vat || 0))), 0);
-                         amount = mainAmount + addAmount;
+                         const val = (lc.hasInvoice === false) ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
+                         addToLcMap(j.amisPaymentDocNo, val, j, j.amisPaymentDate || todayStr, j.amisPaymentDesc || '');
                      }
-                 } else if (j.bookingCostDetails) {
-                     amount = (j.bookingCostDetails.localCharge.hasInvoice === false ? j.bookingCostDetails.localCharge.total : (j.bookingCostDetails.localCharge.net || 0) + (j.bookingCostDetails.localCharge.vat || 0));
+
+                     // 2. Additional Local Charges
+                     (summary.costDetails.additionalLocalCharges || []).forEach(add => {
+                         if (add.amisDocNo && checkDateFilter(add.amisDate)) {
+                             const val = (add.hasInvoice === false) ? (add.total || 0) : ((add.net || 0) + (add.vat || 0));
+                             addToLcMap(add.amisDocNo, val, j, add.amisDate || todayStr, add.amisDesc || '');
+                         }
+                     });
                  }
-                 if (amount === 0) amount = j.chiPayment || 0;
-                 rows.push({
-                     jobId: j.id, type: 'payment_chi', rowId: `pay-${j.id}`, date, docNo: j.amisPaymentDocNo,
-                     objCode: j.line, objName: '', desc: j.amisPaymentDesc, amount,
-                     reason: 'Chi khác', paymentContent: j.amisPaymentDesc, paymentAccount: '345673979999', paymentBank: 'Ngân hàng TMCP Quân đội',
-                     currency: 'VND', description: j.amisPaymentDesc, tkNo: '3311', tkCo: '1121',
+             } else {
+                 // Standalone Job
+                 // 1. Main Local Charge
+                 if (j.amisPaymentDocNo && checkDateFilter(j.amisPaymentDate)) {
+                     let val = 0;
+                     if (j.bookingCostDetails) {
+                         const lc = j.bookingCostDetails.localCharge;
+                         val = (lc.hasInvoice === false) ? (lc.total || 0) : ((lc.net || 0) + (lc.vat || 0));
+                     } else {
+                         val = j.chiPayment || 0;
+                     }
+                     addToLcMap(j.amisPaymentDocNo, val, j, j.amisPaymentDate || todayStr, j.amisPaymentDesc || '');
+                 }
+
+                 // 2. Additional Local Charges
+                 (j.bookingCostDetails?.additionalLocalCharges || []).forEach(add => {
+                     if (add.amisDocNo && checkDateFilter(add.amisDate)) {
+                         const val = (add.hasInvoice === false) ? (add.total || 0) : ((add.net || 0) + (add.vat || 0));
+                         addToLcMap(add.amisDocNo, val, j, add.amisDate || todayStr, add.amisDesc || '');
+                     }
                  });
              }
         });
+
+        // Push aggregated LC rows
+        lcDocMap.forEach(row => rows.push(row));
+
+        const processedExtensionIds = new Set<string>();
         const processedDepositOut = new Set<string>();
+        
         jobs.forEach(j => {
+             // ... Deposit and Extension logic continues below ...
             if (j.amisDepositOutDocNo && !processedDepositOut.has(j.amisDepositOutDocNo) && checkDateFilter(j.amisDepositOutDate)) {
                 processedDepositOut.add(j.amisDepositOutDocNo);
                 let amount = 0;
