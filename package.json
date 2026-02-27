@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server.js",
     "server": "node server.js",
     "build": "vite build",
     "lint": "tsc --noEmit",
