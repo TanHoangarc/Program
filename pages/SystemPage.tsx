@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight, Trash, Save, HardDrive } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight, Trash } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -33,56 +33,12 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const [historyData, setHistoryData] = useState<any>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyFileName, setHistoryFileName] = useState('');
-  
-  // --- MANUAL BACKUP STATE ---
-  const [isBackingUp, setIsBackingUp] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
 
   // Helper to check if a user is Staff
   const isStaffUser = (username?: string) => {
       if (!username) return false;
       const u = users.find(user => user.username === username);
       return u?.role === 'Staff';
-  };
-
-  // --- MANUAL BACKUP HANDLERS ---
-  const handleManualBackup = async () => {
-      if (!window.confirm("Bạn có chắc chắn muốn sao lưu dữ liệu hiện tại vào thư mục Mydata?")) return;
-      setIsBackingUp(true);
-      try {
-          const res = await fetch('/api/manual-backup', { method: 'POST' });
-          const data = await res.json();
-          if (data.success) {
-              alert(`Sao lưu thành công!\nFile: ${data.path}`);
-          } else {
-              alert("Sao lưu thất bại: " + data.error);
-          }
-      } catch (e) {
-          console.error(e);
-          alert("Lỗi kết nối khi sao lưu.");
-      } finally {
-          setIsBackingUp(false);
-      }
-  };
-
-  const handleManualRestore = async () => {
-      if (!window.confirm("CẢNH BÁO: Hành động này sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại bằng file backup trong thư mục Mydata.\nBạn có chắc chắn muốn tiếp tục?")) return;
-      setIsRestoring(true);
-      try {
-          const res = await fetch('/api/manual-restore', { method: 'POST' });
-          const data = await res.json();
-          if (data.success) {
-              alert("Khôi phục dữ liệu thành công! Hệ thống sẽ tự động cập nhật.");
-              window.location.reload(); // Reload to ensure fresh state
-          } else {
-              alert("Khôi phục thất bại: " + (data.message || data.error));
-          }
-      } catch (e) {
-          console.error(e);
-          alert("Lỗi kết nối khi khôi phục.");
-      } finally {
-          setIsRestoring(false);
-      }
   };
 
   // --- AUTO PROCESS PACKETS (REJECT EMPTY or APPROVE AUTO) ---
@@ -339,45 +295,6 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                       </div>
                   </div>
               )}
-          </div>
-      )}
-
-      {/* MANUAL BACKUP & RESTORE SECTION (ADMIN ONLY) */}
-      {(currentUser?.role === 'Admin' || currentUser?.role === 'Manager') && (
-          <div className="mb-8 glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
-              <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-slate-700 flex items-center">
-                      <HardDrive className="w-5 h-5 mr-2 text-indigo-600" /> Sao Lưu & Khôi Phục Thủ Công
-                  </h3>
-              </div>
-              
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <p className="text-sm text-slate-600 mb-4">
-                      Thao tác này cho phép bạn sao lưu dữ liệu hiện tại vào thư mục riêng (Mydata) hoặc khôi phục lại từ đó.
-                      <br/>
-                      <span className="text-xs text-slate-500 italic">Lưu ý: File backup được lưu tại E:\ServerData\Mydata\backup.json</span>
-                  </p>
-                  
-                  <div className="flex gap-4">
-                      <button 
-                          onClick={handleManualBackup}
-                          disabled={isBackingUp || isRestoring}
-                          className="bg-white text-indigo-600 border border-indigo-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-50 shadow-sm flex items-center gap-2 disabled:opacity-50"
-                      >
-                          {isBackingUp ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                          Sao Lưu (Backup)
-                      </button>
-                      
-                      <button 
-                          onClick={handleManualRestore}
-                          disabled={isBackingUp || isRestoring}
-                          className="bg-white text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-50 shadow-sm flex items-center gap-2 disabled:opacity-50"
-                      >
-                          {isRestoring ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                          Khôi Phục (Restore)
-                      </button>
-                  </div>
-              </div>
           </div>
       )}
 
