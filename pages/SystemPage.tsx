@@ -83,7 +83,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const fetchHistory = async () => {
       setLoadingHistory(true);
       try {
-          const res = await fetch('https://api.kimberry.id.vn/history/latest');
+          const res = await fetch('/history/latest');
           
           if (!res.ok) {
               console.warn("History fetch skipped: Server returned " + res.status);
