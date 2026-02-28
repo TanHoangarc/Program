@@ -150,6 +150,52 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       }
   };
 
+  // --- MANUAL BACKUP & SYNC ---
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleManualBackup = async () => {
+    if (!window.confirm("Xác nhận sao lưu dữ liệu hiện tại vào thư mục Uploads?")) return;
+    
+    setIsBackingUp(true);
+    try {
+      const res = await fetch('/backup/manual', { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        alert("Sao lưu thành công!");
+      } else {
+        alert("Lỗi sao lưu: " + result.error);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Lỗi kết nối server khi sao lưu");
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!window.confirm("Xác nhận đồng bộ dữ liệu từ file backup trong thư mục Uploads vào hệ thống? Dữ liệu sẽ được gộp lại.")) return;
+    
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/sync/backup', { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        alert(`Đồng bộ thành công!\nJobs: ${result.stats.jobs}\nCustomers: ${result.stats.customers}\nPayments: ${result.stats.payments}`);
+        // Refresh data if needed - usually SSE will handle this, but a manual refresh might be good
+        window.location.reload(); 
+      } else {
+        alert("Lỗi đồng bộ: " + result.message || result.error);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Lỗi kết nối server khi đồng bộ");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // --- USER MANAGEMENT ---
   const handleAddUserClick = () => {
     setEditingUser(null);
@@ -221,9 +267,29 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                   <h3 className="text-lg font-bold text-slate-700 flex items-center">
                       <Database className="w-5 h-5 mr-2 text-indigo-600" /> Kiểm Tra & Đồng Bộ Dữ Liệu
                   </h3>
-                  <div className="text-xs text-slate-500 flex items-center gap-2">
-                      <span>File History mới nhất: {historyFileName || 'Đang tải...'}</span>
-                      <button onClick={fetchHistory} className="p-1 hover:bg-slate-100 rounded-full" title="Tải lại"><RefreshCw size={12}/></button>
+                  <div className="flex items-center gap-3">
+                      <div className="flex gap-2 mr-4 border-r border-slate-200 pr-4">
+                        <button 
+                          onClick={handleManualBackup}
+                          disabled={isBackingUp}
+                          className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm flex items-center gap-2 disabled:opacity-50"
+                          title="Sao lưu dữ liệu hiện tại vào thư mục Uploads"
+                        >
+                          <Database className="w-3.5 h-3.5" /> {isBackingUp ? '...' : 'Sao Lưu'}
+                        </button>
+                        <button 
+                          onClick={handleManualSync}
+                          disabled={isSyncing}
+                          className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm flex items-center gap-2 disabled:opacity-50"
+                          title="Đồng bộ dữ liệu từ thư mục Uploads vào hệ thống"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" /> {isSyncing ? '...' : 'Đồng Bộ'}
+                        </button>
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-2">
+                          <span>File History mới nhất: {historyFileName || 'Đang tải...'}</span>
+                          <button onClick={fetchHistory} className="p-1 hover:bg-slate-100 rounded-full" title="Tải lại"><RefreshCw size={12}/></button>
+                      </div>
                   </div>
               </div>
 
