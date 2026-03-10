@@ -21,7 +21,7 @@ interface JobModalProps {
   existingJobs?: JobData[];
   onAddCustomer: (customer: Customer) => void;
   customReceipts?: any[];
-  onViewReceipt?: (job: JobData, mode: 'local' | 'deposit' | 'extension', targetId?: string) => void;
+  onViewReceipt?: (job: JobData, mode: 'local' | 'deposit' | 'extension' | 'deposit_refund' | 'refund_overpayment', targetId?: string) => void;
 }
 
 // Compact Styled Components
@@ -751,16 +751,26 @@ export const JobModal: React.FC<JobModalProps> = ({
   // Extract receipt doc numbers for display
   const receiptDocs = useMemo(() => {
       const docs = [];
-      if (formData.amisLcDocNo) docs.push({ type: 'local', docNo: formData.amisLcDocNo, label: 'LC' });
-      if (formData.amisDepositDocNo) docs.push({ type: 'deposit', docNo: formData.amisDepositDocNo, label: 'Cược' });
+      if (formData.amisLcDocNo) docs.push({ type: 'local', docNo: formData.amisLcDocNo, label: 'LC', isPayment: false });
+      if (formData.amisDepositDocNo) docs.push({ type: 'deposit', docNo: formData.amisDepositDocNo, label: 'Cược', isPayment: false });
+      if (formData.amisDepositRefundDocNo) docs.push({ type: 'deposit_refund', docNo: formData.amisDepositRefundDocNo, label: 'Chi Hoàn', isPayment: true });
       
       const extDocs = new Set();
       (formData.extensions || []).forEach(ext => {
           if (ext.amisDocNo && !extDocs.has(ext.amisDocNo)) {
               extDocs.add(ext.amisDocNo);
-              docs.push({ type: 'extension', docNo: ext.amisDocNo, label: 'GH' });
+              docs.push({ type: 'extension', docNo: ext.amisDocNo, label: 'GH', isPayment: false });
           }
       });
+
+      const refundDocs = new Set();
+      (formData.refunds || []).forEach(ref => {
+          if (ref.docNo && !refundDocs.has(ref.docNo)) {
+              refundDocs.add(ref.docNo);
+              docs.push({ type: 'refund_overpayment', docNo: ref.docNo, label: 'Hoàn Tiền Thừa', isPayment: true, id: ref.id });
+          }
+      });
+
       return docs;
   }, [formData]);
 
@@ -788,11 +798,13 @@ export const JobModal: React.FC<JobModalProps> = ({
                                 if (doc.type === 'extension') {
                                     const ext = formData.extensions?.find(e => e.amisDocNo === doc.docNo);
                                     targetId = ext?.id;
+                                } else if (doc.type === 'refund_overpayment') {
+                                    targetId = doc.id;
                                 }
                                 onViewReceipt && onViewReceipt(formData, doc.type as any, targetId);
                             }}
-                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 flex items-center gap-1 transition-colors"
-                            title="Click để xem phiếu thu"
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 transition-colors ${doc.isPayment ? 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100' : 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100'}`}
+                            title={doc.isPayment ? "Click để xem phiếu chi" : "Click để xem phiếu thu"}
                         >
                             <Receipt className="w-3 h-3" /> {doc.label}: {doc.docNo}
                         </button>
