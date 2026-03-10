@@ -235,7 +235,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       const allJobs = [currentMainJob, ...extraJobs];
       const totalAmount = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
       
-      const codes = Array.from(new Set(allJobs.map(j => j.booking || j.jobCode))).join('+');
+      const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
       const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
       const newDesc = `${prefix} BL ${codes}`;
 
@@ -424,7 +424,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               if (mergedJobs.length > 0) {
                   const allJobs = [deepCopyJob, ...mergedJobs];
                   const total = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-                  const codes = Array.from(new Set(allJobs.map(j => j.booking || j.jobCode))).join('+');
+                  const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
                   const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
                   setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${codes}`);
                   
@@ -432,11 +432,9 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   setAmisAmount(deepCopyJob.amisDepositRefundAmount !== undefined ? deepCopyJob.amisDepositRefundAmount : total); 
               } else {
                   const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
-                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${deepCopyJob.booking || deepCopyJob.jobCode}`);
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${deepCopyJob.jobCode}`);
                   
-                  // Calculate total deposit from booking if available
-                  const bookingDeposit = (deepCopyJob.bookingCostDetails?.deposits || []).reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
-                  const defaultAmount = bookingDeposit > 0 ? bookingDeposit : (deepCopyJob.thuCuoc || 0);
+                  const defaultAmount = deepCopyJob.thuCuoc || 0;
 
                   // Use saved amount if available, otherwise use default
                   setAmisAmount(deepCopyJob.amisDepositRefundAmount !== undefined ? deepCopyJob.amisDepositRefundAmount : defaultAmount); 
@@ -793,11 +791,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             </div>
             <div>
                 <h2 className="text-lg font-bold text-slate-800">{getTitle()}</h2>
-                {(mode === 'deposit_refund' || mode === 'deposit_refund_thu') ? (
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">Booking: <span className="font-bold text-blue-700">{job.booking || job.jobCode}</span></p>
-                ) : (
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">Job: <span className="font-bold text-blue-700">{job.jobCode}</span></p>
-                )}
+                <p className="text-xs text-slate-500 font-medium mt-0.5">Job: <span className="font-bold text-blue-700">{job.jobCode}</span></p>
             </div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-red-500 hover:bg-white p-2 rounded-full transition-all"><X className="w-5 h-5" /></button>
