@@ -16,7 +16,7 @@ interface BookingDetailModalProps {
   onViewPayment?: (docNo: string, type: 'local' | 'deposit' | 'extension') => void;
 }
 
-const BACKEND_URL = "https://api.kimberry.id.vn";
+const BACKEND_URL = "/api";
 
 // --- COMPACT COMPONENTS ---
 

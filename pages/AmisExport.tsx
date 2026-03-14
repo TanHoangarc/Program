@@ -46,7 +46,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 }) => {
   const { alert, confirm } = useNotification();
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
+  const [filterYear, setFilterYear] = useState('');
   const [filterDesc, setFilterDesc] = useState(''); 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 

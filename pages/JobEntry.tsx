@@ -45,7 +45,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Filters
   const [filterJobCode, setFilterJobCode] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
+  const [filterYear, setFilterYear] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
   const [filterLine, setFilterLine] = useState('');

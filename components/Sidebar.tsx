@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, ArrowRightLeft, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, WalletCards, Settings, Scale, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice' | 'yearly-profit';
+  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -82,7 +82,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewOperations = isAdminOrManager || isStaff || isAccount; 
   const canViewDataPayment = isAdminOrManager || isDocs || isAccount; 
   const canViewAccounting = isAdminOrManager || isAccount; 
-  const canViewRecon = isAdminOrManager; 
   const canViewData = isAdminOrManager || isStaff || isAccount; 
   const canViewSystem = isAdminOrManager; 
   const canViewToolAI = isAdminOrManager || isStaff || isAccount || isDocs; 
@@ -187,22 +186,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       let content = null;
 
       switch (activeGroup) {
-          case 'auto':
-              content = (
-                  <>
-                      <SubMenuItem active={currentPage === 'auto-payment'} onClick={(e) => handleNavigate(e, 'auto-payment')} icon={Zap} label="Auto Payment" />
-                      <SubMenuItem active={currentPage === 'auto-invoice'} onClick={(e) => handleNavigate(e, 'auto-invoice')} icon={FileInput} label="Auto Invoice" />
-                  </>
-              );
-              break;
-          case 'deposit':
-              content = (
-                  <>
-                      <SubMenuItem active={currentPage === 'deposit-line'} onClick={(e) => handleNavigate(e, 'deposit-line')} icon={Building2} label="Hãng Tàu" />
-                      <SubMenuItem active={currentPage === 'deposit-customer'} onClick={(e) => handleNavigate(e, 'deposit-customer')} icon={UserCircle} label="Khách Hàng" />
-                  </>
-              );
-              break;
           case 'amis':
               content = (
                   <>
@@ -218,14 +201,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <>
                       <SubMenuItem active={currentPage === 'bank-tcb'} onClick={(e) => handleNavigate(e, 'bank-tcb')} icon={Briefcase} label="Techcom Bank" />
                       <SubMenuItem active={currentPage === 'bank-mb'} onClick={(e) => handleNavigate(e, 'bank-mb')} icon={Coins} label="MB Bank" />
-                  </>
-              );
-              break;
-          case 'management':
-              content = (
-                  <>
-                      <SubMenuItem active={currentPage === 'salary'} onClick={(e) => handleNavigate(e, 'salary')} icon={Coins} label="Quản lý lương" />
-                      <SubMenuItem active={currentPage === 'yearly-profit'} onClick={(e) => handleNavigate(e, 'yearly-profit')} icon={TrendingUp} label="Profit năm" />
                   </>
               );
               break;
@@ -307,27 +282,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {canViewOverview && (
             <>
               <MenuItem active={currentPage === 'reports'} onClick={(e) => handleNavigate(e, 'reports')} icon={LayoutDashboard} label="Dashboard" />
-              <MenuItem active={currentPage === 'profit'} onClick={(e) => handleNavigate(e, 'profit')} icon={BadgeDollarSign} label="Lợi Nhuận" />
-              
-              <MenuItem 
-                  active={['salary', 'yearly-profit'].includes(currentPage)}
-                  onClick={(e) => handleGroupClick(e, 'management')}
-                  icon={Briefcase}
-                  label="Quản Lý"
-                  hasSubmenu={true}
-                  isOpen={activeGroup === 'management'}
-              />
-
-              <MenuItem active={currentPage === 'debt'} onClick={(e) => handleNavigate(e, 'debt')} icon={WalletCards} label="Công Nợ" />
-              
-              <MenuItem 
-                  active={['auto-payment', 'auto-invoice'].includes(currentPage)}
-                  onClick={(e) => handleGroupClick(e, 'auto')}
-                  icon={Sparkles}
-                  label="Công Cụ Tự Động"
-                  hasSubmenu={true}
-                  isOpen={activeGroup === 'auto'}
-              />
             </>
           )}
 
@@ -336,20 +290,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <>
               <MenuItem active={currentPage === 'entry'} onClick={(e) => handleNavigate(e, 'entry')} icon={FileInput} label="Nhập Job" statusColor="bg-teal-400" />
               <MenuItem active={currentPage === 'booking'} onClick={(e) => handleNavigate(e, 'booking')} icon={Container} label="Booking" statusColor="bg-blue-400" />
-              
-              <MenuItem 
-                  active={['deposit-line', 'deposit-customer'].includes(currentPage)}
-                  onClick={(e) => handleGroupClick(e, 'deposit')}
-                  icon={ArrowRightLeft}
-                  label="Quản lý Cược"
-                  statusColor="bg-purple-400"
-                  hasSubmenu={true}
-                  isOpen={activeGroup === 'deposit'}
-              />
-
-              {!isAccount && (
-                <MenuItem active={currentPage === 'lhk'} onClick={(e) => handleNavigate(e, 'lhk')} icon={Briefcase} label="LHK Jobs" />
-              )}
             </>
           )}
 
@@ -384,10 +324,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   isOpen={activeGroup === 'bank'}
               />
             </>
-          )}
-
-          {canViewRecon && (
-            <MenuItem active={currentPage === 'reconciliation'} onClick={(e) => handleNavigate(e, 'reconciliation')} icon={Scale} label="Đối Chiếu" />
           )}
 
           {canViewData && (

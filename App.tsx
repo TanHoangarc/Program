@@ -1,17 +1,14 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
 import { JobEntry } from './pages/JobEntry';
 import { Reports } from './pages/Reports';
 import { BookingList } from './pages/BookingList';
-import { DepositList } from './pages/DepositList';
-import { LhkList } from './pages/LhkList';
 import { AmisExport } from './pages/AmisExport';
+import * as XLSX from 'xlsx';
 import { DataManagement } from './pages/DataManagement';
-import { DebtManagement } from './pages/DebtManagement';
 import { SystemPage } from './pages/SystemPage';
-import { Reconciliation } from './pages/Reconciliation';
-import { ProfitReport } from './pages/ProfitReport';
 import { LookupPage } from './pages/LookupPage'; 
 import { PaymentPage } from './pages/PaymentPage'; 
 import { CVHCPage } from './pages/CVHCPage';
@@ -19,13 +16,14 @@ import { SalaryPage } from './pages/SalaryPage';
 import { ToolAI } from './pages/ToolAI'; 
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
-import { AutoTool } from './pages/AutoTool';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LoginPage } from './components/LoginPage';
-import { Menu, Ship, AlertTriangle, X } from 'lucide-react';
+import { ExportModal } from './components/ExportModal';
+import { Menu, Ship, AlertTriangle, X, Loader2 } from 'lucide-react';
 import { useNotification } from './contexts/NotificationContext';
+import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -53,7 +51,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'deposit-line' | 'deposit-customer' | 'lhk' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'debt' | 'profit' | 'system' | 'reconciliation' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'auto-payment' | 'auto-invoice' | 'yearly-profit'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -165,6 +163,146 @@ const App: React.FC = () => {
     return Array.from(uniqueMap.values());
   };
 
+  // --- HEADER MESSAGES & NOTIFICATIONS ---
+  const [headerMessages, setHeaderMessages] = useState<HeaderMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('kb_header_messages');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [headerNotifications, setHeaderNotifications] = useState<HeaderNotification[]>(() => {
+    try {
+      const saved = localStorage.getItem('kb_header_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // --- AI AUTO UPLOAD STATE ---
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [isAutoUploading, setIsAutoUploading] = useState(false);
+  const [autoUploadProgress, setAutoUploadProgress] = useState('');
+
+  const BACKEND_URL = "https://api.kimberry.id.vn";
+
+  useEffect(() => {
+    localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));
+  }, [headerMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('kb_header_notifications', JSON.stringify(headerNotifications));
+  }, [headerNotifications]);
+
+  const addHeaderMessage = (username: string, carrier: string, booking: string) => {
+    const newMessage: HeaderMessage = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      username,
+      carrier,
+      booking
+    };
+    setHeaderMessages(prev => [newMessage, ...prev].slice(0, 50)); // Keep last 50
+  };
+
+  const addHeaderNotification = (username: string, booking: string) => {
+    const newNotification: HeaderNotification = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      username,
+      booking,
+      isRead: false
+    };
+    setHeaderNotifications(prev => [newNotification, ...prev].slice(0, 50)); // Keep last 50
+  };
+
+  const markNotificationsAsRead = () => {
+    setHeaderNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  };
+
+  const handleSyncCvhc = async () => {
+    if (folderInputRef.current) {
+        folderInputRef.current.value = '';
+        folderInputRef.current.click();
+    }
+  };
+
+  const handleAutoUploadFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsAutoUploading(true);
+    let successCount = 0;
+    const fileList: File[] = Array.from(files);
+    
+    // Target jobs that are completed (have ngayThuHoan) AND missing CVHC file
+    const targetList = jobs.filter(j => j.ngayThuHoan && !j.cvhcUrl); 
+
+    for (let i = 0; i < targetList.length; i++) {
+        const job = targetList[i];
+        const searchKey = job.jobCode.trim().toLowerCase();
+        if (!searchKey) continue;
+
+        // Find file containing job code
+        const matchedFile = fileList.find(f => f.name.toLowerCase().includes(searchKey));
+        
+        if (matchedFile) {
+            setAutoUploadProgress(`Đang upload cho Job ${job.jobCode}...`);
+            
+            try {
+                const safeJobCode = job.jobCode.replace(/[^a-zA-Z0-9-_]/g, '');
+                const ext = matchedFile.name.split('.').pop();
+                const fileName = `CVHC_BL_${safeJobCode}_AUTO_${Date.now()}.${ext}`;
+
+                const formData = new FormData();
+                formData.append("fileName", fileName);
+                formData.append("file", matchedFile);
+
+                const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+
+                if (res.data && res.data.success) {
+                    let uploadedUrl = res.data.cvhcUrl;
+                    if (uploadedUrl && !uploadedUrl.startsWith('http')) {
+                        uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
+                    }
+
+                    const updatedJob = { 
+                        ...job, 
+                        cvhcUrl: uploadedUrl,
+                        cvhcFileName: res.data.fileName || fileName
+                    };
+                    handleEditJob(updatedJob);
+                    successCount++;
+                }
+            } catch (err) {
+                console.error(`Failed to upload for job ${job.jobCode}`, err);
+            }
+        }
+    }
+
+    alert(`Hoàn tất quét thư mục! Đã cập nhật CVHC cho ${successCount} Job.`, "Thành công");
+    setIsAutoUploading(false);
+    setAutoUploadProgress('');
+    if (folderInputRef.current) folderInputRef.current.value = '';
+  };
+
+  const handleSyncBooking = async () => {
+    alert("Đang đồng bộ dữ liệu Booking...", "Thông báo");
+    // Trigger a re-fetch of data
+    window.location.reload();
+  };
+
+  const handleExport = () => {
+    setIsExportModalOpen(true);
+  };
+
   // --- MAIN DATA STATE ---
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('logistics_jobs_v2');
@@ -251,7 +389,7 @@ const App: React.FC = () => {
           // Only check if user is Admin/Manager and server is available
           if (currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Manager') && isServerAvailable) {
               try {
-                  const res = await fetch('https://api.kimberry.id.vn/history/latest');
+                  const res = await fetch(`${BACKEND_URL}/history/latest`);
                   
                   // Handle non-200 responses (e.g., 404 from live server lacking endpoint)
                   if (!res.ok) return; 
@@ -289,6 +427,11 @@ const App: React.FC = () => {
       // Use functional update to ensure batch updates work correctly in loops
       setJobs(prevJobs => [job, ...prevJobs]);
       setModifiedJobIds(prev => new Set(prev).add(job.id));
+      
+      // Add header message
+      if (currentUser) {
+        addHeaderMessage(currentUser.username, job.line, job.booking);
+      }
   };
 
   const handleEditJob = (job: JobData) => {
@@ -308,13 +451,20 @@ const App: React.FC = () => {
 
   // --- PAYMENT HANDLERS WITH TRACKING ---
   const handleUpdatePaymentRequests = (newRequests: PaymentRequest[]) => {
-      const currentMap = new Map(paymentRequests.map(r => [r.id, r]));
+      const currentMap = new Map<string, PaymentRequest>(paymentRequests.map(r => [r.id, r]));
       const changedIds = new Set<string>();
       
       newRequests.forEach(req => {
           const current = currentMap.get(req.id);
           if (!current || JSON.stringify(current) !== JSON.stringify(req)) {
               changedIds.add(req.id);
+              
+              // Check if UNC was just uploaded (status changed to completed)
+              if (current && current.status !== 'completed' && req.status === 'completed' && req.uncUrl) {
+                if (currentUser) {
+                  addHeaderNotification(currentUser.username, req.booking);
+                }
+              }
           }
       });
 
@@ -501,7 +651,7 @@ const App: React.FC = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
-      const response = await fetch("https://api.kimberry.id.vn/pending", {
+      const response = await fetch(`${BACKEND_URL}/pending`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -561,7 +711,7 @@ const App: React.FC = () => {
       
       try {
           const encodedId = encodeURIComponent(requestId);
-          await fetch(`https://api.kimberry.id.vn/pending/${encodedId}`, { 
+          await fetch(`${BACKEND_URL}/pending/${encodedId}`, { 
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json' }
           });
@@ -615,7 +765,7 @@ const App: React.FC = () => {
   const fetchPendingRequests = async () => {
     if (!currentUser || currentUser.role !== "Admin" || !isServerAvailable) return;
     try {
-        const res = await fetch("https://api.kimberry.id.vn/pending");
+        const res = await fetch(`${BACKEND_URL}/pending`);
         if (res.ok) {
             const data = await res.json();
             const validData = (Array.isArray(data) ? data : []).filter(item => item && typeof item === 'object' && item.id);
@@ -664,8 +814,8 @@ const App: React.FC = () => {
 
         // Fetch BOTH general data and NFC data
         const [dataRes, nfcRes] = await Promise.all([
-            fetch("https://api.kimberry.id.vn/data", { signal: controller.signal }),
-            fetch("https://api.kimberry.id.vn/nfc", { signal: controller.signal })
+            fetch(`${BACKEND_URL}/data`, { signal: controller.signal }),
+            fetch(`${BACKEND_URL}/nfc`, { signal: controller.signal })
         ]);
         
         clearTimeout(timeoutId);
@@ -806,7 +956,7 @@ const App: React.FC = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const res = await fetch("https://api.kimberry.id.vn/data/save", {
+      const res = await fetch(`${BACKEND_URL}/data/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -842,7 +992,7 @@ const App: React.FC = () => {
       
       // Debounce NFC save
       const timeoutId = setTimeout(() => {
-          fetch("https://api.kimberry.id.vn/nfc/save", {
+          fetch(`${BACKEND_URL}/nfc/save`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(nfcProfiles)
@@ -881,42 +1031,73 @@ const App: React.FC = () => {
       }
   }, [currentUser, isServerAvailable]); 
 
+  // --- REALTIME SSE LISTENER ---
+  useEffect(() => {
+    if (!isServerAvailable || !isAuthenticated) return;
+
+    const eventSource = new EventSource(`${BACKEND_URL}/events`);
+
+    eventSource.addEventListener('data-updated', (event: any) => {
+      const data = JSON.parse(event.data);
+      console.log("Realtime Update Received:", data);
+      
+      // If someone else updated the data, we might want to re-fetch
+      // But autoBackup already handles local changes.
+      // For Admin, we should re-fetch pending requests immediately
+      if (currentUser?.role === 'Admin') {
+        fetchPendingRequests();
+      }
+      
+      // Also re-fetch main data if it was a FULL_SYNC from another user
+      if (data.type === 'FULL_SYNC' && data.source !== currentUser?.role) {
+          // Re-fetch main data
+          fetch(`${BACKEND_URL}/data`)
+            .then(res => res.json())
+            .then(serverData => {
+                if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
+                if (serverData.paymentRequests) setPaymentRequests(serverData.paymentRequests);
+                if (serverData.customers) setCustomers(serverData.customers);
+                if (serverData.lines) setLines(serverData.lines);
+                if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
+                if (serverData.salaries) setSalaries(serverData.salaries);
+                if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
+            })
+            .catch(err => console.warn("Failed to re-fetch after sync", err));
+      }
+    });
+
+    eventSource.addEventListener('lock', (event: any) => {
+      const data = JSON.parse(event.data);
+      // Handle remote lock
+    });
+
+    eventSource.addEventListener('unlock', (event: any) => {
+      const data = JSON.parse(event.data);
+      // Handle remote unlock
+    });
+
+    eventSource.onerror = () => {
+      console.warn("SSE Connection lost. Reconnecting...");
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [isAuthenticated, isServerAvailable, currentUser]);
+
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
 
   return (
-    <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-slate-50">
-      {/* Server Offline Warning */}
-      {!isServerAvailable && (
-        <div className="fixed top-0 left-0 right-0 bg-red-600 text-white px-4 py-2 flex items-center justify-between z-[9999] shadow-lg">
-          <div className="flex items-center space-x-2">
-            <AlertTriangle className="w-5 h-5 animate-pulse" />
-            <span className="font-bold text-sm uppercase tracking-wider">
-              CẢNH BÁO: Mất kết nối với Server (Node.js) - Đang chạy chế độ Offline
-            </span>
-          </div>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="bg-white text-red-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-red-50 transition-colors"
-          >
-            Thử kết nối lại
-          </button>
-        </div>
-      )}
-
-      {/* Mobile Header */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200 z-30 shrink-0 sticky top-0">
-         <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-gradient-to-tr from-teal-400 to-blue-500 rounded-lg shadow-sm">
-                <Ship className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-bold text-lg text-slate-800 tracking-tight">KIMBERRY</span>
-         </div>
-         <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
-            <Menu className="w-6 h-6" />
-         </button>
-      </div>
-
+    <div className="flex w-full h-screen overflow-hidden bg-slate-50">
+      <input 
+          type="file" 
+          ref={folderInputRef} 
+          onChange={handleAutoUploadFolder} 
+          className="hidden" 
+          {...({ webkitdirectory: "", directory: "" } as any)} 
+      />
       <Sidebar
         currentPage={currentPage}
         onNavigate={setCurrentPage}
@@ -927,9 +1108,58 @@ const App: React.FC = () => {
         onClose={() => setIsMobileMenuOpen(false)}
       />
 
-      <div className="flex-1 md:ml-[280px] p-2 md:p-4 h-full flex flex-col overflow-hidden relative">
-        <main className="flex-1 rounded-2xl md:rounded-3xl overflow-hidden relative shadow-inner h-full flex flex-col bg-white/40 backdrop-blur-3xl border border-white/40">
-          <div className="absolute inset-0 bg-white/40 backdrop-blur-3xl border border-white/40 rounded-3xl z-0"></div>
+      <div className="flex-1 md:ml-[280px] flex flex-col h-full overflow-hidden relative">
+        <Header 
+          currentUser={currentUser} 
+          onLogout={() => handleLogout(false)}
+          onMobileMenuToggle={() => setIsMobileMenuOpen(true)}
+          onNavigate={setCurrentPage}
+          messages={headerMessages}
+          notifications={headerNotifications}
+          pendingPaymentCount={paymentRequests.filter(r => r.status === 'pending').length}
+          onMarkNotificationsRead={markNotificationsAsRead}
+          onExport={handleExport}
+          onSyncBooking={handleSyncBooking}
+          onSyncCvhc={handleSyncCvhc}
+        />
+
+        {/* AI Auto Upload Progress Overlay */}
+        {isAutoUploading && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center">
+            <div className="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4 max-w-sm w-full mx-4 animate-in zoom-in-95">
+              <div className="relative">
+                <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                <Loader2 className="w-8 h-8 text-indigo-600 absolute inset-0 m-auto animate-pulse" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-lg font-bold text-slate-800 mb-1">Đang đồng bộ CVHC</h3>
+                <p className="text-sm text-slate-500">{autoUploadProgress}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Server Offline Warning */}
+        {!isServerAvailable && (
+          <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between z-50 shadow-lg">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
+              <span className="font-bold text-sm uppercase tracking-wider">
+                CẢNH BÁO: Mất kết nối với Server (Node.js) - Đang chạy chế độ Offline
+              </span>
+            </div>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="bg-white text-red-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-red-50 transition-colors"
+            >
+              Thử kết nối lại
+            </button>
+          </div>
+        )}
+
+        <main className="flex-1 p-2 md:p-4 overflow-hidden relative h-full flex flex-col">
+          <div className="flex-1 rounded-2xl md:rounded-3xl overflow-hidden relative shadow-inner h-full flex flex-col bg-white/40 backdrop-blur-3xl border border-white/40">
+            <div className="absolute inset-0 bg-white/40 backdrop-blur-3xl border border-white/40 rounded-3xl z-0"></div>
 
           {/* Alert for Data Mismatch */}
           {dataMismatchWarning && (
@@ -965,7 +1195,17 @@ const App: React.FC = () => {
               />
             )}
 
-            {currentPage === 'reports' && <Reports jobs={jobs} salaries={salaries} />}
+            {currentPage === 'reports' && (
+              <Reports 
+                jobs={jobs} 
+                salaries={salaries}
+                onUpdateJob={handleEditJob}
+                customers={customers}
+                lines={lines}
+                onAddCustomer={(c) => setCustomers([...customers, c])}
+                onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+              />
+            )}
             
             {currentPage === 'booking' && (
                 <BookingList 
@@ -980,32 +1220,6 @@ const App: React.FC = () => {
                     customReceipts={customReceipts}
                 />
             )}
-            
-            {currentPage === 'deposit-line' && (
-                <DepositList 
-                    mode="line" 
-                    jobs={jobs} 
-                    customers={customers} 
-                    lines={lines} 
-                    onEditJob={handleEditJob}
-                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
-                    onAddCustomer={(c) => setCustomers([...customers, c])}
-                />
-            )}
-            
-            {currentPage === 'deposit-customer' && (
-                <DepositList 
-                    mode="customer" 
-                    jobs={jobs} 
-                    customers={customers} 
-                    lines={lines} 
-                    onEditJob={handleEditJob}
-                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
-                    onAddCustomer={(c) => setCustomers([...customers, c])}
-                />
-            )}
-            
-            {currentPage === 'lhk' && <LhkList jobs={jobs} />}
             
             {/* AMIS EXPORT PAGES WITH SYNCED LOCKS & CUSTOM RECEIPTS */}
             {currentPage === 'amis-thu' && (
@@ -1065,18 +1279,6 @@ const App: React.FC = () => {
                 />
             )}
 
-            {currentPage === 'profit' && (
-              <ProfitReport 
-                jobs={jobs} 
-                salaries={salaries}
-                onUpdateJob={handleEditJob} // Added missing prop
-                customers={customers}
-                lines={lines}
-                onAddCustomer={(c) => setCustomers([...customers, c])}
-                onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
-              />
-            )}
-
             {currentPage === 'data-lines' && (
               <DataManagement 
                 mode="lines" 
@@ -1095,21 +1297,6 @@ const App: React.FC = () => {
                 onEdit={handleUpdateCustomer}
                 onDelete={(id) => setCustomers(prev => prev.filter(cust => cust.id !== id))}
               />
-            )}
-
-            {currentPage === 'debt' && (
-              <DebtManagement 
-                jobs={jobs} 
-                customers={customers} 
-                onViewJob={(id) => {
-                    setTargetJobId(id);
-                    setCurrentPage("entry");
-                }}
-              />
-            )}
-
-            {currentPage === 'reconciliation' && (
-              <Reconciliation jobs={jobs} />
             )}
 
             {currentPage === 'lookup' && (
@@ -1160,27 +1347,6 @@ const App: React.FC = () => {
 
             {currentPage === 'tool-ai' && (
               <ToolAI />
-            )}
-
-            {currentPage === 'auto-payment' && (
-                <AutoTool 
-                    mode="payment"
-                    jobs={jobs}
-                    customers={customers}
-                    customReceipts={customReceipts}
-                    onUpdateJob={handleEditJob}
-                    onAddCustomReceipt={(r) => setCustomReceipts([...customReceipts, r])}
-                    onAddCustomer={(c) => setCustomers([...customers, c])}
-                />
-            )}
-
-            {currentPage === 'auto-invoice' && (
-                <AutoTool 
-                    mode="invoice"
-                    jobs={jobs}
-                    customers={customers}
-                    onUpdateJob={handleEditJob}
-                />
             )}
 
             {currentPage === 'nfc' && currentUser && (
@@ -1284,9 +1450,18 @@ const App: React.FC = () => {
             )}
 
           </div>
-        </main>
-      </div>
+        </div>
+
+        {/* Export Modal */}
+        <ExportModal 
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          jobs={jobs}
+          customers={customers}
+        />
+      </main>
     </div>
+  </div>
   );
 };
 

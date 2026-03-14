@@ -1,11 +1,14 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor, FileCheck, Upload, Loader2 } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
 import { CustomerModal } from './CustomerModal';
+import axios from 'axios';
+
+const BACKEND_URL = "/api";
 
 interface JobModalProps {
   isOpen: boolean;
@@ -49,7 +52,10 @@ const CustomerInput = ({
   className,
   onFocus,
   onBlur,
-  onAddClick
+  onAddClick,
+  cvhcUrl,
+  onUploadClick,
+  isUploading
 }: { 
   value: string; 
   onChange: (val: string) => void; 
@@ -60,6 +66,9 @@ const CustomerInput = ({
   onFocus?: () => void;
   onBlur?: () => void;
   onAddClick?: () => void;
+  cvhcUrl?: string;
+  onUploadClick?: () => void;
+  isUploading?: boolean;
 }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [internalValue, setInternalValue] = useState('');
@@ -129,6 +138,26 @@ const CustomerInput = ({
                 title="Thêm khách hàng mới"
             >
                 <Plus className="w-4 h-4" />
+            </button>
+        )}
+        {cvhcUrl ? (
+            <button 
+                type="button" 
+                onClick={() => window.open(cvhcUrl, '_blank')}
+                className="w-9 h-9 flex items-center justify-center bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0"
+                title="Xem file CVHC"
+            >
+                <FileCheck className="w-4 h-4" />
+            </button>
+        ) : onUploadClick && (
+            <button 
+                type="button" 
+                onClick={onUploadClick}
+                disabled={isUploading}
+                className="w-9 h-9 flex items-center justify-center bg-red-50 border border-red-100 rounded-lg text-red-500 hover:bg-red-100 transition-colors shrink-0 disabled:opacity-50"
+                title="Upload CVHC"
+            >
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             </button>
         )}
       </div>
@@ -376,6 +405,9 @@ export const JobModal: React.FC<JobModalProps> = ({
   // Quick Add Customer State
   const [quickAddTarget, setQuickAddTarget] = useState<{ type: 'MAIN' | 'DEPOSIT' | 'EXTENSION', extId?: string } | null>(null);
   
+  const cvhcFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingCVHC, setIsUploadingCVHC] = useState(false);
+
   const jobInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -714,6 +746,52 @@ export const JobModal: React.FC<JobModalProps> = ({
       setQuickAddTarget({ type, extId });
   };
 
+  const handleUploadCVHCClick = () => {
+    if (cvhcFileInputRef.current) {
+      cvhcFileInputRef.current.value = '';
+      cvhcFileInputRef.current.click();
+    }
+  };
+
+  const handleCVHCFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingCVHC(true);
+    try {
+      const safeJobCode = (formData.jobCode || 'JOB').replace(/[^a-zA-Z0-9-_]/g, '');
+      const ext = file.name.split('.').pop();
+      const fileName = `CVHC_BL_${safeJobCode}_${Date.now()}.${ext}`;
+
+      const uploadFormData = new FormData();
+      uploadFormData.append("fileName", fileName);
+      uploadFormData.append("file", file);
+
+      const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, uploadFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (res.data && res.data.success) {
+        let uploadedUrl = res.data.cvhcUrl;
+        if (uploadedUrl && !uploadedUrl.startsWith('http')) {
+          uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
+        }
+
+        setFormData(prev => ({
+          ...prev,
+          cvhcUrl: uploadedUrl,
+          cvhcFileName: res.data.fileName || fileName
+        }));
+      } else {
+        throw new Error(res.data?.message || "Upload failed");
+      }
+    } catch (err) {
+      console.error("Upload CVHC Error:", err);
+    } finally {
+      setIsUploadingCVHC(false);
+    }
+  };
+
   const handleSaveQuickCustomer = (newCustomer: Customer) => {
       onAddCustomer(newCustomer);
       
@@ -777,7 +855,16 @@ export const JobModal: React.FC<JobModalProps> = ({
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <>
+      {/* Hidden File Input for CVHC */}
+      <input 
+        type="file" 
+        ref={cvhcFileInputRef} 
+        onChange={handleCVHCFileChange} 
+        className="hidden" 
+        accept="*/*" 
+      />
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-white/50 ring-1 ring-black/5">
         
         {/* Compact Header */}
@@ -980,6 +1067,9 @@ export const JobModal: React.FC<JobModalProps> = ({
                                         placeholder="Mã KH..." 
                                         className="h-9" 
                                         onAddClick={() => handleOpenQuickAdd('DEPOSIT')}
+                                        cvhcUrl={formData.cvhcUrl}
+                                        onUploadClick={handleUploadCVHCClick}
+                                        isUploading={isUploadingCVHC}
                                     />
                                 </div>
                                 <div>
@@ -1110,7 +1200,8 @@ export const JobModal: React.FC<JobModalProps> = ({
           onClose={() => setQuickAddTarget(null)} 
           onSave={handleSaveQuickCustomer} 
       />
-    </div>,
+    </div>
+    </>,
     document.body
   );
 };

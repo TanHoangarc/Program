@@ -24,6 +24,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   onRestore, onAddUser, onEditUser, onDeleteUser,
   pendingRequests = [], onApproveRequest, onRejectRequest, onConfirmMismatch
 }) => {
+  const BACKEND_URL = "/api";
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Staff' });
@@ -83,7 +84,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const fetchHistory = async () => {
       setLoadingHistory(true);
       try {
-          const res = await fetch('https://api.kimberry.id.vn/history/latest');
+          const res = await fetch(`${BACKEND_URL}/history/latest`);
           
           if (!res.ok) {
               console.warn("History fetch skipped: Server returned " + res.status);

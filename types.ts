@@ -343,6 +343,27 @@ export interface UserAccount {
   allowedProfileIds?: string[]; // For NFC Sales role
 }
 
+// ============================================================
+// HEADER MESSAGES & NOTIFICATIONS
+// ============================================================
+
+export interface HeaderMessage {
+  id: string;
+  timestamp: string;
+  username: string;
+  carrier: string;
+  booking: string;
+}
+
+export interface HeaderNotification {
+  id: string;
+  timestamp: string;
+  username: string;
+  booking: string;
+  isRead: boolean;
+}
+
+// ============================================================
 // Alias for NFC Page compatibility
 export type AuthUser = UserAccount;
 

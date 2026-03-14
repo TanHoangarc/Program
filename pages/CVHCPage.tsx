@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileCheck, Upload, Save, Plus, Trash2, FileText, Layers, FileStack, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles } from 'lucide-react';
+import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { JobModal } from '../components/JobModal';
@@ -28,13 +28,12 @@ interface CVHCRow {
   previewUrl?: string; // Preview URL for PDF page
 }
 
-const BACKEND_URL = "https://api.kimberry.id.vn";
+const BACKEND_URL = "/api";
 
 export const CVHCPage: React.FC<CVHCPageProps> = ({ 
   jobs, customers, lines, onUpdateJob, onAddLine, onAddCustomer 
 }) => {
   const { alert, confirm } = useNotification();
-  const [mode, setMode] = useState<'single' | 'multi' | 'combined'>('single');
   const [rows, setRows] = useState<CVHCRow[]>([
     { id: '1', jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }
   ]);
@@ -59,8 +58,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   // Helper to find customer by ID
   const findCustomer = (id: string) => customers.find(c => c.id === id);
 
-  const handleModeChange = (newMode: 'single' | 'multi' | 'combined') => {
-    setMode(newMode);
+  const resetForm = () => {
     setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
     setFile(null);
     setUploadProgress('');
@@ -124,8 +122,8 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
 
-      // AUTO SPLIT PREVIEW FOR COMBINED MODE
-      if (mode === 'combined' && selectedFile.type === 'application/pdf') {
+      // AUTO SPLIT PREVIEW FOR PDF
+      if (selectedFile.type === 'application/pdf') {
           setIsUploading(true);
           setUploadProgress('Đang phân tích và tách trang...');
           
@@ -165,17 +163,19 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               setIsUploading(false);
               setUploadProgress('');
           }
+      } else {
+          // Non-PDF (Image, etc.) -> Single row
+          setPageCount(1);
+          setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '', previewUrl: URL.createObjectURL(selectedFile) }]);
       }
     }
   };
 
   // --- AI SCAN LOGIC ---
   const handleAutoScan = async () => {
-      if (mode !== 'combined') return;
-      
       const rowsToScan = rows.filter(r => r.previewUrl);
       if (rowsToScan.length === 0) {
-          alert("Không có trang nào để quét (Cần file PDF ở chế độ Tổng Hợp).", "Thông báo");
+          alert("Không có trang nào để quét (Cần file đính kèm).", "Thông báo");
           return;
       }
 
@@ -376,18 +376,14 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
     setUploadProgress('Đang xử lý...');
 
     try {
-      // MODE COMBINED: SPLIT PDF
-      if (mode === 'combined') {
-          if (file.type !== 'application/pdf') {
-              throw new Error("Chế độ 'Nộp Tổng Hợp' (Tách trang) chỉ hỗ trợ file PDF.");
-          }
-
+      // IF PDF AND MULTIPLE ROWS: SPLIT PDF
+      if (file.type === 'application/pdf' && rows.length > 1) {
           const arrayBuffer = await file.arrayBuffer();
           const pdfDoc = await PDFDocument.load(arrayBuffer);
-          const pageCount = pdfDoc.getPages().length;
+          const actualPageCount = pdfDoc.getPages().length;
 
-          if (pageCount !== rows.length) {
-              throw new Error(`Số trang PDF (${pageCount}) không khớp với số dòng dữ liệu (${rows.length}). Vui lòng kiểm tra lại.`);
+          if (actualPageCount !== rows.length) {
+              throw new Error(`Số trang PDF (${actualPageCount}) không khớp với số dòng dữ liệu (${rows.length}). Vui lòng kiểm tra lại.`);
           }
 
           let successCount = 0;
@@ -395,7 +391,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           // Loop through rows and split
           for (let i = 0; i < rows.length; i++) {
               const row = rows[i];
-              setUploadProgress(`Đang tách và upload trang ${i + 1}/${pageCount}...`);
+              setUploadProgress(`Đang tách và upload trang ${i + 1}/${actualPageCount}...`);
 
               // Split Page
               const subDoc = await PDFDocument.create();
@@ -429,20 +425,17 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           alert(`Hoàn tất! Đã tách file và cập nhật CVHC cho ${successCount} Job.`, "Thành công");
 
       } else {
-          // MODE SINGLE / MULTI (One file for all)
+          // SINGLE FILE (Image or 1-page PDF or just one row)
           const ext = file.name.split('.').pop() || 'pdf';
-          let svFileName = '';
           
-          if (mode === 'single' || mode === 'multi') {
-              const mainJobCode = rows[0]?.jobCode || 'Unknown';
-              const safeJobCode = mainJobCode.replace(/[^a-zA-Z0-9-_]/g, ''); 
-              svFileName = `CVHC BL ${safeJobCode}.${ext}`;
-          }
+          const mainJobCode = rows[0]?.jobCode || 'Unknown';
+          const safeJobCode = mainJobCode.replace(/[^a-zA-Z0-9-_]/g, ''); 
+          const svFileName = `CVHC BL ${safeJobCode}.${ext}`;
 
           setUploadProgress('Đang upload file...');
           const result = await uploadSingleFile(file, svFileName);
 
-          // Update All Rows with SAME File
+          // Update All Rows with SAME File (usually just 1 row now)
           let updatedCount = 0;
           rows.forEach(row => {
              const job = jobs.find(j => j.id === row.jobId);
@@ -463,7 +456,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       }
 
       // Reset form
-      handleModeChange(mode); 
+      resetForm(); 
 
     } catch (err: any) {
       console.error("Submit Error:", err);
@@ -518,31 +511,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
         <p className="text-slate-500 ml-11">Cập nhật chứng từ hoàn cược cho các lô hàng</p>
       </div>
 
-      {/* Mode Selection */}
-      <div className="flex space-x-4 mb-8">
-          <button 
-            onClick={() => handleModeChange('single')}
-            className={`flex-1 p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${mode === 'single' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200'}`}
-          >
-              <FileText className="w-6 h-6" />
-              <span className="font-bold">Nộp Từng Job</span>
-          </button>
-          <button 
-            onClick={() => handleModeChange('multi')}
-            className={`flex-1 p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${mode === 'multi' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200'}`}
-          >
-              <Layers className="w-6 h-6" />
-              <span className="font-bold">Nộp Nhiều Job</span>
-          </button>
-          <button 
-            onClick={() => handleModeChange('combined')}
-            className={`flex-1 p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${mode === 'combined' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200'}`}
-          >
-              <FileStack className="w-6 h-6" />
-              <span className="font-bold">Nộp Tổng Hợp (Tách trang)</span>
-          </button>
-      </div>
-
       {/* Main Content Area */}
       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col">
           
@@ -555,7 +523,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   <div>
                       <h3 className="font-bold text-slate-700">File đính kèm (PDF/Image)</h3>
                       <p className="text-xs text-slate-500">
-                          {mode === 'combined' ? 'Vui lòng chọn file PDF nhiều trang. Hệ thống sẽ tự động tách và tạo dòng.' : 'File sẽ được lưu vào hệ thống (E:\\ServerData\\CVHC)'}
+                          Vui lòng chọn file PDF nhiều trang hoặc file ảnh đơn lẻ. Hệ thống sẽ tự động nhận diện.
                       </p>
                   </div>
               </div>
@@ -565,7 +533,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                       ref={fileInputRef}
                       onChange={handleFileSelect}
                       className="hidden" 
-                      accept={mode === 'combined' ? "application/pdf" : "*/*"}
+                      accept="*/*"
                   />
                   <button 
                       onClick={() => fileInputRef.current?.click()}
@@ -577,57 +545,52 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               </div>
           </div>
 
-          {/* COMBINED MODE: Page Count Input & AI SCAN */}
-          {mode === 'combined' && (
-              <div className="mb-6 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
-                  <div className="flex items-center space-x-3">
-                      <AlertCircle className="w-5 h-5 text-blue-500" />
-                      <label className="font-bold text-slate-700">Số lượng trang PDF (Số Job):</label>
-                      <input 
-                          type="number" 
-                          min="1" 
-                          value={pageCount} 
-                          onChange={(e) => handlePageCountChange(Number(e.target.value))}
-                          className="w-24 px-3 py-2 border border-blue-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                      <span className="text-xs text-slate-500 italic">
-                          (Đã tự động đếm số trang từ file PDF của bạn)
-                      </span>
-                  </div>
-                  
-                  {/* AI SCAN BUTTON */}
-                  <button 
-                      onClick={handleAutoScan}
-                      disabled={isScanning || !file}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
-                  >
-                      {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      AI Tự Điền (Quét Bill & STK)
-                  </button>
+          {/* Page Count Input & AI SCAN */}
+          <div className="mb-6 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
+              <div className="flex items-center space-x-3">
+                  <AlertCircle className="w-5 h-5 text-blue-500" />
+                  <label className="font-bold text-slate-700">Số lượng trang/Job:</label>
+                  <input 
+                      type="number" 
+                      min="1" 
+                      value={pageCount} 
+                      onChange={(e) => handlePageCountChange(Number(e.target.value))}
+                      className="w-24 px-3 py-2 border border-blue-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <span className="text-xs text-slate-500 italic">
+                      (Tự động cập nhật khi chọn file PDF)
+                  </span>
               </div>
-          )}
+              
+              {/* AI SCAN BUTTON */}
+              <button 
+                  onClick={handleAutoScan}
+                  disabled={isScanning || !file}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                  {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  AI Tự Điền (Quét Bill & STK)
+              </button>
+          </div>
 
           {/* Data Entry Table */}
           <div className="flex-1 overflow-y-auto custom-scrollbar border rounded-xl border-slate-200 mb-6">
               <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs sticky top-0 z-10 shadow-sm">
                       <tr>
-                          <th className="px-4 py-3 w-16 text-center">
-                              {mode === 'combined' ? 'Trang' : '#'}
-                          </th>
+                          <th className="px-4 py-3 w-16 text-center">Trang</th>
                           <th className="px-4 py-3 w-64">Số BL (Job Code)</th>
                           <th className="px-4 py-3">Khách hàng (Cược)</th>
                           <th className="px-4 py-3 w-48 text-right">Số tiền cược</th>
-                          {mode === 'combined' && <th className="px-4 py-3 w-48">Số tài khoản</th>}
-                          {mode === 'combined' && <th className="px-4 py-3 w-16 text-center">Xem</th>}
-                          {(mode === 'multi' || mode === 'single') && <th className="px-4 py-3 w-16 text-center"></th>}
+                          <th className="px-4 py-3 w-48">Số tài khoản</th>
+                          <th className="px-4 py-3 w-16 text-center">Xem</th>
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                       {rows.map((row, idx) => (
                           <tr key={row.id} className="hover:bg-slate-50/50">
                               <td className="px-4 py-3 text-center font-bold text-slate-500">
-                                  {mode === 'combined' ? `Trang ${idx + 1}` : idx + 1}
+                                  {`Trang ${idx + 1}`}
                               </td>
                               <td className="px-4 py-3">
                                   <div className="relative flex items-center gap-2">
@@ -673,43 +636,30 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       placeholder="0"
                                   />
                               </td>
-                              {mode === 'combined' && (
-                                  <td className="px-4 py-3">
-                                      <input 
-                                          type="text" 
-                                          value={row.accountNumber || ''}
-                                          onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
-                                          className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
-                                          placeholder="STK Ngân hàng"
-                                      />
-                                  </td>
-                              )}
-                              {mode === 'combined' && (
-                                  <td className="px-4 py-3 text-center">
-                                      {row.previewUrl ? (
-                                          <a 
-                                            href={row.previewUrl} 
-                                            target="_blank" 
-                                            rel="noreferrer"
-                                            className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                                            title="Xem trước trang này"
-                                          >
-                                              <Eye className="w-4 h-4" />
-                                          </a>
-                                      ) : (
-                                          <span className="text-slate-300">-</span>
-                                      )}
-                                  </td>
-                              )}
-                              {(mode === 'multi' || mode === 'single') && (
-                                  <td className="px-4 py-3 text-center">
-                                      {mode === 'multi' && (
-                                          <button onClick={() => removeRow(row.id)} className="text-slate-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors">
-                                              <Trash2 className="w-4 h-4" />
-                                          </button>
-                                      )}
-                                  </td>
-                              )}
+                              <td className="px-4 py-3">
+                                  <input 
+                                      type="text" 
+                                      value={row.accountNumber || ''}
+                                      onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
+                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+                                      placeholder="STK Ngân hàng"
+                                  />
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                  {row.previewUrl ? (
+                                      <a 
+                                        href={row.previewUrl} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                        title="Xem trước trang này"
+                                      >
+                                          <Eye className="w-4 h-4" />
+                                      </a>
+                                  ) : (
+                                      <span className="text-slate-300">-</span>
+                                  )}
+                              </td>
                           </tr>
                       ))}
                   </tbody>
@@ -719,11 +669,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           {/* Action Footer */}
           <div className="flex justify-between items-center pt-4 border-t border-slate-100">
               <div>
-                  {mode === 'multi' && (
-                      <button onClick={addRow} className="flex items-center text-indigo-600 font-bold hover:bg-indigo-50 px-3 py-2 rounded-lg transition-colors">
-                          <Plus className="w-4 h-4 mr-2" /> Thêm dòng
-                      </button>
-                  )}
                   {isUploading && <span className="text-sm font-bold text-indigo-600 animate-pulse flex items-center"><Loader2 className="w-4 h-4 mr-2 animate-spin"/> {uploadProgress}</span>}
               </div>
               <div className="flex space-x-3">
@@ -731,16 +676,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                       Tổng tiền: <span className="text-indigo-600 ml-2 text-lg">{formatCurrency(rows.reduce((s, r) => s + r.amount, 0))}</span>
                   </div>
                   
-                  {/* NEW: Batch Payment Button for Combined Mode */}
-                  {mode === 'combined' && (
-                      <button 
-                          onClick={handleBatchCreatePayment}
-                          className="px-4 py-2 bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 rounded-lg font-bold shadow-sm transition-all flex items-center"
-                          title="Tạo phiếu chi hoàn cược cho tất cả các Job trong danh sách"
-                      >
-                          <Banknote className="w-4 h-4 mr-2" /> Tạo Phiếu Chi
-                      </button>
-                  )}
+                  <button 
+                      onClick={handleBatchCreatePayment}
+                      className="px-4 py-2 bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 rounded-lg font-bold shadow-sm transition-all flex items-center"
+                      title="Tạo phiếu chi hoàn cược cho tất cả các Job trong danh sách"
+                  >
+                      <Banknote className="w-4 h-4 mr-2" /> Tạo Phiếu Chi
+                  </button>
 
                   <button 
                       onClick={handleSubmit}

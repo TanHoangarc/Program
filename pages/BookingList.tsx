@@ -30,7 +30,7 @@ export const BookingList: React.FC<BookingListProps> = ({
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString()); // ADDED
+  const [filterYear, setFilterYear] = useState(''); // ADDED
   const [filterBooking, setFilterBooking] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null); // State for highlighting row
@@ -432,7 +432,7 @@ export const BookingList: React.FC<BookingListProps> = ({
                     key={booking.bookingId} 
                     className={`transition-colors group ${selectedRowId === booking.bookingId ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-white/40'}`}
                   >
-                    <td className="px-6 py-4 font-medium text-slate-500 cursor-pointer" onClick={() => handleOpenBooking(booking)}>T{booking.month}/{filterYear}</td>
+                    <td className="px-6 py-4 font-medium text-slate-500 cursor-pointer" onClick={() => handleOpenBooking(booking)}>T{booking.month}/{booking.year}</td>
                     <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => handleOpenBooking(booking)}>{booking.bookingId}</td>
                     <td className="px-6 py-4 text-slate-600">{booking.line}</td>
                     <td className="px-6 py-4 text-center"><span className="bg-slate-100/80 text-slate-600 px-2 py-1 rounded-md text-[10px] font-bold border border-slate-200/50">{booking.jobCount}</span></td>
