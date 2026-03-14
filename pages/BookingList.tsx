@@ -84,7 +84,12 @@ export const BookingList: React.FC<BookingListProps> = ({
       summaries = summaries.filter(s => String(s.bookingId || '').toLowerCase().includes(searchLower));
     }
 
-    return summaries.sort((a, b) => Number(b.month) - Number(a.month));
+    return summaries.sort((a, b) => {
+      if (Number(b.year) !== Number(a.year)) {
+        return Number(b.year) - Number(a.year);
+      }
+      return Number(b.month) - Number(a.month);
+    });
   }, [jobs, filterMonth, filterYear, filterBooking]);
 
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
