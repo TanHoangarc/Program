@@ -296,11 +296,11 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
                     </th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-700">Booking</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-700">Số hóa đơn</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-700">Ngày hóa đơn</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-700 text-right">Giá Net</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-700 text-right">VAT</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-700 w-32">Booking</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-700 w-32">Số hóa đơn</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-700 w-40">Ngày hóa đơn</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-700 text-right w-44">Giá Net</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-700 text-right w-44">VAT</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-700 text-center">File</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-700 text-center">Trạng thái</th>
                   </tr>
@@ -338,7 +338,7 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
                           type="number" 
                           value={item.net}
                           onChange={(e) => setItems(items.map(i => i.jobId === item.jobId ? { ...i, net: Number(e.target.value) } : i))}
-                          className="w-24 px-2 py-1 text-sm border border-slate-200 rounded text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          className="w-40 px-2 py-1 text-sm border border-slate-200 rounded text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                         />
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -346,7 +346,7 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
                           type="number" 
                           value={item.vat}
                           onChange={(e) => setItems(items.map(i => i.jobId === item.jobId ? { ...i, vat: Number(e.target.value) } : i))}
-                          className="w-20 px-2 py-1 text-sm border border-slate-200 rounded text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          className="w-40 px-2 py-1 text-sm border border-slate-200 rounded text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                         />
                       </td>
                       <td className="px-4 py-3 text-center">
