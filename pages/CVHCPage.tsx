@@ -180,7 +180,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       }
 
       setIsScanning(true);
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!apiKey) {
+        setIsScanning(false);
+        alert("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.", "Lỗi");
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const model = "gemini-3-flash-preview";
 
       let successCount = 0;

@@ -19,6 +19,7 @@ import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
+import SyncBookingModal from './components/SyncBookingModal';
 import { Menu, Ship, AlertTriangle, X, Loader2 } from 'lucide-react';
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
@@ -183,6 +184,7 @@ const App: React.FC = () => {
   });
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isSyncBookingModalOpen, setIsSyncBookingModalOpen] = useState(false);
 
   // --- AI AUTO UPLOAD STATE ---
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -294,9 +296,7 @@ const App: React.FC = () => {
   };
 
   const handleSyncBooking = async () => {
-    alert("Đang đồng bộ dữ liệu Booking...", "Thông báo");
-    // Trigger a re-fetch of data
-    window.location.reload();
+    setIsSyncBookingModalOpen(true);
   };
 
   const handleExport = () => {
@@ -1453,6 +1453,17 @@ const App: React.FC = () => {
         </div>
 
         {/* Export Modal */}
+        <SyncBookingModal 
+          isOpen={isSyncBookingModalOpen}
+          onClose={() => setIsSyncBookingModalOpen(false)}
+          jobs={jobs}
+          paymentRequests={paymentRequests}
+          onApply={(updatedJobs) => {
+            setJobs(updatedJobs);
+            alert("Đã cập nhật dữ liệu Booking thành công!", "Thành công");
+          }}
+        />
+
         <ExportModal 
           isOpen={isExportModalOpen}
           onClose={() => setIsExportModalOpen(false)}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp } from 'lucide-react';
+import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw } from 'lucide-react';
 import { UserAccount, HeaderMessage, HeaderNotification } from '../types';
 import { MONTHS, YEARS } from '../constants';
 
@@ -30,18 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSyncBooking,
   onSyncCvhc
 }) => {
-  const [showMessageDropdown, setShowMessageDropdown] = useState(false);
-  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
-  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
-  const [showManagementDropdown, setShowManagementDropdown] = useState(false);
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
-
-  // Refs for auto-close timers
-  const messageTimer = useRef<NodeJS.Timeout | null>(null);
-  const notificationTimer = useRef<NodeJS.Timeout | null>(null);
-  const settingsTimer = useRef<NodeJS.Timeout | null>(null);
-  const managementTimer = useRef<NodeJS.Timeout | null>(null);
-  const userTimer = useRef<NodeJS.Timeout | null>(null);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const closeTimer = useRef<NodeJS.Timeout | null>(null);
 
   const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
 
@@ -57,31 +47,30 @@ export const Header: React.FC<HeaderProps> = ({
     return `${month} ${day} ${year}, ${hours}:${minutes}:${seconds}`;
   };
 
-  // Cleanup timers on unmount
+  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
-      if (messageTimer.current) clearTimeout(messageTimer.current);
-      if (notificationTimer.current) clearTimeout(notificationTimer.current);
-      if (settingsTimer.current) clearTimeout(settingsTimer.current);
-      if (managementTimer.current) clearTimeout(managementTimer.current);
-      if (userTimer.current) clearTimeout(userTimer.current);
+      if (closeTimer.current) clearTimeout(closeTimer.current);
     };
   }, []);
 
-  // Generic handlers for dropdowns
-  const handleMouseEnter = (timer: React.MutableRefObject<NodeJS.Timeout | null>, setter: (val: boolean) => void) => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-    setter(true);
-  };
+  const toggleDropdown = (name: string) => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    
+    if (activeDropdown === name) {
+      setActiveDropdown(null);
+    } else {
+      setActiveDropdown(name);
+      
+      // Special action for notifications
+      if (name === 'notifications' && onMarkNotificationsRead) {
+        onMarkNotificationsRead();
+      }
 
-  const handleMouseLeave = (timer: React.MutableRefObject<NodeJS.Timeout | null>, setter: (val: boolean) => void) => {
-    timer.current = setTimeout(() => {
-      setter(false);
-      timer.current = null;
-    }, 2000);
+      closeTimer.current = setTimeout(() => {
+        setActiveDropdown(null);
+      }, 2000);
+    }
   };
 
   return (
@@ -100,46 +89,88 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-2 md:gap-4">
         <div className="hidden sm:flex items-center gap-1">
           {/* Message Icon */}
-          <div 
-            className="relative"
-            onMouseEnter={() => handleMouseEnter(messageTimer, setShowMessageDropdown)}
-            onMouseLeave={() => handleMouseLeave(messageTimer, setShowMessageDropdown)}
-          >
+          {currentUser?.role?.toLowerCase() !== 'docs' && (
+            <div className="relative">
+              <button 
+                onClick={() => toggleDropdown('messages')}
+                className={`p-2 rounded-lg transition-all relative ${activeDropdown === 'messages' ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50'}`}
+              >
+                <MessageSquare className="w-5 h-5" />
+                {pendingPaymentCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
+                    {pendingPaymentCount}
+                  </span>
+                )}
+              </button>
+
+              {activeDropdown === 'messages' && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
+                  <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
+                    <h3 className="text-sm font-bold text-slate-800">Tin nhắn (Chờ thanh toán)</h3>
+                    <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{pendingPaymentCount}</span>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                    {messages.length > 0 ? (
+                      messages.map(msg => (
+                        <div key={msg.id} className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">{msg.carrier}</span>
+                            <span className="text-[10px] font-bold text-slate-700">{msg.booking}</span>
+                          </div>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            <span className="text-slate-400 font-medium">[{formatTimestamp(msg.timestamp)}]</span> Create booking by <span className="font-bold text-slate-800">{msg.username}</span>
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-8 text-center">
+                        <MessageSquare className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                        <p className="text-xs text-slate-400">Không có tin nhắn mới</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Notification Icon */}
+          <div className="relative">
             <button 
-              onClick={() => setShowMessageDropdown(!showMessageDropdown)}
-              className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative"
+              onClick={() => toggleDropdown('notifications')}
+              className={`p-2 rounded-lg transition-all relative ${activeDropdown === 'notifications' ? 'text-teal-600 bg-teal-50' : 'text-slate-500 hover:text-teal-600 hover:bg-teal-50'}`}
             >
-              <MessageSquare className="w-5 h-5" />
-              {pendingPaymentCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
-                  {pendingPaymentCount}
+              <Bell className="w-5 h-5" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
+                  {unreadNotificationsCount}
                 </span>
               )}
             </button>
 
-            {showMessageDropdown && (
+            {activeDropdown === 'notifications' && (
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-slate-800">Tin nhắn (Chờ thanh toán)</h3>
-                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{pendingPaymentCount}</span>
+                  <h3 className="text-sm font-bold text-slate-800">Thông báo (UNC)</h3>
+                  <span className="text-[10px] bg-teal-100 text-teal-600 px-2 py-0.5 rounded-full font-bold">{unreadNotificationsCount} mới</span>
                 </div>
                 <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                  {messages.length > 0 ? (
-                    messages.map(msg => (
-                      <div key={msg.id} className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors">
+                  {notifications.length > 0 ? (
+                    notifications.map(notif => (
+                      <div key={notif.id} className={`px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors ${!notif.isRead ? 'bg-teal-50/30' : ''}`}>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">{msg.carrier}</span>
-                          <span className="text-[10px] font-bold text-slate-700">{msg.booking}</span>
+                          <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded uppercase">BOOKING</span>
+                          <span className="text-[10px] font-bold text-slate-700">{notif.booking}</span>
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
-                          <span className="text-slate-400 font-medium">[{formatTimestamp(msg.timestamp)}]</span> Create booking by <span className="font-bold text-slate-800">{msg.username}</span>
+                          <span className="text-slate-400 font-medium">[{formatTimestamp(notif.timestamp)}]</span> Approve booking by <span className="font-bold text-slate-800">{notif.username}</span>
                         </p>
                       </div>
                     ))
                   ) : (
                     <div className="px-4 py-8 text-center">
-                      <MessageSquare className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                      <p className="text-xs text-slate-400">Không có tin nhắn mới</p>
+                      <Bell className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                      <p className="text-xs text-slate-400">Không có thông báo mới</p>
                     </div>
                   )}
                 </div>
@@ -149,91 +180,34 @@ export const Header: React.FC<HeaderProps> = ({
 
           {currentUser?.role?.toLowerCase() !== 'docs' && (
             <>
-              {/* Notification Icon */}
-              <div 
-                className="relative"
-                onMouseEnter={() => handleMouseEnter(notificationTimer, setShowNotificationDropdown)}
-                onMouseLeave={() => handleMouseLeave(notificationTimer, setShowNotificationDropdown)}
-              >
-                <button 
-                  onClick={() => {
-                    setShowNotificationDropdown(!showNotificationDropdown);
-                    if (!showNotificationDropdown && onMarkNotificationsRead) {
-                      onMarkNotificationsRead();
-                    }
-                  }}
-                  className="p-2 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all relative"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadNotificationsCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
-                      {unreadNotificationsCount}
-                    </span>
-                  )}
-                </button>
-
-                {showNotificationDropdown && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
-                    <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                      <h3 className="text-sm font-bold text-slate-800">Thông báo (UNC)</h3>
-                      <span className="text-[10px] bg-teal-100 text-teal-600 px-2 py-0.5 rounded-full font-bold">{unreadNotificationsCount} mới</span>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                      {notifications.length > 0 ? (
-                        notifications.map(notif => (
-                          <div key={notif.id} className={`px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors ${!notif.isRead ? 'bg-teal-50/30' : ''}`}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded uppercase">BOOKING</span>
-                              <span className="text-[10px] font-bold text-slate-700">{notif.booking}</span>
-                            </div>
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                              <span className="text-slate-400 font-medium">[{formatTimestamp(notif.timestamp)}]</span> Approve booking by <span className="font-bold text-slate-800">{notif.username}</span>
-                            </p>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="px-4 py-8 text-center">
-                          <Bell className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                          <p className="text-xs text-slate-400">Không có thông báo mới</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* Settings Icon */}
-              <div 
-                className="relative"
-                onMouseEnter={() => handleMouseEnter(settingsTimer, setShowSettingsDropdown)}
-                onMouseLeave={() => handleMouseLeave(settingsTimer, setShowSettingsDropdown)}
-              >
+              <div className="relative">
                 <button 
-                  onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
-                  className="p-2 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all"
+                  onClick={() => toggleDropdown('settings')}
+                  className={`p-2 rounded-lg transition-all ${activeDropdown === 'settings' ? 'text-teal-600 bg-teal-50' : 'text-slate-500 hover:text-teal-600 hover:bg-teal-50'}`}
                 >
                   <Settings className="w-5 h-5" />
                 </button>
 
-                {showSettingsDropdown && (
+                {activeDropdown === 'settings' && (
                   <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                     <div className="px-4 py-2 border-b border-slate-50">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cài đặt hệ thống</h3>
                     </div>
                     <button 
-                      onClick={() => { onExport?.(); setShowSettingsDropdown(false); }}
+                      onClick={() => { onExport?.(); setActiveDropdown(null); }}
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
                       <FileSpreadsheet className="w-4 h-4 text-green-600" /> Export file
                     </button>
                     <button 
-                      onClick={() => { onSyncBooking?.(); setShowSettingsDropdown(false); }}
+                      onClick={() => { onSyncBooking?.(); setActiveDropdown(null); }}
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
-                      <Clock className="w-4 h-4 text-blue-600" /> Đồng bộ Booking
+                      <RefreshCw className="w-4 h-4 text-blue-600" /> Đồng bộ Booking
                     </button>
                     <button 
-                      onClick={() => { onSyncCvhc?.(); setShowSettingsDropdown(false); }}
+                      onClick={() => { onSyncCvhc?.(); setActiveDropdown(null); }}
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
                       <Clock className="w-4 h-4 text-purple-600" /> Đồng bộ CVHC
@@ -243,31 +217,27 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               {/* Management Icon */}
-              <div 
-                className="relative"
-                onMouseEnter={() => handleMouseEnter(managementTimer, setShowManagementDropdown)}
-                onMouseLeave={() => handleMouseLeave(managementTimer, setShowManagementDropdown)}
-              >
+              <div className="relative">
                 <button 
-                  onClick={() => setShowManagementDropdown(!showManagementDropdown)}
-                  className="p-2 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all"
+                  onClick={() => toggleDropdown('management')}
+                  className={`p-2 rounded-lg transition-all ${activeDropdown === 'management' ? 'text-teal-600 bg-teal-50' : 'text-slate-500 hover:text-teal-600 hover:bg-teal-50'}`}
                 >
                   <Briefcase className="w-5 h-5" />
                 </button>
 
-                {showManagementDropdown && (
+                {activeDropdown === 'management' && (
                   <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                     <div className="px-4 py-2 border-b border-slate-50">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Quản lý</h3>
                     </div>
                     <button 
-                      onClick={() => { onNavigate?.('salary'); setShowManagementDropdown(false); }}
+                      onClick={() => { onNavigate?.('salary'); setActiveDropdown(null); }}
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
                       <Coins className="w-4 h-4 text-amber-500" /> Quản lý lương
                     </button>
                     <button 
-                      onClick={() => { onNavigate?.('yearly-profit'); setShowManagementDropdown(false); }}
+                      onClick={() => { onNavigate?.('yearly-profit'); setActiveDropdown(null); }}
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
                       <TrendingUp className="w-4 h-4 text-teal-500" /> Profit năm
@@ -291,19 +261,15 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
           
-          <div 
-            className="relative"
-            onMouseEnter={() => handleMouseEnter(userTimer, setShowUserDropdown)}
-            onMouseLeave={() => handleMouseLeave(userTimer, setShowUserDropdown)}
-          >
+          <div className="relative">
             <button 
-              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              onClick={() => toggleDropdown('user')}
               className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-teal-200/50 hover:scale-105 transition-transform"
             >
               {currentUser?.username?.charAt(0).toUpperCase() || <User className="w-5 h-5" />}
             </button>
             
-            {showUserDropdown && (
+            {activeDropdown === 'user' && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 py-2 border-b border-slate-50 sm:hidden">
                   <p className="text-sm font-bold text-slate-800">{currentUser?.username}</p>

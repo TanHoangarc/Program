@@ -508,7 +508,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           const base64Data = (reader.result as string).split(',')[1];
           const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
 
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+          if (!apiKey) {
+            throw new Error("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.");
+          }
+          const ai = new GoogleGenAI({ apiKey });
           const model = 'gemini-3-flash-preview'; 
           
           const prompt = `Analyze this Vietnamese invoice. Extract the following details:
@@ -578,7 +582,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           const base64Data = (reader.result as string).split(',')[1];
           const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
 
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+          if (!apiKey) {
+            throw new Error("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.");
+          }
+          const ai = new GoogleGenAI({ apiKey });
           const model = 'gemini-3-flash-preview'; 
           
           const prompt = `Analyze this Vietnamese invoice (Gia Hạn / Extension). Extract:

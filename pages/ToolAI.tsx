@@ -13,7 +13,7 @@ import JSZip from 'jszip';
 import * as pdfjsMod from 'pdfjs-dist';
 import { useNotification } from '../contexts/NotificationContext';
 // REMOVED DIRECT GOOGLE SDK IMPORT TO USE BACKEND PROXY
-// import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import axios from 'axios';
 
 // Fix for pdfjs-dist import structure
@@ -1257,32 +1257,25 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
         } 
         else if (type === 'ai') {
              try {
-                // PRIORITIZE Custom Key entered by user, then Env Key
-                const apiKey = customApiKey || process.env.API_KEY;
+                // --- UPDATE: USE SDK DIRECTLY ---
+                const apiKeyToUse = customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
                 
-                if (!apiKey) {
+                if (!apiKeyToUse) {
                     throw new Error("KEY_MISSING");
                 }
 
                 const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
                 
-                // --- UPDATE: CALL BACKEND PROXY INSTEAD OF DIRECT GOOGLE CALL ---
-                const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
-                    apiKey: apiKey,
+                const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
+                const aiResponse = await ai.models.generateContent({
                     model: "gemini-3-pro-image-preview",
                     contents: {
                         parts: [
                             { inlineData: { mimeType: "image/png", data: base64Image } },
                             { text: "Restore the stamp and handwritten signature in this image. Remove any machine-printed text overlaying them. Do NOT remove handwritten signatures. Keep the white background. Do not make the background transparent. Return the image of the restored stamp and signature." }
                         ]
-                    },
-                    config: {
-                        // Optional config
                     }
                 });
-                
-                // Backend returns the full response object
-                const aiResponse = response.data;
                 
                 let foundImage = false;
                 if (aiResponse.candidates && aiResponse.candidates[0].content && aiResponse.candidates[0].content.parts) {
@@ -1741,8 +1734,8 @@ export const SmartEditTool = () => {
         const base64Image = tempCanvas.toDataURL('image/png').split(',')[1];
 
         try {
-            const apiKey = customApiKey || process.env.API_KEY;
-            if (!apiKey) throw new Error("KEY_MISSING");
+            const apiKeyToUse = customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+            if (!apiKeyToUse) throw new Error("KEY_MISSING");
 
             // UPDATED: Strictly enforced size matching prompt
             const systemInstruction = `You are a professional document editing AI.
@@ -1760,20 +1753,17 @@ export const SmartEditTool = () => {
             
             Return ONLY the modified image.`;
 
-            const response = await axios.post(`${BACKEND_URL}/ai/generate`, {
-                apiKey: apiKey,
+            const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
+            const aiResponse = await ai.models.generateContent({
                 model: "gemini-3-pro-image-preview",
-                contents: [
-                    {
-                        parts: [
-                            { inlineData: { mimeType: "image/png", data: base64Image } },
-                            { text: systemInstruction }
-                        ]
-                    }
-                ]
+                contents: {
+                    parts: [
+                        { inlineData: { mimeType: "image/png", data: base64Image } },
+                        { text: systemInstruction }
+                    ]
+                }
             });
 
-            const aiResponse = response.data;
             let resultImage = '';
 
             if (aiResponse.candidates && aiResponse.candidates[0].content && aiResponse.candidates[0].content.parts) {

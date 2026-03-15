@@ -85,10 +85,15 @@ export const BookingList: React.FC<BookingListProps> = ({
     }
 
     return summaries.sort((a, b) => {
-      if (Number(b.year) !== Number(a.year)) {
-        return Number(b.year) - Number(a.year);
-      }
-      return Number(b.month) - Number(a.month);
+      const yearDiff = Number(b.year) - Number(a.year);
+      if (yearDiff !== 0) return yearDiff;
+      
+      const monthDiff = Number(b.month) - Number(a.month);
+      if (monthDiff !== 0) return monthDiff;
+
+      const bookingA = String(a.bookingId || '').toLowerCase();
+      const bookingB = String(b.bookingId || '').toLowerCase();
+      return bookingA.localeCompare(bookingB);
     });
   }, [jobs, filterMonth, filterYear, filterBooking]);
 
