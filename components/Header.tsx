@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw } from 'lucide-react';
+import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw, Wallet, Info } from 'lucide-react';
 import { UserAccount, HeaderMessage, HeaderNotification } from '../types';
 import { MONTHS, YEARS } from '../constants';
 
@@ -10,11 +10,13 @@ interface HeaderProps {
   onNavigate?: (page: any) => void;
   messages?: HeaderMessage[];
   notifications?: HeaderNotification[];
+  updates?: HeaderMessage[];
   pendingPaymentCount?: number;
   onMarkNotificationsRead?: () => void;
   onExport?: () => void;
   onSyncBooking?: () => void;
   onSyncCvhc?: () => void;
+  onAddOtherReceipt?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -24,11 +26,13 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   messages = [],
   notifications = [],
+  updates = [],
   pendingPaymentCount = 0,
   onMarkNotificationsRead,
   onExport,
   onSyncBooking,
-  onSyncCvhc
+  onSyncCvhc,
+  onAddOtherReceipt
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const closeTimer = useRef<NodeJS.Timeout | null>(null);
@@ -178,6 +182,50 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
+          {/* Info/Updates Icon */}
+          <div className="relative">
+            <button 
+              onClick={() => toggleDropdown('updates')}
+              className={`p-2 rounded-lg transition-all relative ${activeDropdown === 'updates' ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50'}`}
+            >
+              <Info className="w-5 h-5" />
+              {updates.length > 0 && (
+                <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
+                  {updates.length}
+                </span>
+              )}
+            </button>
+
+            {activeDropdown === 'updates' && (
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
+                <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
+                  <h3 className="text-sm font-bold text-slate-800">Lịch sử cập nhật</h3>
+                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{updates.length}</span>
+                </div>
+                <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                  {updates.length > 0 ? (
+                    updates.map(update => (
+                      <div key={update.id} className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">{update.carrier}</span>
+                          <span className="text-[10px] font-bold text-slate-700">{update.booking}</span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          <span className="text-slate-400 font-medium">[{formatTimestamp(update.timestamp)}]</span> Job/booking Updated by <span className="font-bold text-slate-800">{update.username}</span>
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-4 py-8 text-center">
+                      <Info className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                      <p className="text-xs text-slate-400">Không có cập nhật mới</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {currentUser?.role?.toLowerCase() !== 'docs' && (
             <>
               {/* Settings Icon */}
@@ -211,6 +259,12 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
                       <Clock className="w-4 h-4 text-purple-600" /> Đồng bộ CVHC
+                    </button>
+                    <button 
+                      onClick={() => { onAddOtherReceipt?.(); setActiveDropdown(null); }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+                    >
+                      <Wallet className="w-4 h-4 text-indigo-600" /> Thu khác
                     </button>
                   </div>
                 )}

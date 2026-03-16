@@ -1067,7 +1067,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                                         placeholder="Mã KH..." 
                                         className="h-9" 
                                         onAddClick={() => handleOpenQuickAdd('DEPOSIT')}
-                                        cvhcUrl={formData.cvhcUrl}
+                                        cvhcUrl={formData.cvhcUrl && !formData.cvhcUrl.includes('/files/inv/') ? formData.cvhcUrl : undefined}
                                         onUploadClick={handleUploadCVHCClick}
                                         isUploading={isUploadingCVHC}
                                     />

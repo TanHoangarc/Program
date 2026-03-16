@@ -20,7 +20,9 @@ import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
-import { Menu, Ship, AlertTriangle, X, Loader2 } from 'lucide-react';
+import { QuickReceiveModal } from './components/QuickReceiveModal';
+import { generateNextDocNo } from './utils';
+import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from 'lucide-react';
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
@@ -38,6 +40,44 @@ const DEFAULT_USERS: UserAccount[] = [
 ];
 
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
+
+interface SyncCvhcChoiceModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (mode: 'all' | 'missing') => void;
+}
+
+const SyncCvhcChoiceModal: React.FC<SyncCvhcChoiceModalProps> = ({ isOpen, onClose, onSelect }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
+        <h3 className="text-xl font-bold text-slate-800 mb-4">Đồng bộ CVHC</h3>
+        <p className="text-slate-600 mb-6">Vui lòng chọn chế độ đồng bộ:</p>
+        <div className="space-y-3">
+          <button 
+            onClick={() => onSelect('all')}
+            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+          >
+            <RefreshCw className="w-5 h-5" /> Load lại toàn bộ
+          </button>
+          <button 
+            onClick={() => onSelect('missing')}
+            className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+          >
+            <Plus className="w-5 h-5" /> Load những job chưa có
+          </button>
+          <button 
+            onClick={onClose}
+            className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors"
+          >
+            Hủy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const { alert, confirm } = useNotification();
@@ -76,6 +116,56 @@ const App: React.FC = () => {
   
   // --- SYNC STATUS ---
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
+
+  // --- SYNC CVHC CHOICE ---
+  const [isSyncCvhcChoiceOpen, setIsSyncCvhcChoiceOpen] = useState(false);
+  const [syncCvhcMode, setSyncCvhcMode] = useState<'all' | 'missing'>('missing');
+
+  // --- OTHER RECEIPT MODAL ---
+  const [isOtherReceiptOpen, setIsOtherReceiptOpen] = useState(false);
+  const [otherReceiptJob, setOtherReceiptJob] = useState<JobData>(INITIAL_JOB);
+
+  const handleAddOtherReceipt = () => {
+    const customDocNos = customReceipts.map(r => r.docNo).filter(Boolean);
+    const nextDocNo = generateNextDocNo(jobs, 'NTTK', 5, customDocNos);
+    const dummyJob = { 
+        ...INITIAL_JOB, 
+        id: `rcpt-${Date.now()}`, 
+        jobCode: 'THU-KHAC', 
+        localChargeDate: new Date().toISOString().split('T')[0], 
+        amisLcDocNo: nextDocNo, 
+        amisLcDesc: 'Thu tiền khác' 
+    };
+    setOtherReceiptJob(dummyJob);
+    setIsOtherReceiptOpen(true);
+  };
+
+  const handleSaveOtherReceipt = (updatedJob: JobData) => {
+    const foundCust = customers.find(c => c.id === updatedJob.customerId);
+    const finalObjCode = foundCust ? foundCust.code : updatedJob.customerId;
+    const originalReceipt = customReceipts.find(r => r.id === updatedJob.id);
+
+    const newReceipt = { 
+        ...originalReceipt,
+        id: updatedJob.id, 
+        type: 'other', 
+        date: updatedJob.localChargeDate, 
+        docNo: updatedJob.amisLcDocNo, 
+        desc: updatedJob.amisLcDesc,
+        amount: updatedJob.amisLcAmount || updatedJob.localChargeTotal || 0,
+        objCode: finalObjCode,
+        objName: foundCust ? foundCust.name : updatedJob.customerName,
+        additionalReceipts: updatedJob.additionalReceipts
+    };
+    
+    let nextReceipts = [...customReceipts];
+    const idx = nextReceipts.findIndex(r => r.id === newReceipt.id);
+    if (idx >= 0) nextReceipts[idx] = newReceipt;
+    else nextReceipts.push(newReceipt);
+    
+    setCustomReceipts(nextReceipts);
+    setIsOtherReceiptOpen(false);
+  };
 
   // --- TRACKING CHANGES ---
   const [modifiedJobIds, setModifiedJobIds] = useState<Set<string>>(() => {
@@ -183,6 +273,15 @@ const App: React.FC = () => {
     }
   });
 
+  const [headerUpdates, setHeaderUpdates] = useState<HeaderMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('kb_header_updates');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSyncBookingModalOpen, setIsSyncBookingModalOpen] = useState(false);
 
@@ -201,6 +300,10 @@ const App: React.FC = () => {
     localStorage.setItem('kb_header_notifications', JSON.stringify(headerNotifications));
   }, [headerNotifications]);
 
+  useEffect(() => {
+    localStorage.setItem('kb_header_updates', JSON.stringify(headerUpdates));
+  }, [headerUpdates]);
+
   const addHeaderMessage = (username: string, carrier: string, booking: string) => {
     const newMessage: HeaderMessage = {
       id: Date.now().toString(),
@@ -209,7 +312,7 @@ const App: React.FC = () => {
       carrier,
       booking
     };
-    setHeaderMessages(prev => [newMessage, ...prev].slice(0, 50)); // Keep last 50
+    setHeaderMessages(prev => [newMessage, ...prev].slice(0, 20)); // Keep last 20
   };
 
   const addHeaderNotification = (username: string, booking: string) => {
@@ -220,7 +323,19 @@ const App: React.FC = () => {
       booking,
       isRead: false
     };
-    setHeaderNotifications(prev => [newNotification, ...prev].slice(0, 50)); // Keep last 50
+    setHeaderNotifications(prev => [newNotification, ...prev].slice(0, 20)); // Keep last 20
+  };
+
+  const addHeaderUpdate = (username: string, carrier: string, booking: string, action: string = 'Updated') => {
+    const newUpdate: HeaderMessage = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      username,
+      carrier,
+      booking
+    };
+    // Use the booking field to store the action if needed, or just keep it simple
+    setHeaderUpdates(prev => [newUpdate, ...prev].slice(0, 20));
   };
 
   const markNotificationsAsRead = () => {
@@ -228,10 +343,7 @@ const App: React.FC = () => {
   };
 
   const handleSyncCvhc = async () => {
-    if (folderInputRef.current) {
-        folderInputRef.current.value = '';
-        folderInputRef.current.click();
-    }
+    setIsSyncCvhcChoiceOpen(true);
   };
 
   const handleAutoUploadFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,8 +354,17 @@ const App: React.FC = () => {
     let successCount = 0;
     const fileList: File[] = Array.from(files);
     
-    // Target jobs that are completed (have ngayThuHoan) AND missing CVHC file
-    const targetList = jobs.filter(j => j.ngayThuHoan && !j.cvhcUrl); 
+    // Target jobs that are completed (have ngayThuHoan)
+    // Mode 'missing' only targets jobs without cvhcUrl
+    // Mode 'all' targets all jobs with ngayThuHoan
+    const targetList = jobs.filter(j => {
+        if (!j.ngayThuHoan) return false;
+        if (syncCvhcMode === 'missing') {
+            const hasCvhc = j.cvhcUrl && !j.cvhcUrl.includes('/files/inv/');
+            return !hasCvhc;
+        }
+        return true;
+    }); 
 
     for (let i = 0; i < targetList.length; i++) {
         const job = targetList[i];
@@ -431,12 +552,17 @@ const App: React.FC = () => {
       // Add header message
       if (currentUser) {
         addHeaderMessage(currentUser.username, job.line, job.booking);
+        addHeaderUpdate(currentUser.username, job.line, job.booking, 'Created');
       }
   };
 
   const handleEditJob = (job: JobData) => {
       setJobs(prev => prev.map(x => x.id === job.id ? job : x));
       setModifiedJobIds(prev => new Set(prev).add(job.id));
+
+      if (currentUser) {
+        addHeaderUpdate(currentUser.username, job.line, job.booking, 'Updated');
+      }
   };
 
   const handleDeleteJob = (id: string) => {
@@ -1116,11 +1242,13 @@ const App: React.FC = () => {
           onNavigate={setCurrentPage}
           messages={headerMessages}
           notifications={headerNotifications}
+          updates={headerUpdates}
           pendingPaymentCount={paymentRequests.filter(r => r.status === 'pending').length}
           onMarkNotificationsRead={markNotificationsAsRead}
           onExport={handleExport}
           onSyncBooking={handleSyncBooking}
           onSyncCvhc={handleSyncCvhc}
+          onAddOtherReceipt={handleAddOtherReceipt}
         />
 
         {/* AI Auto Upload Progress Overlay */}
@@ -1470,6 +1598,33 @@ const App: React.FC = () => {
           jobs={jobs}
           customers={customers}
         />
+
+        <SyncCvhcChoiceModal 
+          isOpen={isSyncCvhcChoiceOpen}
+          onClose={() => setIsSyncCvhcChoiceOpen(false)}
+          onSelect={(mode) => {
+            setSyncCvhcMode(mode);
+            setIsSyncCvhcChoiceOpen(false);
+            if (folderInputRef.current) {
+                folderInputRef.current.value = '';
+                folderInputRef.current.click();
+            }
+          }}
+        />
+
+        {isOtherReceiptOpen && (
+          <QuickReceiveModal 
+            isOpen={isOtherReceiptOpen}
+            onClose={() => setIsOtherReceiptOpen(false)}
+            onSave={handleSaveOtherReceipt}
+            job={otherReceiptJob}
+            mode="other"
+            customers={customers}
+            allJobs={jobs}
+            usedDocNos={customReceipts.map(r => r.docNo).filter(Boolean)}
+            onAddCustomer={(newCust) => setCustomers(prev => [...prev, newCust])}
+          />
+        )}
       </main>
     </div>
   </div>

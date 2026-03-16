@@ -240,11 +240,7 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
                 fileName: syncItem.fileName,
                 hasInvoice: true
               }
-            },
-
-            // Update CVHC link for reference
-            cvhcUrl: syncItem.fileUrl,
-            cvhcFileName: syncItem.fileName
+            }
           };
         }
         return job;
