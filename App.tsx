@@ -304,13 +304,39 @@ const App: React.FC = () => {
     localStorage.setItem('kb_header_updates', JSON.stringify(headerUpdates));
   }, [headerUpdates]);
 
-  const addHeaderMessage = (username: string, carrier: string, booking: string) => {
+  const lastSavedHeaderData = useRef<string>("");
+
+  useEffect(() => {
+    if (!isServerAvailable || !isInitialSyncDone) return;
+    
+    const currentDataString = JSON.stringify({
+      messages: headerMessages,
+      notifications: headerNotifications,
+      updates: headerUpdates
+    });
+
+    if (currentDataString === lastSavedHeaderData.current) return;
+
+    const timeoutId = setTimeout(() => {
+      lastSavedHeaderData.current = currentDataString;
+      fetch(`${BACKEND_URL}/header-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: currentDataString
+      }).catch(e => console.warn("Header Backup failed", e));
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [headerMessages, headerNotifications, headerUpdates, isServerAvailable, isInitialSyncDone]);
+
+  const addHeaderMessage = (username: string, carrier: string, booking: string, jobCode?: string) => {
     const newMessage: HeaderMessage = {
       id: Date.now().toString(),
       timestamp: new Date().toISOString(),
       username,
       carrier,
-      booking
+      booking,
+      jobCode,
+      isRead: false
     };
     setHeaderMessages(prev => [newMessage, ...prev].slice(0, 20)); // Keep last 20
   };
@@ -326,13 +352,15 @@ const App: React.FC = () => {
     setHeaderNotifications(prev => [newNotification, ...prev].slice(0, 20)); // Keep last 20
   };
 
-  const addHeaderUpdate = (username: string, carrier: string, booking: string, action: string = 'Updated') => {
+  const addHeaderUpdate = (username: string, carrier: string, booking: string, action: string = 'Updated', jobCode?: string) => {
     const newUpdate: HeaderMessage = {
       id: Date.now().toString(),
       timestamp: new Date().toISOString(),
       username,
       carrier,
-      booking
+      booking,
+      jobCode,
+      isRead: false
     };
     // Use the booking field to store the action if needed, or just keep it simple
     setHeaderUpdates(prev => [newUpdate, ...prev].slice(0, 20));
@@ -340,6 +368,14 @@ const App: React.FC = () => {
 
   const markNotificationsAsRead = () => {
     setHeaderNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  };
+
+  const markMessagesAsRead = () => {
+    setHeaderMessages(prev => prev.map(m => ({ ...m, isRead: true })));
+  };
+
+  const markUpdatesAsRead = () => {
+    setHeaderUpdates(prev => prev.map(u => ({ ...u, isRead: true })));
   };
 
   const handleSyncCvhc = async () => {
@@ -551,8 +587,8 @@ const App: React.FC = () => {
       
       // Add header message
       if (currentUser) {
-        addHeaderMessage(currentUser.username, job.line, job.booking);
-        addHeaderUpdate(currentUser.username, job.line, job.booking, 'Created');
+        addHeaderMessage(currentUser.username, job.line, job.booking, job.jobCode);
+        addHeaderUpdate(currentUser.username, job.line, job.booking, 'Created', job.jobCode);
       }
   };
 
@@ -561,7 +597,7 @@ const App: React.FC = () => {
       setModifiedJobIds(prev => new Set(prev).add(job.id));
 
       if (currentUser) {
-        addHeaderUpdate(currentUser.username, job.line, job.booking, 'Updated');
+        addHeaderUpdate(currentUser.username, job.line, job.booking, 'Updated', job.jobCode);
       }
   };
 
@@ -939,9 +975,10 @@ const App: React.FC = () => {
         const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
         // Fetch BOTH general data and NFC data
-        const [dataRes, nfcRes] = await Promise.all([
+        const [dataRes, nfcRes, headerRes] = await Promise.all([
             fetch(`${BACKEND_URL}/data`, { signal: controller.signal }),
-            fetch(`${BACKEND_URL}/nfc`, { signal: controller.signal })
+            fetch(`${BACKEND_URL}/nfc`, { signal: controller.signal }),
+            fetch(`${BACKEND_URL}/header-data`, { signal: controller.signal }).catch(() => null)
         ]);
         
         clearTimeout(timeoutId);
@@ -950,6 +987,20 @@ const App: React.FC = () => {
 
         const data = await dataRes.json();
         console.log("SERVER DATA LOADED:", data);
+
+        if (headerRes && headerRes.ok) {
+            const headerData = await headerRes.json();
+            const currentDataString = JSON.stringify({
+              messages: headerData.messages || [],
+              notifications: headerData.notifications || [],
+              updates: headerData.updates || []
+            });
+            lastSavedHeaderData.current = currentDataString;
+
+            if (headerData.messages) setHeaderMessages(headerData.messages);
+            if (headerData.notifications) setHeaderNotifications(headerData.notifications);
+            if (headerData.updates) setHeaderUpdates(headerData.updates);
+        }
 
         if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(sanitizeData(data.jobs));
         if (data.paymentRequests && Array.isArray(data.paymentRequests)) setPaymentRequests(data.paymentRequests);
@@ -1192,6 +1243,24 @@ const App: React.FC = () => {
       }
     });
 
+    eventSource.addEventListener('header-updated', (event: any) => {
+      fetch(`${BACKEND_URL}/header-data`)
+        .then(res => res.json())
+        .then(headerData => {
+            const currentDataString = JSON.stringify({
+              messages: headerData.messages || [],
+              notifications: headerData.notifications || [],
+              updates: headerData.updates || []
+            });
+            lastSavedHeaderData.current = currentDataString;
+
+            if (headerData.messages) setHeaderMessages(headerData.messages);
+            if (headerData.notifications) setHeaderNotifications(headerData.notifications);
+            if (headerData.updates) setHeaderUpdates(headerData.updates);
+        })
+        .catch(err => console.warn("Failed to re-fetch header data", err));
+    });
+
     eventSource.addEventListener('lock', (event: any) => {
       const data = JSON.parse(event.data);
       // Handle remote lock
@@ -1245,6 +1314,8 @@ const App: React.FC = () => {
           updates={headerUpdates}
           pendingPaymentCount={paymentRequests.filter(r => r.status === 'pending').length}
           onMarkNotificationsRead={markNotificationsAsRead}
+          onMarkMessagesRead={markMessagesAsRead}
+          onMarkUpdatesRead={markUpdatesAsRead}
           onExport={handleExport}
           onSyncBooking={handleSyncBooking}
           onSyncCvhc={handleSyncCvhc}

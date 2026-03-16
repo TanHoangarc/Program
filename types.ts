@@ -353,6 +353,8 @@ export interface HeaderMessage {
   username: string;
   carrier: string;
   booking: string;
+  jobCode?: string;
+  isRead?: boolean;
 }
 
 export interface HeaderNotification {

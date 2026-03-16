@@ -373,6 +373,9 @@ async function startServer() {
         } catch (e) {}
         
         if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
+        if (!memoryData.headerMessages) memoryData.headerMessages = [];
+        if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
+        if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
 
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
         memoryPayments = JSON.parse(rawPayment || "[]");
@@ -467,6 +470,24 @@ async function startServer() {
         } else {
             res.json({ success: false, message: "No permission to save" });
         }
+    });
+
+    app.get("/api/header-data", (req, res) => {
+        res.json({
+            messages: memoryData.headerMessages || [],
+            notifications: memoryData.headerNotifications || [],
+            updates: memoryData.headerUpdates || []
+        });
+    });
+
+    app.post("/api/header-data", (req, res) => {
+        const { messages, notifications, updates } = req.body;
+        if (messages) memoryData.headerMessages = messages;
+        if (notifications) memoryData.headerNotifications = notifications;
+        if (updates) memoryData.headerUpdates = updates;
+        triggerDiskSave(false);
+        broadcast("header-updated", { time: Date.now() });
+        res.json({ success: true });
     });
 
     app.get("/api/history/latest", async (req, res) => {

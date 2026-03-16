@@ -13,6 +13,8 @@ interface HeaderProps {
   updates?: HeaderMessage[];
   pendingPaymentCount?: number;
   onMarkNotificationsRead?: () => void;
+  onMarkMessagesRead?: () => void;
+  onMarkUpdatesRead?: () => void;
   onExport?: () => void;
   onSyncBooking?: () => void;
   onSyncCvhc?: () => void;
@@ -29,6 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
   updates = [],
   pendingPaymentCount = 0,
   onMarkNotificationsRead,
+  onMarkMessagesRead,
+  onMarkUpdatesRead,
   onExport,
   onSyncBooking,
   onSyncCvhc,
@@ -38,6 +42,8 @@ export const Header: React.FC<HeaderProps> = ({
   const closeTimer = useRef<NodeJS.Timeout | null>(null);
 
   const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
+  const unreadMessagesCount = messages.filter(m => !m.isRead).length;
+  const unreadUpdatesCount = updates.filter(u => !u.isRead).length;
 
   const formatTimestamp = (isoString: string) => {
     const date = new Date(isoString);
@@ -70,6 +76,12 @@ export const Header: React.FC<HeaderProps> = ({
       if (name === 'notifications' && onMarkNotificationsRead) {
         onMarkNotificationsRead();
       }
+      if (name === 'messages' && onMarkMessagesRead) {
+        onMarkMessagesRead();
+      }
+      if (name === 'updates' && onMarkUpdatesRead) {
+        onMarkUpdatesRead();
+      }
 
       closeTimer.current = setTimeout(() => {
         setActiveDropdown(null);
@@ -100,9 +112,9 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`p-2 rounded-lg transition-all relative ${activeDropdown === 'messages' ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50'}`}
               >
                 <MessageSquare className="w-5 h-5" />
-                {pendingPaymentCount > 0 && (
+                {unreadMessagesCount > 0 && (
                   <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
-                    {pendingPaymentCount}
+                    {unreadMessagesCount}
                   </span>
                 )}
               </button>
@@ -110,19 +122,19 @@ export const Header: React.FC<HeaderProps> = ({
               {activeDropdown === 'messages' && (
                 <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                    <h3 className="text-sm font-bold text-slate-800">Tin nhắn (Chờ thanh toán)</h3>
-                    <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{pendingPaymentCount}</span>
+                    <h3 className="text-sm font-bold text-slate-800">Tin nhắn</h3>
+                    <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{unreadMessagesCount} mới</span>
                   </div>
                   <div className="max-h-96 overflow-y-auto custom-scrollbar">
                     {messages.length > 0 ? (
                       messages.map(msg => (
-                        <div key={msg.id} className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors">
+                        <div key={msg.id} className={`px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors ${!msg.isRead ? 'bg-blue-50/30' : ''}`}>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">{msg.carrier}</span>
                             <span className="text-[10px] font-bold text-slate-700">{msg.booking}</span>
                           </div>
                           <p className="text-xs text-slate-600 leading-relaxed">
-                            <span className="text-slate-400 font-medium">[{formatTimestamp(msg.timestamp)}]</span> Create booking by <span className="font-bold text-slate-800">{msg.username}</span>
+                            <span className="text-slate-400 font-medium">[{formatTimestamp(msg.timestamp)}]</span> {msg.jobCode || 'Job/booking'} Created by <span className="font-bold text-slate-800">{msg.username}</span>
                           </p>
                         </div>
                       ))
@@ -189,9 +201,9 @@ export const Header: React.FC<HeaderProps> = ({
               className={`p-2 rounded-lg transition-all relative ${activeDropdown === 'updates' ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50'}`}
             >
               <Info className="w-5 h-5" />
-              {updates.length > 0 && (
+              {unreadUpdatesCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
-                  {updates.length}
+                  {unreadUpdatesCount}
                 </span>
               )}
             </button>
@@ -200,18 +212,18 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
                   <h3 className="text-sm font-bold text-slate-800">Lịch sử cập nhật</h3>
-                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{updates.length}</span>
+                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{unreadUpdatesCount} mới</span>
                 </div>
                 <div className="max-h-96 overflow-y-auto custom-scrollbar">
                   {updates.length > 0 ? (
                     updates.map(update => (
-                      <div key={update.id} className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors">
+                      <div key={update.id} className={`px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors ${!update.isRead ? 'bg-blue-50/30' : ''}`}>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">{update.carrier}</span>
                           <span className="text-[10px] font-bold text-slate-700">{update.booking}</span>
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
-                          <span className="text-slate-400 font-medium">[{formatTimestamp(update.timestamp)}]</span> Job/booking Updated by <span className="font-bold text-slate-800">{update.username}</span>
+                          <span className="text-slate-400 font-medium">[{formatTimestamp(update.timestamp)}]</span> {update.jobCode || 'Job/booking'} Updated by <span className="font-bold text-slate-800">{update.username}</span>
                         </p>
                       </div>
                     ))
