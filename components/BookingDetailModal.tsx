@@ -16,7 +16,7 @@ interface BookingDetailModalProps {
   onViewPayment?: (docNo: string, type: 'local' | 'deposit' | 'extension') => void;
 }
 
-const BACKEND_URL = "/api";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 
 // --- COMPACT COMPONENTS ---
 
@@ -709,7 +709,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           const ext = file.name.split('.').pop();
           const safeLine = (booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
           const safeBooking = (booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
-          const safeInvoice = invoiceNo.replace(/[^a-zA-Z0-9]/g, '');
+          const safeInvoice = String(invoiceNo).replace(/[^a-zA-Z0-9]/g, '');
           
           const fileName = `${safeLine}.${safeBooking}.${safeInvoice}.${day}.${month}.${year}.${ext}`;
 
