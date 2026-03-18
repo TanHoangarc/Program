@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw, Wallet, Info } from 'lucide-react';
-import { UserAccount, HeaderMessage, HeaderNotification } from '../types';
+import { UserAccount, HeaderMessage, HeaderNotification, PaymentRequest } from '../types';
 import { MONTHS, YEARS } from '../constants';
 
 interface HeaderProps {
@@ -11,7 +11,7 @@ interface HeaderProps {
   messages?: HeaderMessage[];
   notifications?: HeaderNotification[];
   updates?: HeaderMessage[];
-  pendingPaymentCount?: number;
+  pendingPayments?: PaymentRequest[];
   onMarkNotificationsRead?: () => void;
   onMarkMessagesRead?: () => void;
   onMarkUpdatesRead?: () => void;
@@ -29,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   messages = [],
   notifications = [],
   updates = [],
-  pendingPaymentCount = 0,
+  pendingPayments = [],
   onMarkNotificationsRead,
   onMarkMessagesRead,
   onMarkUpdatesRead,
@@ -110,11 +110,12 @@ export const Header: React.FC<HeaderProps> = ({
               <button 
                 onClick={() => toggleDropdown('messages')}
                 className={`p-2 rounded-lg transition-all relative ${activeDropdown === 'messages' ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50'}`}
+                title="Yêu cầu thanh toán"
               >
                 <MessageSquare className="w-5 h-5" />
-                {unreadMessagesCount > 0 && (
+                {pendingPayments.length > 0 && (
                   <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1">
-                    {unreadMessagesCount}
+                    {pendingPayments.length}
                   </span>
                 )}
               </button>
@@ -122,26 +123,36 @@ export const Header: React.FC<HeaderProps> = ({
               {activeDropdown === 'messages' && (
                 <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                    <h3 className="text-sm font-bold text-slate-800">Tin nhắn</h3>
-                    <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{unreadMessagesCount} mới</span>
+                    <h3 className="text-sm font-bold text-slate-800">Yêu cầu thanh toán</h3>
+                    <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{pendingPayments.length} chờ duyệt</span>
                   </div>
                   <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                    {messages.length > 0 ? (
-                      messages.map(msg => (
-                        <div key={msg.id} className={`px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors ${!msg.isRead ? 'bg-blue-50/30' : ''}`}>
+                    {pendingPayments.length > 0 ? (
+                      pendingPayments.map(payment => (
+                        <div 
+                          key={payment.id} 
+                          className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors cursor-pointer"
+                          onClick={() => {
+                            onNavigate?.('payment');
+                            setActiveDropdown(null);
+                          }}
+                        >
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">{msg.carrier}</span>
-                            <span className="text-[10px] font-bold text-slate-700">{msg.booking}</span>
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">{payment.type === 'advance' ? 'Tạm ứng' : payment.type === 'settlement' ? 'Quyết toán' : 'Khác'}</span>
+                            <span className="text-[10px] font-bold text-slate-700">{payment.booking || payment.jobCode}</span>
                           </div>
                           <p className="text-xs text-slate-600 leading-relaxed">
-                            <span className="text-slate-400 font-medium">[{formatTimestamp(msg.timestamp)}]</span> {msg.jobCode || 'Job/booking'} Created by <span className="font-bold text-slate-800">{msg.username}</span>
+                            <span className="text-slate-400 font-medium">[{formatTimestamp(payment.requestDate)}]</span> Created by <span className="font-bold text-slate-800">{payment.requester}</span>
+                          </p>
+                          <p className="text-xs font-bold text-slate-800 mt-1">
+                            {payment.amount.toLocaleString()} {payment.currency}
                           </p>
                         </div>
                       ))
                     ) : (
                       <div className="px-4 py-8 text-center">
                         <MessageSquare className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                        <p className="text-xs text-slate-400">Không có tin nhắn mới</p>
+                        <p className="text-xs text-slate-400">Không có yêu cầu thanh toán nào</p>
                       </div>
                     )}
                   </div>

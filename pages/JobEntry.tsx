@@ -48,7 +48,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   const [filterYear, setFilterYear] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
-  const [filterLine, setFilterLine] = useState('');
+  const [filterDeposit, setFilterDeposit] = useState('');
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -67,7 +67,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterJobCode, filterMonth, filterYear, filterCustomer, filterBooking, filterLine]);
+  }, [filterJobCode, filterMonth, filterYear, filterCustomer, filterBooking, filterDeposit]);
 
   // Auto-open Job if ID provided
   useEffect(() => {
@@ -311,11 +311,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       
       const matchesYear = filterYear ? job.year === Number(filterYear) : true;
       const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
-      const matchesLine = filterLine ? job.line === filterLine : true;
+      const matchesDeposit = filterDeposit === 'pending' ? !job.ngayThuHoan : filterDeposit === 'refunded' ? !!job.ngayThuHoan : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
       const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
       const matchesBooking = filterBooking ? jBooking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
-      return matchesJobCode && matchesLine && matchesMonth && matchesCustomer && matchesBooking && matchesYear;
+      return matchesJobCode && matchesDeposit && matchesMonth && matchesCustomer && matchesBooking && matchesYear;
     });
 
     return matches.sort((a, b) => {
@@ -327,7 +327,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const bookingB = String(b.booking || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterJobCode, filterLine, filterMonth, filterYear, filterCustomer, filterBooking]);
+  }, [jobs, filterJobCode, filterDeposit, filterMonth, filterYear, filterCustomer, filterBooking]);
 
   const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
   const paginatedJobs = filteredJobs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -344,7 +344,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   }, [filteredJobs]);
 
   const clearFilters = () => {
-    setFilterJobCode(''); setFilterLine(''); setFilterMonth(''); setFilterCustomer(''); setFilterBooking(''); setFilterYear(new Date().getFullYear().toString());
+    setFilterJobCode(''); setFilterDeposit(''); setFilterMonth(''); setFilterCustomer(''); setFilterBooking(''); setFilterYear(new Date().getFullYear().toString());
   };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -397,10 +397,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                </select>
              </div>
              <div>
-               <label className="block text-xs font-semibold text-gray-500 mb-1">Line</label>
-               <select value={filterLine} onChange={(e) => setFilterLine(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none">
+               <label className="block text-xs font-semibold text-gray-500 mb-1">Deposit</label>
+               <select value={filterDeposit} onChange={(e) => setFilterDeposit(e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none">
                  <option value="">Tất cả</option>
-                 {lines.map((line, idx) => <option key={idx} value={line.code}>{line.code} - {line.name}</option>)}
+                 <option value="pending">Pending</option>
+                 <option value="refunded">Refunded</option>
                </select>
              </div>
              <div>
@@ -415,7 +416,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                </div>
              </div>
           </div>
-          {(filterMonth || filterYear !== new Date().getFullYear().toString() || filterCustomer || filterBooking || filterJobCode || filterLine) && (
+          {(filterMonth || filterYear !== new Date().getFullYear().toString() || filterCustomer || filterBooking || filterJobCode || filterDeposit) && (
             <div className="mt-3 flex justify-end">
               <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-700 flex items-center"><X className="w-3 h-3 mr-1" /> Xóa bộ lọc</button>
             </div>
@@ -431,7 +432,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Job Code</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Customer</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Booking</th>
-              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Line</th>
+              <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs">Deposit</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Cost</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Sell</th>
               <th className="px-6 py-3 font-semibold text-gray-700 uppercase text-xs text-right">Profit</th>
@@ -483,7 +484,16 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                     {job.hbl && <div className="text-[10px] text-orange-600 font-medium bg-orange-50 inline-block px-1 rounded border border-orange-100 mt-0.5">{job.hbl}</div>}
                   </td>
                   <td className="px-6 py-3 text-gray-500">{job.booking}</td>
-                  <td className="px-6 py-3 text-gray-500">{job.line}</td>
+                  <td className="px-6 py-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-gray-500 text-xs font-semibold">{job.line}</span>
+                      {job.ngayThuHoan ? (
+                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded w-fit">Refunded</span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded w-fit">Pending</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.sell)}</td>
                   <td className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>

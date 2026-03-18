@@ -1312,7 +1312,7 @@ const App: React.FC = () => {
           messages={headerMessages}
           notifications={headerNotifications}
           updates={headerUpdates}
-          pendingPaymentCount={paymentRequests.filter(r => r.status === 'pending').length}
+          pendingPayments={paymentRequests.filter(r => r.status === 'pending')}
           onMarkNotificationsRead={markNotificationsAsRead}
           onMarkMessagesRead={markMessagesAsRead}
           onMarkUpdatesRead={markUpdatesAsRead}
