@@ -290,7 +290,7 @@ const App: React.FC = () => {
   const [isAutoUploading, setIsAutoUploading] = useState(false);
   const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
-  const BACKEND_URL = "https://api.kimberry.id.vn";
+  const BACKEND_URL = "/api";
 
   useEffect(() => {
     localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));

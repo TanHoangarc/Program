@@ -34,6 +34,7 @@ async function startServer() {
     const PAYMENT_PATH = path.join(ROOT_DIR, "payment.json");   // Payment Requests Only
     const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
     const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
+    const NOTIFICATION_PATH = path.join(ROOT_DIR, "notification.json");
     const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
     const HISTORY_ROOT = path.join(ROOT_DIR, "history");
 
@@ -64,6 +65,7 @@ async function startServer() {
     if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
     if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
     if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
+    if (!fs.existsSync(NOTIFICATION_PATH)) fs.writeFileSync(NOTIFICATION_PATH, JSON.stringify({ messages: [], notifications: [], updates: [] }, null, 2));
     if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
 
     // ======================================================
@@ -274,7 +276,12 @@ async function startServer() {
 
                 const writePromises = [
                     fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
-                    fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
+                    fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8"),
+                    fsp.writeFile(NOTIFICATION_PATH, JSON.stringify({
+                        messages: dataSnapshot.headerMessages || [],
+                        notifications: dataSnapshot.headerNotifications || [],
+                        updates: dataSnapshot.headerUpdates || []
+                    }, null, 2), "utf8")
                 ];
 
                 if (shouldWriteAmis) {
@@ -373,9 +380,17 @@ async function startServer() {
         } catch (e) {}
         
         if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
-        if (!memoryData.headerMessages) memoryData.headerMessages = [];
-        if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
-        if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
+        try {
+            const rawNotif = await fsp.readFile(NOTIFICATION_PATH, "utf8");
+            const notifData = JSON.parse(rawNotif || "{}");
+            memoryData.headerMessages = notifData.messages || [];
+            memoryData.headerNotifications = notifData.notifications || [];
+            memoryData.headerUpdates = notifData.updates || [];
+        } catch (e) {
+            if (!memoryData.headerMessages) memoryData.headerMessages = [];
+            if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
+            if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
+        }
 
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
         memoryPayments = JSON.parse(rawPayment || "[]");

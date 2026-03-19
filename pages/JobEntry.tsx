@@ -311,7 +311,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       
       const matchesYear = filterYear ? job.year === Number(filterYear) : true;
       const matchesJobCode = filterJobCode ? jCode.toLowerCase().includes(filterJobCode.toLowerCase()) : true;
-      const matchesDeposit = filterDeposit === 'pending' ? !job.ngayThuHoan : filterDeposit === 'refunded' ? !!job.ngayThuHoan : true;
+      const matchesDeposit = filterDeposit === 'pending' 
+        ? (job.thuCuoc > 0 && !job.ngayThuHoan) 
+        : filterDeposit === 'refunded' 
+          ? !!job.ngayThuHoan 
+          : true;
       const matchesMonth = filterMonth ? job.month === filterMonth : true;
       const matchesCustomer = filterCustomer ? job.customerId === filterCustomer : true;
       const matchesBooking = filterBooking ? jBooking.toLowerCase().includes(filterBooking.toLowerCase()) : true;
@@ -489,9 +493,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                       <span className="text-gray-500 text-xs font-semibold">{job.line}</span>
                       {job.ngayThuHoan ? (
                         <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded w-fit">Refunded</span>
-                      ) : (
+                      ) : job.thuCuoc > 0 ? (
                         <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded w-fit">Pending</span>
-                      )}
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-6 py-3 text-right text-gray-600">{formatCurrency(job.cost)}</td>
