@@ -414,6 +414,7 @@ async function startServer() {
     });
 
     app.get("/api/data", (req, res) => {
+        console.log("GET /api/data requested");
         res.json({ ...memoryData, paymentRequests: memoryPayments });
     });
 
