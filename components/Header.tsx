@@ -142,10 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
                             <span className="text-[10px] font-bold text-slate-700">{payment.booking || payment.jobCode}</span>
                           </div>
                           <p className="text-xs text-slate-600 leading-relaxed">
-                            <span className="text-slate-400 font-medium">[{formatTimestamp(payment.requestDate)}]</span> Created by <span className="font-bold text-slate-800">{payment.requester}</span>
-                          </p>
-                          <p className="text-xs font-bold text-slate-800 mt-1">
-                            {payment.amount.toLocaleString()} {payment.currency}
+                            Created by <span className="font-bold text-slate-800">{payment.requester}</span> - <span className="font-bold text-slate-800">{payment.amount.toLocaleString()} {payment.currency}</span>
                           </p>
                         </div>
                       ))
