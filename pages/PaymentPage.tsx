@@ -921,7 +921,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           <table className="w-full text-sm">
             <thead className="bg-white/40 text-slate-600 text-xs font-bold uppercase">
               <tr>
-                <th className="px-6 py-3">Số YC</th>
                 <th className="px-6 py-3">Mã Line</th>
                 <th className="px-6 py-3">Booking</th>
                 <th className="px-6 py-3 text-right">Số tiền</th>
@@ -935,7 +934,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             <tbody className="divide-y">
               {pendingList.map(req => (
                 <tr key={req.id} className="hover:bg-white/40 group">
-                  <td className="px-6 py-4 text-xs font-mono text-slate-500">{req.id}</td>
+
                   <td className="px-6 py-4">{getLineDisplay(req)}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center space-x-2">
@@ -943,10 +942,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                       {currentUser?.role === 'Admin' && (
                         <button 
                           onClick={() => {
-                              copyToClipboard(req.id, `bk-${req.id}`);
+                              const typeStr = req.type === 'Deposit' ? 'CUOC' : req.type === 'Demurrage' ? 'GH' : 'PAYMENT';
+                              copyToClipboard(`LONG HOANG ${typeStr} BL ${req.booking} MST 0316113070`, `bk-${req.id}`);
                           }}
                           className={`p-1 rounded-full transition-colors ${copiedId === `bk-${req.id}` ? 'text-green-600 bg-green-50' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
-                          title="Copy nội dung chuyển khoản (Số YC)"
+                          title="Copy nội dung chuyển khoản"
                         >
                           {copiedId === `bk-${req.id}` ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
@@ -1048,7 +1048,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           <table className="w-full text-sm">
             <thead className="bg-white/40 text-slate-600 text-xs font-bold uppercase">
               <tr>
-                <th className="px-6 py-3">Số YC</th>
                 <th className="px-6 py-3">Mã Line</th>
                 <th className="px-6 py-3">Booking</th>
                 <th className="px-6 py-3">Ngày TT</th>
@@ -1063,7 +1062,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
               {completedList.map(req => (
                 <tr key={req.id} className="hover:bg-white/40">
-                  <td className="px-6 py-4 text-xs font-mono text-slate-500">{req.id}</td>
+
                   <td className="px-6 py-4">{getLineDisplay(req)}</td>
                   <td className="px-6 py-4">{req.booking}</td>
                   <td className="px-6 py-4 text-slate-600 font-medium">
