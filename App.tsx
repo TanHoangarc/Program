@@ -970,9 +970,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const fetchServerData = async () => {
+      console.log("Attempting to fetch data from:", BACKEND_URL);
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); 
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // Tăng lên 10s để tránh timeout quá nhanh
 
         // Fetch BOTH general data and NFC data
         const [dataRes, nfcRes, headerRes] = await Promise.all([
@@ -983,7 +984,7 @@ const App: React.FC = () => {
         
         clearTimeout(timeoutId);
 
-        if (!dataRes.ok) throw new Error("Server response not OK");
+        if (!dataRes.ok) throw new Error(`Server response not OK: ${dataRes.status}`);
 
         const data = await dataRes.json();
         console.log("SERVER DATA LOADED:", data);
@@ -1035,7 +1036,7 @@ const App: React.FC = () => {
         setIsServerAvailable(true);
 
       } catch (err) {
-        console.warn("Server unavailable (Offline Mode): Using local data.");
+        console.error("Server unavailable (Offline Mode):", err);
         setIsServerAvailable(false);
         // Even if server is down, we consider initial "sync" attempt done to allow local usage
         setIsInitialSyncDone(true); 

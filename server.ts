@@ -408,7 +408,10 @@ async function startServer() {
     // ======================================================
     // API ROUTES
     // ======================================================
-    app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
+    app.get("/api/health", (req, res) => {
+        console.log("Health check requested");
+        res.json({ status: "ok", uptime: process.uptime() });
+    });
 
     app.get("/api/data", (req, res) => {
         res.json({ ...memoryData, paymentRequests: memoryPayments });
