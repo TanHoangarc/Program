@@ -18,6 +18,10 @@ async function startServer() {
     // ======================================================
     // GLOBAL MIDDLEWARE
     // ======================================================
+    app.use((req, res, next) => {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+        next();
+    });
     app.use(express.json({ limit: "100mb" }));
     app.use(express.urlencoded({ extended: true, limit: "100mb" }));
     app.use(cors({ origin: "*" }));
@@ -25,9 +29,12 @@ async function startServer() {
     // ======================================================
     // PATH CONFIG
     // ======================================================
-    const ROOT_DIR = process.platform === "win32" || fs.existsSync("E:\\ServerData")
-        ? "E:\\ServerData" 
-        : path.join(process.cwd(), "ServerData");
+    // Ưu tiên thư mục ServerData trong container Linux
+    const ROOT_DIR = fs.existsSync("/ServerData") 
+        ? "/ServerData" 
+        : (process.platform === "win32" || fs.existsSync("E:\\ServerData")
+            ? "E:\\ServerData" 
+            : path.join(process.cwd(), "ServerData"));
 
     const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, Customers, etc.)
     const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting Data (Admin Only)

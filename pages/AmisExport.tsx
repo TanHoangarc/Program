@@ -28,7 +28,7 @@ interface AmisExportProps {
   onUpdateCustomReceipts?: (receipts: any[]) => void;
 }
 
-const BACKEND_URL = "/api";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 const TEMPLATE_FOLDER = "Invoice"; 
 
 const TEMPLATE_MAP: Record<string, string> = {

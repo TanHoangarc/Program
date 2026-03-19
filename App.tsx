@@ -290,7 +290,9 @@ const App: React.FC = () => {
   const [isAutoUploading, setIsAutoUploading] = useState(false);
   const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
-  const BACKEND_URL = "/api";
+  // Cấu hình Backend URL
+const BACKEND_URL = window.location.origin.includes('localhost') ? 'http://localhost:3000/api' : '/api';
+console.log("BACKEND_URL initialized as:", BACKEND_URL);
 
   useEffect(() => {
     localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));
