@@ -83,23 +83,6 @@ export const Header: React.FC<HeaderProps> = ({
         onMarkUpdatesRead();
       }
 
-      // Start the auto-close timer
-      closeTimer.current = setTimeout(() => {
-        setActiveDropdown(null);
-      }, 2000);
-    }
-  };
-
-  const handleMouseEnter = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (activeDropdown) {
-      if (closeTimer.current) clearTimeout(closeTimer.current);
       closeTimer.current = setTimeout(() => {
         setActiveDropdown(null);
       }, 2000);
@@ -138,13 +121,9 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
 
               {activeDropdown === 'messages' && (
-                <div 
-                  onMouseEnter={handleMouseEnter}
-                  onMouseLeave={handleMouseLeave}
-                  className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2"
-                >
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                    <h3 className="text-sm font-bold text-slate-800">Tin nhắn</h3>
+                    <h3 className="text-sm font-bold text-slate-800">Yêu cầu thanh toán</h3>
                     <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{pendingPayments.length} chờ duyệt</span>
                   </div>
                   <div className="max-h-96 overflow-y-auto custom-scrollbar">
@@ -163,7 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
                             <span className="text-[10px] font-bold text-slate-700">{payment.booking || payment.jobCode}</span>
                           </div>
                           <p className="text-xs text-slate-600 leading-relaxed">
-                            Created by Document <span className="font-bold text-slate-800">{payment.requester}</span> - <span className="font-bold text-slate-800">{payment.amount.toLocaleString()} {payment.currency}</span>
+                            Created by <span className="font-bold text-slate-800">{payment.requester}</span> - <span className="font-bold text-slate-800">{payment.amount.toLocaleString()} {payment.currency}</span>
                           </p>
                         </div>
                       ))
@@ -194,13 +173,9 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {activeDropdown === 'notifications' && (
-              <div 
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2"
-              >
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-slate-800">Thông báo</h3>
+                  <h3 className="text-sm font-bold text-slate-800">Thông báo (UNC)</h3>
                   <span className="text-[10px] bg-teal-100 text-teal-600 px-2 py-0.5 rounded-full font-bold">{unreadNotificationsCount} mới</span>
                 </div>
                 <div className="max-h-96 overflow-y-auto custom-scrollbar">
@@ -242,13 +217,9 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {activeDropdown === 'updates' && (
-              <div 
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2"
-              >
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-slate-800">Thông tin</h3>
+                  <h3 className="text-sm font-bold text-slate-800">Lịch sử cập nhật</h3>
                   <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{unreadUpdatesCount} mới</span>
                 </div>
                 <div className="max-h-96 overflow-y-auto custom-scrollbar">
@@ -287,11 +258,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
 
                 {activeDropdown === 'settings' && (
-                  <div 
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
-                    className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2"
-                  >
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                     <div className="px-4 py-2 border-b border-slate-50">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cài đặt hệ thống</h3>
                     </div>
@@ -333,11 +300,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
 
                 {activeDropdown === 'management' && (
-                  <div 
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
-                    className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2"
-                  >
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                     <div className="px-4 py-2 border-b border-slate-50">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Quản lý</h3>
                     </div>
@@ -381,11 +344,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             
             {activeDropdown === 'user' && (
-              <div 
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2"
-              >
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 py-2 border-b border-slate-50 sm:hidden">
                   <p className="text-sm font-bold text-slate-800">{currentUser?.username}</p>
                   <p className="text-[10px] text-slate-500 uppercase">{currentUser?.role}</p>

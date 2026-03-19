@@ -290,9 +290,7 @@ const App: React.FC = () => {
   const [isAutoUploading, setIsAutoUploading] = useState(false);
   const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
-  // Cấu hình Backend URL
-const BACKEND_URL = window.location.origin.includes('localhost') ? 'http://localhost:3000/api' : '/api';
-console.log("BACKEND_URL initialized as:", BACKEND_URL);
+  const BACKEND_URL = "https://api.kimberry.id.vn";
 
   useEffect(() => {
     localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));
@@ -972,10 +970,9 @@ console.log("BACKEND_URL initialized as:", BACKEND_URL);
 
   useEffect(() => {
     const fetchServerData = async () => {
-      console.log("Attempting to fetch data from:", BACKEND_URL);
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // Tăng lên 10s để tránh timeout quá nhanh
+        const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
         // Fetch BOTH general data and NFC data
         const [dataRes, nfcRes, headerRes] = await Promise.all([
@@ -986,7 +983,7 @@ console.log("BACKEND_URL initialized as:", BACKEND_URL);
         
         clearTimeout(timeoutId);
 
-        if (!dataRes.ok) throw new Error(`Server response not OK: ${dataRes.status}`);
+        if (!dataRes.ok) throw new Error("Server response not OK");
 
         const data = await dataRes.json();
         console.log("SERVER DATA LOADED:", data);
@@ -1038,7 +1035,7 @@ console.log("BACKEND_URL initialized as:", BACKEND_URL);
         setIsServerAvailable(true);
 
       } catch (err) {
-        console.error("Server unavailable (Offline Mode):", err);
+        console.warn("Server unavailable (Offline Mode): Using local data.");
         setIsServerAvailable(false);
         // Even if server is down, we consider initial "sync" attempt done to allow local usage
         setIsInitialSyncDone(true); 
