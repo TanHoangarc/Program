@@ -441,6 +441,7 @@ export interface LongHoangOrder {
   invoiceFileName?: string;
   note?: string;
   wireOffStatus?: 'Pending' | 'Wired Off';
+  fees?: { name: string; amount: number }[];
 }
 
 // ============================================================

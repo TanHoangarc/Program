@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check, Settings } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -26,6 +26,71 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [isExtracting, setIsExtracting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsDate, setSettingsDate] = useState('');
+  const [displaySettingsDate, setDisplaySettingsDate] = useState('');
+  const [settingsRate, setSettingsRate] = useState('');
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('lh_exchange_rates');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('lh_exchange_rates', JSON.stringify(exchangeRates));
+  }, [exchangeRates]);
+
+  const handleOpenSettings = () => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+    
+    setSettingsDate(todayStr);
+    setDisplaySettingsDate(`${dd}/${mm}/${yyyy}`);
+    setSettingsRate(exchangeRates[todayStr] ? exchangeRates[todayStr].toString() : '');
+    setIsSettingsModalOpen(true);
+  };
+
+  const handleSettingsDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length > 8) value = value.slice(0, 8);
+    
+    let formatted = value;
+    if (value.length >= 3 && value.length <= 4) {
+      formatted = `${value.slice(0, 2)}/${value.slice(2)}`;
+    } else if (value.length >= 5) {
+      formatted = `${value.slice(0, 2)}/${value.slice(2, 4)}/${value.slice(4)}`;
+    }
+    
+    setDisplaySettingsDate(formatted);
+    
+    if (formatted.length === 10) {
+      const parts = formatted.split('/');
+      if (parts.length === 3) {
+        const dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        setSettingsDate(dateStr);
+        setSettingsRate(exchangeRates[dateStr] ? exchangeRates[dateStr].toString() : '');
+      }
+    } else {
+      setSettingsDate('');
+      setSettingsRate('');
+    }
+  };
+
+  const handleSaveSettings = () => {
+    if (!settingsDate || !settingsRate) {
+      alert('Vui lòng nhập đầy đủ ngày và tỷ giá', 'Lỗi');
+      return;
+    }
+    setExchangeRates(prev => ({
+      ...prev,
+      [settingsDate]: Number(settingsRate)
+    }));
+    setIsSettingsModalOpen(false);
+    alert('Đã lưu tỷ giá', 'Thành công');
+  };
 
   const handleOpenModal = (order?: LongHoangOrder) => {
     if (order) {
@@ -54,7 +119,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         amount: 0,
         mbl: '',
         accountNumber: '',
-        wireOffStatus: 'Pending'
+        wireOffStatus: 'Pending',
+        fees: []
       });
       setDisplayDate(`${dd}/${mm}/${yyyy}`);
       setDisplayAmount('');
@@ -197,6 +263,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   - amount: The total amount to be paid (number, remove commas or currency symbols)
                   - mbl: The Master Bill of Lading number (string)
                   - accountNumber: The bank account number for payment (string)
+                  - fees: An array of objects representing the detailed fees and their amounts. Each object should have 'name' (string) and 'amount' (number).
                   
                   Return ONLY a valid JSON object with these exact keys.`
                 }
@@ -215,7 +282,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 line: extractedData.line || prev.line,
                 amount: extractedData.amount || prev.amount,
                 mbl: extractedData.mbl || prev.mbl,
-                accountNumber: extractedData.accountNumber || prev.accountNumber
+                accountNumber: extractedData.accountNumber || prev.accountNumber,
+                fees: extractedData.fees || prev.fees
               }));
               if (extractedData.amount) {
                 setDisplayAmount(Number(extractedData.amount).toLocaleString('vi-VN'));
@@ -255,13 +323,22 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           <h2 className="text-2xl font-bold text-slate-800">Trang Long Hoàng</h2>
           <p className="text-sm text-slate-500">Quản lý lệnh thanh toán Long Hoàng</p>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
-        >
-          <Plus className="w-5 h-5" />
-          Tạo Lệnh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleOpenSettings}
+            className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm"
+          >
+            <Settings className="w-5 h-5" />
+            Cài đặt tỷ giá
+          </button>
+          <button
+            onClick={() => handleOpenModal()}
+            className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
+          >
+            <Plus className="w-5 h-5" />
+            Tạo Lệnh
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
@@ -400,7 +477,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
       {/* Modal Tạo/Sửa Lệnh */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <h3 className="text-xl font-bold text-slate-800">
                 {editingOrder ? 'Sửa Lệnh Thanh Toán' : 'Tạo Lệnh Thanh Toán Mới'}
@@ -411,7 +488,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             </div>
 
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-              {/* Upload Section */}
+              <div className="flex flex-col lg:flex-row gap-6 h-full">
+                <div className="flex-1 space-y-6">
+                  {/* Upload Section */}
               <div className="mb-6 p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-center relative">
                 <input 
                   type="file" 
@@ -533,8 +612,63 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
               </div>
             </div>
+            
+            {/* Fees Table Section */}
+            <div className="w-full lg:w-1/3 bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-col min-h-[300px]">
+              <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-teal-600" />
+                Chi tiết các phí
+              </h4>
+              {formData.fees && formData.fees.length > 0 ? (
+                <div className="overflow-y-auto flex-1 custom-scrollbar pr-2">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-slate-500 uppercase border-b border-slate-200">
+                      <tr>
+                        <th className="text-left py-2 font-semibold">Tên phí</th>
+                        <th className="text-right py-2 font-semibold">Số tiền</th>
+                        <th className="text-right py-2 font-semibold">USD</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {formData.fees.map((fee, idx) => {
+                        const currentRate = formData.paymentDate ? exchangeRates[formData.paymentDate] : 0;
+                        const usdAmount = currentRate > 0 ? (fee.amount / currentRate) : 0;
+                        return (
+                          <tr key={idx}>
+                            <td className="py-2 text-slate-700">{fee.name}</td>
+                            <td className="py-2 text-slate-900 font-medium text-right">{fee.amount.toLocaleString('vi-VN')}</td>
+                            <td className="py-2 text-slate-900 font-medium text-right">{usdAmount > 0 ? usdAmount.toFixed(2) : '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="border-t border-slate-200 font-bold">
+                      <tr>
+                        <td className="py-2 text-slate-700 pt-3">Tổng cộng</td>
+                        <td className="py-2 text-teal-700 text-right pt-3">
+                          {formData.fees.reduce((sum, fee) => sum + fee.amount, 0).toLocaleString('vi-VN')}
+                        </td>
+                        <td className="py-2 text-teal-700 text-right pt-3">
+                          {(() => {
+                            const currentRate = formData.paymentDate ? exchangeRates[formData.paymentDate] : 0;
+                            const totalAmount = formData.fees.reduce((sum, fee) => sum + fee.amount, 0);
+                            return currentRate > 0 ? (totalAmount / currentRate).toFixed(2) : '-';
+                          })()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-slate-400 text-sm italic text-center p-8 border-2 border-dashed border-slate-200 rounded-lg">
+                  Chưa có dữ liệu chi tiết phí.<br/>Vui lòng tải lên file hóa đơn.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-2xl">
+        <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-2xl">
               <button
                 onClick={handleCloseModal}
                 className="px-4 py-2 text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl font-medium transition-colors"
@@ -548,6 +682,102 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               >
                 <Save className="w-4 h-4" />
                 {editingOrder ? 'Cập nhật' : 'Lưu Lệnh'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Settings Modal */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col animate-in zoom-in-95">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-slate-800">Cài đặt tỷ giá</h3>
+              <button onClick={() => setIsSettingsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Ngày áp dụng</label>
+                <input
+                  type="text"
+                  value={displaySettingsDate}
+                  onChange={handleSettingsDateChange}
+                  placeholder="dd/mm/yyyy"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Tỷ giá (VND/USD)</label>
+                <input
+                  type="number"
+                  value={settingsRate}
+                  onChange={(e) => setSettingsRate(e.target.value)}
+                  placeholder="VD: 25000"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                />
+              </div>
+              
+              {Object.keys(exchangeRates).length > 0 && (
+                <div className="mt-6 pt-6 border-t border-slate-100">
+                  <h4 className="text-sm font-bold text-slate-700 mb-3">Danh sách tỷ giá đã lưu</h4>
+                  <div className="max-h-48 overflow-y-auto custom-scrollbar border border-slate-200 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 sticky top-0">
+                        <tr>
+                          <th className="text-left py-2 px-3 font-semibold text-slate-600">Ngày</th>
+                          <th className="text-right py-2 px-3 font-semibold text-slate-600">Tỷ giá</th>
+                          <th className="w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {Object.entries(exchangeRates)
+                          .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
+                          .map(([date, rate]) => {
+                            const parts = date.split('-');
+                            const displayDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
+                            return (
+                              <tr key={date} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-700">{displayDate}</td>
+                                <td className="py-2 px-3 text-slate-900 font-medium text-right">{rate.toLocaleString('vi-VN')}</td>
+                                <td className="py-2 px-3 text-right">
+                                  <button
+                                    onClick={() => {
+                                      setExchangeRates(prev => {
+                                        const next = { ...prev };
+                                        delete next[date];
+                                        return next;
+                                      });
+                                    }}
+                                    className="text-red-400 hover:text-red-600 transition-colors"
+                                    title="Xóa"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-2xl">
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl font-medium transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleSaveSettings}
+                className="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
+              >
+                <Save className="w-4 h-4" />
+                Lưu
               </button>
             </div>
           </div>
