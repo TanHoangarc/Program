@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -18,6 +18,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<LongHoangOrder | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<Partial<LongHoangOrder>>({});
   const [displayDate, setDisplayDate] = useState('');
@@ -135,8 +136,10 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
   };
 
-  const handleCopy = (text: string) => {
+  const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,11 +302,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       <div className="flex items-center justify-end gap-2">
                         <span>{order.amount.toLocaleString('vi-VN')}</span>
                         <button
-                          onClick={() => handleCopy(order.amount.toString())}
+                          onClick={() => handleCopy(order.amount.toString(), `${order.id}-amount`)}
                           className="text-slate-400 hover:text-teal-600 transition-colors"
                           title="Copy số tiền"
                         >
-                          <Copy className="w-3.5 h-3.5" />
+                          {copiedKey === `${order.id}-amount` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                     </td>
@@ -311,15 +314,28 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       <div className="flex items-center gap-2">
                         <span>{order.mbl}</span>
                         <button
-                          onClick={() => handleCopy(`LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`)}
+                          onClick={() => handleCopy(`LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`, `${order.id}-mbl`)}
                           className="text-slate-400 hover:text-teal-600 transition-colors"
                           title="Copy nội dung MBL"
                         >
-                          <Copy className="w-3.5 h-3.5" />
+                          {copiedKey === `${order.id}-mbl` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{order.accountNumber}</td>
+                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">
+                      <div className="flex items-center gap-2">
+                        <span>{order.accountNumber}</span>
+                        {order.accountNumber && (
+                          <button
+                            onClick={() => handleCopy(order.accountNumber, `${order.id}-account`)}
+                            className="text-slate-400 hover:text-teal-600 transition-colors"
+                            title="Copy số tài khoản"
+                          >
+                            {copiedKey === `${order.id}-account` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       {order.invoiceFileUrl ? (
                         <a 
@@ -335,7 +351,20 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         <span className="text-slate-400 italic text-sm">Trống</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{order.note}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <span>{order.note}</span>
+                        {order.note && (
+                          <button
+                            onClick={() => handleCopy(order.note, `${order.id}-note`)}
+                            className="text-slate-400 hover:text-teal-600 transition-colors"
+                            title="Copy ghi chú"
+                          >
+                            {copiedKey === `${order.id}-note` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${order.wireOffStatus === 'Wired Off' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                         {order.wireOffStatus || 'Pending'}
