@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -20,6 +20,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [editingOrder, setEditingOrder] = useState<LongHoangOrder | null>(null);
   
   const [formData, setFormData] = useState<Partial<LongHoangOrder>>({});
+  const [displayDate, setDisplayDate] = useState('');
+  const [displayAmount, setDisplayAmount] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -28,15 +30,32 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     if (order) {
       setEditingOrder(order);
       setFormData(order);
+      
+      if (order.paymentDate) {
+        const parts = order.paymentDate.split('-');
+        if (parts.length === 3) {
+          setDisplayDate(`${parts[2]}/${parts[1]}/${parts[0]}`);
+        } else {
+          setDisplayDate(order.paymentDate);
+        }
+      }
+      setDisplayAmount(order.amount ? order.amount.toLocaleString('vi-VN') : '');
     } else {
       setEditingOrder(null);
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+      
       setFormData({
-        paymentDate: new Date().toISOString().split('T')[0],
+        paymentDate: `${yyyy}-${mm}-${dd}`,
         line: '',
         amount: 0,
         mbl: '',
         accountNumber: ''
       });
+      setDisplayDate(`${dd}/${mm}/${yyyy}`);
+      setDisplayAmount('');
     }
     setIsModalOpen(true);
   };
@@ -45,11 +64,48 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     setIsModalOpen(false);
     setEditingOrder(null);
     setFormData({});
+    setDisplayDate('');
+    setDisplayAmount('');
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: name === 'amount' ? Number(value) : value }));
+  };
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length > 8) value = value.slice(0, 8);
+    
+    let formatted = value;
+    if (value.length >= 3 && value.length <= 4) {
+      formatted = `${value.slice(0, 2)}/${value.slice(2)}`;
+    } else if (value.length >= 5) {
+      formatted = `${value.slice(0, 2)}/${value.slice(2, 4)}/${value.slice(4)}`;
+    }
+    
+    setDisplayDate(formatted);
+    
+    if (formatted.length === 10) {
+      const parts = formatted.split('/');
+      if (parts.length === 3) {
+        setFormData(prev => ({ ...prev, paymentDate: `${parts[2]}-${parts[1]}-${parts[0]}` }));
+      }
+    } else {
+      setFormData(prev => ({ ...prev, paymentDate: '' }));
+    }
+  };
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/\D/g, '');
+    if (rawValue) {
+      const num = parseInt(rawValue, 10);
+      setDisplayAmount(num.toLocaleString('vi-VN'));
+      setFormData(prev => ({ ...prev, amount: num }));
+    } else {
+      setDisplayAmount('');
+      setFormData(prev => ({ ...prev, amount: 0 }));
+    }
   };
 
   const handleSave = () => {
@@ -76,6 +132,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
       onDeleteOrder(id);
       alert('Đã xóa lệnh thanh toán', 'Thành công');
     }
+  };
+
+  const handleCopy = (text: string, message: string) => {
+    navigator.clipboard.writeText(text);
+    alert(message, 'Thành công');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,6 +214,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 mbl: extractedData.mbl || prev.mbl,
                 accountNumber: extractedData.accountNumber || prev.accountNumber
               }));
+              if (extractedData.amount) {
+                setDisplayAmount(Number(extractedData.amount).toLocaleString('vi-VN'));
+              }
               alert('Đã trích xuất dữ liệu thành công', 'Thành công');
             } catch (parseError) {
               console.error('Failed to parse Gemini response:', parseError);
@@ -231,9 +295,29 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     </td>
                     <td className="px-4 py-3 text-slate-600">{order.line}</td>
                     <td className="px-4 py-3 text-slate-900 font-bold text-right">
-                      {order.amount.toLocaleString('vi-VN')}
+                      <div className="flex items-center justify-end gap-2">
+                        <span>{order.amount.toLocaleString('vi-VN')}</span>
+                        <button
+                          onClick={() => handleCopy(order.amount.toString(), 'Đã copy số tiền')}
+                          className="text-slate-400 hover:text-teal-600 transition-colors"
+                          title="Copy số tiền"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{order.mbl}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <span>{order.mbl}</span>
+                        <button
+                          onClick={() => handleCopy(`LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`, 'Đã copy nội dung MBL')}
+                          className="text-slate-400 hover:text-teal-600 transition-colors"
+                          title="Copy nội dung MBL"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-slate-600 font-mono text-xs">{order.accountNumber}</td>
                     <td className="px-4 py-3">
                       {order.invoiceFileUrl ? (
@@ -241,15 +325,13 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                           href={order.invoiceFileUrl} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                          className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                          title={order.invoiceFileName || 'Xem file'}
                         >
                           <FileText className="w-4 h-4" />
-                          <span className="truncate max-w-[150px]" title={order.invoiceFileName}>
-                            {order.invoiceFileName || 'Xem file'}
-                          </span>
                         </a>
                       ) : (
-                        <span className="text-slate-400 italic">Không có file</span>
+                        <span className="text-slate-400 italic text-sm">Trống</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{order.note}</td>
@@ -333,10 +415,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
                   <input
-                    type="date"
+                    type="text"
                     name="paymentDate"
-                    value={formData.paymentDate || ''}
-                    onChange={handleChange}
+                    value={displayDate}
+                    onChange={handleDateChange}
+                    placeholder="dd/mm/yyyy"
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                   />
                 </div>
@@ -356,10 +439,10 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Số tiền <span className="text-red-500">*</span></label>
                   <input
-                    type="number"
+                    type="text"
                     name="amount"
-                    value={formData.amount || ''}
-                    onChange={handleChange}
+                    value={displayAmount}
+                    onChange={handleAmountChange}
                     placeholder="0"
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                   />
