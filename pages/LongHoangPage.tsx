@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check, Settings } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check, Settings, RefreshCw } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -316,6 +316,75 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
   };
 
+  const handleSyncFees = async () => {
+    if (!formData.invoiceFileUrl) {
+      alert('Không tìm thấy file hóa đơn để đồng bộ.', 'Lỗi');
+      return;
+    }
+
+    setIsExtracting(true);
+    try {
+      const response = await fetch(formData.invoiceFileUrl);
+      const blob = await response.blob();
+      
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const base64String = base64data.split(',')[1];
+        
+        try {
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const aiResponse = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    data: base64String,
+                    mimeType: blob.type || 'application/pdf'
+                  }
+                },
+                {
+                  text: `Extract the following information from this invoice file and return it in JSON format:
+                  - fees: An array of objects representing the detailed fees and their amounts. Each object should have 'name' (string) and 'amount' (number).
+                  
+                  Return ONLY a valid JSON object with these exact keys.`
+                }
+              ]
+            },
+            config: {
+              responseMimeType: "application/json"
+            }
+          });
+
+          if (aiResponse.text) {
+            try {
+              const extractedData = JSON.parse(aiResponse.text);
+              setFormData(prev => ({
+                ...prev,
+                fees: extractedData.fees || prev.fees
+              }));
+              alert('Đã đồng bộ chi tiết phí thành công', 'Thành công');
+            } catch (parseError) {
+              console.error('Failed to parse Gemini response:', parseError);
+              alert('Không thể đọc dữ liệu từ file.', 'Cảnh báo');
+            }
+          }
+        } catch (aiError) {
+          console.error('Gemini API error:', aiError);
+          alert('Lỗi khi gọi AI trích xuất dữ liệu.', 'Cảnh báo');
+        } finally {
+          setIsExtracting(false);
+        }
+      };
+      reader.readAsDataURL(blob);
+    } catch (error) {
+      console.error('Error fetching file:', error);
+      alert('Lỗi khi tải file hóa đơn.', 'Lỗi');
+      setIsExtracting(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
@@ -615,10 +684,23 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             
             {/* Fees Table Section */}
             <div className="w-full lg:w-1/3 bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-col min-h-[300px]">
-              <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-teal-600" />
-                Chi tiết các phí
-              </h4>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-bold text-slate-700 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-teal-600" />
+                  Chi tiết các phí
+                </h4>
+                {editingOrder && formData.invoiceFileUrl && (
+                  <button
+                    onClick={handleSyncFees}
+                    disabled={isExtracting}
+                    className="text-xs flex items-center gap-1 px-2 py-1 bg-teal-100 text-teal-700 hover:bg-teal-200 rounded-md transition-colors disabled:opacity-50"
+                    title="Đồng bộ lại dữ liệu phí từ file hóa đơn"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isExtracting ? 'animate-spin' : ''}`} />
+                    Đồng bộ
+                  </button>
+                )}
+              </div>
               {formData.fees && formData.fees.length > 0 ? (
                 <div className="overflow-y-auto flex-1 custom-scrollbar pr-2">
                   <table className="w-full text-sm">
