@@ -52,7 +52,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         line: '',
         amount: 0,
         mbl: '',
-        accountNumber: ''
+        accountNumber: '',
+        wireOffStatus: 'Pending'
       });
       setDisplayDate(`${dd}/${mm}/${yyyy}`);
       setDisplayAmount('');
@@ -68,7 +69,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     setDisplayAmount('');
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: name === 'amount' ? Number(value) : value }));
   };
@@ -134,9 +135,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
   };
 
-  const handleCopy = (text: string, message: string) => {
+  const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert(message, 'Thành công');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -273,6 +273,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 <th className="px-4 py-3 font-semibold">Số tài khoản</th>
                 <th className="px-4 py-3 font-semibold">File Inv</th>
                 <th className="px-4 py-3 font-semibold">Note</th>
+                <th className="px-4 py-3 font-semibold">Wire Off</th>
                 <th className="px-4 py-3 font-semibold text-center w-24">Thao tác</th>
               </tr>
             </thead>
@@ -298,7 +299,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       <div className="flex items-center justify-end gap-2">
                         <span>{order.amount.toLocaleString('vi-VN')}</span>
                         <button
-                          onClick={() => handleCopy(order.amount.toString(), 'Đã copy số tiền')}
+                          onClick={() => handleCopy(order.amount.toString())}
                           className="text-slate-400 hover:text-teal-600 transition-colors"
                           title="Copy số tiền"
                         >
@@ -310,7 +311,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       <div className="flex items-center gap-2">
                         <span>{order.mbl}</span>
                         <button
-                          onClick={() => handleCopy(`LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`, 'Đã copy nội dung MBL')}
+                          onClick={() => handleCopy(`LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`)}
                           className="text-slate-400 hover:text-teal-600 transition-colors"
                           title="Copy nội dung MBL"
                         >
@@ -335,6 +336,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{order.note}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${order.wireOffStatus === 'Wired Off' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {order.wireOffStatus || 'Pending'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
                         <button
@@ -482,6 +488,19 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     placeholder="Ghi chú thêm..."
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                   />
+                </div>
+
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
+                  <select
+                    name="wireOffStatus"
+                    value={formData.wireOffStatus || 'Pending'}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="Wired Off">Wired Off</option>
+                  </select>
                 </div>
               </div>
             </div>
