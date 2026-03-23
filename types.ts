@@ -428,6 +428,21 @@ export interface WebNfcProfile {
 }
 
 // ============================================================
+// LONG HOÀNG ORDER
+// ============================================================
+export interface LongHoangOrder {
+  id: string;
+  paymentDate: string;
+  line: string;
+  amount: number;
+  mbl: string;
+  accountNumber: string;
+  invoiceFileUrl?: string;
+  invoiceFileName?: string;
+  note?: string;
+}
+
+// ============================================================
 // INITIAL JOB (DEFAULT OBJECT)
 // ============================================================
 

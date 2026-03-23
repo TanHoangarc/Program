@@ -376,6 +376,7 @@ async function startServer() {
         if (!memoryData.headerMessages) memoryData.headerMessages = [];
         if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
         if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
+        if (!memoryData.longHoangOrders) memoryData.longHoangOrders = [];
 
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
         memoryPayments = JSON.parse(rawPayment || "[]");
@@ -442,6 +443,7 @@ async function startServer() {
             if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
             if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
+            if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
 
             triggerDiskSave(isAdmin || isAccount || isManager); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });

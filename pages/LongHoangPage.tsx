@@ -1,0 +1,427 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save } from 'lucide-react';
+import { LongHoangOrder } from '../types';
+import { useNotification } from '../contexts/NotificationContext';
+import { GoogleGenAI } from '@google/genai';
+import axios from 'axios';
+
+const BACKEND_URL = "https://api.kimberry.id.vn";
+
+interface LongHoangPageProps {
+  orders: LongHoangOrder[];
+  onAddOrder: (order: LongHoangOrder) => void;
+  onEditOrder: (order: LongHoangOrder) => void;
+  onDeleteOrder: (id: string) => void;
+}
+
+export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder }) => {
+  const { alert, confirm } = useNotification();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<LongHoangOrder | null>(null);
+  
+  const [formData, setFormData] = useState<Partial<LongHoangOrder>>({});
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenModal = (order?: LongHoangOrder) => {
+    if (order) {
+      setEditingOrder(order);
+      setFormData(order);
+    } else {
+      setEditingOrder(null);
+      setFormData({
+        paymentDate: new Date().toISOString().split('T')[0],
+        line: '',
+        amount: 0,
+        mbl: '',
+        accountNumber: ''
+      });
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingOrder(null);
+    setFormData({});
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: name === 'amount' ? Number(value) : value }));
+  };
+
+  const handleSave = () => {
+    if (!formData.paymentDate || !formData.line || !formData.mbl || !formData.accountNumber) {
+      alert('Vui lòng điền đầy đủ thông tin (Ngày, Line, MBL, Số tài khoản)', 'Lỗi');
+      return;
+    }
+
+    if (editingOrder) {
+      onEditOrder(formData as LongHoangOrder);
+      alert('Đã cập nhật lệnh thanh toán', 'Thành công');
+    } else {
+      onAddOrder({
+        ...formData,
+        id: `lh-${Date.now()}`
+      } as LongHoangOrder);
+      alert('Đã tạo lệnh thanh toán mới', 'Thành công');
+    }
+    handleCloseModal();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (await confirm('Bạn có chắc chắn muốn xóa lệnh thanh toán này?', 'Xác nhận xóa')) {
+      onDeleteOrder(id);
+      alert('Đã xóa lệnh thanh toán', 'Thành công');
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setIsExtracting(true);
+
+    try {
+      // 1. Upload file to server
+      const uploadFormData = new FormData();
+      uploadFormData.append("fileName", `LH_INV_${Date.now()}_${file.name}`);
+      uploadFormData.append("folderPath", "LH");
+      uploadFormData.append("file", file);
+
+      const res = await axios.post(`${BACKEND_URL}/upload-file`, uploadFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      let uploadedUrl = '';
+      if (res.data && res.data.success) {
+        uploadedUrl = res.data.url;
+        if (uploadedUrl && !uploadedUrl.startsWith('http')) {
+            uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
+        }
+        setFormData(prev => ({
+          ...prev,
+          invoiceFileUrl: uploadedUrl,
+          invoiceFileName: res.data.fileName || file.name
+        }));
+      }
+
+      // 2. Extract data using Gemini
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const base64String = base64data.split(',')[1];
+        
+        try {
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: file.type,
+                    data: base64String
+                  }
+                },
+                {
+                  text: `Extract the following information from this invoice file and return it in JSON format:
+                  - line: The shipping line or company name (string)
+                  - amount: The total amount to be paid (number, remove commas or currency symbols)
+                  - mbl: The Master Bill of Lading number (string)
+                  - accountNumber: The bank account number for payment (string)
+                  
+                  Return ONLY a valid JSON object with these exact keys.`
+                }
+              ]
+            },
+            config: {
+              responseMimeType: "application/json"
+            }
+          });
+
+          if (response.text) {
+            try {
+              const extractedData = JSON.parse(response.text);
+              setFormData(prev => ({
+                ...prev,
+                line: extractedData.line || prev.line,
+                amount: extractedData.amount || prev.amount,
+                mbl: extractedData.mbl || prev.mbl,
+                accountNumber: extractedData.accountNumber || prev.accountNumber
+              }));
+              alert('Đã trích xuất dữ liệu thành công', 'Thành công');
+            } catch (parseError) {
+              console.error('Failed to parse Gemini response:', parseError);
+              alert('Không thể đọc dữ liệu từ file. Vui lòng nhập thủ công.', 'Cảnh báo');
+            }
+          }
+        } catch (aiError) {
+          console.error('Gemini API error:', aiError);
+          alert('Lỗi khi gọi AI trích xuất dữ liệu. Vui lòng nhập thủ công.', 'Cảnh báo');
+        } finally {
+          setIsExtracting(false);
+          setIsUploading(false);
+        }
+      };
+      reader.readAsDataURL(file);
+
+    } catch (uploadError) {
+      console.error('Upload error:', uploadError);
+      alert('Lỗi khi tải file lên server.', 'Lỗi');
+      setIsExtracting(false);
+      setIsUploading(false);
+    }
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">Trang Long Hoàng</h2>
+          <p className="text-sm text-slate-500">Quản lý lệnh thanh toán Long Hoàng</p>
+        </div>
+        <button
+          onClick={() => handleOpenModal()}
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
+        >
+          <Plus className="w-5 h-5" />
+          Tạo Lệnh
+        </button>
+      </div>
+
+      <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+        <div className="overflow-x-auto flex-1">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Ngày thanh toán</th>
+                <th className="px-4 py-3 font-semibold">Line</th>
+                <th className="px-4 py-3 font-semibold text-right">Số tiền</th>
+                <th className="px-4 py-3 font-semibold">MBL</th>
+                <th className="px-4 py-3 font-semibold">Số tài khoản</th>
+                <th className="px-4 py-3 font-semibold">File Inv</th>
+                <th className="px-4 py-3 font-semibold">Note</th>
+                <th className="px-4 py-3 font-semibold text-center w-24">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                    Chưa có lệnh thanh toán nào
+                  </td>
+                </tr>
+              ) : (
+                orders.map((order) => {
+                  const dateObj = new Date(order.paymentDate);
+                  const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
+                  
+                  return (
+                  <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-slate-700">
+                      {formattedDate}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{order.line}</td>
+                    <td className="px-4 py-3 text-slate-900 font-bold text-right">
+                      {order.amount.toLocaleString('vi-VN')}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{order.mbl}</td>
+                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{order.accountNumber}</td>
+                    <td className="px-4 py-3">
+                      {order.invoiceFileUrl ? (
+                        <a 
+                          href={order.invoiceFileUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span className="truncate max-w-[150px]" title={order.invoiceFileName}>
+                            {order.invoiceFileName || 'Xem file'}
+                          </span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-400 italic">Không có file</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{order.note}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleOpenModal(order)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Sửa"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(order.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal Tạo/Sửa Lệnh */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-slate-800">
+                {editingOrder ? 'Sửa Lệnh Thanh Toán' : 'Tạo Lệnh Thanh Toán Mới'}
+              </h3>
+              <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+              {/* Upload Section */}
+              <div className="mb-6 p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-center relative">
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  accept=".pdf,image/*"
+                  disabled={isUploading}
+                />
+                
+                {isExtracting ? (
+                  <div className="flex flex-col items-center gap-3 text-indigo-600">
+                    <Loader2 className="w-8 h-8 animate-spin" />
+                    <span className="font-medium">Đang đọc dữ liệu từ file bằng AI...</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 text-blue-600">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <p className="font-semibold text-slate-700 mb-1">Tải lên file hóa đơn (PDF, Ảnh)</p>
+                    <p className="text-sm text-slate-500 mb-3">Hệ thống sẽ tự động đọc dữ liệu và điền vào form bên dưới</p>
+                    
+                    {formData.invoiceFileName && (
+                      <div className="flex items-center gap-2 text-sm text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100">
+                        <FileText className="w-4 h-4" />
+                        <span className="font-medium truncate max-w-[200px]">{formData.invoiceFileName}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Form Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    name="paymentDate"
+                    value={formData.paymentDate || ''}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  />
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Line <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    name="line"
+                    value={formData.line || ''}
+                    onChange={handleChange}
+                    placeholder="VD: MSC, ONE..."
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Số tiền <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    name="amount"
+                    value={formData.amount || ''}
+                    onChange={handleChange}
+                    placeholder="0"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">MBL <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    name="mbl"
+                    value={formData.mbl || ''}
+                    onChange={handleChange}
+                    placeholder="Master Bill of Lading"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    name="accountNumber"
+                    value={formData.accountNumber || ''}
+                    onChange={handleChange}
+                    placeholder="Số tài khoản ngân hàng"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
+                  <input
+                    type="text"
+                    name="note"
+                    value={formData.note || ''}
+                    onChange={handleChange}
+                    placeholder="Ghi chú thêm..."
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-2xl">
+              <button
+                onClick={handleCloseModal}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl font-medium transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isExtracting || isUploading}
+                className="px-6 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
+              >
+                <Save className="w-4 h-4" />
+                {editingOrder ? 'Cập nhật' : 'Lưu Lệnh'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

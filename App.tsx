@@ -17,6 +17,7 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
+import { LongHoangPage } from './pages/LongHoangPage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -26,7 +27,7 @@ import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from '
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -92,7 +93,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -515,6 +516,16 @@ const App: React.FC = () => {
       }
   });
 
+  // --- LONG HOANG STATE ---
+  const [longHoangOrders, setLongHoangOrders] = useState<LongHoangOrder[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_long_hoang_orders');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
   const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
       try {
@@ -800,6 +811,7 @@ const App: React.FC = () => {
             customReceipts: [...customReceipts],
             salaries: [...salaries], 
             yearlyConfigs: [...yearlyConfigs],
+            longHoangOrders: [...longHoangOrders],
             lockedIds: Array.from(lockedIds) 
         };
     }
@@ -897,6 +909,7 @@ const App: React.FC = () => {
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
       const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
+      const incLongHoangOrders = Array.isArray(incomingData.longHoangOrders) ? incomingData.longHoangOrders : (incomingData.data?.longHoangOrders || incomingData.payload?.longHoangOrders || []);
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
@@ -904,6 +917,7 @@ const App: React.FC = () => {
       const newLines = mergeArrays(lines, incLines);
       const newReceipts = mergeArrays(customReceipts, incReceipts);
       const newSalaries = mergeArrays(salaries, incSalaries);
+      const newLongHoangOrders = mergeArrays(longHoangOrders, incLongHoangOrders);
       
       // Yearly Config Merge Logic (Merge based on Year)
       const newConfigs = [...yearlyConfigs];
@@ -920,6 +934,7 @@ const App: React.FC = () => {
       setCustomReceipts(newReceipts);
       setSalaries(newSalaries);
       setYearlyConfigs(newConfigs);
+      setLongHoangOrders(newLongHoangOrders);
 
       await handleRejectRequest(requestId);
   };
@@ -1031,6 +1046,10 @@ const App: React.FC = () => {
             setYearlyConfigs(data.yearlyConfigs);
         }
 
+        if (data.longHoangOrders && Array.isArray(data.longHoangOrders)) {
+            setLongHoangOrders(data.longHoangOrders);
+        }
+
         setIsInitialSyncDone(true);
         setIsServerAvailable(true);
 
@@ -1126,7 +1145,8 @@ const App: React.FC = () => {
         deletedJobIds: Array.from(deletedJobIds),
         customReceipts,
         salaries,
-        yearlyConfigs
+        yearlyConfigs,
+        longHoangOrders
         // NFC EXCLUDED FROM GENERAL BACKUP
       };
 
@@ -1187,7 +1207,7 @@ const App: React.FC = () => {
     }, 500); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, isServerAvailable]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1197,6 +1217,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
+  useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
@@ -1555,6 +1576,15 @@ const App: React.FC = () => {
                 onAdd={handleAddNfcProfile}
                 onUpdate={handleUpdateNfcProfile}
                 onDelete={handleDeleteNfcProfile}
+              />
+            )}
+
+            {currentPage === 'long-hoang' && (
+              <LongHoangPage 
+                orders={longHoangOrders}
+                onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
+                onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
+                onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
               />
             )}
 

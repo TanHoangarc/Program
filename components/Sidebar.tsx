@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit';
+  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -343,6 +343,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {canViewNfc && (
             <MenuItem active={currentPage === 'nfc'} onClick={(e) => handleNavigate(e, 'nfc')} icon={IdCard} label="NFC Cards" />
+          )}
+
+          {canViewNfc && (
+            <MenuItem active={currentPage === 'long-hoang'} onClick={(e) => handleNavigate(e, 'long-hoang')} icon={Briefcase} label="Trang Long Hoàng" />
           )}
 
           {canViewSystem && (
