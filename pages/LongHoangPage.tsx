@@ -209,44 +209,61 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     setIsUploading(true);
     setIsExtracting(true);
 
     try {
-      // 1. Upload file to server
-      const uploadFormData = new FormData();
-      uploadFormData.append("fileName", `LH_INV_${Date.now()}_${file.name}`);
-      uploadFormData.append("folderPath", "LH");
-      uploadFormData.append("file", file);
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      let allFees: { name: string; amount: number }[] = formData.fees ? [...formData.fees] : [];
+      let totalAmount = formData.amount || 0;
+      let uploadedUrls: string[] = formData.invoiceFileUrl ? formData.invoiceFileUrl.split(',').filter(Boolean) : [];
+      let uploadedNames: string[] = formData.invoiceFileName ? formData.invoiceFileName.split(',').filter(Boolean) : [];
+      
+      let extractedLine = formData.line || '';
+      let extractedMbl = formData.mbl || '';
+      let extractedAccountNumber = formData.accountNumber || '';
 
-      const res = await axios.post(`${BACKEND_URL}/upload-file`, uploadFormData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      for (const file of files) {
+        // 1. Upload file to server
+        const uploadFormData = new FormData();
+        uploadFormData.append("fileName", `LH_INV_${Date.now()}_${file.name}`);
+        uploadFormData.append("folderPath", "LH");
+        uploadFormData.append("file", file);
 
-      let uploadedUrl = '';
-      if (res.data && res.data.success) {
-        uploadedUrl = res.data.url;
-        if (uploadedUrl && !uploadedUrl.startsWith('http')) {
-            uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
-        }
-        setFormData(prev => ({
-          ...prev,
-          invoiceFileUrl: uploadedUrl,
-          invoiceFileName: res.data.fileName || file.name
-        }));
-      }
-
-      // 2. Extract data using Gemini
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        const base64String = base64data.split(',')[1];
-        
         try {
-          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const res = await axios.post(`${BACKEND_URL}/upload-file`, uploadFormData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+
+          let uploadedUrl = '';
+          if (res.data && res.data.success) {
+            uploadedUrl = res.data.url;
+            if (uploadedUrl && !uploadedUrl.startsWith('http')) {
+                uploadedUrl = `${BACKEND_URL}${uploadedUrl.startsWith('/') ? '' : '/'}${uploadedUrl}`;
+            }
+            uploadedUrls.push(uploadedUrl);
+            uploadedNames.push(res.data.fileName || file.name);
+          }
+        } catch (uploadError) {
+          console.error('Upload error for file', file.name, ':', uploadError);
+          continue;
+        }
+
+        // 2. Extract data using Gemini
+        const base64String = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64data = reader.result as string;
+            resolve(base64data.split(',')[1]);
+          };
+          reader.readAsDataURL(file);
+        });
+
+        try {
           const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
@@ -263,7 +280,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   - amount: The total amount to be paid (number, remove commas or currency symbols)
                   - mbl: The Master Bill of Lading number (string)
                   - accountNumber: The bank account number for payment (string)
-                  - fees: An array of objects representing the detailed fees and their amounts. Each object should have 'name' (string) and 'amount' (number).
+                  - fees: An array of objects representing the detailed fees and their amounts BEFORE VAT (số tiền trước thuế). Each object should have 'name' (string) and 'amount' (number, before VAT).
                   
                   Return ONLY a valid JSON object with these exact keys.`
                 }
@@ -277,42 +294,47 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           if (response.text) {
             try {
               const extractedData = JSON.parse(response.text);
-              setFormData(prev => ({
-                ...prev,
-                line: extractedData.line || prev.line,
-                amount: extractedData.amount || prev.amount,
-                mbl: extractedData.mbl || prev.mbl,
-                accountNumber: extractedData.accountNumber || prev.accountNumber,
-                fees: extractedData.fees || prev.fees
-              }));
-              if (extractedData.amount) {
-                setDisplayAmount(Number(extractedData.amount).toLocaleString('vi-VN'));
+              if (extractedData.line && !extractedLine) extractedLine = extractedData.line;
+              if (extractedData.mbl && !extractedMbl) extractedMbl = extractedData.mbl;
+              if (extractedData.accountNumber && !extractedAccountNumber) extractedAccountNumber = extractedData.accountNumber;
+              
+              if (extractedData.fees && Array.isArray(extractedData.fees)) {
+                allFees = [...allFees, ...extractedData.fees];
               }
-              alert('Đã trích xuất dữ liệu thành công', 'Thành công');
+              if (extractedData.amount) {
+                totalAmount += Number(extractedData.amount);
+              }
             } catch (parseError) {
-              console.error('Failed to parse Gemini response:', parseError);
-              alert('Không thể đọc dữ liệu từ file. Vui lòng nhập thủ công.', 'Cảnh báo');
+              console.error('Failed to parse Gemini response for file', file.name, ':', parseError);
             }
           }
         } catch (aiError) {
-          console.error('Gemini API error:', aiError);
-          alert('Lỗi khi gọi AI trích xuất dữ liệu. Vui lòng nhập thủ công.', 'Cảnh báo');
-        } finally {
-          setIsExtracting(false);
-          setIsUploading(false);
+          console.error('Gemini API error for file', file.name, ':', aiError);
         }
-      };
-      reader.readAsDataURL(file);
+      }
 
-    } catch (uploadError) {
-      console.error('Upload error:', uploadError);
-      alert('Lỗi khi tải file lên server.', 'Lỗi');
+      setFormData(prev => ({
+        ...prev,
+        invoiceFileUrl: uploadedUrls.join(','),
+        invoiceFileName: uploadedNames.join(','),
+        line: extractedLine,
+        mbl: extractedMbl,
+        accountNumber: extractedAccountNumber,
+        amount: totalAmount,
+        fees: allFees
+      }));
+      setDisplayAmount(totalAmount.toLocaleString('vi-VN'));
+      alert('Đã xử lý xong các file hóa đơn', 'Thành công');
+
+    } catch (error) {
+      console.error('Process error:', error);
+      alert('Lỗi trong quá trình xử lý file.', 'Lỗi');
+    } finally {
       setIsExtracting(false);
       setIsUploading(false);
-    }
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -324,16 +346,24 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
 
     setIsExtracting(true);
     try {
-      const response = await fetch(formData.invoiceFileUrl);
-      const blob = await response.blob();
-      
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        const base64String = base64data.split(',')[1];
-        
+      const urls = formData.invoiceFileUrl.split(',').filter(Boolean);
+      let allFees: { name: string; amount: number }[] = [];
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+      for (const url of urls) {
         try {
-          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const response = await fetch(url);
+          const blob = await response.blob();
+          
+          const base64String = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64data = reader.result as string;
+              resolve(base64data.split(',')[1]);
+            };
+            reader.readAsDataURL(blob);
+          });
+          
           const aiResponse = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
@@ -346,7 +376,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 },
                 {
                   text: `Extract the following information from this invoice file and return it in JSON format:
-                  - fees: An array of objects representing the detailed fees and their amounts. Each object should have 'name' (string) and 'amount' (number).
+                  - fees: An array of objects representing the detailed fees and their amounts BEFORE VAT (số tiền trước thuế). Each object should have 'name' (string) and 'amount' (number, before VAT).
                   
                   Return ONLY a valid JSON object with these exact keys.`
                 }
@@ -360,27 +390,27 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           if (aiResponse.text) {
             try {
               const extractedData = JSON.parse(aiResponse.text);
-              setFormData(prev => ({
-                ...prev,
-                fees: extractedData.fees || prev.fees
-              }));
-              alert('Đã đồng bộ chi tiết phí thành công', 'Thành công');
+              if (extractedData.fees && Array.isArray(extractedData.fees)) {
+                allFees = [...allFees, ...extractedData.fees];
+              }
             } catch (parseError) {
-              console.error('Failed to parse Gemini response:', parseError);
-              alert('Không thể đọc dữ liệu từ file.', 'Cảnh báo');
+              console.error('Failed to parse Gemini response for URL', url, ':', parseError);
             }
           }
-        } catch (aiError) {
-          console.error('Gemini API error:', aiError);
-          alert('Lỗi khi gọi AI trích xuất dữ liệu.', 'Cảnh báo');
-        } finally {
-          setIsExtracting(false);
+        } catch (error) {
+          console.error('Error processing URL', url, ':', error);
         }
-      };
-      reader.readAsDataURL(blob);
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        fees: allFees.length > 0 ? allFees : prev.fees
+      }));
+      alert('Đã đồng bộ chi tiết phí thành công', 'Thành công');
     } catch (error) {
-      console.error('Error fetching file:', error);
-      alert('Lỗi khi tải file hóa đơn.', 'Lỗi');
+      console.error('Sync error:', error);
+      alert('Lỗi khi đồng bộ dữ liệu.', 'Lỗi');
+    } finally {
       setIsExtracting(false);
     }
   };
@@ -563,6 +593,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               <div className="mb-6 p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-center relative">
                 <input 
                   type="file" 
+                  multiple
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -581,12 +612,16 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       <Upload className="w-6 h-6" />
                     </div>
                     <p className="font-semibold text-slate-700 mb-1">Tải lên file hóa đơn (PDF, Ảnh)</p>
-                    <p className="text-sm text-slate-500 mb-3">Hệ thống sẽ tự động đọc dữ liệu và điền vào form bên dưới</p>
+                    <p className="text-sm text-slate-500 mb-3">Hệ thống sẽ tự động đọc dữ liệu và điền vào form bên dưới. Hỗ trợ chọn nhiều file.</p>
                     
                     {formData.invoiceFileName && (
-                      <div className="flex items-center gap-2 text-sm text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100">
-                        <FileText className="w-4 h-4" />
-                        <span className="font-medium truncate max-w-[200px]">{formData.invoiceFileName}</span>
+                      <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                        {formData.invoiceFileName.split(',').filter(Boolean).map((name, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-sm text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100">
+                            <FileText className="w-4 h-4" />
+                            <span className="font-medium truncate max-w-[200px]">{name}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </>
