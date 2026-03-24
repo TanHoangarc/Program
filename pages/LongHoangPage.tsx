@@ -14,6 +14,65 @@ interface LongHoangPageProps {
   onDeleteOrder: (id: string) => void;
 }
 
+const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "DEM"];
+
+const FeeNameInput = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <div className="flex items-center border-b border-transparent hover:border-slate-300 focus-within:border-teal-500 transition-colors">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder="Tên phí"
+          className="w-full bg-transparent outline-none py-1"
+        />
+        <button 
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-1 text-slate-400 hover:text-slate-600"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+          {FEE_OPTIONS.map(opt => (
+            <div
+              key={opt}
+              className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer"
+              onMouseDown={(e) => {
+                e.preventDefault(); // Prevent input blur
+                onChange(opt);
+                setIsOpen(false);
+              }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder }) => {
   const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -781,20 +840,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             
             {/* Fees Table Section */}
             <div className="w-full lg:w-1/3 bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-col min-h-[300px]">
-              <datalist id="fee-names">
-                <option value="OF" />
-                <option value="EXW" />
-                <option value="THC" />
-                <option value="DO" />
-                <option value="CIC" />
-                <option value="CLN" />
-                <option value="CFS" />
-                <option value="BAF" />
-                <option value="EMC" />
-                <option value="PCS" />
-                <option value="LSS" />
-                <option value="DEM" />
-              </datalist>
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-bold text-slate-700 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-teal-600" />
@@ -848,13 +893,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         return (
                           <tr key={idx} className="group">
                             <td className="py-2 text-slate-700">
-                              <input 
-                                type="text" 
-                                list="fee-names"
-                                value={fee.name} 
-                                onChange={(e) => handleFeeChange(idx, 'name', e.target.value)}
-                                placeholder="Tên phí"
-                                className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none transition-colors"
+                              <FeeNameInput
+                                value={fee.name}
+                                onChange={(val) => handleFeeChange(idx, 'name', val)}
                               />
                             </td>
                             <td className="py-2 text-slate-900 font-medium text-right">
