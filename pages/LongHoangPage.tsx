@@ -781,6 +781,20 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             
             {/* Fees Table Section */}
             <div className="w-full lg:w-1/3 bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-col min-h-[300px]">
+              <datalist id="fee-names">
+                <option value="OF" />
+                <option value="EXW" />
+                <option value="THC" />
+                <option value="DO" />
+                <option value="CIC" />
+                <option value="CLN" />
+                <option value="CFS" />
+                <option value="BAF" />
+                <option value="EMC" />
+                <option value="PCS" />
+                <option value="LSS" />
+                <option value="DEM" />
+              </datalist>
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-bold text-slate-700 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-teal-600" />
@@ -836,6 +850,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             <td className="py-2 text-slate-700">
                               <input 
                                 type="text" 
+                                list="fee-names"
                                 value={fee.name} 
                                 onChange={(e) => handleFeeChange(idx, 'name', e.target.value)}
                                 placeholder="Tên phí"
