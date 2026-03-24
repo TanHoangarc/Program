@@ -336,7 +336,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 {
                   text: `Extract the following information from this invoice file and return it in JSON format:
                   - line: The shipping line or company name (string)
-                  - amount: The total amount to be paid (number, remove commas or currency symbols)
+                  - amount: The total amount to be paid INCLUDING VAT (số tiền tổng đã bao gồm VAT) (number, remove commas or currency symbols)
                   - mbl: The Master Bill of Lading number (string)
                   - accountNumber: The bank account number for payment (string)
                   - fees: An array of objects representing the detailed fees and their amounts BEFORE VAT (số tiền trước thuế). Each object should have 'name' (string) and 'amount' (number, before VAT).
