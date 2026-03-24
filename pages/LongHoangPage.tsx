@@ -683,7 +683,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         <span>{order.note}</span>
                         {order.note && (
                           <button
-                            onClick={() => handleCopy(order.note, `${order.id}-note`)}
+                            onClick={() => handleCopy(`Chi tiền cho ncc lô ${order.note} BILL ${order.mbl}`, `${order.id}-note`)}
                             className="text-slate-400 hover:text-teal-600 transition-colors"
                             title="Copy ghi chú"
                           >
