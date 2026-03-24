@@ -86,6 +86,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [filterDate, setFilterDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState('All');
+
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsDate, setSettingsDate] = useState('');
   const [displaySettingsDate, setDisplaySettingsDate] = useState('');
@@ -286,7 +289,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
       let extractedMbl = formData.mbl || '';
       let extractedAccountNumber = formData.accountNumber || '';
 
-      for (const file of files) {
+      for (const file of files as File[]) {
         // 1. Upload file to server
         const uploadFormData = new FormData();
         uploadFormData.append("fileName", `LH_INV_${Date.now()}_${file.name}`);
@@ -501,13 +504,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         }
       }
       
-      const totalAmount = newFees.reduce((sum, fee) => sum + fee.amount, 0);
-      setTimeout(() => setDisplayAmount(totalAmount.toLocaleString('vi-VN')), 0);
-      
       return {
         ...prev,
-        fees: newFees,
-        amount: totalAmount
+        fees: newFees
       };
     });
   };
@@ -525,25 +524,56 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
       const newFees = [...prev.fees];
       newFees.splice(idx, 1);
       
-      const totalAmount = newFees.reduce((sum, fee) => sum + fee.amount, 0);
-      setTimeout(() => setDisplayAmount(totalAmount.toLocaleString('vi-VN')), 0);
-      
       return {
         ...prev,
-        fees: newFees,
-        amount: totalAmount
+        fees: newFees
       };
     });
   };
 
+  const filteredOrders = orders.filter(order => {
+    const matchDate = filterDate ? order.paymentDate === filterDate : true;
+    const status = order.wireOffStatus || 'Pending';
+    const matchStatus = filterStatus === 'All' ? true : status === filterStatus;
+    return matchDate && matchStatus;
+  });
+
   return (
     <div className="h-full flex flex-col">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Trang Long Hoàng</h2>
           <p className="text-sm text-slate-500">Quản lý lệnh thanh toán Long Hoàng</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-sm font-medium text-slate-500">Ngày:</span>
+            <input 
+              type="date" 
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="text-sm border-none outline-none bg-transparent text-slate-700"
+            />
+            {filterDate && (
+              <button onClick={() => setFilterDate('')} className="text-slate-400 hover:text-red-500">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-sm font-medium text-slate-500">Trạng thái:</span>
+            <select 
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="text-sm border-none outline-none bg-transparent text-slate-700"
+            >
+              <option value="All">Tất cả</option>
+              <option value="Pending">Pending</option>
+              <option value="Wired Off">Wired Off</option>
+            </select>
+          </div>
+
           <button
             onClick={handleOpenSettings}
             className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm"
@@ -568,7 +598,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               <tr>
                 <th className="px-4 py-3 font-semibold">Ngày thanh toán</th>
                 <th className="px-4 py-3 font-semibold">Line</th>
-                <th className="px-4 py-3 font-semibold text-right">Số tiền</th>
+                <th className="px-4 py-3 font-semibold text-right">Số tiền (đã gồm VAT)</th>
                 <th className="px-4 py-3 font-semibold">MBL</th>
                 <th className="px-4 py-3 font-semibold">Số tài khoản</th>
                 <th className="px-4 py-3 font-semibold">File Inv</th>
@@ -578,14 +608,14 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {orders.length === 0 ? (
+              {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
-                    Chưa có lệnh thanh toán nào
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    Không tìm thấy lệnh thanh toán nào
                   </td>
                 </tr>
               ) : (
-                orders.map((order) => {
+                filteredOrders.map((order) => {
                   const dateObj = new Date(order.paymentDate);
                   const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
                   
@@ -776,7 +806,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Số tiền <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Số tiền (đã bao gồm VAT) <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     name="amount"
@@ -1035,7 +1065,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             return (
                               <tr key={date} className="hover:bg-slate-50">
                                 <td className="py-2 px-3 text-slate-700">{displayDate}</td>
-                                <td className="py-2 px-3 text-slate-900 font-medium text-right">{rate.toLocaleString('vi-VN')}</td>
+                                <td className="py-2 px-3 text-slate-900 font-medium text-right">{Number(rate).toLocaleString('vi-VN')}</td>
                                 <td className="py-2 px-3 text-right">
                                   <button
                                     onClick={() => {
