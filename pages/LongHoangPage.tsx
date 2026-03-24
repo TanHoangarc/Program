@@ -90,10 +90,12 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [filterStatus, setFilterStatus] = useState('All');
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'rates' | 'carriers'>('rates');
+  const [settingsTab, setSettingsTab] = useState<'rates' | 'carriers' | 'template'>('rates');
   const [settingsDate, setSettingsDate] = useState('');
   const [displaySettingsDate, setDisplaySettingsDate] = useState('');
   const [settingsRate, setSettingsRate] = useState('');
+  const [templateFile, setTemplateFile] = useState<File | null>(null);
+  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('lh_exchange_rates');
     return saved ? JSON.parse(saved) : {};
@@ -164,6 +166,33 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }));
     setIsSettingsModalOpen(false);
     alert('Đã lưu tỷ giá', 'Thành công');
+  };
+
+  const handleUploadTemplate = async () => {
+    if (!templateFile) return;
+    setIsUploadingTemplate(true);
+    try {
+      const formData = new FormData();
+      formData.append('folderPath', 'Invoice');
+      formData.append('fileName', 'Phieu_chi_LH.xlsx');
+      formData.append('file', templateFile);
+
+      const response = await axios.post(`${BACKEND_URL}/api/upload-file`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data.success) {
+        alert('Tải lên mẫu Excel thành công!', 'success');
+        setTemplateFile(null);
+      } else {
+        alert('Lỗi tải lên: ' + response.data.message, 'error');
+      }
+    } catch (error) {
+      console.error('Lỗi upload template:', error);
+      alert('Lỗi khi tải lên mẫu Excel', 'error');
+    } finally {
+      setIsUploadingTemplate(false);
+    }
   };
 
   const handleOpenModal = (order?: LongHoangOrder) => {
@@ -1130,10 +1159,44 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               >
                 Carrier
               </button>
+              <button
+                className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${settingsTab === 'template' ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                onClick={() => setSettingsTab('template')}
+              >
+                Mẫu Excel
+              </button>
             </div>
 
             <div className="p-6 space-y-4">
-              {settingsTab === 'rates' ? (
+              {settingsTab === 'template' ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
+                    <p className="font-semibold mb-1">Hướng dẫn:</p>
+                    <p>Tải lên file mẫu <strong>Phieu_chi_LH.xlsx</strong> để hệ thống sử dụng khi xuất Excel. File này sẽ được lưu trên máy chủ.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Chọn file mẫu (.xlsx)</label>
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      onChange={(e) => setTemplateFile(e.target.files?.[0] || null)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                    />
+                  </div>
+                  <button
+                    onClick={handleUploadTemplate}
+                    disabled={!templateFile || isUploadingTemplate}
+                    className="w-full py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20"
+                  >
+                    {isUploadingTemplate ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4" />
+                    )}
+                    {isUploadingTemplate ? 'Đang tải lên...' : 'Tải lên mẫu Excel'}
+                  </button>
+                </div>
+              ) : settingsTab === 'rates' ? (
                 <>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Ngày áp dụng</label>
