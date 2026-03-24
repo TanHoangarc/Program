@@ -415,6 +415,68 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
   };
 
+  const handleFeeChange = (idx: number, field: 'name' | 'amount' | 'usdAmount', value: string) => {
+    const currentRate = formData.paymentDate ? exchangeRates[formData.paymentDate] : 0;
+    
+    setFormData(prev => {
+      if (!prev.fees) return prev;
+      const newFees = [...prev.fees];
+      
+      if (field === 'name') {
+        newFees[idx].name = value;
+      } else if (field === 'amount') {
+        const numValue = Number(value.replace(/[^0-9.-]+/g, ""));
+        newFees[idx].amount = numValue;
+        if (currentRate > 0) {
+          newFees[idx].usdAmount = numValue / currentRate;
+        } else {
+          newFees[idx].usdAmount = '';
+        }
+      } else if (field === 'usdAmount') {
+        const cleanValue = value.replace(/[^0-9.-]+/g, "");
+        newFees[idx].usdAmount = cleanValue;
+        
+        const numValue = Number(cleanValue);
+        if (!isNaN(numValue) && currentRate > 0) {
+          newFees[idx].amount = Math.round(numValue * currentRate);
+        }
+      }
+      
+      const totalAmount = newFees.reduce((sum, fee) => sum + fee.amount, 0);
+      setTimeout(() => setDisplayAmount(totalAmount.toLocaleString('vi-VN')), 0);
+      
+      return {
+        ...prev,
+        fees: newFees,
+        amount: totalAmount
+      };
+    });
+  };
+
+  const handleAddFee = () => {
+    setFormData(prev => ({
+      ...prev,
+      fees: [...(prev.fees || []), { name: '', amount: 0, usdAmount: 0 }]
+    }));
+  };
+
+  const handleRemoveFee = (idx: number) => {
+    setFormData(prev => {
+      if (!prev.fees) return prev;
+      const newFees = [...prev.fees];
+      newFees.splice(idx, 1);
+      
+      const totalAmount = newFees.reduce((sum, fee) => sum + fee.amount, 0);
+      setTimeout(() => setDisplayAmount(totalAmount.toLocaleString('vi-VN')), 0);
+      
+      return {
+        ...prev,
+        fees: newFees,
+        amount: totalAmount
+      };
+    });
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
@@ -724,17 +786,27 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   <FileText className="w-5 h-5 text-teal-600" />
                   Chi tiết các phí
                 </h4>
-                {editingOrder && formData.invoiceFileUrl && (
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={handleSyncFees}
-                    disabled={isExtracting}
-                    className="text-xs flex items-center gap-1 px-2 py-1 bg-teal-100 text-teal-700 hover:bg-teal-200 rounded-md transition-colors disabled:opacity-50"
-                    title="Đồng bộ lại dữ liệu phí từ file hóa đơn"
+                    onClick={handleAddFee}
+                    className="text-xs flex items-center gap-1 px-2 py-1 bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-md transition-colors"
+                    title="Thêm dòng phí mới"
                   >
-                    <RefreshCw className={`w-3 h-3 ${isExtracting ? 'animate-spin' : ''}`} />
-                    Đồng bộ
+                    <Plus className="w-3 h-3" />
+                    Thêm
                   </button>
-                )}
+                  {editingOrder && formData.invoiceFileUrl && (
+                    <button
+                      onClick={handleSyncFees}
+                      disabled={isExtracting}
+                      className="text-xs flex items-center gap-1 px-2 py-1 bg-teal-100 text-teal-700 hover:bg-teal-200 rounded-md transition-colors disabled:opacity-50"
+                      title="Đồng bộ lại dữ liệu phí từ file hóa đơn"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isExtracting ? 'animate-spin' : ''}`} />
+                      Đồng bộ
+                    </button>
+                  )}
+                </div>
               </div>
               {formData.fees && formData.fees.length > 0 ? (
                 <div className="overflow-y-auto flex-1 custom-scrollbar pr-2">
@@ -742,19 +814,61 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     <thead className="text-xs text-slate-500 uppercase border-b border-slate-200">
                       <tr>
                         <th className="text-left py-2 font-semibold">Tên phí</th>
-                        <th className="text-right py-2 font-semibold">Số tiền</th>
-                        <th className="text-right py-2 font-semibold">USD</th>
+                        <th className="text-right py-2 font-semibold w-24">Số tiền</th>
+                        <th className="text-right py-2 font-semibold w-20">USD</th>
+                        <th className="w-6"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {formData.fees.map((fee, idx) => {
                         const currentRate = formData.paymentDate ? exchangeRates[formData.paymentDate] : 0;
-                        const usdAmount = currentRate > 0 ? (fee.amount / currentRate) : 0;
+                        
+                        // Format USD amount for display if it's calculated, otherwise show raw input
+                        let displayUsd = '';
+                        if (fee.usdAmount !== undefined && fee.usdAmount !== '') {
+                          displayUsd = String(fee.usdAmount);
+                        } else if (currentRate > 0 && fee.amount > 0) {
+                          displayUsd = (fee.amount / currentRate).toFixed(2);
+                        }
+
                         return (
-                          <tr key={idx}>
-                            <td className="py-2 text-slate-700">{fee.name}</td>
-                            <td className="py-2 text-slate-900 font-medium text-right">{fee.amount.toLocaleString('vi-VN')}</td>
-                            <td className="py-2 text-slate-900 font-medium text-right">{usdAmount > 0 ? usdAmount.toFixed(2) : '-'}</td>
+                          <tr key={idx} className="group">
+                            <td className="py-2 text-slate-700">
+                              <input 
+                                type="text" 
+                                value={fee.name} 
+                                onChange={(e) => handleFeeChange(idx, 'name', e.target.value)}
+                                placeholder="Tên phí"
+                                className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none transition-colors"
+                              />
+                            </td>
+                            <td className="py-2 text-slate-900 font-medium text-right">
+                              <input 
+                                type="text" 
+                                value={fee.amount === 0 ? '' : fee.amount.toLocaleString('vi-VN')} 
+                                onChange={(e) => handleFeeChange(idx, 'amount', e.target.value)}
+                                placeholder="0"
+                                className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none text-right transition-colors"
+                              />
+                            </td>
+                            <td className="py-2 text-slate-900 font-medium text-right">
+                              <input 
+                                type="text" 
+                                value={displayUsd} 
+                                onChange={(e) => handleFeeChange(idx, 'usdAmount', e.target.value)}
+                                placeholder="0.00"
+                                className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none text-right transition-colors"
+                              />
+                            </td>
+                            <td className="py-2 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => handleRemoveFee(idx)}
+                                className="text-red-400 hover:text-red-600 transition-colors"
+                                title="Xóa phí"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -772,13 +886,21 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             return currentRate > 0 ? (totalAmount / currentRate).toFixed(2) : '-';
                           })()}
                         </td>
+                        <td></td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-400 text-sm italic text-center p-8 border-2 border-dashed border-slate-200 rounded-lg">
-                  Chưa có dữ liệu chi tiết phí.<br/>Vui lòng tải lên file hóa đơn.
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-sm italic text-center p-8 border-2 border-dashed border-slate-200 rounded-lg">
+                  <p className="mb-2">Chưa có dữ liệu chi tiết phí.</p>
+                  <button
+                    onClick={handleAddFee}
+                    className="text-xs flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-md transition-colors not-italic font-medium"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Thêm phí thủ công
+                  </button>
                 </div>
               )}
             </div>
