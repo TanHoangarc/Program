@@ -657,6 +657,74 @@ async function startServer() {
         res.json({ success: true, message: "Saved to ServerData root" });
     });
 
+    app.post("/api/export-long-hoang", async (req, res) => {
+        try {
+            const { orders } = req.body;
+            if (!orders || !Array.isArray(orders) || orders.length === 0) {
+                return res.status(400).json({ success: false, message: "No orders provided" });
+            }
+
+            const ExcelJS = await import('exceljs');
+            const workbook = new ExcelJS.Workbook();
+            const templatePath = path.join(ROOT_DIR, "Invoice", "Phieu_chi_LH.xlsx");
+
+            if (!fs.existsSync(templatePath)) {
+                return res.status(404).json({ success: false, message: "Template file not found at " + templatePath });
+            }
+
+            await workbook.xlsx.readFile(templatePath);
+            const worksheet = workbook.worksheets[0];
+
+            let currentRow = 9;
+            let uncCounter = 1;
+
+            orders.forEach(order => {
+                const row = worksheet.getRow(currentRow);
+                
+                // Format date from YYYY-MM-DD to DD/MM/YYYY
+                let formattedDate = order.paymentDate;
+                if (formattedDate) {
+                    const parts = formattedDate.split('-');
+                    if (parts.length === 3) {
+                        formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    }
+                }
+
+                const uncNumber = `UNC${String(uncCounter).padStart(5, '0')}`;
+                const description = `Chi tiền cho ncc lô ${order.note || ''} BILL ${order.mbl || ''}`;
+
+                row.getCell('A').value = "Ủy nhiệm chi";
+                row.getCell('B').value = formattedDate;
+                row.getCell('C').value = formattedDate;
+                row.getCell('D').value = uncNumber;
+                row.getCell('E').value = "Chi khác";
+                row.getCell('F').value = description;
+                row.getCell('G').value = "19135447033015";
+                row.getCell('H').value = "Ngân hàng TMCP Kỹ thương Việt Nam - Gia Định";
+                row.getCell('I').value = order.line || '';
+                row.getCell('S').value = "VND";
+                row.getCell('U').value = description;
+                row.getCell('V').value = "3311";
+                row.getCell('W').value = "1121";
+                row.getCell('X').value = order.amount || 0;
+                row.getCell('Z').value = order.line || '';
+
+                row.commit();
+                currentRow++;
+                uncCounter++;
+            });
+
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=Phieu_chi_LH_Export.xlsx');
+            
+            await workbook.xlsx.write(res);
+            res.end();
+        } catch (error: any) {
+            console.error("Export error:", error);
+            res.status(500).json({ success: false, message: error.message });
+        }
+    });
+
     app.post("/api/ai/generate", async (req, res) => {
         try {
             const apiKey = req.body.apiKey || process.env.GEMINI_API_KEY;

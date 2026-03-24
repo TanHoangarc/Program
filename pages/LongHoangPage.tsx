@@ -90,6 +90,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [filterStatus, setFilterStatus] = useState('All');
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'rates' | 'carriers'>('rates');
   const [settingsDate, setSettingsDate] = useState('');
   const [displaySettingsDate, setDisplaySettingsDate] = useState('');
   const [settingsRate, setSettingsRate] = useState('');
@@ -97,10 +98,21 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     const saved = localStorage.getItem('lh_exchange_rates');
     return saved ? JSON.parse(saved) : {};
   });
+  const [carriers, setCarriers] = useState<string[]>(() => {
+    const saved = localStorage.getItem('lh_carriers');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [newCarrier, setNewCarrier] = useState('');
+  const [editingCarrier, setEditingCarrier] = useState<string | null>(null);
+  const [editCarrierValue, setEditCarrierValue] = useState('');
 
   useEffect(() => {
     localStorage.setItem('lh_exchange_rates', JSON.stringify(exchangeRates));
   }, [exchangeRates]);
+
+  useEffect(() => {
+    localStorage.setItem('lh_carriers', JSON.stringify(carriers));
+  }, [carriers]);
 
   const handleOpenSettings = () => {
     const today = new Date();
@@ -538,6 +550,42 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     return matchDate && matchStatus;
   });
 
+  const handleExportExcel = async () => {
+    const selectedOrders = filteredOrders.filter(o => o.isChecked);
+    if (selectedOrders.length === 0) {
+      alert('Vui lòng chọn ít nhất một dòng để xuất Excel', 'error');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${BACKEND_URL}/api/export-long-hoang`, {
+        orders: selectedOrders
+      }, {
+        responseType: 'blob' // Important for receiving binary data
+      });
+
+      // Create a blob from the response data
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      // Create a link element, set its href to the blob URL, and click it to trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Phieu_chi_LH_Export.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      alert('Xuất Excel thành công', 'success');
+    } catch (error) {
+      console.error('Lỗi khi xuất Excel:', error);
+      alert('Lỗi khi xuất Excel', 'error');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
@@ -575,11 +623,19 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           </div>
 
           <button
-            onClick={handleOpenSettings}
+            onClick={handleExportExcel}
             className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm"
           >
+            <FileText className="w-5 h-5" />
+            Xuất Excel
+          </button>
+
+          <button
+            onClick={handleOpenSettings}
+            className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 p-2 rounded-xl font-bold transition-colors flex items-center justify-center shadow-sm"
+            title="Cài đặt"
+          >
             <Settings className="w-5 h-5" />
-            Cài đặt tỷ giá
           </button>
           <button
             onClick={() => handleOpenModal()}
@@ -827,14 +883,20 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Line <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
+                  <select
                     name="line"
                     value={formData.line || ''}
                     onChange={handleChange}
-                    placeholder="VD: MSC, ONE..."
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                  />
+                  >
+                    <option value="">-- Chọn Line --</option>
+                    {carriers.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    {formData.line && !carriers.includes(formData.line) && (
+                      <option value={formData.line}>{formData.line}</option>
+                    )}
+                  </select>
                 </div>
 
                 <div className="space-y-1">
@@ -1049,93 +1111,243 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col animate-in zoom-in-95">
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h3 className="text-xl font-bold text-slate-800">Cài đặt tỷ giá</h3>
+              <h3 className="text-xl font-bold text-slate-800">Cài đặt</h3>
               <button onClick={() => setIsSettingsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
+            
+            <div className="flex border-b border-slate-200">
+              <button
+                className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${settingsTab === 'rates' ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                onClick={() => setSettingsTab('rates')}
+              >
+                Tỷ giá
+              </button>
+              <button
+                className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${settingsTab === 'carriers' ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                onClick={() => setSettingsTab('carriers')}
+              >
+                Carrier
+              </button>
+            </div>
+
             <div className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">Ngày áp dụng</label>
-                <input
-                  type="text"
-                  value={displaySettingsDate}
-                  onChange={handleSettingsDateChange}
-                  placeholder="dd/mm/yyyy"
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">Tỷ giá (VND/USD)</label>
-                <input
-                  type="number"
-                  value={settingsRate}
-                  onChange={(e) => setSettingsRate(e.target.value)}
-                  placeholder="VD: 25000"
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                />
-              </div>
-              
-              {Object.keys(exchangeRates).length > 0 && (
-                <div className="mt-6 pt-6 border-t border-slate-100">
-                  <h4 className="text-sm font-bold text-slate-700 mb-3">Danh sách tỷ giá đã lưu</h4>
-                  <div className="max-h-48 overflow-y-auto custom-scrollbar border border-slate-200 rounded-lg">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 sticky top-0">
-                        <tr>
-                          <th className="text-left py-2 px-3 font-semibold text-slate-600">Ngày</th>
-                          <th className="text-right py-2 px-3 font-semibold text-slate-600">Tỷ giá</th>
-                          <th className="w-10"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {Object.entries(exchangeRates)
-                          .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
-                          .map(([date, rate]) => {
-                            const parts = date.split('-');
-                            const displayDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
-                            return (
-                              <tr key={date} className="hover:bg-slate-50">
-                                <td className="py-2 px-3 text-slate-700">{displayDate}</td>
-                                <td className="py-2 px-3 text-slate-900 font-medium text-right">{Number(rate).toLocaleString('vi-VN')}</td>
-                                <td className="py-2 px-3 text-right">
-                                  <button
-                                    onClick={() => {
-                                      setExchangeRates(prev => {
-                                        const next = { ...prev };
-                                        delete next[date];
-                                        return next;
-                                      });
-                                    }}
-                                    className="text-red-400 hover:text-red-600 transition-colors"
-                                    title="Xóa"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+              {settingsTab === 'rates' ? (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Ngày áp dụng</label>
+                    <input
+                      type="text"
+                      value={displaySettingsDate}
+                      onChange={handleSettingsDateChange}
+                      placeholder="dd/mm/yyyy"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Tỷ giá (VND/USD)</label>
+                    <input
+                      type="number"
+                      value={settingsRate}
+                      onChange={(e) => setSettingsRate(e.target.value)}
+                      placeholder="VD: 25000"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                    />
+                  </div>
+                  
+                  {Object.keys(exchangeRates).length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-slate-100">
+                      <h4 className="text-sm font-bold text-slate-700 mb-3">Danh sách tỷ giá đã lưu</h4>
+                      <div className="max-h-48 overflow-y-auto custom-scrollbar border border-slate-200 rounded-lg">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 sticky top-0">
+                            <tr>
+                              <th className="text-left py-2 px-3 font-semibold text-slate-600">Ngày</th>
+                              <th className="text-right py-2 px-3 font-semibold text-slate-600">Tỷ giá</th>
+                              <th className="w-10"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {Object.entries(exchangeRates)
+                              .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
+                              .map(([date, rate]) => {
+                                const parts = date.split('-');
+                                const displayDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
+                                return (
+                                  <tr key={date} className="hover:bg-slate-50">
+                                    <td className="py-2 px-3 text-slate-700">{displayDate}</td>
+                                    <td className="py-2 px-3 text-slate-900 font-medium text-right">{Number(rate).toLocaleString('vi-VN')}</td>
+                                    <td className="py-2 px-3 text-right">
+                                      <button
+                                        onClick={() => {
+                                          setExchangeRates(prev => {
+                                            const next = { ...prev };
+                                            delete next[date];
+                                            return next;
+                                          });
+                                        }}
+                                        className="text-red-400 hover:text-red-600 transition-colors"
+                                        title="Xóa"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCarrier}
+                      onChange={(e) => setNewCarrier(e.target.value)}
+                      placeholder="Nhập mã Line mới..."
+                      className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all uppercase"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newCarrier.trim()) {
+                          const val = newCarrier.trim().toUpperCase();
+                          if (!carriers.includes(val)) {
+                            setCarriers([...carriers, val]);
+                            setNewCarrier('');
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (newCarrier.trim()) {
+                          const val = newCarrier.trim().toUpperCase();
+                          if (!carriers.includes(val)) {
+                            setCarriers([...carriers, val]);
+                            setNewCarrier('');
+                          }
+                        }
+                      }}
+                      className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Thêm
+                    </button>
+                  </div>
+
+                  {carriers.length > 0 && (
+                    <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 sticky top-0">
+                            <tr>
+                              <th className="text-left py-2 px-3 font-semibold text-slate-600">Mã Line</th>
+                              <th className="w-10"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {carriers.map((carrier) => (
+                              <tr key={carrier} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-900 font-medium">
+                                  {editingCarrier === carrier ? (
+                                    <input
+                                      type="text"
+                                      value={editCarrierValue}
+                                      onChange={(e) => setEditCarrierValue(e.target.value)}
+                                      className="w-full px-2 py-1 border border-teal-500 rounded outline-none uppercase text-sm"
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          const val = editCarrierValue.trim().toUpperCase();
+                                          if (val && (!carriers.includes(val) || val === carrier)) {
+                                            setCarriers(carriers.map(c => c === carrier ? val : c));
+                                            setEditingCarrier(null);
+                                          }
+                                        } else if (e.key === 'Escape') {
+                                          setEditingCarrier(null);
+                                        }
+                                      }}
+                                    />
+                                  ) : (
+                                    carrier
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 text-right whitespace-nowrap">
+                                  {editingCarrier === carrier ? (
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        onClick={() => {
+                                          const val = editCarrierValue.trim().toUpperCase();
+                                          if (val && (!carriers.includes(val) || val === carrier)) {
+                                            setCarriers(carriers.map(c => c === carrier ? val : c));
+                                            setEditingCarrier(null);
+                                          }
+                                        }}
+                                        className="text-teal-600 hover:text-teal-700 transition-colors"
+                                        title="Lưu"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => setEditingCarrier(null)}
+                                        className="text-slate-400 hover:text-slate-600 transition-colors"
+                                        title="Hủy"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setEditingCarrier(carrier);
+                                          setEditCarrierValue(carrier);
+                                        }}
+                                        className="text-blue-400 hover:text-blue-600 transition-colors"
+                                        title="Sửa"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => setCarriers(carriers.filter(c => c !== carrier))}
+                                        className="text-red-400 hover:text-red-600 transition-colors"
+                                        title="Xóa"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </td>
                               </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
+            
             <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-2xl">
               <button
                 onClick={() => setIsSettingsModalOpen(false)}
                 className="px-4 py-2 text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl font-medium transition-colors"
               >
-                Hủy
+                Đóng
               </button>
-              <button
-                onClick={handleSaveSettings}
-                className="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
-              >
-                <Save className="w-4 h-4" />
-                Lưu
-              </button>
+              {settingsTab === 'rates' && (
+                <button
+                  onClick={handleSaveSettings}
+                  className="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
+                >
+                  <Save className="w-4 h-4" />
+                  Lưu Tỷ Giá
+                </button>
+              )}
             </div>
           </div>
         </div>
