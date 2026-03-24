@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check, Settings, RefreshCw } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -596,6 +596,21 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10">
               <tr>
+                <th className="px-4 py-3 font-semibold w-10">
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                    checked={filteredOrders.length > 0 && filteredOrders.every(o => o.isChecked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      filteredOrders.forEach(order => {
+                        if (!!order.isChecked !== checked) {
+                          onEditOrder({ ...order, isChecked: checked });
+                        }
+                      });
+                    }}
+                  />
+                </th>
                 <th className="px-4 py-3 font-semibold">Ngày thanh toán</th>
                 <th className="px-4 py-3 font-semibold">Line</th>
                 <th className="px-4 py-3 font-semibold text-right">Số tiền (đã gồm VAT)</th>
@@ -610,7 +625,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             <tbody className="divide-y divide-slate-100">
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                     Không tìm thấy lệnh thanh toán nào
                   </td>
                 </tr>
@@ -620,7 +635,15 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
                   
                   return (
-                  <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={order.id} className={`hover:bg-slate-50 transition-colors ${order.isChecked ? 'bg-teal-50/30' : ''}`}>
+                    <td className="px-4 py-3">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                        checked={!!order.isChecked}
+                        onChange={(e) => onEditOrder({ ...order, isChecked: e.target.checked })}
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium text-slate-700">
                       {formattedDate}
                     </td>
@@ -700,15 +723,24 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
                         <button
+                          onClick={() => onEditOrder({ ...order, isLocked: !order.isLocked })}
+                          className={`p-1.5 rounded-lg transition-colors ${order.isLocked ? 'text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                          title={order.isLocked ? "Mở khóa" : "Khóa"}
+                        >
+                          {order.isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                        </button>
+                        <button
                           onClick={() => handleOpenModal(order)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          disabled={order.isLocked}
+                          className={`p-1.5 rounded-lg transition-colors ${order.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
                           title="Sửa"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(order.id)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          disabled={order.isLocked}
+                          className={`p-1.5 rounded-lg transition-colors ${order.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-red-600 hover:bg-red-50'}`}
                           title="Xóa"
                         >
                           <Trash2 className="w-4 h-4" />

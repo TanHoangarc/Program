@@ -442,6 +442,8 @@ export interface LongHoangOrder {
   note?: string;
   wireOffStatus?: 'Pending' | 'Wired Off';
   fees?: { name: string; amount: number; usdAmount?: number | string }[];
+  isChecked?: boolean;
+  isLocked?: boolean;
 }
 
 // ============================================================
