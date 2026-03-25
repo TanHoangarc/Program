@@ -4,8 +4,15 @@ import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
 import axios from 'axios';
+import ExcelJS from 'exceljs';
+import { formatDateVN } from '../utils';
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
+const TEMPLATE_FOLDER = "Invoice";
+const TEMPLATE_MAP: Record<string, string> = {
+  chi: "Phieu_chi_Mau.xlsx"
+};
+const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string }> = {};
 
 interface LongHoangPageProps {
   orders: LongHoangOrder[];
@@ -85,17 +92,84 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [isExtracting, setIsExtracting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const templateInputRef = useRef<HTMLInputElement>(null);
+
+  const [templateBuffer, setTemplateBuffer] = useState<ArrayBuffer | null>(null);
+  const [templateName, setTemplateName] = useState<string>('');
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
+  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+
+  const currentTemplateFileName = TEMPLATE_MAP['chi'];
+
+  useEffect(() => {
+    const loadTemplate = async () => {
+        if (GLOBAL_TEMPLATE_CACHE['chi']) {
+            setTemplateBuffer(GLOBAL_TEMPLATE_CACHE['chi'].buffer);
+            setTemplateName(GLOBAL_TEMPLATE_CACHE['chi'].name);
+            return;
+        }
+        setIsLoadingTemplate(true);
+        setTemplateBuffer(null); 
+        setTemplateName('');
+        try {
+            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}?v=${Date.now()}`;
+            const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
+            if (response.status === 200 && response.data) {
+                const buffer = response.data;
+                const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
+                GLOBAL_TEMPLATE_CACHE['chi'] = { buffer, name: `${displayName} (Server)` };
+                setTemplateBuffer(buffer);
+                setTemplateName(`${displayName} (Server)`);
+            }
+        } catch (error) {
+            console.log(`Chưa có file mẫu ${currentTemplateFileName} trên server.`);
+        } finally {
+            setIsLoadingTemplate(false);
+        }
+    };
+    loadTemplate();
+  }, [currentTemplateFileName]);
+
+  const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingTemplate(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      if (evt.target?.result) {
+          const buffer = evt.target.result as ArrayBuffer;
+          const displayName = currentTemplateFileName.replace(/_/g, ' ').replace('.xlsx', '');
+          const statusName = `${displayName} (Mới cập nhật)`;
+          setTemplateBuffer(buffer);
+          setTemplateName(statusName);
+          GLOBAL_TEMPLATE_CACHE['chi'] = { buffer, name: statusName };
+          try {
+              const formData = new FormData();
+              formData.append("folderPath", TEMPLATE_FOLDER);
+              formData.append("fileName", currentTemplateFileName);
+              formData.append("file", file);
+              await axios.post(`${BACKEND_URL}/upload-file`, formData);
+              alert(`Đã lưu mẫu "${displayName}" thành công!`, "Thành công");
+          } catch (err) {
+              console.error("Lỗi upload mẫu:", err);
+              alert("Lưu mẫu lên server thất bại, nhưng sẽ dùng mẫu này tạm thời.", "Cảnh báo");
+          } finally {
+              setIsUploadingTemplate(false);
+              if (templateInputRef.current) templateInputRef.current.value = '';
+          }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'rates' | 'carriers' | 'template'>('rates');
+  const [settingsTab, setSettingsTab] = useState<'rates' | 'carriers'>('rates');
   const [settingsDate, setSettingsDate] = useState('');
   const [displaySettingsDate, setDisplaySettingsDate] = useState('');
   const [settingsRate, setSettingsRate] = useState('');
-  const [templateFile, setTemplateFile] = useState<File | null>(null);
-  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('lh_exchange_rates');
     return saved ? JSON.parse(saved) : {};
@@ -166,33 +240,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }));
     setIsSettingsModalOpen(false);
     alert('Đã lưu tỷ giá', 'Thành công');
-  };
-
-  const handleUploadTemplate = async () => {
-    if (!templateFile) return;
-    setIsUploadingTemplate(true);
-    try {
-      const formData = new FormData();
-      formData.append('folderPath', 'Invoice');
-      formData.append('fileName', 'Phieu_chi_LH.xlsx');
-      formData.append('file', templateFile);
-
-      const response = await axios.post(`${BACKEND_URL}/api/upload-file`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      if (response.data.success) {
-        alert('Tải lên mẫu Excel thành công!', 'success');
-        setTemplateFile(null);
-      } else {
-        alert('Lỗi tải lên: ' + response.data.message, 'error');
-      }
-    } catch (error) {
-      console.error('Lỗi upload template:', error);
-      alert('Lỗi khi tải lên mẫu Excel', 'error');
-    } finally {
-      setIsUploadingTemplate(false);
-    }
   };
 
   const handleOpenModal = (order?: LongHoangOrder) => {
@@ -587,28 +634,89 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/api/export-long-hoang`, {
-        orders: selectedOrders
-      }, {
-        responseType: 'blob' // Important for receiving binary data
+      const workbook = new ExcelJS.Workbook();
+      if (templateBuffer) {
+        await workbook.xlsx.load(templateBuffer);
+      } else {
+        workbook.addWorksheet("Long Hoang Export");
+      }
+      const worksheet = workbook.getWorksheet(1);
+      if (!worksheet) return;
+      
+      const START_ROW = 9;
+      const styleRow = templateBuffer ? worksheet.getRow(START_ROW) : null;
+      
+      selectedOrders.forEach((order, index) => {
+          const currentRowIndex = START_ROW + index;
+          const row = worksheet.getRow(currentRowIndex);
+          if (styleRow && currentRowIndex > START_ROW) {
+               for(let i = 1; i <= styleRow.cellCount; i++) {
+                   const sourceCell = styleRow.getCell(i);
+                   const targetCell = row.getCell(i);
+                   targetCell.style = sourceCell.style;
+                   if (sourceCell.border) targetCell.border = sourceCell.border;
+                   if (sourceCell.fill) targetCell.fill = sourceCell.fill;
+                   if (sourceCell.font) targetCell.font = sourceCell.font;
+                   if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment;
+               }
+               row.height = styleRow.height;
+          }
+          
+          const desc = order.note ? `Chi tiền cho ncc lô ${order.note} BILL ${order.mbl}` : `Chi tiền BILL ${order.mbl}`;
+          
+          row.getCell(1).value = "Ủy nhiệm chi"; 
+          row.getCell(2).value = formatDateVN(order.paymentDate); 
+          row.getCell(3).value = formatDateVN(order.paymentDate); 
+          row.getCell(4).value = ""; // docNo
+          row.getCell(5).value = "Chi khác"; 
+          row.getCell(6).value = desc; 
+          row.getCell(7).value = "345673979999"; 
+          row.getCell(8).value = "Ngân hàng TMCP Quân đội"; 
+          row.getCell(9).value = order.line; 
+          row.getCell(10).value = order.line; 
+          row.getCell(19).value = "VND"; 
+          row.getCell(21).value = desc; 
+          row.getCell(22).value = "3311"; 
+          row.getCell(23).value = "1121"; 
+          row.getCell(24).value = order.amount; 
+          row.getCell(26).value = order.line;
+          row.commit();
       });
-
-      // Create a blob from the response data
-      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       
-      // Create a link element, set its href to the blob URL, and click it to trigger download
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'Phieu_chi_LH_Export.xlsx');
-      document.body.appendChild(link);
-      link.click();
+      const buffer = await workbook.xlsx.writeBuffer();
+      const fileName = "Phieu_chi_LH_Export.xlsx";
       
-      // Clean up
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      try {
+          const formData = new FormData();
+          const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+          formData.append("file", blob, fileName); 
+          formData.append("targetDir", "E:\\ServerData");
+          const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+          if (response.data?.success) {
+              alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
+          } else {
+              throw new Error(response.data?.message || "Server did not confirm save.");
+          }
+      } catch (err) {
+          console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
+          const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+          const url = window.URL.createObjectURL(blob);
+          const anchor = document.createElement("a"); 
+          anchor.href = url; 
+          anchor.download = fileName; 
+          anchor.click(); 
+          window.URL.revokeObjectURL(url);
+      }
       
-      alert('Xuất Excel thành công', 'success');
+      // Update isLocked status for exported orders
+      selectedOrders.forEach(order => {
+        if (!order.isLocked) {
+          onEditOrder({ ...order, isLocked: true, isChecked: false });
+        } else {
+          onEditOrder({ ...order, isChecked: false });
+        }
+      });
+      
     } catch (error) {
       console.error('Lỗi khi xuất Excel:', error);
       alert('Lỗi khi xuất Excel', 'error');
@@ -658,6 +766,12 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             <FileText className="w-5 h-5" />
             Xuất Excel
           </button>
+
+          <button onClick={() => templateInputRef.current?.click()} disabled={isUploadingTemplate} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm transition-colors" title="Tải file mẫu từ máy tính lên server">
+             {isUploadingTemplate ? <Loader2 className="w-5 h-5 animate-spin text-teal-500" /> : (templateBuffer ? <Check className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />)} 
+             <span className="flex flex-col items-start text-xs"><span className="font-bold">{templateBuffer ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>{templateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{templateName}</span>}</span>
+          </button>
+          <input type="file" ref={templateInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
 
           <button
             onClick={handleOpenSettings}
@@ -1159,44 +1273,10 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               >
                 Carrier
               </button>
-              <button
-                className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${settingsTab === 'template' ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
-                onClick={() => setSettingsTab('template')}
-              >
-                Mẫu Excel
-              </button>
             </div>
 
             <div className="p-6 space-y-4">
-              {settingsTab === 'template' ? (
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
-                    <p className="font-semibold mb-1">Hướng dẫn:</p>
-                    <p>Tải lên file mẫu <strong>Phieu_chi_LH.xlsx</strong> để hệ thống sử dụng khi xuất Excel. File này sẽ được lưu trên máy chủ.</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Chọn file mẫu (.xlsx)</label>
-                    <input
-                      type="file"
-                      accept=".xlsx"
-                      onChange={(e) => setTemplateFile(e.target.files?.[0] || null)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                    />
-                  </div>
-                  <button
-                    onClick={handleUploadTemplate}
-                    disabled={!templateFile || isUploadingTemplate}
-                    className="w-full py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20"
-                  >
-                    {isUploadingTemplate ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <Upload className="w-4 h-4" />
-                    )}
-                    {isUploadingTemplate ? 'Đang tải lên...' : 'Tải lên mẫu Excel'}
-                  </button>
-                </div>
-              ) : settingsTab === 'rates' ? (
+              {settingsTab === 'rates' ? (
                 <>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Ngày áp dụng</label>
