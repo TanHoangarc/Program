@@ -668,12 +668,31 @@ async function startServer() {
             const workbook = new ExcelJS.Workbook();
             const templatePath = path.join(ROOT_DIR, "Invoice", "Phieu_chi_LH.xlsx");
 
-            if (!fs.existsSync(templatePath)) {
-                return res.status(404).json({ success: false, message: "Template file not found at " + templatePath });
+            let worksheet;
+            if (fs.existsSync(templatePath)) {
+                await workbook.xlsx.readFile(templatePath);
+                worksheet = workbook.worksheets[0];
+            } else {
+                worksheet = workbook.addWorksheet('Phieu_chi_LH');
+                // Add basic headers if template is missing
+                const headerRow = worksheet.getRow(8);
+                headerRow.getCell('A').value = "Loại chứng từ";
+                headerRow.getCell('B').value = "Ngày chứng từ";
+                headerRow.getCell('C').value = "Ngày hạch toán";
+                headerRow.getCell('D').value = "Số chứng từ";
+                headerRow.getCell('E').value = "Lý do chi";
+                headerRow.getCell('F').value = "Diễn giải";
+                headerRow.getCell('G').value = "Tài khoản ngân hàng";
+                headerRow.getCell('H').value = "Tên ngân hàng";
+                headerRow.getCell('I').value = "Đối tượng";
+                headerRow.getCell('S').value = "Loại tiền";
+                headerRow.getCell('U').value = "Diễn giải chi tiết";
+                headerRow.getCell('V').value = "TK Nợ";
+                headerRow.getCell('W').value = "TK Có";
+                headerRow.getCell('X').value = "Số tiền";
+                headerRow.getCell('Z').value = "Đối tượng chi tiết";
+                headerRow.commit();
             }
-
-            await workbook.xlsx.readFile(templatePath);
-            const worksheet = workbook.worksheets[0];
 
             let currentRow = 9;
             let uncCounter = 1;
