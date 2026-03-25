@@ -670,9 +670,10 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           row.getCell(4).value = ""; // docNo
           row.getCell(5).value = "Chi khác"; 
           row.getCell(6).value = desc; 
-          row.getCell(7).value = "19135447033015"; 
-          row.getCell(8).value = "Ngân hàng TMCP Kỹ thương Việt Nam - Gia Định"; 
+          row.getCell(7).value = "345673979999"; 
+          row.getCell(8).value = "Ngân hàng TMCP Quân đội"; 
           row.getCell(9).value = order.line; 
+          row.getCell(10).value = order.line; 
           row.getCell(19).value = "VND"; 
           row.getCell(21).value = desc; 
           row.getCell(22).value = "3311"; 
@@ -904,7 +905,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         <span>{order.note}</span>
                         {order.note && (
                           <button
-                            onClick={() => handleCopy(`Chi tiền cho ncc lô ${order.note} BILL ${order.mbl}`, `${order.id}-note`)}
+                            onClick={() => handleCopy(order.note, `${order.id}-note`)}
                             className="text-slate-400 hover:text-teal-600 transition-colors"
                             title="Copy ghi chú"
                           >
@@ -1065,7 +1066,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   />
                 </div>
 
-                <div className="space-y-1 md:col-span-2">
+                <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
                   <input
                     type="text"
@@ -1077,7 +1078,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   />
                 </div>
 
-                <div className="space-y-1 md:col-span-2">
+                <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
                   <input
                     type="text"
@@ -1089,7 +1090,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   />
                 </div>
 
-                <div className="space-y-1 md:col-span-2">
+                <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
                   <select
                     name="wireOffStatus"
