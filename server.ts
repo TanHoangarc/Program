@@ -273,7 +273,8 @@ async function startServer() {
                 const { amisData } = splitAmisData(dataSnapshot);
 
                 const writePromises = [
-                    fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
+                    console.log(`[DISK] Saving backup.json... (Orders: ${memoryData.longHoangOrders?.length || 0})`);
+                fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
                     fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
                 ];
 
@@ -452,9 +453,12 @@ async function startServer() {
                 memoryData.deletedLongHoangOrderIds = Array.from(next);
             }
 
-            if (safeData.longHoangOrders) {
+            if (safeData.longHoangOrders && Array.isArray(safeData.longHoangOrders)) {
+                const prevCount = memoryData.longHoangOrders?.length || 0;
+                console.log(`[SAVE] Incoming longHoangOrders: ${safeData.longHoangOrders.length}`);
                 memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
                 memoryData.longHoangOrders = memoryData.longHoangOrders.filter((p: any) => !memoryData.deletedLongHoangOrderIds?.includes(p.id));
+                console.log(`[SAVE] longHoangOrders: ${prevCount} -> ${memoryData.longHoangOrders.length}`);
             }
 
             triggerDiskSave(isAdmin || isAccount || isManager); 
