@@ -35,6 +35,7 @@ app.use(cors({ origin: "*" }));
 const ROOT_DIR = "E:/ServerData";
 
 const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, Customers, etc.)
+const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Orders
 const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting Data (Admin Only) - Renamed to lowercase
 const PAYMENT_PATH = path.join(ROOT_DIR, "payment.json");   // Payment Requests Only
 const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
@@ -65,6 +66,7 @@ const SIGN_DIR = path.join(ROOT_DIR, "Sign");
 
 // Initialize files if not exist
 if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
+if (!fs.existsSync(LHOANG_PATH)) fs.writeFileSync(LHOANG_PATH, "[]");
 if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
 if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
 if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
@@ -302,6 +304,8 @@ async function triggerDiskSave(isAdmin = false) {
             // 2. Snapshot the current RAM state (The Source of Truth)
             const dataSnapshot = { ...memoryData };
             const paymentSnapshot = [...memoryPayments];
+            const lhoangSnapshot = dataSnapshot.longHoangOrders || [];
+            delete dataSnapshot.longHoangOrders; // Remove from backup.json to keep it separate
 
             // 3. Split Data for Storage
             // We separate Amis data to save to amis.json (Admin only).
@@ -312,7 +316,8 @@ async function triggerDiskSave(isAdmin = false) {
             const writePromises = [
                 // Save FULL data (including Amis) to backup.json
                 fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
-                fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
+                fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8"),
+                fsp.writeFile(LHOANG_PATH, JSON.stringify(lhoangSnapshot, null, 2), "utf8")
             ];
 
             if (shouldWriteAmis) {
@@ -325,7 +330,8 @@ async function triggerDiskSave(isAdmin = false) {
             // We combine them for the history file logic
             await writeHistoryBackup({
                 ...dataSnapshot, // This is the original merged snapshot from RAM
-                paymentRequests: paymentSnapshot
+                paymentRequests: paymentSnapshot,
+                longHoangOrders: lhoangSnapshot
             });
 
             console.log(`💾 Disk save completed. (Amis Saved: ${shouldWriteAmis})`);
