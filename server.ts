@@ -400,20 +400,7 @@ async function startServer() {
         res.json({ ...memoryData, paymentRequests: memoryPayments });
     });
 
-    // Alias for /api/data to support https://api.kimberry.id.vn/data
-    app.get("/data", (req, res) => {
-        res.json({ ...memoryData, paymentRequests: memoryPayments });
-    });
-
     app.post("/api/data/save", async (req, res) => {
-        handleSave(req, res);
-    });
-
-    app.post("/data/save", async (req, res) => {
-        handleSave(req, res);
-    });
-
-    async function handleSave(req: any, res: any) {
         const { role, ...data } = req.body; 
         const safeData = sanitizePayload(data);
         const userRole = (role || '').toLowerCase();
@@ -485,7 +472,7 @@ async function startServer() {
         } else {
             res.json({ success: false, message: "No permission to save" });
         }
-    }
+    });
 
     app.get("/api/header-data", (req, res) => {
         res.json({
