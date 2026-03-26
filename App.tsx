@@ -526,6 +526,15 @@ const App: React.FC = () => {
       }
   });
 
+  const [deletedLongHoangOrderIds, setDeletedLongHoangOrderIds] = useState<string[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_deleted_long_hoang_order_ids');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
   const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
       try {
@@ -1047,7 +1056,22 @@ const App: React.FC = () => {
         }
 
         if (data.longHoangOrders && Array.isArray(data.longHoangOrders)) {
-            setLongHoangOrders(data.longHoangOrders);
+            setLongHoangOrders(prev => {
+                if (data.longHoangOrders.length === 0 && prev.length > 0) {
+                    return prev; // Preserve unsynced local data if server has none
+                }
+                const merged = mergeArrays(prev, data.longHoangOrders);
+                const serverDeletedIds = data.deletedLongHoangOrderIds || [];
+                return merged.filter(o => !serverDeletedIds.includes(o.id));
+            });
+        }
+
+        if (data.deletedLongHoangOrderIds && Array.isArray(data.deletedLongHoangOrderIds)) {
+            setDeletedLongHoangOrderIds(prev => {
+                const next = new Set(prev);
+                data.deletedLongHoangOrderIds.forEach((id: string) => next.add(id));
+                return Array.from(next);
+            });
         }
 
         setIsInitialSyncDone(true);
@@ -1128,7 +1152,7 @@ const App: React.FC = () => {
   // --- GENERAL AUTO BACKUP ---
   const autoBackup = async () => {
     // UPDATED: Check for Admin, Manager, Docs, or Staff (staff saves to their own file)
-    if (!currentUser || !["Admin", "Manager", "Docs", "Staff"].includes(currentUser.role)) return;
+    if (!currentUser || !["Admin", "Manager", "Docs", "Staff", "Account"].includes(currentUser.role)) return;
     if (!isServerAvailable || !isInitialSyncDone) return; 
 
     try {
@@ -1146,7 +1170,8 @@ const App: React.FC = () => {
         customReceipts,
         salaries,
         yearlyConfigs,
-        longHoangOrders
+        longHoangOrders,
+        deletedLongHoangOrderIds
         // NFC EXCLUDED FROM GENERAL BACKUP
       };
 
@@ -1217,7 +1242,10 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
-  useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
+  useEffect(() => { 
+      localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); 
+      localStorage.setItem('kb_deleted_long_hoang_order_ids', JSON.stringify(deletedLongHoangOrderIds));
+  }, [longHoangOrders, deletedLongHoangOrderIds]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
@@ -1259,6 +1287,20 @@ const App: React.FC = () => {
                 if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                 if (serverData.salaries) setSalaries(serverData.salaries);
                 if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
+                if (serverData.longHoangOrders) {
+                    setLongHoangOrders(prev => {
+                        const merged = mergeArrays(prev, serverData.longHoangOrders);
+                        const serverDeletedIds = serverData.deletedLongHoangOrderIds || [];
+                        return merged.filter(o => !serverDeletedIds.includes(o.id));
+                    });
+                }
+                if (serverData.deletedLongHoangOrderIds) {
+                    setDeletedLongHoangOrderIds(prev => {
+                        const next = new Set(prev);
+                        serverData.deletedLongHoangOrderIds.forEach((id: string) => next.add(id));
+                        return Array.from(next);
+                    });
+                }
             })
             .catch(err => console.warn("Failed to re-fetch after sync", err));
       }
@@ -1584,7 +1626,13 @@ const App: React.FC = () => {
                 orders={longHoangOrders}
                 onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
                 onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
-                onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
+                onDeleteOrder={(id) => {
+                    setLongHoangOrders(prev => prev.filter(o => o.id !== id));
+                    setDeletedLongHoangOrderIds(prev => {
+                        if (prev.includes(id)) return prev;
+                        return [...prev, id];
+                    });
+                }}
               />
             )}
 

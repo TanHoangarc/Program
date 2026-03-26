@@ -30,7 +30,6 @@ async function startServer() {
         : path.join(process.cwd(), "ServerData");
 
     const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, Customers, etc.)
-    const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Orders
     const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting Data (Admin Only)
     const PAYMENT_PATH = path.join(ROOT_DIR, "payment.json");   // Payment Requests Only
     const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
@@ -61,7 +60,6 @@ async function startServer() {
 
     // Initialize files if not exist
     if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
-    if (!fs.existsSync(LHOANG_PATH)) fs.writeFileSync(LHOANG_PATH, "[]");
     if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
     if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
     if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
@@ -271,15 +269,12 @@ async function startServer() {
 
                 const dataSnapshot = { ...memoryData };
                 const paymentSnapshot = [...memoryPayments];
-                const lhoangSnapshot = dataSnapshot.longHoangOrders || [];
-                delete dataSnapshot.longHoangOrders; // Remove from backup.json to keep it separate
 
                 const { amisData } = splitAmisData(dataSnapshot);
 
                 const writePromises = [
                     fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
-                    fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8"),
-                    fsp.writeFile(LHOANG_PATH, JSON.stringify(lhoangSnapshot, null, 2), "utf8")
+                    fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
                 ];
 
                 if (shouldWriteAmis) {
@@ -290,8 +285,7 @@ async function startServer() {
 
                 await writeHistoryBackup({
                     ...dataSnapshot,
-                    paymentRequests: paymentSnapshot,
-                    longHoangOrders: lhoangSnapshot
+                    paymentRequests: paymentSnapshot
                 });
 
                 console.log(`💾 Disk save completed. (Amis Saved: ${shouldWriteAmis})`);
@@ -373,19 +367,13 @@ async function startServer() {
         memoryData = sanitizePayload(JSON.parse(rawData || "{}"));
         
         try {
-            const rawLhoang = await fsp.readFile(LHOANG_PATH, "utf8");
-            memoryData.longHoangOrders = JSON.parse(rawLhoang || "[]");
-        } catch (e) {
-            memoryData.longHoangOrders = [];
-        }
-
-        try {
             const rawAmis = await fsp.readFile(AMIS_PATH, "utf8");
             const amisData = JSON.parse(rawAmis || "{}");
             mergeAmisData(memoryData, amisData);
         } catch (e) {}
         
         if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
+        if (!memoryData.deletedLongHoangOrderIds) memoryData.deletedLongHoangOrderIds = [];
         if (!memoryData.headerMessages) memoryData.headerMessages = [];
         if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
         if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
@@ -456,7 +444,18 @@ async function startServer() {
             if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
             if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
-            if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
+            
+            if (safeData.deletedLongHoangOrderIds && Array.isArray(safeData.deletedLongHoangOrderIds)) {
+                if (!memoryData.deletedLongHoangOrderIds) memoryData.deletedLongHoangOrderIds = [];
+                const next = new Set(memoryData.deletedLongHoangOrderIds);
+                safeData.deletedLongHoangOrderIds.forEach((id: string) => next.add(id));
+                memoryData.deletedLongHoangOrderIds = Array.from(next);
+            }
+
+            if (safeData.longHoangOrders) {
+                memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
+                memoryData.longHoangOrders = memoryData.longHoangOrders.filter((p: any) => !memoryData.deletedLongHoangOrderIds?.includes(p.id));
+            }
 
             triggerDiskSave(isAdmin || isAccount || isManager); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
