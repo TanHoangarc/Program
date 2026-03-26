@@ -80,33 +80,6 @@ const SyncCvhcChoiceModal: React.FC<SyncCvhcChoiceModalProps> = ({ isOpen, onClo
   );
 };
 
-// --- HELPERS ---
-const sanitizeData = (data: JobData[]): JobData[] => {
-    // Use Map to keep the LAST entry for each ID, effectively deduplicating
-    const uniqueMap = new Map<string, JobData>();
-    
-    if (!Array.isArray(data)) return [];
-    
-    data.forEach(job => {
-        if (job.id) {
-            // Default year to 2025 if missing (Data Migration)
-            if (!job.year) {
-                job.year = 2025;
-            }
-            uniqueMap.set(job.id, job);
-        }
-    });
-
-    return Array.from(uniqueMap.values());
-};
-
-const mergeArrays = (current: any[], incoming: any[]) => {
-    if (!incoming) return current;
-    const map = new Map(current.map(i => [i.id, i]));
-    incoming.forEach(i => map.set(i.id, i));
-    return Array.from(map.values());
-};
-
 const App: React.FC = () => {
   const { alert, confirm } = useNotification();
 
@@ -263,6 +236,24 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('kb_locked_ids', JSON.stringify(Array.from(lockedIds)));
   }, [lockedIds]);
+
+  // Helper: Sanitize Data (CORRECTED TO REMOVE DUPLICATES)
+  const sanitizeData = (data: JobData[]): JobData[] => {
+    // Use Map to keep the LAST entry for each ID, effectively deduplicating
+    const uniqueMap = new Map<string, JobData>();
+    
+    data.forEach(job => {
+        if (job.id) {
+            // Default year to 2025 if missing (Data Migration)
+            if (!job.year) {
+                job.year = 2025;
+            }
+            uniqueMap.set(job.id, job);
+        }
+    });
+
+    return Array.from(uniqueMap.values());
+  };
 
   // --- HEADER MESSAGES & NOTIFICATIONS ---
   const [headerMessages, setHeaderMessages] = useState<HeaderMessage[]>(() => {
@@ -529,15 +520,6 @@ const App: React.FC = () => {
   const [longHoangOrders, setLongHoangOrders] = useState<LongHoangOrder[]>(() => {
       try {
           const saved = localStorage.getItem('kb_long_hoang_orders');
-          return saved ? JSON.parse(saved) : [];
-      } catch {
-          return [];
-      }
-  });
-
-  const [deletedLongHoangOrderIds, setDeletedLongHoangOrderIds] = useState<string[]>(() => {
-      try {
-          const saved = localStorage.getItem('kb_deleted_long_hoang_order_ids');
           return saved ? JSON.parse(saved) : [];
       } catch {
           return [];
@@ -913,6 +895,13 @@ const App: React.FC = () => {
   };
 
   const handleApproveRequest = async (requestId: string, incomingData: any) => {
+      const mergeArrays = (current: any[], incoming: any[]) => {
+          if (!incoming) return current;
+          const map = new Map(current.map(i => [i.id, i]));
+          incoming.forEach(i => map.set(i.id, i));
+          return Array.from(map.values());
+      };
+
       const incJobs = Array.isArray(incomingData.jobs) ? incomingData.jobs : (incomingData.data?.jobs || incomingData.payload?.jobs || []);
       const incPayments = Array.isArray(incomingData.paymentRequests) ? incomingData.paymentRequests : (incomingData.data?.paymentRequests || incomingData.payload?.paymentRequests || []);
       const incCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (incomingData.data?.customers || incomingData.payload?.customers || []);
@@ -1058,22 +1047,7 @@ const App: React.FC = () => {
         }
 
         if (data.longHoangOrders && Array.isArray(data.longHoangOrders)) {
-            const serverOrders = data.longHoangOrders;
-            const serverDeletedIds = data.deletedLongHoangOrderIds || [];
-            setLongHoangOrders(prev => {
-                const merged = mergeArrays(prev, serverOrders);
-                const final = merged.filter(o => !serverDeletedIds.includes(o.id));
-                console.log(`[SYNC] longHoangOrders: Local=${prev.length}, Server=${serverOrders.length}, Merged=${merged.length}, Final=${final.length}`);
-                return final;
-            });
-        }
-
-        if (data.deletedLongHoangOrderIds && Array.isArray(data.deletedLongHoangOrderIds)) {
-            setDeletedLongHoangOrderIds(prev => {
-                const next = new Set(prev);
-                data.deletedLongHoangOrderIds.forEach((id: string) => next.add(id));
-                return Array.from(next);
-            });
+            setLongHoangOrders(data.longHoangOrders);
         }
 
         setIsInitialSyncDone(true);
@@ -1154,7 +1128,7 @@ const App: React.FC = () => {
   // --- GENERAL AUTO BACKUP ---
   const autoBackup = async () => {
     // UPDATED: Check for Admin, Manager, Docs, or Staff (staff saves to their own file)
-    if (!currentUser || !["Admin", "Manager", "Docs", "Staff", "Account"].includes(currentUser.role)) return;
+    if (!currentUser || !["Admin", "Manager", "Docs", "Staff"].includes(currentUser.role)) return;
     if (!isServerAvailable || !isInitialSyncDone) return; 
 
     try {
@@ -1172,11 +1146,9 @@ const App: React.FC = () => {
         customReceipts,
         salaries,
         yearlyConfigs,
-        longHoangOrders,
-        deletedLongHoangOrderIds
+        longHoangOrders
         // NFC EXCLUDED FROM GENERAL BACKUP
       };
-      console.log(`[BACKUP] Sending data... (Orders: ${longHoangOrders.length}, Deleted: ${deletedLongHoangOrderIds.length})`);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -1245,10 +1217,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
-  useEffect(() => { 
-      localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); 
-      localStorage.setItem('kb_deleted_long_hoang_order_ids', JSON.stringify(deletedLongHoangOrderIds));
-  }, [longHoangOrders, deletedLongHoangOrderIds]);
+  useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
@@ -1290,23 +1259,6 @@ const App: React.FC = () => {
                 if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                 if (serverData.salaries) setSalaries(serverData.salaries);
                 if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
-                if (serverData.longHoangOrders && Array.isArray(serverData.longHoangOrders)) {
-                    const serverOrders = serverData.longHoangOrders;
-                    const serverDeletedIds = serverData.deletedLongHoangOrderIds || [];
-                    setLongHoangOrders(prev => {
-                        const merged = mergeArrays(prev, serverOrders);
-                        const final = merged.filter(o => !serverDeletedIds.includes(o.id));
-                        console.log(`[FULL_SYNC] longHoangOrders: Local=${prev.length}, Server=${serverOrders.length}, Merged=${merged.length}, Final=${final.length}`);
-                        return final;
-                    });
-                }
-                if (serverData.deletedLongHoangOrderIds) {
-                    setDeletedLongHoangOrderIds(prev => {
-                        const next = new Set(prev);
-                        serverData.deletedLongHoangOrderIds.forEach((id: string) => next.add(id));
-                        return Array.from(next);
-                    });
-                }
             })
             .catch(err => console.warn("Failed to re-fetch after sync", err));
       }
@@ -1632,13 +1584,7 @@ const App: React.FC = () => {
                 orders={longHoangOrders}
                 onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
                 onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
-                onDeleteOrder={(id) => {
-                    setLongHoangOrders(prev => prev.filter(o => o.id !== id));
-                    setDeletedLongHoangOrderIds(prev => {
-                        if (prev.includes(id)) return prev;
-                        return [...prev, id];
-                    });
-                }}
+                onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
               />
             )}
 

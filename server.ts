@@ -273,8 +273,7 @@ async function startServer() {
                 const { amisData } = splitAmisData(dataSnapshot);
 
                 const writePromises = [
-                    console.log(`[DISK] Saving backup.json... (Orders: ${memoryData.longHoangOrders?.length || 0})`);
-                fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
+                    fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
                     fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
                 ];
 
@@ -374,7 +373,6 @@ async function startServer() {
         } catch (e) {}
         
         if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
-        if (!memoryData.deletedLongHoangOrderIds) memoryData.deletedLongHoangOrderIds = [];
         if (!memoryData.headerMessages) memoryData.headerMessages = [];
         if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
         if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
@@ -445,21 +443,7 @@ async function startServer() {
             if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
             if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
-            
-            if (safeData.deletedLongHoangOrderIds && Array.isArray(safeData.deletedLongHoangOrderIds)) {
-                if (!memoryData.deletedLongHoangOrderIds) memoryData.deletedLongHoangOrderIds = [];
-                const next = new Set(memoryData.deletedLongHoangOrderIds);
-                safeData.deletedLongHoangOrderIds.forEach((id: string) => next.add(id));
-                memoryData.deletedLongHoangOrderIds = Array.from(next);
-            }
-
-            if (safeData.longHoangOrders && Array.isArray(safeData.longHoangOrders)) {
-                const prevCount = memoryData.longHoangOrders?.length || 0;
-                console.log(`[SAVE] Incoming longHoangOrders: ${safeData.longHoangOrders.length}`);
-                memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
-                memoryData.longHoangOrders = memoryData.longHoangOrders.filter((p: any) => !memoryData.deletedLongHoangOrderIds?.includes(p.id));
-                console.log(`[SAVE] longHoangOrders: ${prevCount} -> ${memoryData.longHoangOrders.length}`);
-            }
+            if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
 
             triggerDiskSave(isAdmin || isAccount || isManager); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });

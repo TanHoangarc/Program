@@ -905,7 +905,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         <span>{order.note}</span>
                         {order.note && (
                           <button
-                            onClick={() => handleCopy(order.note, `${order.id}-note`)}
+                            onClick={() => handleCopy(`Chi tiền cho ncc lô ${order.note} BILL ${order.mbl}`, `${order.id}-note`)}
                             className="text-slate-400 hover:text-teal-600 transition-colors"
                             title="Copy ghi chú"
                           >
@@ -1066,7 +1066,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
                   <input
                     type="text"
@@ -1078,7 +1078,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
                   <input
                     type="text"
@@ -1090,7 +1090,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
                   <select
                     name="wireOffStatus"
