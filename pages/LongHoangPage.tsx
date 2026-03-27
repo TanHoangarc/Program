@@ -19,6 +19,10 @@ interface LongHoangPageProps {
   onAddOrder: (order: LongHoangOrder) => void;
   onEditOrder: (order: LongHoangOrder) => void;
   onDeleteOrder: (id: string) => void;
+  exchangeRates: Record<string, number>;
+  onUpdateExchangeRates: (rates: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>)) => void;
+  carriers: string[];
+  onUpdateCarriers: (carriers: string[] | ((prev: string[]) => string[])) => void;
 }
 
 const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "DEM"];
@@ -80,7 +84,16 @@ const FeeNameInput = ({ value, onChange }: { value: string, onChange: (val: stri
   );
 };
 
-export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder }) => {
+export const LongHoangPage: React.FC<LongHoangPageProps> = ({ 
+  orders, 
+  onAddOrder, 
+  onEditOrder, 
+  onDeleteOrder,
+  exchangeRates,
+  onUpdateExchangeRates,
+  carriers,
+  onUpdateCarriers
+}) => {
   const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<LongHoangOrder | null>(null);
@@ -170,25 +183,10 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [settingsDate, setSettingsDate] = useState('');
   const [displaySettingsDate, setDisplaySettingsDate] = useState('');
   const [settingsRate, setSettingsRate] = useState('');
-  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem('lh_exchange_rates');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [carriers, setCarriers] = useState<string[]>(() => {
-    const saved = localStorage.getItem('lh_carriers');
-    return saved ? JSON.parse(saved) : [];
-  });
+  
   const [newCarrier, setNewCarrier] = useState('');
   const [editingCarrier, setEditingCarrier] = useState<string | null>(null);
   const [editCarrierValue, setEditCarrierValue] = useState('');
-
-  useEffect(() => {
-    localStorage.setItem('lh_exchange_rates', JSON.stringify(exchangeRates));
-  }, [exchangeRates]);
-
-  useEffect(() => {
-    localStorage.setItem('lh_carriers', JSON.stringify(carriers));
-  }, [carriers]);
 
   const handleOpenSettings = () => {
     const today = new Date();
@@ -234,7 +232,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
       alert('Vui lòng nhập đầy đủ ngày và tỷ giá', 'Lỗi');
       return;
     }
-    setExchangeRates(prev => ({
+    onUpdateExchangeRates(prev => ({
       ...prev,
       [settingsDate]: Number(settingsRate)
     }));
@@ -449,10 +447,17 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               if (extractedData.accountNumber && !extractedAccountNumber) extractedAccountNumber = extractedData.accountNumber;
               
               if (extractedData.fees && Array.isArray(extractedData.fees)) {
-                allFees = [...allFees, ...extractedData.fees];
+                const processedFees = extractedData.fees.map((f: any) => ({
+                  name: f.name || '',
+                  amount: typeof f.amount === 'string' ? parseInt(f.amount.replace(/\D/g, ''), 10) || 0 : Number(f.amount) || 0
+                }));
+                allFees = [...allFees, ...processedFees];
               }
               if (extractedData.amount) {
-                totalAmount += Number(extractedData.amount);
+                const amt = typeof extractedData.amount === 'string' 
+                  ? parseInt(extractedData.amount.replace(/\D/g, ''), 10) || 0 
+                  : Number(extractedData.amount) || 0;
+                totalAmount += amt;
               }
             } catch (parseError) {
               console.error('Failed to parse Gemini response for file', file.name, ':', parseError);
@@ -541,7 +546,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             try {
               const extractedData = JSON.parse(aiResponse.text);
               if (extractedData.fees && Array.isArray(extractedData.fees)) {
-                allFees = [...allFees, ...extractedData.fees];
+                const processedFees = extractedData.fees.map((f: any) => ({
+                  name: f.name || '',
+                  amount: typeof f.amount === 'string' ? parseInt(f.amount.replace(/\D/g, ''), 10) || 0 : Number(f.amount) || 0
+                }));
+                allFees = [...allFees, ...processedFees];
               }
             } catch (parseError) {
               console.error('Failed to parse Gemini response for URL', url, ':', parseError);
@@ -575,7 +584,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
       if (field === 'name') {
         newFees[idx].name = value;
       } else if (field === 'amount') {
-        const numValue = Number(value.replace(/[^0-9.-]+/g, ""));
+        const numValue = parseInt(value.replace(/\D/g, ""), 10) || 0;
         newFees[idx].amount = numValue;
         if (currentRate > 0) {
           newFees[idx].usdAmount = numValue / currentRate;
@@ -1358,7 +1367,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         if (e.key === 'Enter' && newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
                           if (!carriers.includes(val)) {
-                            setCarriers([...carriers, val]);
+                            onUpdateCarriers([...carriers, val]);
                             setNewCarrier('');
                           }
                         }
@@ -1369,7 +1378,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         if (newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
                           if (!carriers.includes(val)) {
-                            setCarriers([...carriers, val]);
+                            onUpdateCarriers([...carriers, val]);
                             setNewCarrier('');
                           }
                         }
@@ -1406,7 +1415,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                         if (e.key === 'Enter') {
                                           const val = editCarrierValue.trim().toUpperCase();
                                           if (val && (!carriers.includes(val) || val === carrier)) {
-                                            setCarriers(carriers.map(c => c === carrier ? val : c));
+                                            onUpdateCarriers(carriers.map(c => c === carrier ? val : c));
                                             setEditingCarrier(null);
                                           }
                                         } else if (e.key === 'Escape') {
@@ -1425,7 +1434,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                         onClick={() => {
                                           const val = editCarrierValue.trim().toUpperCase();
                                           if (val && (!carriers.includes(val) || val === carrier)) {
-                                            setCarriers(carriers.map(c => c === carrier ? val : c));
+                                            onUpdateCarriers(carriers.map(c => c === carrier ? val : c));
                                             setEditingCarrier(null);
                                           }
                                         }}
@@ -1455,7 +1464,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                         <Edit className="w-4 h-4" />
                                       </button>
                                       <button
-                                        onClick={() => setCarriers(carriers.filter(c => c !== carrier))}
+                                        onClick={() => onUpdateCarriers(carriers.filter(c => c !== carrier))}
                                         className="text-red-400 hover:text-red-600 transition-colors"
                                         title="Xóa"
                                       >

@@ -377,6 +377,8 @@ async function startServer() {
         if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
         if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
         if (!memoryData.longHoangOrders) memoryData.longHoangOrders = [];
+        if (!memoryData.lhExchangeRates) memoryData.lhExchangeRates = {};
+        if (!memoryData.lhCarriers) memoryData.lhCarriers = [];
 
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
         memoryPayments = JSON.parse(rawPayment || "[]");
@@ -444,6 +446,13 @@ async function startServer() {
             if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
             if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
+            if (safeData.lhExchangeRates) memoryData.lhExchangeRates = { ...(memoryData.lhExchangeRates || {}), ...safeData.lhExchangeRates };
+            if (safeData.lhCarriers) {
+                if (!memoryData.lhCarriers) memoryData.lhCarriers = [];
+                safeData.lhCarriers.forEach((c: string) => {
+                    if (!memoryData.lhCarriers.includes(c)) memoryData.lhCarriers.push(c);
+                });
+            }
 
             triggerDiskSave(isAdmin || isAccount || isManager); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
@@ -561,6 +570,17 @@ async function startServer() {
         memoryData.customers = mergeLists(memoryData.customers || [], fullData.customers || []);
         memoryData.lines = mergeLists(memoryData.lines || [], fullData.lines || []);
         if (fullData.yearlyConfigs) memoryData.yearlyConfigs = fullData.yearlyConfigs;
+        if (fullData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], fullData.salaries);
+        if (fullData.customReceipts) memoryData.customReceipts = mergeLists(memoryData.customReceipts || [], fullData.customReceipts);
+        if (fullData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], fullData.longHoangOrders);
+        if (fullData.lhExchangeRates) memoryData.lhExchangeRates = { ...(memoryData.lhExchangeRates || {}), ...fullData.lhExchangeRates };
+        if (fullData.lhCarriers) {
+            if (!memoryData.lhCarriers) memoryData.lhCarriers = [];
+            fullData.lhCarriers.forEach((c: string) => {
+                if (!memoryData.lhCarriers.includes(c)) memoryData.lhCarriers.push(c);
+            });
+        }
+        
         if (fullData.paymentRequests) {
             memoryPayments = mergeLists(memoryPayments, fullData.paymentRequests);
             if (memoryData.deletedPaymentIds) memoryPayments = memoryPayments.filter(p => !memoryData.deletedPaymentIds.includes(p.id));
