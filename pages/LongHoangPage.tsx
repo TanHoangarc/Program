@@ -806,15 +806,15 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-3 font-semibold w-10">
+                <th className="px-4 py-3 font-semibold w-10 text-center">
                   <input 
                     type="checkbox" 
                     className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                    checked={filteredOrders.length > 0 && filteredOrders.every(o => o.isChecked)}
+                    checked={filteredOrders.length > 0 && filteredOrders.filter(o => !o.isLocked).length > 0 && filteredOrders.filter(o => !o.isLocked).every(o => o.isChecked)}
                     onChange={(e) => {
                       const checked = e.target.checked;
                       filteredOrders.forEach(order => {
-                        if (!!order.isChecked !== checked) {
+                        if (!order.isLocked && !!order.isChecked !== checked) {
                           onEditOrder({ ...order, isChecked: checked });
                         }
                       });
@@ -824,7 +824,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 <th className="px-4 py-3 font-semibold">Ngày thanh toán</th>
                 <th className="px-4 py-3 font-semibold">Line</th>
                 <th className="px-4 py-3 font-semibold text-right">Số tiền (đã gồm VAT)</th>
-                <th className="px-4 py-3 font-semibold">MBL</th>
+                <th className="px-4 py-3 font-semibold w-32">MBL</th>
                 <th className="px-4 py-3 font-semibold">Số tài khoản</th>
                 <th className="px-4 py-3 font-semibold">File Inv</th>
                 <th className="px-4 py-3 font-semibold">Note</th>
@@ -846,12 +846,13 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   
                   return (
                   <tr key={order.id} className={`hover:bg-slate-50 transition-colors ${order.isChecked ? 'bg-teal-50/30' : ''}`}>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-center">
                       <input 
                         type="checkbox" 
-                        className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                        className={`rounded border-slate-300 text-teal-600 focus:ring-teal-500 ${order.isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                         checked={!!order.isChecked}
-                        onChange={(e) => onEditOrder({ ...order, isChecked: e.target.checked })}
+                        onChange={(e) => !order.isLocked && onEditOrder({ ...order, isChecked: e.target.checked })}
+                        disabled={order.isLocked}
                       />
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-700">
