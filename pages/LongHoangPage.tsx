@@ -7,7 +7,7 @@ import axios from 'axios';
 import ExcelJS from 'exceljs';
 import { formatDateVN } from '../utils';
 
-const BACKEND_URL = "/api";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 const TEMPLATE_FOLDER = "Invoice";
 const TEMPLATE_MAP: Record<string, string> = {
   chi: "Phieu_chi_Mau.xlsx"
@@ -19,10 +19,6 @@ interface LongHoangPageProps {
   onAddOrder: (order: LongHoangOrder) => void;
   onEditOrder: (order: LongHoangOrder) => void;
   onDeleteOrder: (id: string) => void;
-  exchangeRates: Record<string, number>;
-  onUpdateExchangeRates: (rates: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>)) => void;
-  carriers: string[];
-  onUpdateCarriers: (carriers: string[] | ((prev: string[]) => string[])) => void;
 }
 
 const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "DEM"];
@@ -84,16 +80,7 @@ const FeeNameInput = ({ value, onChange }: { value: string, onChange: (val: stri
   );
 };
 
-export const LongHoangPage: React.FC<LongHoangPageProps> = ({ 
-  orders, 
-  onAddOrder, 
-  onEditOrder, 
-  onDeleteOrder,
-  exchangeRates,
-  onUpdateExchangeRates,
-  carriers,
-  onUpdateCarriers
-}) => {
+export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder }) => {
   const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<LongHoangOrder | null>(null);
@@ -183,10 +170,25 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({
   const [settingsDate, setSettingsDate] = useState('');
   const [displaySettingsDate, setDisplaySettingsDate] = useState('');
   const [settingsRate, setSettingsRate] = useState('');
-  
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('lh_exchange_rates');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [carriers, setCarriers] = useState<string[]>(() => {
+    const saved = localStorage.getItem('lh_carriers');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [newCarrier, setNewCarrier] = useState('');
   const [editingCarrier, setEditingCarrier] = useState<string | null>(null);
   const [editCarrierValue, setEditCarrierValue] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('lh_exchange_rates', JSON.stringify(exchangeRates));
+  }, [exchangeRates]);
+
+  useEffect(() => {
+    localStorage.setItem('lh_carriers', JSON.stringify(carriers));
+  }, [carriers]);
 
   const handleOpenSettings = () => {
     const today = new Date();
@@ -232,7 +234,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({
       alert('Vui lòng nhập đầy đủ ngày và tỷ giá', 'Lỗi');
       return;
     }
-    onUpdateExchangeRates(prev => ({
+    setExchangeRates(prev => ({
       ...prev,
       [settingsDate]: Number(settingsRate)
     }));
@@ -1367,7 +1369,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({
                         if (e.key === 'Enter' && newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
                           if (!carriers.includes(val)) {
-                            onUpdateCarriers([...carriers, val]);
+                            setCarriers([...carriers, val]);
                             setNewCarrier('');
                           }
                         }
@@ -1378,7 +1380,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({
                         if (newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
                           if (!carriers.includes(val)) {
-                            onUpdateCarriers([...carriers, val]);
+                            setCarriers([...carriers, val]);
                             setNewCarrier('');
                           }
                         }
@@ -1415,7 +1417,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({
                                         if (e.key === 'Enter') {
                                           const val = editCarrierValue.trim().toUpperCase();
                                           if (val && (!carriers.includes(val) || val === carrier)) {
-                                            onUpdateCarriers(carriers.map(c => c === carrier ? val : c));
+                                            setCarriers(carriers.map(c => c === carrier ? val : c));
                                             setEditingCarrier(null);
                                           }
                                         } else if (e.key === 'Escape') {
@@ -1434,7 +1436,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({
                                         onClick={() => {
                                           const val = editCarrierValue.trim().toUpperCase();
                                           if (val && (!carriers.includes(val) || val === carrier)) {
-                                            onUpdateCarriers(carriers.map(c => c === carrier ? val : c));
+                                            setCarriers(carriers.map(c => c === carrier ? val : c));
                                             setEditingCarrier(null);
                                           }
                                         }}
@@ -1464,7 +1466,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({
                                         <Edit className="w-4 h-4" />
                                       </button>
                                       <button
-                                        onClick={() => onUpdateCarriers(carriers.filter(c => c !== carrier))}
+                                        onClick={() => setCarriers(carriers.filter(c => c !== carrier))}
                                         className="text-red-400 hover:text-red-600 transition-colors"
                                         title="Xóa"
                                       >

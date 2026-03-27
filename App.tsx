@@ -291,7 +291,7 @@ const App: React.FC = () => {
   const [isAutoUploading, setIsAutoUploading] = useState(false);
   const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
-  const BACKEND_URL = "/api";
+  const BACKEND_URL = "https://api.kimberry.id.vn";
 
   useEffect(() => {
     localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));
@@ -520,24 +520,6 @@ const App: React.FC = () => {
   const [longHoangOrders, setLongHoangOrders] = useState<LongHoangOrder[]>(() => {
       try {
           const saved = localStorage.getItem('kb_long_hoang_orders');
-          return saved ? JSON.parse(saved) : [];
-      } catch {
-          return [];
-      }
-  });
-
-  const [lhExchangeRates, setLhExchangeRates] = useState<Record<string, number>>(() => {
-      try {
-          const saved = localStorage.getItem('lh_exchange_rates');
-          return saved ? JSON.parse(saved) : {};
-      } catch {
-          return {};
-      }
-  });
-
-  const [lhCarriers, setLhCarriers] = useState<string[]>(() => {
-      try {
-          const saved = localStorage.getItem('lh_carriers');
           return saved ? JSON.parse(saved) : [];
       } catch {
           return [];
@@ -830,8 +812,6 @@ const App: React.FC = () => {
             salaries: [...salaries], 
             yearlyConfigs: [...yearlyConfigs],
             longHoangOrders: [...longHoangOrders],
-            lhExchangeRates: { ...lhExchangeRates },
-            lhCarriers: [...lhCarriers],
             lockedIds: Array.from(lockedIds) 
         };
     }
@@ -930,8 +910,6 @@ const App: React.FC = () => {
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
       const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
       const incLongHoangOrders = Array.isArray(incomingData.longHoangOrders) ? incomingData.longHoangOrders : (incomingData.data?.longHoangOrders || incomingData.payload?.longHoangOrders || []);
-      const incLhExchangeRates = incomingData.lhExchangeRates || (incomingData.data?.lhExchangeRates || incomingData.payload?.lhExchangeRates || {});
-      const incLhCarriers = Array.isArray(incomingData.lhCarriers) ? incomingData.lhCarriers : (incomingData.data?.lhCarriers || incomingData.payload?.lhCarriers || []);
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
@@ -1072,14 +1050,6 @@ const App: React.FC = () => {
             setLongHoangOrders(data.longHoangOrders);
         }
 
-        if (data.lhExchangeRates) {
-            setLhExchangeRates(data.lhExchangeRates);
-        }
-
-        if (data.lhCarriers && Array.isArray(data.lhCarriers)) {
-            setLhCarriers(data.lhCarriers);
-        }
-
         setIsInitialSyncDone(true);
         setIsServerAvailable(true);
 
@@ -1176,9 +1146,7 @@ const App: React.FC = () => {
         customReceipts,
         salaries,
         yearlyConfigs,
-        longHoangOrders,
-        lhExchangeRates,
-        lhCarriers
+        longHoangOrders
         // NFC EXCLUDED FROM GENERAL BACKUP
       };
 
@@ -1239,7 +1207,7 @@ const App: React.FC = () => {
     }, 500); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, lhExchangeRates, lhCarriers, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, isServerAvailable]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1251,8 +1219,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
-  useEffect(() => { localStorage.setItem('lh_exchange_rates', JSON.stringify(lhExchangeRates)); }, [lhExchangeRates]);
-  useEffect(() => { localStorage.setItem('lh_carriers', JSON.stringify(lhCarriers)); }, [lhCarriers]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
   useEffect(() => {
@@ -1619,10 +1585,6 @@ const App: React.FC = () => {
                 onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
                 onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
                 onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
-                exchangeRates={lhExchangeRates}
-                onUpdateExchangeRates={setLhExchangeRates}
-                carriers={lhCarriers}
-                onUpdateCarriers={setLhCarriers}
               />
             )}
 
