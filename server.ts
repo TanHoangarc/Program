@@ -445,14 +445,13 @@ async function startServer() {
             if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
             if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
-            if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
-            if (safeData.lhExchangeRates) memoryData.lhExchangeRates = { ...(memoryData.lhExchangeRates || {}), ...safeData.lhExchangeRates };
-            if (safeData.lhCarriers) {
-                if (!memoryData.lhCarriers) memoryData.lhCarriers = [];
-                safeData.lhCarriers.forEach((c: string) => {
-                    if (!memoryData.lhCarriers.includes(c)) memoryData.lhCarriers.push(c);
-                });
+            if (safeData.longHoangOrders) {
+                // For longHoangOrders, we replace the list if it's sent from Admin/Manager
+                // as they have the full state.
+                memoryData.longHoangOrders = safeData.longHoangOrders;
             }
+            if (safeData.lhExchangeRates) memoryData.lhExchangeRates = { ...(memoryData.lhExchangeRates || {}), ...safeData.lhExchangeRates };
+            if (safeData.lhCarriers) memoryData.lhCarriers = safeData.lhCarriers;
 
             triggerDiskSave(isAdmin || isAccount || isManager); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
