@@ -830,6 +830,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 <th className="px-4 py-3 font-semibold">Note</th>
                 <th className="px-4 py-3 font-semibold">Wire Off</th>
                 <th className="px-4 py-3 font-semibold text-center w-24">Thao tác</th>
+                <th className="px-4 py-3 font-semibold text-center w-24">Màu sắc</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -845,7 +846,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
                   
                   return (
-                  <tr key={order.id} className={`hover:bg-slate-50 transition-colors ${order.isChecked ? 'bg-teal-50/30' : ''}`}>
+                  <tr key={order.id} className={`hover:bg-slate-50 transition-colors ${order.isChecked ? 'bg-teal-50/30' : ''} ${order.color === 'blue' ? 'bg-blue-50' : order.color === 'orange' ? 'bg-orange-50' : ''}`}>
                     <td className="px-4 py-3 text-center">
                       <input 
                         type="checkbox" 
@@ -956,6 +957,20 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => onEditOrder({ ...order, color: order.color === 'blue' ? null : 'blue' })}
+                          className={`w-6 h-6 rounded-full border-2 transition-all ${order.color === 'blue' ? 'border-blue-500 bg-blue-200' : 'border-slate-200 bg-blue-50 hover:border-blue-300'}`}
+                          title="Màu kem xanh"
+                        />
+                        <button
+                          onClick={() => onEditOrder({ ...order, color: order.color === 'orange' ? null : 'orange' })}
+                          className={`w-6 h-6 rounded-full border-2 transition-all ${order.color === 'orange' ? 'border-orange-500 bg-orange-200' : 'border-slate-200 bg-orange-50 hover:border-orange-300'}`}
+                          title="Màu kem cam"
+                        />
                       </div>
                     </td>
                   </tr>

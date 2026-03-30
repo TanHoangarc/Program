@@ -444,6 +444,7 @@ export interface LongHoangOrder {
   fees?: { name: string; amount: number; usdAmount?: number | string }[];
   isChecked?: boolean;
   isLocked?: boolean;
+  color?: 'blue' | 'orange' | null;
 }
 
 // ============================================================
