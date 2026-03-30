@@ -33,10 +33,7 @@ import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from 
 // --- SECURITY CONFIGURATION ---
 const DEFAULT_USERS: UserAccount[] = [
   { username: 'KimberryAdmin', pass: 'Jwckim@123#', role: 'Admin' },
-  { username: 'Kimberrystaff', pass: 'Jwckim@124#', role: 'Staff' },
-  { username: 'Kimberrymanager', pass: 'Jwckim@125#', role: 'Manager' },
   { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' },
-  { username: 'Accountkim', pass: 'Jwckim@123', role: 'Account' },
   { username: 'CushcmLH', pass: 'Jwckim@689', role: 'Docs' }
 ];
 
@@ -98,7 +95,7 @@ const App: React.FC = () => {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
               const user = JSON.parse(savedUser);
-              if (user.role === 'Docs') return 'lookup';
+              if (user.role === 'Docs') return 'payment';
           }
       } catch {}
       return 'entry';
@@ -554,8 +551,8 @@ const App: React.FC = () => {
   // --- INTEGRITY CHECK LOGIC ---
   useEffect(() => {
       const checkIntegrity = async () => {
-          // Only check if user is Admin/Manager and server is available
-          if (currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Manager') && isServerAvailable) {
+          // Only check if user is Admin and server is available
+          if (currentUser && currentUser.role === 'Admin' && isServerAvailable) {
               try {
                   const res = await fetch(`${BACKEND_URL}/history/latest`);
                   
@@ -1072,7 +1069,7 @@ const App: React.FC = () => {
       setCurrentUser(user);
       
       if (user.role === 'Docs') {
-          setCurrentPage('lookup');
+          setCurrentPage('payment');
       }
     }
   }, []);
@@ -1107,7 +1104,7 @@ const App: React.FC = () => {
       else localStorage.removeItem('kb_user');
 
       if (user.role === 'Docs') {
-          setCurrentPage('lookup');
+          setCurrentPage('payment');
       } else {
           setCurrentPage('entry');
       }
@@ -1127,8 +1124,8 @@ const App: React.FC = () => {
 
   // --- GENERAL AUTO BACKUP ---
   const autoBackup = async () => {
-    // UPDATED: Check for Admin, Manager, Docs, or Staff (staff saves to their own file)
-    if (!currentUser || !["Admin", "Manager", "Docs", "Staff"].includes(currentUser.role)) return;
+    // UPDATED: Check for Admin or Docs
+    if (!currentUser || !["Admin", "Docs"].includes(currentUser.role)) return;
     if (!isServerAvailable || !isInitialSyncDone) return; 
 
     try {
@@ -1202,12 +1199,13 @@ const App: React.FC = () => {
   useEffect(() => { 
     if (!isServerAvailable) return;
     
+    const delay = currentUser?.role === 'Admin' ? 0 : 500;
     const timeoutId = setTimeout(() => {
         autoBackup();
-    }, 500); 
+    }, delay); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, isServerAvailable]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, isServerAvailable, currentUser]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);

@@ -27,7 +27,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const BACKEND_URL = "https://api.kimberry.id.vn";
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
-  const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Staff' });
+  const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Docs' });
   const [showPass, setShowPass] = useState(false);
 
   // --- HISTORY DATA CHECK STATE ---
@@ -35,11 +35,11 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyFileName, setHistoryFileName] = useState('');
 
-  // Helper to check if a user is Staff
-  const isStaffUser = (username?: string) => {
+  // Helper to check if a user is Docs
+  const isDocsUser = (username?: string) => {
       if (!username) return false;
       const u = users.find(user => user.username === username);
-      return u?.role === 'Staff';
+      return u?.role === 'Docs';
   };
 
   // --- AUTO PROCESS PACKETS (REJECT EMPTY or APPROVE AUTO) ---
@@ -48,7 +48,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       pendingRequests.forEach(req => {
         const realData = req.data || req.payload || req;
         
-        // 1. Check for Auto Approve (Lock updates from Admin/Manager)
+        // 1. Check for Auto Approve (Lock updates from Admin)
         if (realData.autoApprove) {
             // Silently approve
             onApproveRequest(req.id, realData, true);
@@ -63,8 +63,8 @@ export const SystemPage: React.FC<SystemPageProps> = ({
         const lockCount = (realData.lockedIds || []).length;
         const receiptCount = (realData.customReceipts || []).length;
 
-        const isStaff = isStaffUser(req.user);
-        const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isStaff ? true : lockCount === 0);
+        const isDocs = isDocsUser(req.user);
+        const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isDocs ? true : lockCount === 0);
 
         if (isEmpty) {
            console.log("Auto-rejecting empty packet:", req.id);
@@ -76,7 +76,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
 
   // --- FETCH HISTORY DATA ---
   useEffect(() => {
-      if (currentUser?.role === 'Admin' || currentUser?.role === 'Manager') {
+      if (currentUser?.role === 'Admin') {
           fetchHistory();
       }
   }, [currentUser]);
@@ -154,7 +154,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   // --- USER MANAGEMENT ---
   const handleAddUserClick = () => {
     setEditingUser(null);
-    setFormUser({ username: '', pass: '', role: 'Staff' });
+    setFormUser({ username: '', pass: '', role: 'Docs' });
     setShowPass(true);
     setIsUserModalOpen(true);
   };
@@ -197,7 +197,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
 
   // --- APPROVE HANDLERS ---
   const handleApprove = (req: any, realData: any) => {
-      if (window.confirm(`Duyệt dữ liệu từ ${req.user || 'Staff'}?\n(Dữ liệu sẽ được gộp vào hệ thống)`)) {
+      if (window.confirm(`Duyệt dữ liệu từ ${req.user || 'Docs'}?\n(Dữ liệu sẽ được gộp vào hệ thống)`)) {
           if (onApproveRequest) onApproveRequest(req.id, realData);
       }
   };
@@ -216,7 +216,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       </div>
 
       {/* DATA INTEGRITY CHECK SECTION (ADMIN ONLY) */}
-      {(currentUser?.role === 'Admin' || currentUser?.role === 'Manager') && (
+      {currentUser?.role === 'Admin' && (
           <div className="mb-8 glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
               <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-slate-700 flex items-center">
@@ -363,9 +363,9 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                     const lockCount = (realData.lockedIds || []).length;
                     const receiptCount = (realData.customReceipts || []).length;
 
-                    const isStaff = isStaffUser(req.user);
-                    const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isStaff ? true : lockCount === 0);
-                    const showLockBadge = lockCount > 0 && !isStaff;
+                    const isDocs = isDocsUser(req.user);
+                    const isEmpty = jobCount === 0 && custCount === 0 && lineCount === 0 && paymentCount === 0 && receiptCount === 0 && (isDocs ? true : lockCount === 0);
+                    const showLockBadge = lockCount > 0 && !isDocs;
 
                     return (
                        <div key={req.id || idx} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all">
@@ -484,10 +484,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                        onChange={(e) => setFormUser({...formUser, role: e.target.value as any})}
                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                       <option value="Staff">Staff (Nhân viên)</option>
                        <option value="Docs">Docs (Chứng từ)</option>
-                       <option value="Account">Account (Kế toán)</option>
-                       <option value="Manager">Manager (Quản lý)</option>
                        <option value="Admin">Admin (Quản trị)</option>
                     </select>
                  </div>

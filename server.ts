@@ -405,12 +405,9 @@ async function startServer() {
         const safeData = sanitizePayload(data);
         const userRole = (role || '').toLowerCase();
         const isAdmin = userRole === 'admin';
-        const isManager = userRole === 'manager';
-        const isAccount = userRole === 'account';
         const isDocs = userRole === 'docs';
-        const isStaff = userRole === 'staff';
 
-        if (isAdmin || isManager || isAccount) {
+        if (isAdmin) {
             if (safeData.jobs) {
                 const enrichedJobs = preserveAmisData(memoryData.jobs || [], safeData.jobs);
                 memoryData.jobs = mergeLists(memoryData.jobs || [], enrichedJobs);
@@ -445,7 +442,7 @@ async function startServer() {
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
             if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
 
-            triggerDiskSave(isAdmin || isAccount || isManager); 
+            triggerDiskSave(isAdmin); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
             res.json({ success: true, saved: "full_merged_admin" });
 
@@ -466,9 +463,6 @@ async function startServer() {
             broadcast("data-updated", { time: Date.now(), source: 'Docs' });
             res.json({ success: true, saved: "payment_only", requireReload });
 
-        } else if (isStaff) {
-            saveStaffData(safeData);
-            res.json({ success: true, saved: "staff_file" });
         } else {
             res.json({ success: false, message: "No permission to save" });
         }

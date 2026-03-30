@@ -298,7 +298,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       onUpdateRequests(updated);
       
       // Auto sync update for Docs/Admin
-      if (['Docs', 'Admin', 'Manager'].includes(currentUser?.role || '') && onSendPending) {
+      if (['Docs', 'Admin'].includes(currentUser?.role || '') && onSendPending) {
           const payload = {
               user: currentUser.username,
               timestamp: new Date().toISOString(),
@@ -319,8 +319,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const updatedRequests = requests.filter(r => r.id !== id);
     onUpdateRequests(updatedRequests);
     
-    // Auto sync deletion for Docs, Admin, and Manager
-    if (['Docs', 'Admin', 'Manager'].includes(currentUser?.role || '') && onSendPending) {
+    // Auto sync deletion for Docs and Admin
+    if (['Docs', 'Admin'].includes(currentUser?.role || '') && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),
@@ -377,8 +377,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     onUpdateRequests(updated);
     
-    // Auto sync completion for Docs, Admin, and Manager
-    if (['Docs', 'Admin', 'Manager'].includes(currentUser?.role || '') && onSendPending) {
+    // Auto sync completion for Docs and Admin
+    if (['Docs', 'Admin'].includes(currentUser?.role || '') && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),

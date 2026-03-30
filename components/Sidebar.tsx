@@ -72,22 +72,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   
   const role = currentUser?.role || 'Guest';
-  const isAdminOrManager = role === 'Admin' || role === 'Manager';
-  const isStaff = role === 'Staff';
+  const isAdmin = role === 'Admin';
   const isDocs = role === 'Docs';
-  const isAccount = role === 'Account';
 
   // Permission Logic
-  const canViewOverview = isAdminOrManager; 
-  const canViewOperations = isAdminOrManager || isStaff || isAccount; 
-  const canViewDataPayment = isAdminOrManager || isDocs || isAccount; 
-  const canViewAccounting = isAdminOrManager || isAccount; 
-  const canViewData = isAdminOrManager || isStaff || isAccount; 
-  const canViewSystem = isAdminOrManager; 
-  const canViewToolAI = isAdminOrManager || isStaff || isAccount || isDocs; 
-  const canViewNfc = isAdminOrManager; 
+  const canViewOverview = isAdmin; 
+  const canViewOperations = isAdmin; 
+  const canViewDataPayment = isAdmin || isDocs; 
+  const canViewAccounting = isAdmin; 
+  const canViewData = isAdmin; 
+  const canViewSystem = isAdmin; 
+  const canViewToolAI = isAdmin; 
+  const canViewNfc = isAdmin; 
   
-  const canSendPending = isStaff;
+  const canSendPending = false;
 
   // State for Flyout Menu
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
@@ -298,7 +296,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <>
               <MenuItem active={currentPage === 'lookup'} onClick={(e) => handleNavigate(e, 'lookup')} icon={Search} label="Tra cứu" />
               <MenuItem active={currentPage === 'payment'} onClick={(e) => handleNavigate(e, 'payment')} icon={Landmark} label="Thanh Toán" />
-              {!isAccount && (
+              {isAdmin && (
                 <MenuItem active={currentPage === 'cvhc'} onClick={(e) => handleNavigate(e, 'cvhc')} icon={FileCheck} label="Nộp CVHC" />
               )}
             </>

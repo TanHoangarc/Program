@@ -537,13 +537,10 @@ app.post("/data/save", async (req, res) => {
     // Normalize role for checking
     const userRole = (role || '').toLowerCase();
     const isAdmin = userRole === 'admin';
-    const isManager = userRole === 'manager';
-    const isAccount = userRole === 'account';
     const isDocs = userRole === 'docs';
-    const isStaff = userRole === 'staff';
 
-    if (isAdmin || isManager || isAccount) {
-        // --- ADMIN/MANAGER/ACCOUNT UPDATE (SOURCE OF TRUTH) ---
+    if (isAdmin) {
+        // --- ADMIN UPDATE (SOURCE OF TRUTH) ---
         
         // 1. Update Global RAM for Main Entities with MERGE to prevent data loss
         // We use mergeLists to ensure that if a client has stale data (missing some items), 
@@ -598,7 +595,7 @@ app.post("/data/save", async (req, res) => {
         if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
 
         // 4. Trigger Async Disk Write
-        triggerDiskSave(isAdmin || isAccount || isManager); 
+        triggerDiskSave(isAdmin); 
         broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
 
         res.json({ success: true, saved: "full_merged_admin" });
@@ -627,10 +624,6 @@ app.post("/data/save", async (req, res) => {
 
         res.json({ success: true, saved: "payment_only", requireReload });
 
-    } else if (isStaff) {
-        // Staff writes to separate file, no merge needed into main memory
-        saveStaffData(safeData);
-        res.json({ success: true, saved: "staff_file" });
     } else {
         res.json({ success: false, message: "No permission to save" });
     }
