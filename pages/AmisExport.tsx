@@ -81,6 +81,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [purchaseBooking, setPurchaseBooking] = useState<BookingSummary | null>(null);
   const [purchaseInitialData, setPurchaseInitialData] = useState<any>(null);
 
+  const [isExportPromptOpen, setIsExportPromptOpen] = useState(false);
+  const [exportStartVoucher, setExportStartVoucher] = useState('');
+
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1031,9 +1034,35 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       if (await confirm(`Xác nhận khóa ${idsToLock.length} phiếu đã chọn?`)) { onToggleLock(idsToLock); setSelectedIds(new Set()); }
   };
 
-  const handleExport = async () => {
+  const handleExportClick = () => {
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.", "Thông báo"); return; }
+    
+    if (mode === 'ban') {
+      setExportStartVoucher('');
+      setIsExportPromptOpen(true);
+    } else {
+      executeExport();
+    }
+  };
+
+  const executeExport = async (startVoucher?: string) => {
+    const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
+    if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.", "Thông báo"); return; }
+
+    let minDocNoNumeric = Infinity;
+    if (mode === 'ban' && startVoucher) {
+        rowsToExport.forEach(r => {
+            const match = r.docNo.match(/^([A-Za-z\-_]*)(\d+)$/);
+            if (match) {
+                const num = parseInt(match[2], 10);
+                if (num < minDocNoNumeric) {
+                    minDocNoNumeric = num;
+                }
+            }
+        });
+    }
+
     const workbook = new ExcelJS.Workbook();
     if (templateBuffer) await workbook.xlsx.load(templateBuffer);
     else workbook.addWorksheet("Amis Export");
@@ -1056,14 +1085,32 @@ export const AmisExport: React.FC<AmisExportProps> = ({
              }
              row.height = styleRow.height;
         }
+
+        let exportDocNo = data.docNo;
+        if (mode === 'ban' && startVoucher && minDocNoNumeric !== Infinity) {
+            const origMatch = data.docNo.match(/^([A-Za-z\-_]*)(\d+)$/);
+            const startMatch = startVoucher.match(/^([A-Za-z\-_]*)(\d+)$/);
+            if (origMatch && startMatch) {
+                const currentNum = parseInt(origMatch[2], 10);
+                const diff = currentNum - minDocNoNumeric;
+                const startPrefix = startMatch[1];
+                const startNum = parseInt(startMatch[2], 10);
+                const newNum = startNum + diff;
+                const padLength = startMatch[2].length;
+                exportDocNo = `${startPrefix}${String(newNum).padStart(padLength, '0')}`;
+            } else if (!origMatch && index === 0) {
+                exportDocNo = startVoucher;
+            }
+        }
+
         if (mode === 'thu') {
-            row.getCell(1).value = formatDateVN(data.date); row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = data.docNo; row.getCell(4).value = data.objCode; row.getCell(5).value = data.objName; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội (MB)"; row.getCell(9).value = "Thu khác"; row.getCell(10).value = data.desc; row.getCell(12).value = "VND"; row.getCell(14).value = data.desc; row.getCell(15).value = data.tkNo; row.getCell(16).value = data.tkCo; row.getCell(17).value = data.amount; row.getCell(19).value = data.objCode;
+            row.getCell(1).value = formatDateVN(data.date); row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = exportDocNo; row.getCell(4).value = data.objCode; row.getCell(5).value = data.objName; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội (MB)"; row.getCell(9).value = "Thu khác"; row.getCell(10).value = data.desc; row.getCell(12).value = "VND"; row.getCell(14).value = data.desc; row.getCell(15).value = data.tkNo; row.getCell(16).value = data.tkCo; row.getCell(17).value = data.amount; row.getCell(19).value = data.objCode;
         } else if (mode === 'chi') {
-            row.getCell(1).value = "Ủy nhiệm chi"; row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = formatDateVN(data.date); row.getCell(4).value = data.docNo; row.getCell(5).value = "Chi khác"; row.getCell(6).value = data.paymentContent || data.desc; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội"; row.getCell(9).value = data.objCode; row.getCell(10).value = data.objName; row.getCell(19).value = "VND"; row.getCell(21).value = data.paymentContent || data.desc; row.getCell(22).value = data.tkNo; row.getCell(23).value = data.tkCo; row.getCell(24).value = data.amount; row.getCell(26).value = data.objCode;
+            row.getCell(1).value = "Ủy nhiệm chi"; row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = formatDateVN(data.date); row.getCell(4).value = exportDocNo; row.getCell(5).value = "Chi khác"; row.getCell(6).value = data.paymentContent || data.desc; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội"; row.getCell(9).value = data.objCode; row.getCell(10).value = data.objName; row.getCell(19).value = "VND"; row.getCell(21).value = data.paymentContent || data.desc; row.getCell(22).value = data.tkNo; row.getCell(23).value = data.tkCo; row.getCell(24).value = data.amount; row.getCell(26).value = data.objCode;
         } else if (mode === 'ban') {
-            row.getCell(1).value = "Bán hàng hóa trong nước"; row.getCell(2).value = "Chưa thu tiền"; row.getCell(3).value = "Không"; row.getCell(4).value = "Không"; row.getCell(6).value = formatDateVN(data.date); row.getCell(7).value = formatDateVN(data.date); row.getCell(8).value = data.docNo; row.getCell(14).value = "LONGHOANGKIMBERRY"; row.getCell(22).value = data.desc; row.getCell(28).value = "VND"; row.getCell(30).value = "AGENT FEE"; row.getCell(33).value = "Không"; row.getCell(36).value = "13112"; row.getCell(37).value = "51111"; row.getCell(39).value = 1; row.getCell(40).value = data.amount; row.getCell(51).value = "0"; row.getCell(55).value = "33311"; row.getCell(61).value = data.projectCode;
+            row.getCell(1).value = "Bán hàng hóa trong nước"; row.getCell(2).value = "Chưa thu tiền"; row.getCell(3).value = "Không"; row.getCell(4).value = "Không"; row.getCell(6).value = formatDateVN(data.date); row.getCell(7).value = formatDateVN(data.date); row.getCell(8).value = exportDocNo; row.getCell(14).value = "LONGHOANGKIMBERRY"; row.getCell(22).value = data.desc; row.getCell(28).value = "VND"; row.getCell(30).value = "AGENT FEE"; row.getCell(33).value = "Không"; row.getCell(36).value = "13112"; row.getCell(37).value = "51111"; row.getCell(39).value = 1; row.getCell(40).value = data.amount; row.getCell(51).value = "0"; row.getCell(55).value = "33311"; row.getCell(61).value = data.projectCode;
         } else if (mode === 'mua') {
-            row.getCell(1).value = "Mua hàng trong nước không qua kho"; row.getCell(2).value = "Chưa thanh toán"; row.getCell(3).value = "Nhận kèm hóa đơn"; row.getCell(4).value = formatDateVN(data.date); row.getCell(5).value = formatDateVN(data.date); row.getCell(6).value = "1"; row.getCell(7).value = data.docNo; row.getCell(10).value = data.invoiceNo; row.getCell(11).value = formatDateVN(data.date); row.getCell(14).value = data.objCode; row.getCell(19).value = data.desc; row.getCell(26).value = "VND"; row.getCell(28).value = "LCC"; row.getCell(29).value = data.itemName; row.getCell(30).value = "Không"; row.getCell(33).value = "63211"; row.getCell(34).value = "3311"; row.getCell(35).value = "Lô"; row.getCell(36).value = "1"; row.getCell(37).value = data.netAmount; row.getCell(43).value = "5%"; row.getCell(45).value = data.vatAmount;
+            row.getCell(1).value = "Mua hàng trong nước không qua kho"; row.getCell(2).value = "Chưa thanh toán"; row.getCell(3).value = "Nhận kèm hóa đơn"; row.getCell(4).value = formatDateVN(data.date); row.getCell(5).value = formatDateVN(data.date); row.getCell(6).value = "1"; row.getCell(7).value = exportDocNo; row.getCell(10).value = data.invoiceNo; row.getCell(11).value = formatDateVN(data.date); row.getCell(14).value = data.objCode; row.getCell(19).value = data.desc; row.getCell(26).value = "VND"; row.getCell(28).value = "LCC"; row.getCell(29).value = data.itemName; row.getCell(30).value = "Không"; row.getCell(33).value = "63211"; row.getCell(34).value = "3311"; row.getCell(35).value = "Lô"; row.getCell(36).value = "1"; row.getCell(37).value = data.netAmount; row.getCell(43).value = "5%"; row.getCell(45).value = data.vatAmount;
         }
         row.commit();
     });
@@ -1163,7 +1210,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               )}
 
               <button onClick={handleBulkLock} disabled={selectedIds.size === 0} className={`px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg transition-all transform active:scale-95 ${selectedIds.size > 0 ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'}`}><Lock className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Khóa (${selectedIds.size})` : 'Khóa'}</span></button>
-              <button onClick={handleExport} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95"><FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span></button>
+              <button onClick={handleExportClick} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95"><FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span></button>
            </div>
         </div>
       </div>
@@ -1285,6 +1332,52 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           <PurchaseInvoiceModal 
               isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} onSave={handleSavePurchase} booking={purchaseBooking} lines={lines} initialData={purchaseInitialData}
           />
+      )}
+
+      {isExportPromptOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center">
+                <FileSpreadsheet className="w-5 h-5 mr-2 text-green-600" />
+                Nhập số chứng từ bắt đầu
+              </h3>
+              <button onClick={() => setIsExportPromptOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">
+                Vui lòng nhập số chứng từ bắt đầu cho file Excel (ví dụ: BH30999). Các phiếu sẽ được đánh số tăng dần từ số này.
+              </p>
+              <input
+                type="text"
+                value={exportStartVoucher}
+                onChange={(e) => setExportStartVoucher(e.target.value)}
+                placeholder="VD: BH30999"
+                className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                autoFocus
+              />
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end space-x-3">
+              <button
+                onClick={() => setIsExportPromptOpen(false)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-200 font-medium rounded-xl transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => {
+                  setIsExportPromptOpen(false);
+                  executeExport(exportStartVoucher);
+                }}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl shadow-md shadow-green-500/20 transition-all active:scale-95"
+              >
+                Xuất Excel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
