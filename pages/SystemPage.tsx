@@ -111,28 +111,96 @@ export const SystemPage: React.FC<SystemPageProps> = ({
 
   // --- CALCULATE MISSING DATA ---
   const missingData = useMemo(() => {
-      if (!historyData) return { jobs: [], customers: [], lines: [] };
+      if (!historyData) return { jobs: [], customers: [], lines: [], corruptedJobs: [] };
 
       // Check Jobs
       const histJobs = Array.isArray(historyData.jobs) ? historyData.jobs : [];
-      const currentJobIds = new Set(jobs.map(j => j.id));
-      const missingJobs = histJobs.filter((j: JobData) => !currentJobIds.has(j.id));
+      const currentJobMap = new Map(jobs.map(j => [j.id, j]));
+      
+      const missingJobs: JobData[] = [];
+      const corruptedJobs: { histJob: JobData, currentJob: JobData, reasons: string[] }[] = [];
+
+      histJobs.forEach((hJob: JobData) => {
+          const cJob = currentJobMap.get(hJob.id);
+          if (!cJob) {
+              missingJobs.push(hJob);
+          } else {
+              const reasons: string[] = [];
+              
+              // Check bookings
+              const hBookings = Array.isArray(hJob.bookings) ? hJob.bookings.length : 0;
+              const cBookings = Array.isArray(cJob.bookings) ? cJob.bookings.length : 0;
+              if (hBookings > cBookings) {
+                  reasons.push(`Thiếu ${hBookings - cBookings} booking`);
+              }
+
+              // Check AMIS data
+              const amisFields = [
+                  "amisPaymentDocNo", "amisDepositOutDocNo", "amisExtensionPaymentDocNo",
+                  "amisLcDocNo", "amisDepositDocNo", "amisDepositRefundDocNo"
+              ];
+              let amisMissing = false;
+              amisFields.forEach(field => {
+                  if (hJob[field as keyof JobData] && !cJob[field as keyof JobData]) amisMissing = true;
+              });
+              if (amisMissing) {
+                  reasons.push(`Mất dữ liệu Kế toán AMIS`);
+              }
+
+              if (reasons.length > 0) {
+                  corruptedJobs.push({ histJob: hJob, currentJob: cJob, reasons });
+              }
+          }
+      });
 
       // Check Customers
       const histCust = Array.isArray(historyData.customers) ? historyData.customers : [];
       const currentCustIds = new Set(customers.map(c => c.id));
       const missingCust = histCust.filter((c: Customer) => !currentCustIds.has(c.id));
 
-      return { jobs: missingJobs, customers: missingCust, lines: [] };
+      return { jobs: missingJobs, customers: missingCust, lines: [], corruptedJobs };
   }, [historyData, jobs, customers]);
 
-  const hasMissingData = missingData.jobs.length > 0 || missingData.customers.length > 0;
+  const hasMissingData = missingData.jobs.length > 0 || missingData.customers.length > 0 || missingData.corruptedJobs.length > 0;
 
   const handleSyncHistory = () => {
       if (!historyData || !hasMissingData) return;
-      if (window.confirm(`Xác nhận đồng bộ?\n- ${missingData.jobs.length} Jobs sẽ được khôi phục\n- ${missingData.customers.length} Khách hàng sẽ được khôi phục`)) {
+      if (window.confirm(`Xác nhận đồng bộ?\n- ${missingData.jobs.length} Jobs bị xóa sẽ được khôi phục\n- ${missingData.corruptedJobs.length} Jobs bị mất dữ liệu sẽ được khôi phục\n- ${missingData.customers.length} Khách hàng sẽ được khôi phục`)) {
           // Merge missing data into current state
           const newJobs = [...jobs, ...missingData.jobs];
+          
+          // Restore corrupted jobs by merging missing data
+          missingData.corruptedJobs.forEach(({ histJob, currentJob }) => {
+              const jobIndex = newJobs.findIndex(j => j.id === currentJob.id);
+              if (jobIndex !== -1) {
+                  const updatedJob = { ...newJobs[jobIndex] };
+                  
+                  // Restore bookings if missing
+                  const hBookings = Array.isArray(histJob.bookings) ? histJob.bookings : [];
+                  const cBookings = Array.isArray(updatedJob.bookings) ? updatedJob.bookings : [];
+                  if (hBookings.length > cBookings.length) {
+                      updatedJob.bookings = hBookings;
+                  }
+
+                  // Restore AMIS data if missing
+                  const amisFields = [
+                      "amisPaymentDocNo", "amisPaymentDesc", "amisPaymentDate",
+                      "amisDepositOutDocNo", "amisDepositOutDesc", "amisDepositOutDate",
+                      "amisExtensionPaymentDocNo", "amisExtensionPaymentDesc", "amisExtensionPaymentDate", "amisExtensionPaymentAmount",
+                      "amisLcDocNo", "amisLcDesc", "amisLcAmount",
+                      "amisDepositDocNo", "amisDepositDesc", "amisDepositAmount",
+                      "amisDepositRefundDocNo", "amisDepositRefundDesc", "amisDepositRefundDate", "amisDepositRefundAmount"
+                  ];
+                  amisFields.forEach(field => {
+                      if (histJob[field as keyof JobData] && !updatedJob[field as keyof JobData]) {
+                          (updatedJob as any)[field] = histJob[field as keyof JobData];
+                      }
+                  });
+
+                  newJobs[jobIndex] = updatedJob;
+              }
+          });
+
           const newCustomers = [...customers, ...missingData.customers];
           
           // Call restore (this triggers App.tsx to update state and save to server)
@@ -252,6 +320,24 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                                           <div key={j.id} className="text-xs text-slate-700 flex justify-between">
                                               <span>{j.jobCode}</span>
                                               <span className="text-slate-400">{j.booking}</span>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+                          {missingData.corruptedJobs.length > 0 && (
+                              <div className="bg-white p-3 rounded-lg border border-orange-100">
+                                  <div className="text-xs font-bold text-slate-500 uppercase mb-2">Jobs bị mất dữ liệu ({missingData.corruptedJobs.length})</div>
+                                  <div className="max-h-32 overflow-y-auto space-y-1 custom-scrollbar">
+                                      {missingData.corruptedJobs.map(({ currentJob, reasons }) => (
+                                          <div key={currentJob.id} className="text-xs text-slate-700 flex flex-col mb-2 border-b border-slate-100 pb-1">
+                                              <div className="flex justify-between font-medium">
+                                                  <span>{currentJob.jobCode}</span>
+                                                  <span className="text-slate-400">{currentJob.booking}</span>
+                                              </div>
+                                              <div className="text-red-500 text-[10px] mt-1">
+                                                  {reasons.join(', ')}
+                                              </div>
                                           </div>
                                       ))}
                                   </div>

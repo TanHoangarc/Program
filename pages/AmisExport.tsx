@@ -35,7 +35,8 @@ const TEMPLATE_MAP: Record<string, string> = {
   thu: "Phieu_thu_Mau.xlsx",
   chi: "Phieu_chi_Mau.xlsx",
   ban: "Ban_hang_Mau.xlsx",
-  mua: "Mua_hang_Mau.xlsx"
+  mua: "Mua_hang_Mau.xlsx",
+  cong_trinh: "Cong_Trinh.xlsx"
 };
 
 const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string }> = {};
@@ -1135,6 +1136,74 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     setSelectedIds(new Set());
   };
 
+  const executeExportCongTrinh = async () => {
+    const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
+    if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất.", "Thông báo"); return; }
+
+    const workbook = new ExcelJS.Workbook();
+    let congTrinhBuffer = GLOBAL_TEMPLATE_CACHE['cong_trinh']?.buffer;
+    if (!congTrinhBuffer) {
+        try {
+            const response = await axios.get(`${BACKEND_URL}/api/template/Cong_Trinh.xlsx`, { responseType: 'arraybuffer' });
+            congTrinhBuffer = response.data;
+            GLOBAL_TEMPLATE_CACHE['cong_trinh'] = { buffer: congTrinhBuffer, name: 'Cong_Trinh.xlsx' };
+        } catch (err) {
+            console.warn("Could not load Cong_Trinh.xlsx template from server", err);
+        }
+    }
+
+    if (congTrinhBuffer) {
+        await workbook.xlsx.load(congTrinhBuffer);
+    } else {
+        workbook.addWorksheet("Cong Trinh");
+    }
+
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) return;
+    const START_ROW = 8;
+    const styleRow = congTrinhBuffer ? worksheet.getRow(START_ROW) : null;
+    
+    rowsToExport.forEach((data, index) => {
+        const currentRowIndex = START_ROW + index;
+        const row = worksheet.getRow(currentRowIndex);
+        if (styleRow && currentRowIndex > START_ROW) {
+             for(let i = 1; i <= styleRow.cellCount; i++) {
+                 const sourceCell = styleRow.getCell(i);
+                 const targetCell = row.getCell(i);
+                 targetCell.style = sourceCell.style;
+                 if (sourceCell.border) targetCell.border = sourceCell.border;
+                 if (sourceCell.fill) targetCell.fill = sourceCell.fill;
+                 if (sourceCell.font) targetCell.font = sourceCell.font;
+                 if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment;
+             }
+             row.height = styleRow.height;
+        }
+
+        row.getCell(1).value = data.projectCode;
+        row.getCell(2).value = data.projectCode.substring(5);
+        row.commit();
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = "Cong_Trinh.xlsx";
+    try {
+        const formData = new FormData();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
+        const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+        if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
+        else throw new Error(response.data?.message || "Server did not confirm save.");
+    } catch (err) {
+        console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+    }
+    
+    // Không tự động khóa dòng khi xuất công trình
+    setSelectedIds(new Set());
+  };
+
   const titles = { thu: 'Phiếu Thu Tiền', chi: 'Phiếu Chi Tiền', ban: 'Phiếu Bán Hàng', mua: 'Phiếu Mua Hàng' };
   const unlockedCount = exportData.filter(r => !lockedIds.has(r.docNo)).length;
   const isAllSelected = unlockedCount > 0 && selectedIds.size === unlockedCount;
@@ -1210,6 +1279,9 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               )}
 
               <button onClick={handleBulkLock} disabled={selectedIds.size === 0} className={`px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg transition-all transform active:scale-95 ${selectedIds.size > 0 ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'}`}><Lock className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Khóa (${selectedIds.size})` : 'Khóa'}</span></button>
+              {mode === 'ban' && (
+                  <button onClick={executeExportCongTrinh} className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-blue-500/30 transition-all transform active:scale-95"><FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Công trình (${selectedIds.size})` : 'Xuất Công trình'}</span></button>
+              )}
               <button onClick={handleExportClick} className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 shadow-lg hover:shadow-green-500/30 transition-all transform active:scale-95"><FileSpreadsheet className="w-5 h-5" /> <span>{selectedIds.size > 0 ? `Xuất Excel (${selectedIds.size})` : 'Xuất Excel'}</span></button>
            </div>
         </div>

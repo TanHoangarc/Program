@@ -306,6 +306,20 @@ async function startServer() {
         }
     }
 
+    function calculateDataScore(data: any) {
+        let score = 0;
+        if (Array.isArray(data.jobs)) {
+            score += data.jobs.length * 1000;
+            data.jobs.forEach((j: any) => {
+                if (Array.isArray(j.bookings)) score += j.bookings.length * 10;
+                if (Array.isArray(j.extensions)) score += j.extensions.length * 10;
+                AMIS_JOB_FIELDS.forEach(f => { if (j[f]) score += 1; });
+            });
+        }
+        if (Array.isArray(data.customers)) score += data.customers.length * 100;
+        return score;
+    }
+
     async function writeHistoryBackup(data: any, maxFiles = 3) {
         try {
             const fileName = "history-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
@@ -314,20 +328,61 @@ async function startServer() {
             await fsp.writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
 
             let files = await fsp.readdir(HISTORY_ROOT);
-            files = files
-                .filter(f => f.startsWith("history-") && f.endsWith(".json"));
+            files = files.filter(f => f.startsWith("history-") && f.endsWith(".json"));
             
             const fileInfos = await Promise.all(
-                files.map(async f => ({ name: f, path: path.join(HISTORY_ROOT, f), time: (await fsp.stat(path.join(HISTORY_ROOT, f))).mtimeMs }))
+                files.map(async f => {
+                    const fullPath = path.join(HISTORY_ROOT, f);
+                    let score = 0;
+                    try {
+                        const content = await fsp.readFile(fullPath, "utf8");
+                        const parsed = JSON.parse(content);
+                        score = calculateDataScore(parsed);
+                    } catch (e) {}
+                    return { 
+                        name: f, 
+                        path: fullPath, 
+                        time: (await fsp.stat(fullPath)).mtimeMs,
+                        score
+                    };
+                })
             );
 
             if (fileInfos.length <= maxFiles) return;
 
-            fileInfos.sort((a, b) => a.time - b.time);
+            // Sort by time descending (newest first)
+            fileInfos.sort((a, b) => b.time - a.time);
 
-            const removeCount = fileInfos.length - maxFiles;
-            for (let i = 0; i < removeCount; i++) {
-                await fsp.unlink(fileInfos[i].path);
+            // Find the one with the highest score (most complete data)
+            let maxScore = -1;
+            let bestFileIndex = -1;
+            fileInfos.forEach((f, i) => {
+                if (f.score > maxScore) {
+                    maxScore = f.score;
+                    bestFileIndex = i;
+                }
+            });
+
+            const filesToKeep = new Set();
+            // Always keep the one with the most complete data
+            if (bestFileIndex !== -1) {
+                filesToKeep.add(fileInfos[bestFileIndex].path);
+            }
+            
+            // Keep the newest files until we reach maxFiles
+            let keptCount = filesToKeep.size;
+            for (let i = 0; i < fileInfos.length && keptCount < maxFiles; i++) {
+                if (!filesToKeep.has(fileInfos[i].path)) {
+                    filesToKeep.add(fileInfos[i].path);
+                    keptCount++;
+                }
+            }
+
+            // Delete the rest
+            for (let i = 0; i < fileInfos.length; i++) {
+                if (!filesToKeep.has(fileInfos[i].path)) {
+                    await fsp.unlink(fileInfos[i].path);
+                }
             }
 
         } catch (err) {
@@ -491,11 +546,32 @@ async function startServer() {
             let files = await fsp.readdir(HISTORY_ROOT);
             files = files.filter(f => f.startsWith("history-") && f.endsWith(".json"));
             if (files.length === 0) return res.json({ found: false });
-            const fileInfos = await Promise.all(files.map(async f => ({ name: f, time: (await fsp.stat(path.join(HISTORY_ROOT, f))).mtimeMs, path: path.join(HISTORY_ROOT, f) })));
-            fileInfos.sort((a, b) => b.time - a.time);
-            const latestFile = fileInfos[0];
-            const data = JSON.parse(await fsp.readFile(latestFile.path, "utf8") || "{}");
-            res.json({ found: true, fileName: latestFile.name, timestamp: latestFile.time, data });
+            
+            const fileInfos = await Promise.all(files.map(async f => {
+                const fullPath = path.join(HISTORY_ROOT, f);
+                let score = 0;
+                try {
+                    const content = await fsp.readFile(fullPath, "utf8");
+                    const parsed = JSON.parse(content);
+                    score = calculateDataScore(parsed);
+                } catch(e) {}
+                return { 
+                    name: f, 
+                    time: (await fsp.stat(fullPath)).mtimeMs, 
+                    path: fullPath,
+                    score
+                };
+            }));
+            
+            // Sort by score descending, then by time descending
+            fileInfos.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return b.time - a.time;
+            });
+            
+            const bestFile = fileInfos[0];
+            const data = JSON.parse(await fsp.readFile(bestFile.path, "utf8") || "{}");
+            res.json({ found: true, fileName: bestFile.name, timestamp: bestFile.time, data });
         } catch (err) {
             res.status(500).json({ error: "Failed to read history" });
         }
