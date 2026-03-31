@@ -58,6 +58,11 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   const [templateName, setTemplateName] = useState<string>('');
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+
+  const [congTrinhTemplateBuffer, setCongTrinhTemplateBuffer] = useState<ArrayBuffer | null>(null);
+  const [congTrinhTemplateName, setCongTrinhTemplateName] = useState<string>('');
+  const [isUploadingCongTrinhTemplate, setIsUploadingCongTrinhTemplate] = useState(false);
+  const congTrinhFileInputRef = useRef<HTMLInputElement>(null);
   
   const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
   const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('local');
@@ -143,6 +148,32 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     loadTemplate();
   }, [mode, currentTemplateFileName]);
 
+  useEffect(() => {
+    const loadCongTrinhTemplate = async () => {
+        if (mode !== 'ban') return;
+        if (GLOBAL_TEMPLATE_CACHE['cong_trinh']) {
+            setCongTrinhTemplateBuffer(GLOBAL_TEMPLATE_CACHE['cong_trinh'].buffer);
+            setCongTrinhTemplateName(GLOBAL_TEMPLATE_CACHE['cong_trinh'].name);
+            return;
+        }
+        setCongTrinhTemplateBuffer(null);
+        setCongTrinhTemplateName('');
+        try {
+            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/Cong_Trinh.xlsx?v=${Date.now()}`;
+            const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
+            if (response.status === 200 && response.data) {
+                const buffer = response.data;
+                GLOBAL_TEMPLATE_CACHE['cong_trinh'] = { buffer, name: 'Cong Trinh (Server)' };
+                setCongTrinhTemplateBuffer(buffer);
+                setCongTrinhTemplateName('Cong Trinh (Server)');
+            }
+        } catch (error) {
+            console.log(`Chưa có file mẫu Cong_Trinh.xlsx trên server.`);
+        }
+    };
+    loadCongTrinhTemplate();
+  }, [mode]);
+
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
@@ -175,6 +206,37 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           } finally {
               setIsUploadingTemplate(false);
               if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleCongTrinhTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingCongTrinhTemplate(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      if (evt.target?.result) {
+          const buffer = evt.target.result as ArrayBuffer;
+          const statusName = `Cong Trinh (Mới cập nhật)`;
+          setCongTrinhTemplateBuffer(buffer);
+          setCongTrinhTemplateName(statusName);
+          GLOBAL_TEMPLATE_CACHE['cong_trinh'] = { buffer, name: statusName };
+          try {
+              const formData = new FormData();
+              formData.append("folderPath", TEMPLATE_FOLDER);
+              formData.append("fileName", "Cong_Trinh.xlsx");
+              formData.append("file", file);
+              await axios.post(`${BACKEND_URL}/upload-file`, formData);
+              alert(`Đã lưu mẫu "Cong Trinh" thành công!`, "Thành công");
+          } catch (err) {
+              console.error("Lỗi upload mẫu:", err);
+              alert("Lưu mẫu lên server thất bại, nhưng sẽ dùng mẫu này tạm thời.", "Cảnh báo");
+          } finally {
+              setIsUploadingCongTrinhTemplate(false);
+              if (congTrinhFileInputRef.current) congTrinhFileInputRef.current.value = '';
           }
       }
     };
@@ -1141,12 +1203,15 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất.", "Thông báo"); return; }
 
     const workbook = new ExcelJS.Workbook();
-    let congTrinhBuffer = GLOBAL_TEMPLATE_CACHE['cong_trinh']?.buffer;
+    let congTrinhBuffer = congTrinhTemplateBuffer || GLOBAL_TEMPLATE_CACHE['cong_trinh']?.buffer;
     if (!congTrinhBuffer) {
         try {
-            const response = await axios.get(`${BACKEND_URL}/api/template/Cong_Trinh.xlsx`, { responseType: 'arraybuffer' });
+            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/Cong_Trinh.xlsx?v=${Date.now()}`;
+            const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
             congTrinhBuffer = response.data;
             GLOBAL_TEMPLATE_CACHE['cong_trinh'] = { buffer: congTrinhBuffer, name: 'Cong_Trinh.xlsx' };
+            setCongTrinhTemplateBuffer(congTrinhBuffer);
+            setCongTrinhTemplateName('Cong_Trinh.xlsx');
         } catch (err) {
             console.warn("Could not load Cong_Trinh.xlsx template from server", err);
         }
@@ -1229,6 +1294,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
   return (
     <div className="p-8 max-w-full">
       <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
+      <input type="file" ref={congTrinhFileInputRef} onChange={handleCongTrinhTemplateUpload} accept=".xlsx, .xls" className="hidden" />
 
       <div className="mb-6">
         <div className="flex items-center space-x-3 text-slate-800 mb-2">
@@ -1260,6 +1326,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                  {isUploadingTemplate ? <Loader2 className="w-5 h-5 animate-spin text-blue-500" /> : (templateBuffer ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />)} 
                  <span className="flex flex-col items-start text-xs"><span className="font-bold">{templateBuffer ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>{templateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{templateName}</span>}</span>
               </button>
+
+              {mode === 'ban' && (
+                  <button onClick={() => congTrinhFileInputRef.current?.click()} disabled={isUploadingCongTrinhTemplate} className="glass-panel hover:bg-white/80 px-4 py-2 rounded-lg flex items-center space-x-2 text-slate-700 transition-colors" title="Tải file mẫu Công trình từ máy tính lên server">
+                     {isUploadingCongTrinhTemplate ? <Loader2 className="w-5 h-5 animate-spin text-blue-500" /> : (congTrinhTemplateBuffer ? <CheckCircle className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />)} 
+                     <span className="flex flex-col items-start text-xs"><span className="font-bold">{congTrinhTemplateBuffer ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>{congTrinhTemplateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{congTrinhTemplateName}</span>}</span>
+                  </button>
+              )}
 
               {mode === 'thu' && (
                   <button 

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
-import { WebNfcProfile, SocialLink, Project, AuthUser } from '../types';
-import { BASE_URL_PREFIX } from '../constants';
+import { WebNfcProfile, SocialLink, Project, AuthUser } from './types';
+import { BASE_URL_PREFIX } from './constants';
 import { 
   ExternalLink, Edit3, Trash2, Plus, Search, Settings, Download, X, 
   Link as LinkIcon, Image as ImageIcon, User, Phone, Copy, Save, 

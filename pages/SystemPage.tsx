@@ -115,7 +115,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
 
       // Check Jobs
       const histJobs = Array.isArray(historyData.jobs) ? historyData.jobs : [];
-      const currentJobMap = new Map(jobs.map(j => [j.id, j]));
+      const currentJobMap = new Map<string, JobData>(jobs.map(j => [j.id, j]));
       
       const missingJobs: JobData[] = [];
       const corruptedJobs: { histJob: JobData, currentJob: JobData, reasons: string[] }[] = [];
@@ -127,13 +127,6 @@ export const SystemPage: React.FC<SystemPageProps> = ({
           } else {
               const reasons: string[] = [];
               
-              // Check bookings
-              const hBookings = Array.isArray(hJob.bookings) ? hJob.bookings.length : 0;
-              const cBookings = Array.isArray(cJob.bookings) ? cJob.bookings.length : 0;
-              if (hBookings > cBookings) {
-                  reasons.push(`Thiếu ${hBookings - cBookings} booking`);
-              }
-
               // Check AMIS data
               const amisFields = [
                   "amisPaymentDocNo", "amisDepositOutDocNo", "amisExtensionPaymentDocNo",
@@ -175,13 +168,6 @@ export const SystemPage: React.FC<SystemPageProps> = ({
               if (jobIndex !== -1) {
                   const updatedJob = { ...newJobs[jobIndex] };
                   
-                  // Restore bookings if missing
-                  const hBookings = Array.isArray(histJob.bookings) ? histJob.bookings : [];
-                  const cBookings = Array.isArray(updatedJob.bookings) ? updatedJob.bookings : [];
-                  if (hBookings.length > cBookings.length) {
-                      updatedJob.bookings = hBookings;
-                  }
-
                   // Restore AMIS data if missing
                   const amisFields = [
                       "amisPaymentDocNo", "amisPaymentDesc", "amisPaymentDate",
