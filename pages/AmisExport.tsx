@@ -704,7 +704,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 if (lcTotal > 0) {
                     const iDate = lc.date || jobDateFallback;
                     rawItems.push({
-                        jobId: j.id, date: iDate, invoice: lc.invoice || '', desc: `Mua hàng của ${supplierName} BILL ${j.booking}`,
+                        jobId: j.id, booking: j.booking, date: iDate, invoice: lc.invoice || '', desc: `Mua hàng của ${supplierName} BILL ${j.booking}`,
                         supplierCode: j.line, supplierName: supplierName, itemName: defaultItemName, netAmount: lcNet, vatAmount: lcVat, amount: lcTotal, costType: 'Local charge', sortDate: new Date(iDate).getTime()
                     });
                 }
@@ -723,7 +723,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                         if (aTotal > 0) {
                             const iDate = add.date || jobDateFallback;
                             rawItems.push({
-                                jobId: j.id, date: iDate, invoice: add.invoice || '', desc: `Chi phí khác của ${supplierName} BILL ${j.booking}`,
+                                jobId: j.id, booking: j.booking, date: iDate, invoice: add.invoice || '', desc: `Chi phí khác của ${supplierName} BILL ${j.booking}`,
                                 supplierCode: j.line, supplierName: supplierName, itemName: defaultItemName, netAmount: aNet, vatAmount: aVat, amount: aTotal, costType: 'Local charge', sortDate: new Date(iDate).getTime()
                             });
                         }
@@ -736,7 +736,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                             const eVat = ext.vat || (ext.total - eNet);
                             const iDate = ext.date || jobDateFallback;
                             rawItems.push({
-                                jobId: j.id, date: iDate, invoice: ext.invoice || '', desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`,
+                                jobId: j.id, booking: j.booking, date: iDate, invoice: ext.invoice || '', desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`,
                                 supplierCode: j.line, supplierName: supplierName, itemName: 'Phí phát sinh', netAmount: eNet, vatAmount: eVat, amount: ext.total, costType: 'Demurrage', sortDate: new Date(iDate).getTime()
                             });
                         }
@@ -752,7 +752,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                     const vat = total - net;
                     const iDate = jobDateFallback;
                     rawItems.push({
-                        jobId: j.id, date: iDate, invoice: '', desc: `Mua hàng của ${supplierName} Job ${j.jobCode}`,
+                        jobId: j.id, booking: j.booking, date: iDate, invoice: '', desc: `Mua hàng của ${supplierName} Job ${j.jobCode}`,
                         supplierCode: j.line, supplierName: supplierName, itemName: defaultItemName, netAmount: net, vatAmount: vat, amount: total, costType: 'Local charge', sortDate: new Date(iDate).getTime()
                     });
                 }
@@ -1101,7 +1101,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.", "Thông báo"); return; }
     
-    if (mode === 'ban') {
+    if (mode === 'ban' || mode === 'mua') {
       setExportStartVoucher('');
       setIsExportPromptOpen(true);
     } else {
@@ -1114,7 +1114,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.", "Thông báo"); return; }
 
     let minDocNoNumeric = Infinity;
-    if (mode === 'ban' && startVoucher) {
+    if ((mode === 'ban' || mode === 'mua') && startVoucher) {
         rowsToExport.forEach(r => {
             const match = r.docNo.match(/^([A-Za-z\-_]*)(\d+)$/);
             if (match) {
@@ -1133,24 +1133,12 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     if (!worksheet) return;
     const START_ROW = 9;
     const styleRow = templateBuffer ? worksheet.getRow(START_ROW) : null;
-    rowsToExport.forEach((data, index) => {
-        const currentRowIndex = START_ROW + index;
-        const row = worksheet.getRow(currentRowIndex);
-        if (styleRow && currentRowIndex > START_ROW) {
-             for(let i = 1; i <= styleRow.cellCount; i++) {
-                 const sourceCell = styleRow.getCell(i);
-                 const targetCell = row.getCell(i);
-                 targetCell.style = sourceCell.style;
-                 if (sourceCell.border) targetCell.border = sourceCell.border;
-                 if (sourceCell.fill) targetCell.fill = sourceCell.fill;
-                 if (sourceCell.font) targetCell.font = sourceCell.font;
-                 if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment;
-             }
-             row.height = styleRow.height;
-        }
+    let currentRowIndex = START_ROW;
+    for (let index = 0; index < rowsToExport.length; index++) {
+        const data = rowsToExport[index];
 
         let exportDocNo = data.docNo;
-        if (mode === 'ban' && startVoucher && minDocNoNumeric !== Infinity) {
+        if ((mode === 'ban' || mode === 'mua') && startVoucher && minDocNoNumeric !== Infinity) {
             const origMatch = data.docNo.match(/^([A-Za-z\-_]*)(\d+)$/);
             const startMatch = startVoucher.match(/^([A-Za-z\-_]*)(\d+)$/);
             if (origMatch && startMatch) {
@@ -1166,17 +1154,117 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             }
         }
 
-        if (mode === 'thu') {
-            row.getCell(1).value = formatDateVN(data.date); row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = exportDocNo; row.getCell(4).value = data.objCode; row.getCell(5).value = data.objName; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội (MB)"; row.getCell(9).value = "Thu khác"; row.getCell(10).value = data.desc; row.getCell(12).value = "VND"; row.getCell(14).value = data.desc; row.getCell(15).value = data.tkNo; row.getCell(16).value = data.tkCo; row.getCell(17).value = data.amount; row.getCell(19).value = data.objCode;
-        } else if (mode === 'chi') {
-            row.getCell(1).value = "Ủy nhiệm chi"; row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = formatDateVN(data.date); row.getCell(4).value = exportDocNo; row.getCell(5).value = "Chi khác"; row.getCell(6).value = data.paymentContent || data.desc; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội"; row.getCell(9).value = data.objCode; row.getCell(10).value = data.objName; row.getCell(19).value = "VND"; row.getCell(21).value = data.paymentContent || data.desc; row.getCell(22).value = data.tkNo; row.getCell(23).value = data.tkCo; row.getCell(24).value = data.amount; row.getCell(26).value = data.objCode;
-        } else if (mode === 'ban') {
-            row.getCell(1).value = "Bán hàng hóa trong nước"; row.getCell(2).value = "Chưa thu tiền"; row.getCell(3).value = "Không"; row.getCell(4).value = "Không"; row.getCell(6).value = formatDateVN(data.date); row.getCell(7).value = formatDateVN(data.date); row.getCell(8).value = exportDocNo; row.getCell(14).value = "LONGHOANGKIMBERRY"; row.getCell(22).value = data.desc; row.getCell(28).value = "VND"; row.getCell(30).value = "AGENT FEE"; row.getCell(33).value = "Không"; row.getCell(36).value = "13112"; row.getCell(37).value = "51111"; row.getCell(39).value = 1; row.getCell(40).value = data.amount; row.getCell(51).value = "0"; row.getCell(55).value = "33311"; row.getCell(61).value = data.projectCode;
-        } else if (mode === 'mua') {
-            row.getCell(1).value = "Mua hàng trong nước không qua kho"; row.getCell(2).value = "Chưa thanh toán"; row.getCell(3).value = "Nhận kèm hóa đơn"; row.getCell(4).value = formatDateVN(data.date); row.getCell(5).value = formatDateVN(data.date); row.getCell(6).value = "1"; row.getCell(7).value = exportDocNo; row.getCell(10).value = data.invoiceNo; row.getCell(11).value = formatDateVN(data.date); row.getCell(14).value = data.objCode; row.getCell(19).value = data.desc; row.getCell(26).value = "VND"; row.getCell(28).value = "LCC"; row.getCell(29).value = data.itemName; row.getCell(30).value = "Không"; row.getCell(33).value = "63211"; row.getCell(34).value = "3311"; row.getCell(35).value = "Lô"; row.getCell(36).value = "1"; row.getCell(37).value = data.netAmount; row.getCell(43).value = "5%"; row.getCell(45).value = data.vatAmount;
+        if (mode === 'mua') {
+            const rowBooking = data.booking;
+            const bookingJobs = rowBooking ? jobs.filter(j => j.booking === rowBooking) : [jobs.find(j => j.id === data.jobId)].filter(Boolean);
+            
+            if (bookingJobs.length > 0) {
+                const jobWeights = bookingJobs.map(job => {
+                    const kimberry = (job.cont20 * 250000) + (job.cont40 * 500000);
+                    const other = (job.feeCic||0) + (job.feePsc||0) + (job.feeEmc||0) + (job.feeOther||0);
+                    const rawAdj = job.cost - kimberry - other;
+                    return Math.max(0, rawAdj); 
+                });
+                const totalWeight = jobWeights.reduce((a, b) => a + b, 0);
+                
+                const distribute = (total: number, weights: number[], totalW: number) => {
+                    if (totalW === 0) {
+                        if (total === 0) return Array(bookingJobs.length).fill(0);
+                        const base = Math.floor(total / bookingJobs.length);
+                        const remainder = total - (base * bookingJobs.length);
+                        return Array(bookingJobs.length).fill(0).map((_, i) => base + (i < remainder ? 1 : 0));
+                    }
+                    const rawShares = weights.map(w => (total * w) / totalW);
+                    const intShares = rawShares.map(s => Math.floor(s));
+                    const currentSum = intShares.reduce((a, b) => a + b, 0);
+                    const diff = total - currentSum;
+                    
+                    const decimals = rawShares.map((s, i) => ({ val: s - Math.floor(s), idx: i }));
+                    decimals.sort((a, b) => b.val - a.val);
+                    
+                    for(let i=0; i<diff; i++) {
+                        intShares[decimals[i].idx]++;
+                    }
+                    return intShares;
+                };
+
+                const allocatedNet = distribute(data.netAmount, jobWeights, totalWeight);
+                const allocatedVat = distribute(data.vatAmount, jobWeights, totalWeight);
+
+                bookingJobs.forEach((job, idx) => {
+                    const row = worksheet.getRow(currentRowIndex);
+                    if (styleRow && currentRowIndex > START_ROW) {
+                         for(let i = 1; i <= styleRow.cellCount; i++) {
+                             const sourceCell = styleRow.getCell(i);
+                             const targetCell = row.getCell(i);
+                             targetCell.style = sourceCell.style;
+                             if (sourceCell.border) targetCell.border = sourceCell.border;
+                             if (sourceCell.fill) targetCell.fill = sourceCell.fill;
+                             if (sourceCell.font) targetCell.font = sourceCell.font;
+                             if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment;
+                         }
+                         row.height = styleRow.height;
+                    }
+
+                    const jobYear = job.year || new Date().getFullYear();
+                    const yy = jobYear.toString().slice(-2);
+                    const mm = job.month.padStart(2, "0");
+                    const projectCode = `K${yy}${mm}${job.jobCode}`;
+
+                    row.getCell(1).value = "Mua hàng trong nước không qua kho"; 
+                    row.getCell(2).value = "Chưa thanh toán"; 
+                    row.getCell(3).value = "Nhận kèm hóa đơn"; 
+                    row.getCell(4).value = formatDateVN(data.date); 
+                    row.getCell(5).value = formatDateVN(data.date); 
+                    row.getCell(6).value = "1"; 
+                    row.getCell(7).value = exportDocNo; 
+                    row.getCell(10).value = data.invoiceNo; 
+                    row.getCell(11).value = formatDateVN(data.date); 
+                    row.getCell(14).value = data.objCode; 
+                    row.getCell(19).value = data.desc; 
+                    row.getCell(26).value = "VND"; 
+                    row.getCell(28).value = "LCC"; 
+                    row.getCell(29).value = data.itemName; 
+                    row.getCell(30).value = "Không"; 
+                    row.getCell(33).value = "63211"; 
+                    row.getCell(34).value = "3311"; 
+                    row.getCell(35).value = "Lô"; 
+                    row.getCell(36).value = "1"; 
+                    row.getCell(37).value = allocatedNet[idx]; 
+                    row.getCell(43).value = "5"; 
+                    row.getCell(45).value = allocatedVat[idx]; 
+                    row.getCell(54).value = projectCode; 
+
+                    row.commit();
+                    currentRowIndex++;
+                });
+            }
+        } else {
+            const row = worksheet.getRow(currentRowIndex);
+            if (styleRow && currentRowIndex > START_ROW) {
+                 for(let i = 1; i <= styleRow.cellCount; i++) {
+                     const sourceCell = styleRow.getCell(i);
+                     const targetCell = row.getCell(i);
+                     targetCell.style = sourceCell.style;
+                     if (sourceCell.border) targetCell.border = sourceCell.border;
+                     if (sourceCell.fill) targetCell.fill = sourceCell.fill;
+                     if (sourceCell.font) targetCell.font = sourceCell.font;
+                     if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment;
+                 }
+                 row.height = styleRow.height;
+            }
+
+            if (mode === 'thu') {
+                row.getCell(1).value = formatDateVN(data.date); row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = exportDocNo; row.getCell(4).value = data.objCode; row.getCell(5).value = data.objName; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội (MB)"; row.getCell(9).value = "Thu khác"; row.getCell(10).value = data.desc; row.getCell(12).value = "VND"; row.getCell(14).value = data.desc; row.getCell(15).value = data.tkNo; row.getCell(16).value = data.tkCo; row.getCell(17).value = data.amount; row.getCell(19).value = data.objCode;
+            } else if (mode === 'chi') {
+                row.getCell(1).value = "Ủy nhiệm chi"; row.getCell(2).value = formatDateVN(data.date); row.getCell(3).value = formatDateVN(data.date); row.getCell(4).value = exportDocNo; row.getCell(5).value = "Chi khác"; row.getCell(6).value = data.paymentContent || data.desc; row.getCell(7).value = "345673979999"; row.getCell(8).value = "Ngân hàng TMCP Quân đội"; row.getCell(9).value = data.objCode; row.getCell(10).value = data.objName; row.getCell(19).value = "VND"; row.getCell(21).value = data.paymentContent || data.desc; row.getCell(22).value = data.tkNo; row.getCell(23).value = data.tkCo; row.getCell(24).value = data.amount; row.getCell(26).value = data.objCode;
+            } else if (mode === 'ban') {
+                row.getCell(1).value = "Bán hàng hóa trong nước"; row.getCell(2).value = "Chưa thu tiền"; row.getCell(3).value = "Không"; row.getCell(4).value = "Không"; row.getCell(6).value = formatDateVN(data.date); row.getCell(7).value = formatDateVN(data.date); row.getCell(8).value = exportDocNo; row.getCell(14).value = "LONGHOANGKIMBERRY"; row.getCell(22).value = data.desc; row.getCell(28).value = "VND"; row.getCell(30).value = "AGENT FEE"; row.getCell(33).value = "Không"; row.getCell(36).value = "13112"; row.getCell(37).value = "51111"; row.getCell(39).value = 1; row.getCell(40).value = data.amount; row.getCell(51).value = "0"; row.getCell(55).value = "33311"; row.getCell(61).value = data.projectCode;
+            }
+            row.commit();
+            currentRowIndex++;
         }
-        row.commit();
-    });
+    }
     const buffer = await workbook.xlsx.writeBuffer();
     const fileNameMap: Record<string, string> = { thu: "Phieuthu.xlsx", chi: "Phieuchi.xlsx", ban: "Banhang.xlsx", mua: "Muahang.xlsx" };
     const fileName = fileNameMap[mode] || `Export_${mode}.xlsx`;
@@ -1493,13 +1581,13 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             </div>
             <div className="p-6">
               <p className="text-sm text-slate-600 mb-4">
-                Vui lòng nhập số chứng từ bắt đầu cho file Excel (ví dụ: BH30999). Các phiếu sẽ được đánh số tăng dần từ số này.
+                Vui lòng nhập số chứng từ bắt đầu cho file Excel. Các phiếu sẽ được đánh số tăng dần từ số này.
               </p>
               <input
                 type="text"
                 value={exportStartVoucher}
                 onChange={(e) => setExportStartVoucher(e.target.value)}
-                placeholder="VD: BH30999"
+                placeholder={mode === 'ban' ? "VD: BH30999" : "VD: MH30999"}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
                 autoFocus
               />

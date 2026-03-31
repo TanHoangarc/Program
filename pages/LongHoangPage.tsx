@@ -643,40 +643,37 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     return matchDate && matchStatus;
   });
 
-  const handleBackup = () => {
-    const dataStr = JSON.stringify(orders, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "lhoang.json";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    alert("Đã tải xuống file backup lhoang.json", "Thành công");
+  const handleBackup = async () => {
+    try {
+      const response = await axios.post('/api/long-hoang/backup', { orders });
+      if (response.data.success) {
+        alert("Đã lưu dữ liệu backup lên server (E:\\ServerData\\lhoang.json) thành công", "Thành công");
+      } else {
+        alert("Lỗi khi lưu dữ liệu backup", "Lỗi");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Lỗi khi kết nối đến server", "Lỗi");
+    }
   };
 
-  const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const content = evt.target?.result as string;
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) {
-          onRestoreOrders(parsed);
-          alert("Đã khôi phục dữ liệu thành công", "Thành công");
-        } else {
-          alert("File backup không hợp lệ", "Lỗi");
-        }
-      } catch (err) {
-        alert("Lỗi khi đọc file backup", "Lỗi");
+  const handleRestore = async () => {
+    try {
+      const response = await axios.get('/api/long-hoang/restore');
+      if (response.data.success && Array.isArray(response.data.orders)) {
+        onRestoreOrders(response.data.orders);
+        alert("Đã khôi phục dữ liệu từ server (E:\\ServerData\\lhoang.json) thành công", "Thành công");
+      } else {
+        alert("Dữ liệu backup không hợp lệ", "Lỗi");
       }
-    };
-    reader.readAsText(file);
-    if (e.target) e.target.value = '';
+    } catch (err: any) {
+      console.error(err);
+      if (err.response && err.response.status === 404) {
+        alert("Không tìm thấy file backup trên server", "Lỗi");
+      } else {
+        alert("Lỗi khi đọc file backup từ server", "Lỗi");
+      }
+    }
   };
 
   const handleExportExcel = async () => {
@@ -830,11 +827,10 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             Backup
           </button>
           
-          <label className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm cursor-pointer">
+          <button onClick={handleRestore} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm">
             <Upload className="w-5 h-5" />
             Restore
-            <input type="file" accept=".json" onChange={handleRestore} className="hidden" />
-          </label>
+          </button>
           <input type="file" ref={templateInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
 
           <button

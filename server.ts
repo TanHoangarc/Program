@@ -514,9 +514,12 @@ async function startServer() {
                 });
                 memoryPayments = mergeLists(memoryPayments, validRequests);
             }
+            if (safeData.longHoangOrders) {
+                memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
+            }
             triggerDiskSave(false); 
-            broadcast("data-updated", { time: Date.now(), source: 'Docs' });
-            res.json({ success: true, saved: "payment_only", requireReload });
+            broadcast("data-updated", { time: Date.now(), source: role, type: 'DOCS_SYNC' });
+            res.json({ success: true, saved: "payment_and_lh", requireReload });
 
         } else {
             res.json({ success: false, message: "No permission to save" });
@@ -725,6 +728,31 @@ async function startServer() {
     app.post("/api/save-excel", createUpload(ROOT_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, message: "Saved to ServerData root" });
+    });
+
+    app.post("/api/long-hoang/backup", async (req, res) => {
+        try {
+            const { orders } = req.body;
+            const filePath = path.join(ROOT_DIR, "lhoang.json");
+            await fsp.writeFile(filePath, JSON.stringify(orders, null, 2), "utf8");
+            res.json({ success: true, message: "Backup saved successfully" });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message });
+        }
+    });
+
+    app.get("/api/long-hoang/restore", async (req, res) => {
+        try {
+            const filePath = path.join(ROOT_DIR, "lhoang.json");
+            if (!fs.existsSync(filePath)) {
+                return res.status(404).json({ success: false, message: "Backup file not found" });
+            }
+            const content = await fsp.readFile(filePath, "utf8");
+            const orders = JSON.parse(content);
+            res.json({ success: true, orders });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message });
+        }
     });
 
     app.post("/api/export-long-hoang", async (req, res) => {
