@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Download, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -19,6 +19,7 @@ interface LongHoangPageProps {
   onAddOrder: (order: LongHoangOrder) => void;
   onEditOrder: (order: LongHoangOrder) => void;
   onDeleteOrder: (id: string) => void;
+  onRestoreOrders: (orders: LongHoangOrder[]) => void;
 }
 
 const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "DEM"];
@@ -80,7 +81,7 @@ const FeeNameInput = ({ value, onChange }: { value: string, onChange: (val: stri
   );
 };
 
-export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder }) => {
+export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder, onRestoreOrders }) => {
   const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<LongHoangOrder | null>(null);
@@ -270,7 +271,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         mbl: '',
         accountNumber: '',
         wireOffStatus: 'Pending',
-        fees: []
+        fees: [],
+        paymentType: 'Local charge'
       });
       setDisplayDate(`${dd}/${mm}/${yyyy}`);
       setDisplayAmount('');
@@ -333,11 +335,15 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
 
     if (editingOrder) {
-      onEditOrder(formData as LongHoangOrder);
+      onEditOrder({
+        ...formData,
+        paymentType: formData.paymentType || 'Local charge'
+      } as LongHoangOrder);
       alert('Đã cập nhật lệnh thanh toán', 'Thành công');
     } else {
       onAddOrder({
         ...formData,
+        paymentType: formData.paymentType || 'Local charge',
         id: `lh-${Date.now()}`
       } as LongHoangOrder);
       alert('Đã tạo lệnh thanh toán mới', 'Thành công');
@@ -637,6 +643,42 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     return matchDate && matchStatus;
   });
 
+  const handleBackup = () => {
+    const dataStr = JSON.stringify(orders, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "lhoang.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    alert("Đã tải xuống file backup lhoang.json", "Thành công");
+  };
+
+  const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const content = evt.target?.result as string;
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          onRestoreOrders(parsed);
+          alert("Đã khôi phục dữ liệu thành công", "Thành công");
+        } else {
+          alert("File backup không hợp lệ", "Lỗi");
+        }
+      } catch (err) {
+        alert("Lỗi khi đọc file backup", "Lỗi");
+      }
+    };
+    reader.readAsText(file);
+    if (e.target) e.target.value = '';
+  };
+
   const handleExportExcel = async () => {
     const selectedOrders = filteredOrders.filter(o => o.isChecked);
     if (selectedOrders.length === 0) {
@@ -782,6 +824,17 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
              {isUploadingTemplate ? <Loader2 className="w-5 h-5 animate-spin text-teal-500" /> : (templateBuffer ? <Check className="w-5 h-5 text-green-500" /> : <Settings className="w-5 h-5" />)} 
              <span className="flex flex-col items-start text-xs"><span className="font-bold">{templateBuffer ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>{templateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{templateName}</span>}</span>
           </button>
+
+          <button onClick={handleBackup} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm">
+            <Download className="w-5 h-5" />
+            Backup
+          </button>
+          
+          <label className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm cursor-pointer">
+            <Upload className="w-5 h-5" />
+            Restore
+            <input type="file" accept=".json" onChange={handleRestore} className="hidden" />
+          </label>
           <input type="file" ref={templateInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
 
           <button
@@ -876,7 +929,13 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       <div className="flex items-center gap-2">
                         <span>{order.mbl}</span>
                         <button
-                          onClick={() => handleCopy(`LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`, `${order.id}-mbl`)}
+                          onClick={() => {
+                            const type = order.paymentType || 'Local charge';
+                            let copyText = `LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`;
+                            if (type === 'Deposit') copyText = `LONG HOANG PAYMENT CUOC BL ${order.mbl} MST 0316113070`;
+                            if (type === 'Demurage') copyText = `LONG HOANG PAYMENT GH BL ${order.mbl} MST 0316113070`;
+                            handleCopy(copyText, `${order.id}-mbl`);
+                          }}
                           className="text-slate-400 hover:text-teal-600 transition-colors"
                           title="Copy nội dung MBL"
                         >
@@ -1070,7 +1129,31 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Số tiền (đã bao gồm VAT) <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Loại thanh toán <span className="text-red-500">*</span></label>
+                  <select
+                    name="paymentType"
+                    value={formData.paymentType || 'Local charge'}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  >
+                    <option value="Local charge">Local charge</option>
+                    <option value="Deposit">Deposit</option>
+                    <option value="Demurage">Demurage</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Số tiền (đã bao gồm VAT) <span className="text-red-500">*</span></label>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(formData.amount?.toString() || '', 'modal-amount')}
+                      className="text-slate-400 hover:text-teal-600 transition-colors"
+                      title="Copy số tiền"
+                    >
+                      {copiedKey === 'modal-amount' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                   <input
                     type="text"
                     name="amount"
@@ -1082,7 +1165,24 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">MBL <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-500 uppercase">MBL <span className="text-red-500">*</span></label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const mbl = formData.mbl || '';
+                        const type = formData.paymentType || 'Local charge';
+                        let copyText = `LONG HOANG PAYMENT BL ${mbl} MST 0316113070`;
+                        if (type === 'Deposit') copyText = `LONG HOANG PAYMENT CUOC BL ${mbl} MST 0316113070`;
+                        if (type === 'Demurage') copyText = `LONG HOANG PAYMENT GH BL ${mbl} MST 0316113070`;
+                        handleCopy(copyText, 'modal-mbl');
+                      }}
+                      className="text-slate-400 hover:text-teal-600 transition-colors"
+                      title="Copy nội dung MBL"
+                    >
+                      {copiedKey === 'modal-mbl' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                   <input
                     type="text"
                     name="mbl"

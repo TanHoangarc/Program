@@ -445,6 +445,7 @@ export interface LongHoangOrder {
   isChecked?: boolean;
   isLocked?: boolean;
   color?: 'blue' | 'orange' | null;
+  paymentType?: 'Local charge' | 'Deposit' | 'Demurage';
 }
 
 // ============================================================

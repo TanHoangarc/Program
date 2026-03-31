@@ -1583,6 +1583,7 @@ const App: React.FC = () => {
                 onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
                 onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
                 onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
+                onRestoreOrders={(orders) => setLongHoangOrders(orders)}
               />
             )}
 
