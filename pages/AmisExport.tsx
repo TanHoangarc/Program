@@ -737,7 +737,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                             const iDate = ext.date || jobDateFallback;
                             rawItems.push({
                                 jobId: j.id, booking: j.booking, date: iDate, invoice: ext.invoice || '', desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`,
-                                supplierCode: j.line, supplierName: supplierName, itemName: 'Phí phát sinh', netAmount: eNet, vatAmount: eVat, amount: ext.total, costType: 'Demurrage', sortDate: new Date(iDate).getTime()
+                                supplierCode: j.line, supplierName: supplierName, itemName: 'Phí lưu bãi', netAmount: eNet, vatAmount: eVat, amount: ext.total, costType: 'Demurrage', sortDate: new Date(iDate).getTime()
                             });
                         }
                     });
@@ -1587,7 +1587,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 type="text"
                 value={exportStartVoucher}
                 onChange={(e) => setExportStartVoucher(e.target.value)}
-                placeholder={mode === 'ban' ? "VD: BH30999" : "VD: MH30999"}
+                placeholder={mode === 'ban' ? "VD: BHXXXX1" : "VD: MHXXXX1"}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
                 autoFocus
               />
