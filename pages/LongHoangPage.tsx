@@ -177,7 +177,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   });
   const [carriers, setCarriers] = useState<string[]>(() => {
     const saved = localStorage.getItem('lh_carriers');
-    return saved ? JSON.parse(saved) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? parsed.sort((a: string, b: string) => a.localeCompare(b)) : [];
   });
   const [newCarrier, setNewCarrier] = useState('');
   const [editingCarrier, setEditingCarrier] = useState<string | null>(null);
@@ -1481,7 +1482,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         if (e.key === 'Enter' && newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
                           if (!carriers.includes(val)) {
-                            setCarriers([...carriers, val]);
+                            setCarriers([...carriers, val].sort((a, b) => a.localeCompare(b)));
                             setNewCarrier('');
                           }
                         }
@@ -1492,7 +1493,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         if (newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
                           if (!carriers.includes(val)) {
-                            setCarriers([...carriers, val]);
+                            setCarriers([...carriers, val].sort((a, b) => a.localeCompare(b)));
                             setNewCarrier('');
                           }
                         }
@@ -1529,7 +1530,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                         if (e.key === 'Enter') {
                                           const val = editCarrierValue.trim().toUpperCase();
                                           if (val && (!carriers.includes(val) || val === carrier)) {
-                                            setCarriers(carriers.map(c => c === carrier ? val : c));
+                                            setCarriers(carriers.map(c => c === carrier ? val : c).sort((a, b) => a.localeCompare(b)));
                                             setEditingCarrier(null);
                                           }
                                         } else if (e.key === 'Escape') {
@@ -1548,7 +1549,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                         onClick={() => {
                                           const val = editCarrierValue.trim().toUpperCase();
                                           if (val && (!carriers.includes(val) || val === carrier)) {
-                                            setCarriers(carriers.map(c => c === carrier ? val : c));
+                                            setCarriers(carriers.map(c => c === carrier ? val : c).sort((a, b) => a.localeCompare(b)));
                                             setEditingCarrier(null);
                                           }
                                         }}
