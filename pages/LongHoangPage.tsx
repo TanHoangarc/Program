@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Edit, Trash2, FileText, Upload, Download, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import axios from 'axios';
 import ExcelJS from 'exceljs';
 import { formatDateVN } from '../utils';
@@ -22,7 +22,7 @@ interface LongHoangPageProps {
   onRestoreOrders: (orders: LongHoangOrder[]) => void;
 }
 
-const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "DEM"];
+const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "SEAL", "TELEX", "DEM"];
 
 const FeeNameInput = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -163,7 +163,13 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     reader.readAsArrayBuffer(file);
   };
 
-  const [filterDate, setFilterDate] = useState('');
+  const [filterDate, setFilterDate] = useState(() => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    return `${yyyy}-${mm}-${dd}`;
+  });
   const [filterStatus, setFilterStatus] = useState('All');
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -439,12 +445,32 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   - accountNumber: The bank account number for payment (string)
                   - fees: An array of objects representing the detailed fees and their amounts BEFORE VAT (số tiền trước thuế). Each object should have 'name' (string) and 'amount' (number, before VAT).
                   
-                  Return ONLY a valid JSON object with these exact keys.`
+                  Return ONLY a valid JSON object with these exact keys. If a value is not found, return an empty string for strings, 0 for numbers, and an empty array for arrays.`
                 }
               ]
             },
             config: {
-              responseMimeType: "application/json"
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  line: { type: Type.STRING, description: "The shipping line or company name. Empty string if not found." },
+                  amount: { type: Type.NUMBER, description: "The total amount to be paid INCLUDING VAT. 0 if not found." },
+                  mbl: { type: Type.STRING, description: "The Master Bill of Lading number. Empty string if not found." },
+                  accountNumber: { type: Type.STRING, description: "The bank account number for payment. Empty string if not found." },
+                  fees: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        name: { type: Type.STRING, description: "Fee name" },
+                        amount: { type: Type.NUMBER, description: "Fee amount before VAT" }
+                      }
+                    },
+                    description: "Detailed fees and their amounts BEFORE VAT. Empty array if not found."
+                  }
+                }
+              }
             }
           });
 
@@ -542,12 +568,28 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   text: `Extract the following information from this invoice file and return it in JSON format:
                   - fees: An array of objects representing the detailed fees and their amounts BEFORE VAT (số tiền trước thuế). Each object should have 'name' (string) and 'amount' (number, before VAT).
                   
-                  Return ONLY a valid JSON object with these exact keys.`
+                  Return ONLY a valid JSON object with these exact keys. If no fees are found, return an empty array.`
                 }
               ]
             },
             config: {
-              responseMimeType: "application/json"
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  fees: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        name: { type: Type.STRING, description: "Fee name" },
+                        amount: { type: Type.NUMBER, description: "Fee amount before VAT" }
+                      }
+                    },
+                    description: "Detailed fees and their amounts BEFORE VAT. Empty array if not found."
+                  }
+                }
+              }
             }
           });
 
@@ -1096,7 +1138,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               {/* Form Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-6">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
+                  </div>
                   <input
                     type="text"
                     name="paymentDate"
@@ -1108,7 +1152,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
                 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Line <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-6">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Line <span className="text-red-500">*</span></label>
+                  </div>
                   <select
                     name="line"
                     value={formData.line || ''}
@@ -1126,7 +1172,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Loại thanh toán <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-6">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Loại thanh toán <span className="text-red-500">*</span></label>
+                  </div>
                   <select
                     name="paymentType"
                     value={formData.paymentType || 'Local charge'}
@@ -1140,7 +1188,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center h-6">
                     <label className="text-xs font-bold text-slate-500 uppercase">Số tiền (đã bao gồm VAT) <span className="text-red-500">*</span></label>
                     <button
                       type="button"
@@ -1162,7 +1210,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center h-6">
                     <label className="text-xs font-bold text-slate-500 uppercase">MBL <span className="text-red-500">*</span></label>
                     <button
                       type="button"
@@ -1191,7 +1239,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-6">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
+                  </div>
                   <input
                     type="text"
                     name="accountNumber"
@@ -1203,7 +1253,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
+                  <div className="flex justify-between items-center h-6">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
+                  </div>
                   <input
                     type="text"
                     name="note"
@@ -1215,7 +1267,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
+                  <div className="flex justify-between items-center h-6">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
+                  </div>
                   <select
                     name="wireOffStatus"
                     value={formData.wireOffStatus || 'Pending'}
