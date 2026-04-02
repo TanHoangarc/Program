@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang';
+  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'phieu-inv';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -191,6 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <SubMenuItem active={currentPage === 'amis-chi'} onClick={(e) => handleNavigate(e, 'amis-chi')} icon={CreditCard} label="Phiếu Chi" />
                       <SubMenuItem active={currentPage === 'amis-ban'} onClick={(e) => handleNavigate(e, 'amis-ban')} icon={ShoppingCart} label="Phiếu Bán Hàng" />
                       <SubMenuItem active={currentPage === 'amis-mua'} onClick={(e) => handleNavigate(e, 'amis-mua')} icon={Briefcase} label="Phiếu Mua Hàng" />
+                      <SubMenuItem active={currentPage === 'phieu-inv'} onClick={(e) => handleNavigate(e, 'phieu-inv')} icon={FileUp} label="Phiếu INV" />
                   </>
               );
               break;
@@ -306,7 +307,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {canViewAccounting && (
             <>
               <MenuItem 
-                  active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua'].includes(currentPage)}
+                  active={['amis-thu', 'amis-chi', 'amis-ban', 'amis-mua', 'phieu-inv'].includes(currentPage)}
                   onClick={(e) => handleGroupClick(e, 'amis')}
                   icon={FileUp}
                   label="Kế Toán AMIS"

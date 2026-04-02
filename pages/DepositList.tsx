@@ -19,7 +19,7 @@ interface DepositListProps {
   onAddCustomer: (customer: Customer) => void;
 }
 
-const BACKEND_URL = "https://api.kimberry.id.vn";
+const BACKEND_URL = "";
 
 export const DepositList: React.FC<DepositListProps> = ({ 
     mode, jobs, customers, lines, onEditJob, onAddLine, onAddCustomer 

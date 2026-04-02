@@ -8,7 +8,7 @@ import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
 import { CustomerModal } from './CustomerModal';
 import axios from 'axios';
 
-const BACKEND_URL = "https://api.kimberry.id.vn";
+const BACKEND_URL = "";
 
 interface JobModalProps {
   isOpen: boolean;
@@ -767,7 +767,7 @@ export const JobModal: React.FC<JobModalProps> = ({
       uploadFormData.append("fileName", fileName);
       uploadFormData.append("file", file);
 
-      const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, uploadFormData, {
+      const res = await axios.post(`${BACKEND_URL}/api/upload-cvhc`, uploadFormData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 

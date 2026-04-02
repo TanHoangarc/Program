@@ -36,6 +36,7 @@ async function startServer() {
     const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
     const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
     const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Data
+    const PINV_PATH = path.join(ROOT_DIR, "pinv.json");         // Phieu INV Data
     const HISTORY_ROOT = path.join(ROOT_DIR, "history");
 
     const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
@@ -86,7 +87,8 @@ async function startServer() {
             jobs: "id",
             customers: "id",
             lines: "id",
-            users: "username"
+            users: "username",
+            phieuInvOrders: "id"
         };
 
         Object.entries(configs).forEach(([key, idField]) => {
@@ -433,6 +435,7 @@ async function startServer() {
         if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
         if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
         if (!memoryData.longHoangOrders) memoryData.longHoangOrders = [];
+        if (!memoryData.phieuInvOrders) memoryData.phieuInvOrders = [];
 
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
         memoryPayments = JSON.parse(rawPayment || "[]");
@@ -497,6 +500,7 @@ async function startServer() {
             if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
             if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
+            if (safeData.phieuInvOrders) memoryData.phieuInvOrders = mergeLists(memoryData.phieuInvOrders || [], safeData.phieuInvOrders);
 
             triggerDiskSave(isAdmin); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
@@ -517,6 +521,9 @@ async function startServer() {
             }
             if (safeData.longHoangOrders) {
                 memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
+            }
+            if (safeData.phieuInvOrders) {
+                memoryData.phieuInvOrders = mergeLists(memoryData.phieuInvOrders || [], safeData.phieuInvOrders);
             }
             triggerDiskSave(false); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'DOCS_SYNC' });
@@ -747,6 +754,29 @@ async function startServer() {
                 return res.status(200).json({ success: false, message: "Backup file not found" });
             }
             const content = await fsp.readFile(LHOANG_PATH, "utf8");
+            const orders = JSON.parse(content);
+            res.json({ success: true, orders });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message });
+        }
+    });
+
+    app.post("/api/phieu-inv/backup", async (req, res) => {
+        try {
+            const { orders } = req.body;
+            await fsp.writeFile(PINV_PATH, JSON.stringify(orders, null, 2), "utf8");
+            res.json({ success: true, message: "Backup saved successfully" });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message });
+        }
+    });
+
+    app.get("/api/phieu-inv/restore", async (req, res) => {
+        try {
+            if (!fs.existsSync(PINV_PATH)) {
+                return res.status(200).json({ success: false, message: "Backup file not found" });
+            }
+            const content = await fsp.readFile(PINV_PATH, "utf8");
             const orders = JSON.parse(content);
             res.json({ success: true, orders });
         } catch (err: any) {

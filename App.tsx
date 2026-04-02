@@ -18,6 +18,7 @@ import { NFCPage } from './pages/NFCPage';
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LongHoangPage } from './pages/LongHoangPage';
+import { PhieuInvPage } from './pages/PhieuInvPage';
 
 const TAB_ID = Math.random().toString(36).substring(2, 15);
 import { LoginPage } from './components/LoginPage';
@@ -29,7 +30,7 @@ import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from '
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder, PhieuInvOrder } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -92,7 +93,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'phieu-inv'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -212,6 +213,7 @@ const App: React.FC = () => {
   const [salariesChanged, setSalariesChanged] = useState(false);
   const [configsChanged, setConfigsChanged] = useState(false);
   const [ordersChanged, setOrdersChanged] = useState(false);
+  const [phieuInvChanged, setPhieuInvChanged] = useState(false);
 
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
@@ -527,6 +529,16 @@ const App: React.FC = () => {
   const [longHoangOrders, setLongHoangOrders] = useState<LongHoangOrder[]>(() => {
       try {
           const saved = localStorage.getItem('kb_long_hoang_orders');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
+  // --- PHIEU INV STATE ---
+  const [phieuInvOrders, setPhieuInvOrders] = useState<PhieuInvOrder[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_phieu_inv_orders');
           return saved ? JSON.parse(saved) : [];
       } catch {
           return [];
@@ -1194,6 +1206,7 @@ const App: React.FC = () => {
       if (salariesChanged) data.salaries = salaries;
       if (configsChanged) data.yearlyConfigs = yearlyConfigs;
       if (ordersChanged) data.longHoangOrders = longHoangOrders;
+      if (phieuInvChanged) (data as any).phieuInvOrders = phieuInvOrders;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -1231,6 +1244,7 @@ const App: React.FC = () => {
           if (salariesChanged) setSalariesChanged(false);
           if (configsChanged) setConfigsChanged(false);
           if (ordersChanged) setOrdersChanged(false);
+          if (phieuInvChanged) setPhieuInvChanged(false);
       }
 
     } catch (err) {
@@ -1274,6 +1288,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
+  useEffect(() => { localStorage.setItem('kb_phieu_inv_orders', JSON.stringify(phieuInvOrders)); }, [phieuInvOrders]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
@@ -1317,6 +1332,7 @@ const App: React.FC = () => {
                 if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                 if (serverData.salaries) setSalaries(serverData.salaries);
                 if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
+                if (serverData.phieuInvOrders) setPhieuInvOrders(serverData.phieuInvOrders);
             })
             .catch(err => console.warn("Failed to re-fetch after sync", err));
       }
@@ -1644,6 +1660,16 @@ const App: React.FC = () => {
                 onEditOrder={(order) => { setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o)); setOrdersChanged(true); }}
                 onDeleteOrder={(id) => { setLongHoangOrders(prev => prev.filter(o => o.id !== id)); setOrdersChanged(true); }}
                 onRestoreOrders={(orders) => { setLongHoangOrders(orders); setOrdersChanged(true); }}
+              />
+            )}
+
+            {currentPage === 'phieu-inv' && (
+              <PhieuInvPage 
+                orders={phieuInvOrders}
+                onAddOrder={(order) => { setPhieuInvOrders(prev => [order, ...prev]); setPhieuInvChanged(true); }}
+                onEditOrder={(order) => { setPhieuInvOrders(prev => prev.map(o => o.id === order.id ? order : o)); setPhieuInvChanged(true); }}
+                onDeleteOrder={(id) => { setPhieuInvOrders(prev => prev.filter(o => o.id !== id)); setPhieuInvChanged(true); }}
+                onRestoreOrders={(orders) => { setPhieuInvOrders(orders); setPhieuInvChanged(true); }}
               />
             )}
 

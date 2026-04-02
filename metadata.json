@@ -1,5 +1,5 @@
 {
   "name": "LogisticsManager",
-  "description": "A comprehensive logistics job entry and reporting system tracking costs, profits, and container details.",
+  "description": "A comprehensive logistics job entry and reporting system tracking costs, profits, and container details. Includes Phiếu INV and Long Hoàng modules for accounting.",
   "requestFramePermissions": []
 }

@@ -16,7 +16,7 @@ interface BookingDetailModalProps {
   onViewPayment?: (docNo: string, type: 'local' | 'deposit' | 'extension') => void;
 }
 
-const BACKEND_URL = "https://api.kimberry.id.vn";
+const BACKEND_URL = "";
 
 // --- COMPACT COMPONENTS ---
 
@@ -718,7 +718,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           formData.append("fileName", fileName);
           formData.append("file", file);
 
-          const response = await axios.post(`${BACKEND_URL}/upload-file`, formData);
+          const response = await axios.post(`${BACKEND_URL}/api/upload-file`, formData);
           
           if (response.data && response.data.success) {
               const fileUrl = `${BACKEND_URL}/uploads/${folderPath}/${fileName}`;

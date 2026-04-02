@@ -449,6 +449,25 @@ export interface LongHoangOrder {
 }
 
 // ============================================================
+// PHIẾU INV ORDER
+// ============================================================
+export interface PhieuInvOrder {
+  id: string;
+  date: string;
+  carrier: string;
+  amount: number;
+  bill: string;
+  stk: string;
+  fileUrl?: string;
+  fileName?: string;
+  shipment: string;
+  wireOffStatus: 'Pending' | 'Wired';
+  fees?: { name: string; amount: number }[];
+  type?: 'Local charge' | 'Deposit' | 'Demurage';
+  isChecked?: boolean;
+}
+
+// ============================================================
 // INITIAL JOB (DEFAULT OBJECT)
 // ============================================================
 
