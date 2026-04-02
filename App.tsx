@@ -211,7 +211,6 @@ const App: React.FC = () => {
   const [receiptsChanged, setReceiptsChanged] = useState(false);
   const [salariesChanged, setSalariesChanged] = useState(false);
   const [configsChanged, setConfigsChanged] = useState(false);
-  const [ordersChanged, setOrdersChanged] = useState(false);
 
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
@@ -814,7 +813,7 @@ const App: React.FC = () => {
         const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
         const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
 
-        const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || deletedJobIds.size > 0 || localDeletedIds.size > 0 || customersChanged || linesChanged || receiptsChanged || salariesChanged || configsChanged || ordersChanged;
+        const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || deletedJobIds.size > 0 || localDeletedIds.size > 0 || customersChanged || linesChanged || receiptsChanged || salariesChanged || configsChanged;
         
         if (!hasChanges) {
             alert("Không có thay đổi nào mới để gửi đi.", "Thông báo");
@@ -837,7 +836,6 @@ const App: React.FC = () => {
         if (receiptsChanged) payload.customReceipts = [...customReceipts];
         if (salariesChanged) payload.salaries = [...salaries];
         if (configsChanged) payload.yearlyConfigs = [...yearlyConfigs];
-        if (ordersChanged) payload.longHoangOrders = [...longHoangOrders];
     }
     
     if (!isServerAvailable) {
@@ -876,7 +874,6 @@ const App: React.FC = () => {
               if (receiptsChanged) setReceiptsChanged(false);
               if (salariesChanged) setSalariesChanged(false);
               if (configsChanged) setConfigsChanged(false);
-              if (ordersChanged) setOrdersChanged(false);
           } 
       } else {
           throw new Error(`Server returned ${response.status}`);
@@ -943,7 +940,6 @@ const App: React.FC = () => {
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
       const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
-      const incLongHoangOrders = Array.isArray(incomingData.longHoangOrders) ? incomingData.longHoangOrders : (incomingData.data?.longHoangOrders || incomingData.payload?.longHoangOrders || []);
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
@@ -951,7 +947,6 @@ const App: React.FC = () => {
       const newLines = mergeArrays(lines, incLines);
       const newReceipts = mergeArrays(customReceipts, incReceipts);
       const newSalaries = mergeArrays(salaries, incSalaries);
-      const newLongHoangOrders = mergeArrays(longHoangOrders, incLongHoangOrders);
       
       // Yearly Config Merge Logic (Merge based on Year)
       const newConfigs = [...yearlyConfigs];
@@ -968,7 +963,6 @@ const App: React.FC = () => {
       setCustomReceipts(newReceipts);
       setSalaries(newSalaries);
       setYearlyConfigs(newConfigs);
-      setLongHoangOrders(newLongHoangOrders);
 
       await handleRejectRequest(requestId);
   };
@@ -1024,9 +1018,10 @@ const App: React.FC = () => {
         const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
         // Fetch BOTH general data and NFC data
-        const [dataRes, nfcRes, headerRes] = await Promise.all([
+        const [dataRes, nfcRes, lhoangRes, headerRes] = await Promise.all([
             fetch(`${BACKEND_URL}/data`, { signal: controller.signal }),
             fetch(`${BACKEND_URL}/nfc`, { signal: controller.signal }),
+            fetch(`${BACKEND_URL}/lhoang`, { signal: controller.signal }),
             fetch(`${BACKEND_URL}/header-data`, { signal: controller.signal }).catch(() => null)
         ]);
         
@@ -1080,8 +1075,18 @@ const App: React.FC = () => {
             setYearlyConfigs(data.yearlyConfigs);
         }
 
-        if (data.longHoangOrders && Array.isArray(data.longHoangOrders)) {
-            setLongHoangOrders(data.longHoangOrders);
+        if (lhoangRes && lhoangRes.ok) {
+            const lhoangData = await lhoangRes.json();
+            if (Array.isArray(lhoangData)) {
+                setLongHoangOrders(lhoangData);
+            }
+        }
+
+        if (nfcRes && nfcRes.ok) {
+            const nfcData = await nfcRes.json();
+            if (Array.isArray(nfcData)) {
+                setNfcProfiles(nfcData);
+            }
         }
 
         setIsInitialSyncDone(true);
@@ -1172,7 +1177,7 @@ const App: React.FC = () => {
       const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || 
                          deletedJobIds.size > 0 || localDeletedIds.size > 0 ||
                          customersChanged || linesChanged || receiptsChanged || 
-                         salariesChanged || configsChanged || ordersChanged;
+                         salariesChanged || configsChanged;
                          
       if (!hasChanges) return;
 
@@ -1193,7 +1198,6 @@ const App: React.FC = () => {
       if (receiptsChanged) data.customReceipts = customReceipts;
       if (salariesChanged) data.salaries = salaries;
       if (configsChanged) data.yearlyConfigs = yearlyConfigs;
-      if (ordersChanged) data.longHoangOrders = longHoangOrders;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -1230,7 +1234,6 @@ const App: React.FC = () => {
           if (receiptsChanged) setReceiptsChanged(false);
           if (salariesChanged) setSalariesChanged(false);
           if (configsChanged) setConfigsChanged(false);
-          if (ordersChanged) setOrdersChanged(false);
       }
 
     } catch (err) {
@@ -1254,6 +1257,22 @@ const App: React.FC = () => {
       return () => clearTimeout(timeoutId);
   }, [nfcProfiles, isServerAvailable]);
 
+  // --- LHOANG AUTO BACKUP ---
+  useEffect(() => {
+      if (!isServerAvailable || longHoangOrders.length === 0) return;
+      
+      // Debounce LHOANG save
+      const timeoutId = setTimeout(() => {
+          fetch(`${BACKEND_URL}/lhoang/save`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(longHoangOrders)
+          }).catch(e => console.warn("LHOANG Backup failed", e));
+      }, 1000); 
+
+      return () => clearTimeout(timeoutId);
+  }, [longHoangOrders, isServerAvailable]);
+
   useEffect(() => { 
     if (!isServerAvailable) return;
     
@@ -1263,7 +1282,7 @@ const App: React.FC = () => {
     }, delay); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, isServerAvailable, currentUser]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, isServerAvailable, currentUser]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1640,10 +1659,10 @@ const App: React.FC = () => {
             {currentPage === 'long-hoang' && (
               <LongHoangPage 
                 orders={longHoangOrders}
-                onAddOrder={(order) => { setLongHoangOrders(prev => [order, ...prev]); setOrdersChanged(true); }}
-                onEditOrder={(order) => { setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o)); setOrdersChanged(true); }}
-                onDeleteOrder={(id) => { setLongHoangOrders(prev => prev.filter(o => o.id !== id)); setOrdersChanged(true); }}
-                onRestoreOrders={(orders) => { setLongHoangOrders(orders); setOrdersChanged(true); }}
+                onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
+                onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
+                onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
+                onRestoreOrders={(orders) => setLongHoangOrders(orders)}
               />
             )}
 
