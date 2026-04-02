@@ -449,6 +449,17 @@ export interface LongHoangOrder {
 }
 
 // ============================================================
+// DEBIT NOTE DATA
+// ============================================================
+export interface DebitNoteData {
+  id: string;
+  date: string;
+  customerName: string;
+  amount: number;
+  note?: string;
+}
+
+// ============================================================
 // INITIAL JOB (DEFAULT OBJECT)
 // ============================================================
 

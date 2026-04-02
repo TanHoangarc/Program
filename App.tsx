@@ -25,11 +25,11 @@ import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
 import { QuickReceiveModal } from './components/QuickReceiveModal';
 import { generateNextDocNo } from './utils';
-import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from 'lucide-react';
+import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw, FileText, Sparkles } from 'lucide-react';
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder, DebitNoteData } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -92,7 +92,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'debit-note'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -526,6 +526,16 @@ const App: React.FC = () => {
   const [longHoangOrders, setLongHoangOrders] = useState<LongHoangOrder[]>(() => {
       try {
           const saved = localStorage.getItem('kb_long_hoang_orders');
+          return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
+  // --- DEBIT NOTE STATE ---
+  const [debitNotes, setDebitNotes] = useState<DebitNoteData[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_debit_notes');
           return saved ? JSON.parse(saved) : [];
       } catch {
           return [];
@@ -1018,10 +1028,11 @@ const App: React.FC = () => {
         const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
         // Fetch BOTH general data and NFC data
-        const [dataRes, nfcRes, lhoangRes, headerRes] = await Promise.all([
+        const [dataRes, nfcRes, lhoangRes, debitRes, headerRes] = await Promise.all([
             fetch(`${BACKEND_URL}/data`, { signal: controller.signal }),
             fetch(`${BACKEND_URL}/nfc`, { signal: controller.signal }),
             fetch(`${BACKEND_URL}/lhoang`, { signal: controller.signal }),
+            fetch(`${BACKEND_URL}/debit`, { signal: controller.signal }),
             fetch(`${BACKEND_URL}/header-data`, { signal: controller.signal }).catch(() => null)
         ]);
         
@@ -1079,6 +1090,13 @@ const App: React.FC = () => {
             const lhoangData = await lhoangRes.json();
             if (Array.isArray(lhoangData)) {
                 setLongHoangOrders(lhoangData);
+            }
+        }
+
+        if (debitRes && debitRes.ok) {
+            const debitData = await debitRes.json();
+            if (Array.isArray(debitData)) {
+                setDebitNotes(debitData);
             }
         }
 
@@ -1284,6 +1302,27 @@ const App: React.FC = () => {
       return () => clearTimeout(timeoutId);
   }, [longHoangOrders, isServerAvailable, isInitialSyncDone]);
 
+  // --- DEBIT AUTO BACKUP ---
+  useEffect(() => {
+      if (!isServerAvailable || !isInitialSyncDone) return;
+      
+      const timeoutId = setTimeout(() => {
+          fetch(`${BACKEND_URL}/debit/save`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(debitNotes)
+          })
+          .then(res => {
+              if (!res.ok) {
+                  console.error("DEBIT Backup failed with status:", res.status);
+              }
+          })
+          .catch(e => console.warn("DEBIT Backup failed", e));
+      }, 1000); 
+
+      return () => clearTimeout(timeoutId);
+  }, [debitNotes, isServerAvailable, isInitialSyncDone]);
+
   useEffect(() => { 
     if (!isServerAvailable) return;
     
@@ -1304,6 +1343,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
+  useEffect(() => { localStorage.setItem('kb_debit_notes', JSON.stringify(debitNotes)); }, [debitNotes]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
@@ -1674,6 +1714,31 @@ const App: React.FC = () => {
                 onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
                 onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
               />
+            )}
+
+            {currentPage === 'debit-note' && (
+              <div className="p-8">
+                <div className="bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
+                  <div className="flex items-center space-x-4 mb-8">
+                    <div className="p-3 bg-teal-100 rounded-2xl">
+                      <FileText className="w-8 h-8 text-teal-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Debit Note</h2>
+                      <p className="text-slate-500 font-medium">Quản lý Debit Note (Đang phát triển)</p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-slate-50 rounded-2xl p-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-200">
+                    <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
+                      <Sparkles className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <p className="text-slate-500 font-medium text-center max-w-sm">
+                      Trang Debit Note đang được xây dựng. Dữ liệu của bạn sẽ được tự động đồng bộ vào file debit.json.
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
 
             {currentPage === 'system' && (
