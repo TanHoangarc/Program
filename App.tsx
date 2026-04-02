@@ -25,11 +25,11 @@ import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
 import { QuickReceiveModal } from './components/QuickReceiveModal';
 import { generateNextDocNo } from './utils';
-import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw, FileText, Sparkles } from 'lucide-react';
+import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from 'lucide-react';
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder, DebitNoteData } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -92,7 +92,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'debit-note'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -211,6 +211,7 @@ const App: React.FC = () => {
   const [receiptsChanged, setReceiptsChanged] = useState(false);
   const [salariesChanged, setSalariesChanged] = useState(false);
   const [configsChanged, setConfigsChanged] = useState(false);
+  const [ordersChanged, setOrdersChanged] = useState(false);
 
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
@@ -532,16 +533,6 @@ const App: React.FC = () => {
       }
   });
 
-  // --- DEBIT NOTE STATE ---
-  const [debitNotes, setDebitNotes] = useState<DebitNoteData[]>(() => {
-      try {
-          const saved = localStorage.getItem('kb_debit_notes');
-          return saved ? JSON.parse(saved) : [];
-      } catch {
-          return [];
-      }
-  });
-
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
   const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
       try {
@@ -823,7 +814,7 @@ const App: React.FC = () => {
         const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
         const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
 
-        const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || deletedJobIds.size > 0 || localDeletedIds.size > 0 || customersChanged || linesChanged || receiptsChanged || salariesChanged || configsChanged;
+        const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || deletedJobIds.size > 0 || localDeletedIds.size > 0 || customersChanged || linesChanged || receiptsChanged || salariesChanged || configsChanged || ordersChanged;
         
         if (!hasChanges) {
             alert("Không có thay đổi nào mới để gửi đi.", "Thông báo");
@@ -846,6 +837,7 @@ const App: React.FC = () => {
         if (receiptsChanged) payload.customReceipts = [...customReceipts];
         if (salariesChanged) payload.salaries = [...salaries];
         if (configsChanged) payload.yearlyConfigs = [...yearlyConfigs];
+        if (ordersChanged) payload.longHoangOrders = [...longHoangOrders];
     }
     
     if (!isServerAvailable) {
@@ -884,6 +876,7 @@ const App: React.FC = () => {
               if (receiptsChanged) setReceiptsChanged(false);
               if (salariesChanged) setSalariesChanged(false);
               if (configsChanged) setConfigsChanged(false);
+              if (ordersChanged) setOrdersChanged(false);
           } 
       } else {
           throw new Error(`Server returned ${response.status}`);
@@ -950,6 +943,7 @@ const App: React.FC = () => {
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
       const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
+      const incLongHoangOrders = Array.isArray(incomingData.longHoangOrders) ? incomingData.longHoangOrders : (incomingData.data?.longHoangOrders || incomingData.payload?.longHoangOrders || []);
 
       const newJobs = mergeArrays(jobs, incJobs);
       const newPayments = mergeArrays(paymentRequests, incPayments);
@@ -957,6 +951,7 @@ const App: React.FC = () => {
       const newLines = mergeArrays(lines, incLines);
       const newReceipts = mergeArrays(customReceipts, incReceipts);
       const newSalaries = mergeArrays(salaries, incSalaries);
+      const newLongHoangOrders = mergeArrays(longHoangOrders, incLongHoangOrders);
       
       // Yearly Config Merge Logic (Merge based on Year)
       const newConfigs = [...yearlyConfigs];
@@ -973,6 +968,7 @@ const App: React.FC = () => {
       setCustomReceipts(newReceipts);
       setSalaries(newSalaries);
       setYearlyConfigs(newConfigs);
+      setLongHoangOrders(newLongHoangOrders);
 
       await handleRejectRequest(requestId);
   };
@@ -1028,11 +1024,9 @@ const App: React.FC = () => {
         const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
         // Fetch BOTH general data and NFC data
-        const [dataRes, nfcRes, lhoangRes, debitRes, headerRes] = await Promise.all([
+        const [dataRes, nfcRes, headerRes] = await Promise.all([
             fetch(`${BACKEND_URL}/data`, { signal: controller.signal }),
             fetch(`${BACKEND_URL}/nfc`, { signal: controller.signal }),
-            fetch(`${BACKEND_URL}/lhoang`, { signal: controller.signal }),
-            fetch(`${BACKEND_URL}/debit`, { signal: controller.signal }),
             fetch(`${BACKEND_URL}/header-data`, { signal: controller.signal }).catch(() => null)
         ]);
         
@@ -1086,25 +1080,8 @@ const App: React.FC = () => {
             setYearlyConfigs(data.yearlyConfigs);
         }
 
-        if (lhoangRes && lhoangRes.ok) {
-            const lhoangData = await lhoangRes.json();
-            if (Array.isArray(lhoangData)) {
-                setLongHoangOrders(lhoangData);
-            }
-        }
-
-        if (debitRes && debitRes.ok) {
-            const debitData = await debitRes.json();
-            if (Array.isArray(debitData)) {
-                setDebitNotes(debitData);
-            }
-        }
-
-        if (nfcRes && nfcRes.ok) {
-            const nfcData = await nfcRes.json();
-            if (Array.isArray(nfcData)) {
-                setNfcProfiles(nfcData);
-            }
+        if (data.longHoangOrders && Array.isArray(data.longHoangOrders)) {
+            setLongHoangOrders(data.longHoangOrders);
         }
 
         setIsInitialSyncDone(true);
@@ -1195,7 +1172,7 @@ const App: React.FC = () => {
       const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || 
                          deletedJobIds.size > 0 || localDeletedIds.size > 0 ||
                          customersChanged || linesChanged || receiptsChanged || 
-                         salariesChanged || configsChanged;
+                         salariesChanged || configsChanged || ordersChanged;
                          
       if (!hasChanges) return;
 
@@ -1216,6 +1193,7 @@ const App: React.FC = () => {
       if (receiptsChanged) data.customReceipts = customReceipts;
       if (salariesChanged) data.salaries = salaries;
       if (configsChanged) data.yearlyConfigs = yearlyConfigs;
+      if (ordersChanged) data.longHoangOrders = longHoangOrders;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -1252,6 +1230,7 @@ const App: React.FC = () => {
           if (receiptsChanged) setReceiptsChanged(false);
           if (salariesChanged) setSalariesChanged(false);
           if (configsChanged) setConfigsChanged(false);
+          if (ordersChanged) setOrdersChanged(false);
       }
 
     } catch (err) {
@@ -1261,7 +1240,7 @@ const App: React.FC = () => {
 
   // --- NFC AUTO BACKUP ---
   useEffect(() => {
-      if (!isServerAvailable || !isInitialSyncDone) return;
+      if (!isServerAvailable || nfcProfiles.length === 0) return;
       
       // Debounce NFC save
       const timeoutId = setTimeout(() => {
@@ -1273,55 +1252,7 @@ const App: React.FC = () => {
       }, 1000); 
 
       return () => clearTimeout(timeoutId);
-  }, [nfcProfiles, isServerAvailable, isInitialSyncDone]);
-
-  // --- LHOANG AUTO BACKUP ---
-  useEffect(() => {
-      if (!isServerAvailable || !isInitialSyncDone) return;
-      
-      // Debounce LHOANG save
-      const timeoutId = setTimeout(() => {
-          fetch(`${BACKEND_URL}/lhoang/save`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(longHoangOrders)
-          })
-          .then(res => {
-              if (!res.ok) {
-                  console.error("LHOANG Backup failed with status:", res.status);
-                  if (res.status === 404) {
-                      alert("Lỗi: Không tìm thấy đường dẫn lưu file lhoang.json trên server. Vui lòng TẮT và KHỞI ĐỘNG LẠI server (chạy lại lệnh npm run dev hoặc tsx server.ts) để cập nhật code mới!");
-                  } else if (res.status === 500) {
-                      alert("Lỗi 500: Server gặp lỗi khi lưu file lhoang.json. Vui lòng kiểm tra log trên terminal chạy server.");
-                  }
-              }
-          })
-          .catch(e => console.warn("LHOANG Backup failed", e));
-      }, 1000); 
-
-      return () => clearTimeout(timeoutId);
-  }, [longHoangOrders, isServerAvailable, isInitialSyncDone]);
-
-  // --- DEBIT AUTO BACKUP ---
-  useEffect(() => {
-      if (!isServerAvailable || !isInitialSyncDone) return;
-      
-      const timeoutId = setTimeout(() => {
-          fetch(`${BACKEND_URL}/debit/save`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(debitNotes)
-          })
-          .then(res => {
-              if (!res.ok) {
-                  console.error("DEBIT Backup failed with status:", res.status);
-              }
-          })
-          .catch(e => console.warn("DEBIT Backup failed", e));
-      }, 1000); 
-
-      return () => clearTimeout(timeoutId);
-  }, [debitNotes, isServerAvailable, isInitialSyncDone]);
+  }, [nfcProfiles, isServerAvailable]);
 
   useEffect(() => { 
     if (!isServerAvailable) return;
@@ -1332,7 +1263,7 @@ const App: React.FC = () => {
     }, delay); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, isServerAvailable, currentUser]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, isServerAvailable, currentUser]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1343,7 +1274,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
-  useEffect(() => { localStorage.setItem('kb_debit_notes', JSON.stringify(debitNotes)); }, [debitNotes]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
@@ -1710,35 +1640,11 @@ const App: React.FC = () => {
             {currentPage === 'long-hoang' && (
               <LongHoangPage 
                 orders={longHoangOrders}
-                onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
-                onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
-                onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
+                onAddOrder={(order) => { setLongHoangOrders(prev => [order, ...prev]); setOrdersChanged(true); }}
+                onEditOrder={(order) => { setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o)); setOrdersChanged(true); }}
+                onDeleteOrder={(id) => { setLongHoangOrders(prev => prev.filter(o => o.id !== id)); setOrdersChanged(true); }}
+                onRestoreOrders={(orders) => { setLongHoangOrders(orders); setOrdersChanged(true); }}
               />
-            )}
-
-            {currentPage === 'debit-note' && (
-              <div className="p-8">
-                <div className="bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
-                  <div className="flex items-center space-x-4 mb-8">
-                    <div className="p-3 bg-teal-100 rounded-2xl">
-                      <FileText className="w-8 h-8 text-teal-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Debit Note</h2>
-                      <p className="text-slate-500 font-medium">Quản lý Debit Note (Đang phát triển)</p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-slate-50 rounded-2xl p-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-200">
-                    <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
-                      <Sparkles className="w-8 h-8 text-slate-400" />
-                    </div>
-                    <p className="text-slate-500 font-medium text-center max-w-sm">
-                      Trang Debit Note đang được xây dựng. Dữ liệu của bạn sẽ được tự động đồng bộ vào file debit.json.
-                    </p>
-                  </div>
-                </div>
-              </div>
             )}
 
             {currentPage === 'system' && (

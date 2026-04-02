@@ -39,7 +39,6 @@ const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting D
 const PAYMENT_PATH = path.join(ROOT_DIR, "payment.json");   // Payment Requests Only
 const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
 const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
-const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");
 const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
 const HISTORY_ROOT = path.join(ROOT_DIR, "history");
 
@@ -70,7 +69,6 @@ if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
 if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
 if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
 if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
-if (!fs.existsSync(LHOANG_PATH)) fs.writeFileSync(LHOANG_PATH, "[]");
 if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
 
 // ======================================================
@@ -79,7 +77,6 @@ if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
 let memoryData = {};        // Stores Jobs, Customers, Lines...
 let memoryPayments = [];    // Stores Payment Requests
 let nfcMemoryData = [];
-let lhoangMemoryData = [];
 const editingMap = {};
 
 // ======================================================
@@ -456,11 +453,10 @@ function broadcast(event, data) {
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
         memoryPayments = JSON.parse(rawPayment || "[]");
 
-        // 3. Load NFC and LHOANG
+        // 3. Load NFC
         nfcMemoryData = JSON.parse(await fsp.readFile(NFC_PATH, "utf8") || "[]");
-        lhoangMemoryData = JSON.parse(await fsp.readFile(LHOANG_PATH, "utf8") || "[]");
 
-        console.log("✅ Database (Main + Payment + NFC + LHOANG) loaded into RAM");
+        console.log("✅ Database (Main + Payment + NFC) loaded into RAM");
 
         // 4. Auto-Sync: Compare and Sync
         const { hasAmisData, amisData: mergedAmis } = splitAmisData(memoryData);
@@ -482,7 +478,6 @@ function broadcast(event, data) {
         memoryData = { deletedPaymentIds: [] };
         memoryPayments = [];
         nfcMemoryData = [];
-        lhoangMemoryData = [];
     }
 })();
 
@@ -676,23 +671,6 @@ app.post("/nfc/save", async (req, res) => {
         await fsp.writeFile(NFC_PATH, JSON.stringify(nfcMemoryData, null, 2));
         res.json({ success: true, saved: true });
     } catch {
-        res.status(500).json({ success: false });
-    }
-});
-
-// ======================================================
-// LHOANG API
-// ======================================================
-app.get("/lhoang", (req, res) => res.json(lhoangMemoryData));
-
-app.post("/lhoang/save", async (req, res) => {
-    try {
-        lhoangMemoryData = req.body;
-        await fsp.writeFile(LHOANG_PATH, JSON.stringify(lhoangMemoryData, null, 2));
-        console.log("✅ Saved lhoang.json successfully");
-        res.json({ success: true, saved: true });
-    } catch (err) {
-        console.error("❌ Error saving lhoang.json:", err);
         res.status(500).json({ success: false });
     }
 });

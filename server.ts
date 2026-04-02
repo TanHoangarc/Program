@@ -36,7 +36,6 @@ async function startServer() {
     const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
     const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
     const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Data
-    const DEBIT_PATH = path.join(ROOT_DIR, "debit.json");       // Debit Note Data
     const HISTORY_ROOT = path.join(ROOT_DIR, "history");
 
     const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
@@ -66,8 +65,6 @@ async function startServer() {
     if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
     if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
     if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
-    if (!fs.existsSync(LHOANG_PATH)) fs.writeFileSync(LHOANG_PATH, "[]");
-    if (!fs.existsSync(DEBIT_PATH)) fs.writeFileSync(DEBIT_PATH, "[]");
     if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
 
     // ======================================================
@@ -76,8 +73,6 @@ async function startServer() {
     let memoryData: any = {};        // Stores Jobs, Customers, Lines...
     let memoryPayments: any[] = [];    // Stores Payment Requests
     let nfcMemoryData: any[] = [];
-    let lhoangMemoryData: any[] = [];
-    let debitMemoryData: any[] = [];
     const editingMap: Record<string, string> = {};
 
     // ======================================================
@@ -398,7 +393,7 @@ async function startServer() {
 
     let clients: any[] = [];
 
-    app.get("/events", (req, res) => {
+    app.get("/api/events", (req, res) => {
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
@@ -443,18 +438,6 @@ async function startServer() {
         memoryPayments = JSON.parse(rawPayment || "[]");
 
         nfcMemoryData = JSON.parse(await fsp.readFile(NFC_PATH, "utf8") || "[]");
-        
-        try {
-            lhoangMemoryData = JSON.parse(await fsp.readFile(LHOANG_PATH, "utf8") || "[]");
-        } catch (e) {
-            lhoangMemoryData = [];
-        }
-
-        try {
-            debitMemoryData = JSON.parse(await fsp.readFile(DEBIT_PATH, "utf8") || "[]");
-        } catch (e) {
-            debitMemoryData = [];
-        }
 
         console.log("✅ Database loaded into RAM");
     } catch (err) {
@@ -462,20 +445,18 @@ async function startServer() {
         memoryData = { deletedPaymentIds: [] };
         memoryPayments = [];
         nfcMemoryData = [];
-        lhoangMemoryData = [];
-        debitMemoryData = [];
     }
 
     // ======================================================
     // API ROUTES
     // ======================================================
-    app.get("/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
+    app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-    app.get("/data", (req, res) => {
+    app.get("/api/data", (req, res) => {
         res.json({ ...memoryData, paymentRequests: memoryPayments });
     });
 
-    app.post("/data/save", async (req, res) => {
+    app.post("/api/data/save", async (req, res) => {
         const { role, ...data } = req.body; 
         const safeData = sanitizePayload(data);
         const userRole = (role || '').toLowerCase();
@@ -546,7 +527,7 @@ async function startServer() {
         }
     });
 
-    app.get("/header-data", (req, res) => {
+    app.get("/api/header-data", (req, res) => {
         res.json({
             messages: memoryData.headerMessages || [],
             notifications: memoryData.headerNotifications || [],
@@ -554,7 +535,7 @@ async function startServer() {
         });
     });
 
-    app.post("/header-data", (req, res) => {
+    app.post("/api/header-data", (req, res) => {
         const { messages, notifications, updates } = req.body;
         if (messages) memoryData.headerMessages = messages;
         if (notifications) memoryData.headerNotifications = notifications;
@@ -564,7 +545,7 @@ async function startServer() {
         res.json({ success: true });
     });
 
-    app.get("/history/latest", async (req, res) => {
+    app.get("/api/history/latest", async (req, res) => {
         try {
             let files = await fsp.readdir(HISTORY_ROOT);
             files = files.filter(f => f.startsWith("history-") && f.endsWith(".json"));
@@ -600,40 +581,14 @@ async function startServer() {
         }
     });
 
-    app.get("/nfc", (req, res) => res.json(nfcMemoryData));
-    app.post("/nfc/save", async (req, res) => {
+    app.get("/api/nfc", (req, res) => res.json(nfcMemoryData));
+    app.post("/api/nfc/save", async (req, res) => {
         try {
             nfcMemoryData = req.body;
             await fsp.writeFile(NFC_PATH, JSON.stringify(nfcMemoryData, null, 2));
             res.json({ success: true });
         } catch {
             res.status(500).json({ success: false });
-        }
-    });
-
-    app.get("/lhoang", (req, res) => res.json(lhoangMemoryData));
-    app.post("/lhoang/save", async (req, res) => {
-        try {
-            lhoangMemoryData = req.body;
-            await fsp.writeFile(LHOANG_PATH, JSON.stringify(lhoangMemoryData, null, 2));
-            console.log("✅ LHOANG data saved successfully.");
-            res.json({ success: true, saved: true });
-        } catch (err) {
-            console.error("❌ Error saving LHOANG data:", err);
-            res.status(500).json({ success: false, error: "Failed to save LHOANG data" });
-        }
-    });
-
-    app.get("/debit", (req, res) => res.json(debitMemoryData));
-    app.post("/debit/save", async (req, res) => {
-        try {
-            debitMemoryData = req.body;
-            await fsp.writeFile(DEBIT_PATH, JSON.stringify(debitMemoryData, null, 2));
-            console.log("✅ DEBIT data saved successfully.");
-            res.json({ success: true, saved: true });
-        } catch (err) {
-            console.error("❌ Error saving DEBIT data:", err);
-            res.status(500).json({ success: false, error: "Failed to save DEBIT data" });
         }
     });
 
@@ -654,14 +609,14 @@ async function startServer() {
         res.json({ success: true });
     });
 
-    app.get("/pending", async (req, res) => {
+    app.get("/api/pending", async (req, res) => {
         try {
             const json = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]");
             res.json(Array.isArray(json) ? json : []);
         } catch { res.json([]); }
     });
 
-    app.post("/pending", async (req, res) => {
+    app.post("/api/pending", async (req, res) => {
         let list = [];
         try { list = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]"); } catch {}
         const item = { id: Date.now().toString(), time: new Date().toISOString(), data: req.body, status: "pending" };
@@ -670,7 +625,7 @@ async function startServer() {
         res.json({ success: true, id: item.id });
     });
 
-    app.post("/approve", async (req, res) => {
+    app.post("/api/approve", async (req, res) => {
         let list = [];
         try { list = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]"); } catch {}
         const item = list.find(i => i.id === req.body.id);
@@ -692,7 +647,7 @@ async function startServer() {
         res.json({ success: true });
     });
 
-    app.delete("/pending/:id", async (req, res) => {
+    app.delete("/api/pending/:id", async (req, res) => {
         let list = [];
         try { list = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]"); } catch {}
         list = list.filter(i => i.id !== req.params.id);
@@ -700,14 +655,14 @@ async function startServer() {
         res.json({ success: true });
     });
 
-    app.get("/stamps", async (req, res) => {
+    app.get("/api/stamps", async (req, res) => {
         try {
             const files = await fsp.readdir(SIGN_DIR);
             res.json(files.map(file => ({ name: file, url: `/sign/${file}` })));
         } catch { res.json([]); }
     });
 
-    app.delete("/stamps/:id", async (req, res) => {
+    app.delete("/api/stamps/:id", async (req, res) => {
         try {
             const filePath = path.join(SIGN_DIR, req.params.id);
             if (fs.existsSync(filePath)) { await fsp.unlink(filePath); res.json({ success: true }); }
@@ -728,27 +683,27 @@ async function startServer() {
         }).single("file");
     }
 
-    app.post("/upload-invoice", createUpload(INV_DIR), (req, res) => {
+    app.post("/api/upload-invoice", createUpload(INV_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, fileName: req.file.filename, url: `/api/files/inv/${req.file.filename}` });
     });
 
-    app.post("/upload-unc", createUpload(UNC_DIR), (req, res) => {
+    app.post("/api/upload-unc", createUpload(UNC_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, fileName: req.file.filename, url: `/api/files/unc/${req.file.filename}` });
     });
 
-    app.post("/upload-cvhc", createUpload(CVHC_ROOT), (req, res) => {
+    app.post("/api/upload-cvhc", createUpload(CVHC_ROOT), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, fileName: req.file.filename, cvhcUrl: `/api/cvhc/${req.file.filename}` });
     });
 
-    app.post("/upload-stamp", createUpload(SIGN_DIR), (req, res) => {
+    app.post("/api/upload-stamp", createUpload(SIGN_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, fileName: req.file.filename, url: `/api/sign/${req.file.filename}` });
     });
 
-    app.post("/upload-file", (req, res) => {
+    app.post("/api/upload-file", (req, res) => {
         const upload = multer({
             storage: multer.diskStorage({
                 destination: (req, file, cb) => {
@@ -771,12 +726,12 @@ async function startServer() {
         });
     });
 
-    app.post("/save-excel", createUpload(ROOT_DIR), (req, res) => {
+    app.post("/api/save-excel", createUpload(ROOT_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, message: "Saved to ServerData root" });
     });
 
-    app.post("/long-hoang/backup", async (req, res) => {
+    app.post("/api/long-hoang/backup", async (req, res) => {
         try {
             const { orders } = req.body;
             await fsp.writeFile(LHOANG_PATH, JSON.stringify(orders, null, 2), "utf8");
@@ -786,7 +741,7 @@ async function startServer() {
         }
     });
 
-    app.get("/long-hoang/restore", async (req, res) => {
+    app.get("/api/long-hoang/restore", async (req, res) => {
         try {
             if (!fs.existsSync(LHOANG_PATH)) {
                 return res.status(200).json({ success: false, message: "Backup file not found" });
@@ -799,7 +754,7 @@ async function startServer() {
         }
     });
 
-    app.post("/export-long-hoang", async (req, res) => {
+    app.post("/api/export-long-hoang", async (req, res) => {
         try {
             const { orders } = req.body;
             if (!orders || !Array.isArray(orders) || orders.length === 0) {
