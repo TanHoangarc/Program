@@ -73,6 +73,7 @@ async function startServer() {
     let memoryData: any = {};        // Stores Jobs, Customers, Lines...
     let memoryPayments: any[] = [];    // Stores Payment Requests
     let nfcMemoryData: any[] = [];
+    let lhoangMemoryData: any[] = [];
     const editingMap: Record<string, string> = {};
 
     // ======================================================
@@ -438,6 +439,12 @@ async function startServer() {
         memoryPayments = JSON.parse(rawPayment || "[]");
 
         nfcMemoryData = JSON.parse(await fsp.readFile(NFC_PATH, "utf8") || "[]");
+        
+        try {
+            lhoangMemoryData = JSON.parse(await fsp.readFile(LHOANG_PATH, "utf8") || "[]");
+        } catch (e) {
+            lhoangMemoryData = [];
+        }
 
         console.log("✅ Database loaded into RAM");
     } catch (err) {
@@ -445,6 +452,7 @@ async function startServer() {
         memoryData = { deletedPaymentIds: [] };
         memoryPayments = [];
         nfcMemoryData = [];
+        lhoangMemoryData = [];
     }
 
     // ======================================================
@@ -589,6 +597,19 @@ async function startServer() {
             res.json({ success: true });
         } catch {
             res.status(500).json({ success: false });
+        }
+    });
+
+    app.get("/api/lhoang", (req, res) => res.json(lhoangMemoryData));
+    app.post("/api/lhoang/save", async (req, res) => {
+        try {
+            lhoangMemoryData = req.body;
+            await fsp.writeFile(LHOANG_PATH, JSON.stringify(lhoangMemoryData, null, 2));
+            console.log("✅ LHOANG data saved successfully.");
+            res.json({ success: true, saved: true });
+        } catch (err) {
+            console.error("❌ Error saving LHOANG data:", err);
+            res.status(500).json({ success: false, error: "Failed to save LHOANG data" });
         }
     });
 
