@@ -1243,7 +1243,7 @@ const App: React.FC = () => {
 
   // --- NFC AUTO BACKUP ---
   useEffect(() => {
-      if (!isServerAvailable || nfcProfiles.length === 0) return;
+      if (!isServerAvailable || !isInitialSyncDone) return;
       
       // Debounce NFC save
       const timeoutId = setTimeout(() => {
@@ -1255,11 +1255,11 @@ const App: React.FC = () => {
       }, 1000); 
 
       return () => clearTimeout(timeoutId);
-  }, [nfcProfiles, isServerAvailable]);
+  }, [nfcProfiles, isServerAvailable, isInitialSyncDone]);
 
   // --- LHOANG AUTO BACKUP ---
   useEffect(() => {
-      if (!isServerAvailable || longHoangOrders.length === 0) return;
+      if (!isServerAvailable || !isInitialSyncDone) return;
       
       // Debounce LHOANG save
       const timeoutId = setTimeout(() => {
@@ -1271,7 +1271,7 @@ const App: React.FC = () => {
       }, 1000); 
 
       return () => clearTimeout(timeoutId);
-  }, [longHoangOrders, isServerAvailable]);
+  }, [longHoangOrders, isServerAvailable, isInitialSyncDone]);
 
   useEffect(() => { 
     if (!isServerAvailable) return;
