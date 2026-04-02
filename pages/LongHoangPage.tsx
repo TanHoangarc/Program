@@ -19,7 +19,6 @@ interface LongHoangPageProps {
   onAddOrder: (order: LongHoangOrder) => void;
   onEditOrder: (order: LongHoangOrder) => void;
   onDeleteOrder: (id: string) => void;
-  onRestoreOrders: (orders: LongHoangOrder[]) => void;
 }
 
 const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "DEM"];
@@ -81,7 +80,7 @@ const FeeNameInput = ({ value, onChange }: { value: string, onChange: (val: stri
   );
 };
 
-export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder, onRestoreOrders }) => {
+export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder, onEditOrder, onDeleteOrder }) => {
   const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<LongHoangOrder | null>(null);
@@ -686,39 +685,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     return matchDate && matchStatus;
   });
 
-  const handleBackup = async () => {
-    try {
-      const response = await axios.post('/api/long-hoang/backup', { orders });
-      if (response.data.success) {
-        alert("Đã lưu dữ liệu backup lên server (E:\\ServerData\\lhoang.json) thành công", "Thành công");
-      } else {
-        alert("Lỗi khi lưu dữ liệu backup", "Lỗi");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Lỗi khi kết nối đến server", "Lỗi");
-    }
-  };
-
-  const handleRestore = async () => {
-    try {
-      const response = await axios.get('/api/long-hoang/restore');
-      if (response.data.success && Array.isArray(response.data.orders)) {
-        onRestoreOrders(response.data.orders);
-        alert("Đã khôi phục dữ liệu từ server (E:\\ServerData\\lhoang.json) thành công", "Thành công");
-      } else {
-        alert("Dữ liệu backup không hợp lệ", "Lỗi");
-      }
-    } catch (err: any) {
-      console.error(err);
-      if (err.response && err.response.status === 404) {
-        alert("Không tìm thấy file backup trên server", "Lỗi");
-      } else {
-        alert("Lỗi khi đọc file backup từ server", "Lỗi");
-      }
-    }
-  };
-
   const handleExportExcel = async () => {
     const selectedOrders = filteredOrders.filter(o => o.isChecked);
     if (selectedOrders.length === 0) {
@@ -865,15 +831,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
              <span className="flex flex-col items-start text-xs"><span className="font-bold">{templateBuffer ? 'Đã có mẫu' : 'Cài đặt mẫu'}</span>{templateName && <span className="text-[9px] text-slate-500 max-w-[150px] truncate">{templateName}</span>}</span>
           </button>
 
-          <button onClick={handleBackup} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm">
-            <Download className="w-5 h-5" />
-            Backup
-          </button>
-          
-          <button onClick={handleRestore} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm">
-            <Upload className="w-5 h-5" />
-            Restore
-          </button>
           <input type="file" ref={templateInputRef} onChange={handleTemplateUpload} accept=".xlsx, .xls" className="hidden" />
 
           <button
