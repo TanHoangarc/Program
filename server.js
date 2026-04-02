@@ -689,8 +689,10 @@ app.post("/lhoang/save", async (req, res) => {
     try {
         lhoangMemoryData = req.body;
         await fsp.writeFile(LHOANG_PATH, JSON.stringify(lhoangMemoryData, null, 2));
+        console.log("✅ Saved lhoang.json successfully");
         res.json({ success: true, saved: true });
-    } catch {
+    } catch (err) {
+        console.error("❌ Error saving lhoang.json:", err);
         res.status(500).json({ success: false });
     }
 });

@@ -1267,7 +1267,18 @@ const App: React.FC = () => {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(longHoangOrders)
-          }).catch(e => console.warn("LHOANG Backup failed", e));
+          })
+          .then(res => {
+              if (!res.ok) {
+                  console.error("LHOANG Backup failed with status:", res.status);
+                  if (res.status === 404) {
+                      alert("Lỗi: Không tìm thấy đường dẫn lưu file lhoang.json trên server. Vui lòng TẮT và KHỞI ĐỘNG LẠI server (chạy lại lệnh npm run dev hoặc tsx server.ts) để cập nhật code mới!");
+                  } else if (res.status === 500) {
+                      alert("Lỗi 500: Server gặp lỗi khi lưu file lhoang.json. Vui lòng kiểm tra log trên terminal chạy server.");
+                  }
+              }
+          })
+          .catch(e => console.warn("LHOANG Backup failed", e));
       }, 1000); 
 
       return () => clearTimeout(timeoutId);
