@@ -288,7 +288,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       formData.append("fileName", fileName); 
       formData.append("file", fileToUpload);
 
-      const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
+      const res = await axios.post(`${BACKEND_URL}/api/upload-cvhc`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
       });
 

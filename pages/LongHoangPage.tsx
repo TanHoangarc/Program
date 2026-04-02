@@ -22,7 +22,7 @@ interface LongHoangPageProps {
   onRestoreOrders: (orders: LongHoangOrder[]) => void;
 }
 
-const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "SEAL", "TELEX", "DEM"];
+const FEE_OPTIONS = ["OF", "EXW", "THC", "DO", "CIC", "CLN", "CFS", "BAF", "EMC", "PCS", "LSS", "DEM"];
 
 const FeeNameInput = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
   const [isOpen, setIsOpen] = useState(false);

@@ -35,6 +35,7 @@ async function startServer() {
     const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
     const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
     const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
+    const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Data
     const HISTORY_ROOT = path.join(ROOT_DIR, "history");
 
     const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
@@ -684,22 +685,22 @@ async function startServer() {
 
     app.post("/api/upload-invoice", createUpload(INV_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
-        res.json({ success: true, fileName: req.file.filename, url: `/files/inv/${req.file.filename}` });
+        res.json({ success: true, fileName: req.file.filename, url: `/api/files/inv/${req.file.filename}` });
     });
 
     app.post("/api/upload-unc", createUpload(UNC_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
-        res.json({ success: true, fileName: req.file.filename, url: `/files/unc/${req.file.filename}` });
+        res.json({ success: true, fileName: req.file.filename, url: `/api/files/unc/${req.file.filename}` });
     });
 
     app.post("/api/upload-cvhc", createUpload(CVHC_ROOT), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
-        res.json({ success: true, fileName: req.file.filename, cvhcUrl: `/cvhc/${req.file.filename}` });
+        res.json({ success: true, fileName: req.file.filename, cvhcUrl: `/api/cvhc/${req.file.filename}` });
     });
 
     app.post("/api/upload-stamp", createUpload(SIGN_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
-        res.json({ success: true, fileName: req.file.filename, url: `/sign/${req.file.filename}` });
+        res.json({ success: true, fileName: req.file.filename, url: `/api/sign/${req.file.filename}` });
     });
 
     app.post("/api/upload-file", (req, res) => {
@@ -721,7 +722,7 @@ async function startServer() {
             if (err) return res.status(500).json({ success: false, message: err.message });
             if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
             const relativePath = req.body.folderPath ? `${req.body.folderPath}/${req.file.filename}` : req.file.filename;
-            res.json({ success: true, fileName: req.file.filename, url: `/uploads/${relativePath}` });
+            res.json({ success: true, fileName: req.file.filename, url: `/api/uploads/${relativePath}` });
         });
     });
 
@@ -733,8 +734,7 @@ async function startServer() {
     app.post("/api/long-hoang/backup", async (req, res) => {
         try {
             const { orders } = req.body;
-            const filePath = path.join(ROOT_DIR, "lhoang.json");
-            await fsp.writeFile(filePath, JSON.stringify(orders, null, 2), "utf8");
+            await fsp.writeFile(LHOANG_PATH, JSON.stringify(orders, null, 2), "utf8");
             res.json({ success: true, message: "Backup saved successfully" });
         } catch (err: any) {
             res.status(500).json({ success: false, message: err.message });
@@ -743,11 +743,10 @@ async function startServer() {
 
     app.get("/api/long-hoang/restore", async (req, res) => {
         try {
-            const filePath = path.join(ROOT_DIR, "lhoang.json");
-            if (!fs.existsSync(filePath)) {
-                return res.status(404).json({ success: false, message: "Backup file not found" });
+            if (!fs.existsSync(LHOANG_PATH)) {
+                return res.status(200).json({ success: false, message: "Backup file not found" });
             }
-            const content = await fsp.readFile(filePath, "utf8");
+            const content = await fsp.readFile(LHOANG_PATH, "utf8");
             const orders = JSON.parse(content);
             res.json({ success: true, orders });
         } catch (err: any) {

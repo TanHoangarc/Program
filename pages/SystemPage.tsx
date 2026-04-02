@@ -84,7 +84,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const fetchHistory = async () => {
       setLoadingHistory(true);
       try {
-          const res = await fetch(`${BACKEND_URL}/history/latest`);
+          const res = await fetch(`${BACKEND_URL}/api/history/latest`);
           
           if (!res.ok) {
               console.warn("History fetch skipped: Server returned " + res.status);

@@ -344,7 +344,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {canViewNfc && (
-            <MenuItem active={currentPage === 'long-hoang'} onClick={(e) => handleNavigate(e, 'long-hoang')} icon={Briefcase} label="Long Hoàng" />
+            <MenuItem active={currentPage === 'long-hoang'} onClick={(e) => handleNavigate(e, 'long-hoang')} icon={Briefcase} label="Trang Long Hoàng" />
           )}
 
           {canViewSystem && (
