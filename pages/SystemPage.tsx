@@ -24,7 +24,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   onRestore, onAddUser, onEditUser, onDeleteUser,
   pendingRequests = [], onApproveRequest, onRejectRequest, onConfirmMismatch
 }) => {
-  const BACKEND_URL = "";
+  const BACKEND_URL = "https://api.kimberry.id.vn";
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Docs' });
