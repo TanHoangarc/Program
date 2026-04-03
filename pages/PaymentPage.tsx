@@ -195,7 +195,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     formData.append("fileName", fileName);
     formData.append("file", file);
 
-    const endpoint = type === "INVOICE" ? "/api/upload-invoice" : "/api/upload-unc";
+    const endpoint = type === "INVOICE" ? "/upload-invoice" : "/upload-unc";
 
     try {
       const res = await axios.post(`${BACKEND_URL}${endpoint}`, formData);
@@ -204,11 +204,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       // FIX: Ensure URL is valid if backend forgets to send it
       if (!data.url) {
           if (type === "INVOICE") {
-             // Correct path for Invoices: E:\ServerData\INV maps to /api/files/inv
-             data.url = `/api/files/inv/${data.fileName}`;
+             // Correct path for Invoices: E:\ServerData\INV maps to /files/inv
+             data.url = `/files/inv/${data.fileName}`;
           } else {
-             // Correct path for UNC: E:\ServerData\UNC maps to /api/files/unc
-             data.url = `/api/files/unc/${data.fileName}`;
+             // Correct path for UNC: E:\ServerData\UNC maps to /files/unc
+             data.url = `/files/unc/${data.fileName}`;
           }
       } else if (!data.url.startsWith('/')) {
           data.url = `/${data.url}`;
@@ -631,11 +631,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     // Auto-fix broken URLs on the fly using updated paths
     if (url && (url.includes('undefined') || !url.includes('http')) && fileName) {
         if (type === "invoice") {
-            // Path: E:\ServerData\INV -> /api/files/inv
-            url = `${BACKEND_URL}/api/files/inv/${fileName}`;
+            // Path: E:\ServerData\INV -> /files/inv
+            url = `${BACKEND_URL}/files/inv/${fileName}`;
         } else {
-            // Path: E:\ServerData\UNC -> /api/files/unc
-            url = `${BACKEND_URL}/api/files/unc/${fileName}`;
+            // Path: E:\ServerData\UNC -> /files/unc
+            url = `${BACKEND_URL}/files/unc/${fileName}`;
         }
     }
 
@@ -650,9 +650,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const downloadUNC = async (req: PaymentRequest) => {
     let url = req.uncUrl;
     
-    // Fix broken URL on the fly using E:\ServerData\UNC -> /api/files/unc
+    // Fix broken URL on the fly using E:\ServerData\UNC -> /files/unc
     if (url && (url.includes('undefined') || !url.includes('http')) && req.uncFileName) {
-        url = `${BACKEND_URL}/api/files/unc/${req.uncFileName}`;
+        url = `${BACKEND_URL}/files/unc/${req.uncFileName}`;
     } else if (url && !url.includes('http')) {
         url = `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`;
     }
