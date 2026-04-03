@@ -180,21 +180,32 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     const saved = localStorage.getItem('lh_exchange_rates');
     return saved ? JSON.parse(saved) : {};
   });
-  const [carriers, setCarriers] = useState<string[]>(() => {
+  const [carriers, setCarriers] = useState<Carrier[]>(() => {
+    const savedV2 = localStorage.getItem('lh_carriers_v2');
+    if (savedV2) {
+      try {
+        return JSON.parse(savedV2);
+      } catch (e) {}
+    }
     const saved = localStorage.getItem('lh_carriers');
     const parsed = saved ? JSON.parse(saved) : [];
-    return Array.isArray(parsed) ? parsed.sort((a: string, b: string) => a.localeCompare(b)) : [];
+    if (Array.isArray(parsed)) {
+      return parsed.map(c => typeof c === 'string' ? { name: c, accounts: [] } : c).sort((a: Carrier, b: Carrier) => a.name.localeCompare(b.name));
+    }
+    return [];
   });
   const [newCarrier, setNewCarrier] = useState('');
+  const [newCarrierAccounts, setNewCarrierAccounts] = useState('');
   const [editingCarrier, setEditingCarrier] = useState<string | null>(null);
   const [editCarrierValue, setEditCarrierValue] = useState('');
+  const [editCarrierAccounts, setEditCarrierAccounts] = useState('');
 
   useEffect(() => {
     localStorage.setItem('lh_exchange_rates', JSON.stringify(exchangeRates));
   }, [exchangeRates]);
 
   useEffect(() => {
-    localStorage.setItem('lh_carriers', JSON.stringify(carriers));
+    localStorage.setItem('lh_carriers_v2', JSON.stringify(carriers));
   }, [carriers]);
 
   const handleOpenSettings = () => {
@@ -296,7 +307,16 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: name === 'amount' ? Number(value) : value }));
+    setFormData(prev => {
+      const newData = { ...prev, [name]: name === 'amount' ? Number(value) : value };
+      if (name === 'line') {
+        const carrier = carriers.find(c => c.name === value);
+        if (carrier && carrier.accounts.length > 0) {
+          newData.accountNumber = carrier.accounts[0];
+        }
+      }
+      return newData;
+    });
   };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
