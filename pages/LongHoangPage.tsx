@@ -168,8 +168,16 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     reader.readAsArrayBuffer(file);
   };
 
-  const [filterDate, setFilterDate] = useState('');
+  const [filterDate, setFilterDate] = useState(() => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    return `${yyyy}-${mm}-${dd}`;
+  });
   const [filterStatus, setFilterStatus] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'rates' | 'carriers'>('rates');
@@ -584,12 +592,19 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     });
   };
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterDate, filterStatus]);
+
   const filteredOrders = orders.filter(order => {
     const matchDate = filterDate ? order.paymentDate === filterDate : true;
     const status = order.wireOffStatus || 'Pending';
     const matchStatus = filterStatus === 'All' ? true : status === filterStatus;
     return matchDate && matchStatus;
   });
+
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const paginatedOrders = filteredOrders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleBackup = async () => {
     try {
@@ -807,10 +822,10 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   <input 
                     type="checkbox" 
                     className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                    checked={filteredOrders.length > 0 && filteredOrders.filter(o => !o.isLocked).length > 0 && filteredOrders.filter(o => !o.isLocked).every(o => o.isChecked)}
+                    checked={paginatedOrders.length > 0 && paginatedOrders.filter(o => !o.isLocked).length > 0 && paginatedOrders.filter(o => !o.isLocked).every(o => o.isChecked)}
                     onChange={(e) => {
                       const checked = e.target.checked;
-                      filteredOrders.forEach(order => {
+                      paginatedOrders.forEach(order => {
                         if (!order.isLocked && !!order.isChecked !== checked) {
                           onEditOrder({ ...order, isChecked: checked });
                         }
@@ -831,14 +846,14 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredOrders.length === 0 ? (
+              {paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                     Không tìm thấy lệnh thanh toán nào
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((order) => {
+                paginatedOrders.map((order) => {
                   const dateObj = new Date(order.paymentDate);
                   const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
                   
@@ -983,6 +998,38 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between bg-white">
+            <div className="text-sm text-slate-500">
+              Hiển thị <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> đến <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredOrders.length)}</span> trong <span className="font-medium">{filteredOrders.length}</span> kết quả
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Trước
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`px-3 py-1 rounded border text-sm font-medium ${currentPage === page ? 'bg-teal-50 border-teal-200 text-teal-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 rounded border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Sau
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal Tạo/Sửa Lệnh */}
