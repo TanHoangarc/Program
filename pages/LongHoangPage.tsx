@@ -14,6 +14,11 @@ const TEMPLATE_MAP: Record<string, string> = {
 };
 const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string }> = {};
 
+interface Carrier {
+  name: string;
+  accounts: string[];
+}
+
 interface LongHoangPageProps {
   orders: LongHoangOrder[];
   onAddOrder: (order: LongHoangOrder) => void;
@@ -370,20 +375,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     if (files.length === 0) return;
 
     setIsUploading(true);
-    setIsExtracting(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      let allFees: { name: string; amount: number }[] = formData.fees ? [...formData.fees] : [];
-      let totalAmount = formData.amount || 0;
       let uploadedUrls: string[] = formData.invoiceFileUrl ? formData.invoiceFileUrl.split(',').filter(Boolean) : [];
       let uploadedNames: string[] = formData.invoiceFileName ? formData.invoiceFileName.split(',').filter(Boolean) : [];
       
-      let extractedLine = formData.line || '';
-      let extractedMbl = formData.mbl || '';
-      let extractedAccountNumber = formData.accountNumber || '';
-
       for (const file of files as File[]) {
         // 1. Upload file to server
         const uploadFormData = new FormData();
@@ -409,92 +405,19 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           console.error('Upload error for file', file.name, ':', uploadError);
           continue;
         }
-
-        // 2. Extract data using Gemini
-        const base64String = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64data = reader.result as string;
-            resolve(base64data.split(',')[1]);
-          };
-          reader.readAsDataURL(file);
-        });
-
-        try {
-          const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: file.type,
-                    data: base64String
-                  }
-                },
-                {
-                  text: `Extract the following information from this invoice file and return it in JSON format:
-                  - line: The shipping line or company name (string)
-                  - amount: The total amount to be paid INCLUDING VAT (số tiền tổng đã bao gồm VAT) (number, remove commas or currency symbols)
-                  - mbl: The Master Bill of Lading number (string)
-                  - accountNumber: The bank account number for payment (string)
-                  - fees: An array of objects representing the detailed fees and their amounts BEFORE VAT (số tiền trước thuế). Each object should have 'name' (string) and 'amount' (number, before VAT).
-                  
-                  Return ONLY a valid JSON object with these exact keys.`
-                }
-              ]
-            },
-            config: {
-              responseMimeType: "application/json"
-            }
-          });
-
-          if (response.text) {
-            try {
-              const extractedData = JSON.parse(response.text);
-              if (extractedData.line && !extractedLine) extractedLine = extractedData.line;
-              if (extractedData.mbl && !extractedMbl) extractedMbl = extractedData.mbl;
-              if (extractedData.accountNumber && !extractedAccountNumber) extractedAccountNumber = extractedData.accountNumber;
-              
-              if (extractedData.fees && Array.isArray(extractedData.fees)) {
-                const processedFees = extractedData.fees.map((f: any) => ({
-                  name: f.name || '',
-                  amount: typeof f.amount === 'string' ? parseInt(f.amount.replace(/\D/g, ''), 10) || 0 : Number(f.amount) || 0
-                }));
-                allFees = [...allFees, ...processedFees];
-              }
-              if (extractedData.amount) {
-                const amt = typeof extractedData.amount === 'string' 
-                  ? parseInt(extractedData.amount.replace(/\D/g, ''), 10) || 0 
-                  : Number(extractedData.amount) || 0;
-                totalAmount += amt;
-              }
-            } catch (parseError) {
-              console.error('Failed to parse Gemini response for file', file.name, ':', parseError);
-            }
-          }
-        } catch (aiError) {
-          console.error('Gemini API error for file', file.name, ':', aiError);
-        }
       }
 
       setFormData(prev => ({
         ...prev,
         invoiceFileUrl: uploadedUrls.join(','),
-        invoiceFileName: uploadedNames.join(','),
-        line: extractedLine,
-        mbl: extractedMbl,
-        accountNumber: extractedAccountNumber,
-        amount: totalAmount,
-        fees: allFees
+        invoiceFileName: uploadedNames.join(',')
       }));
-      setDisplayAmount(totalAmount.toLocaleString('vi-VN'));
-      alert('Đã xử lý xong các file hóa đơn', 'Thành công');
+      alert('Đã tải lên file hóa đơn thành công', 'Thành công');
 
     } catch (error) {
       console.error('Process error:', error);
-      alert('Lỗi trong quá trình xử lý file.', 'Lỗi');
+      alert('Lỗi trong quá trình tải file.', 'Lỗi');
     } finally {
-      setIsExtracting(false);
       setIsUploading(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -511,10 +434,13 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     setIsExtracting(true);
     try {
       const urls = formData.invoiceFileUrl.split(',').filter(Boolean);
+      const names = formData.invoiceFileName ? formData.invoiceFileName.split(',').filter(Boolean) : [];
       let allFees: { name: string; amount: number }[] = [];
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-      for (const url of urls) {
+      for (let i = 0; i < urls.length; i++) {
+        const url = urls[i];
+        const fileName = names[i] || `File ${i + 1}`;
         try {
           const response = await fetch(url);
           const blob = await response.blob();
@@ -554,7 +480,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           if (aiResponse.text) {
             try {
               const extractedData = JSON.parse(aiResponse.text);
-              if (extractedData.fees && Array.isArray(extractedData.fees)) {
+              if (extractedData.fees && Array.isArray(extractedData.fees) && extractedData.fees.length > 0) {
+                allFees.push({ name: `--- ${fileName} ---`, amount: 0 });
                 const processedFees = extractedData.fees.map((f: any) => ({
                   name: f.name || '',
                   amount: typeof f.amount === 'string' ? parseInt(f.amount.replace(/\D/g, ''), 10) || 0 : Number(f.amount) || 0
@@ -1077,7 +1004,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       <Upload className="w-6 h-6" />
                     </div>
                     <p className="font-semibold text-slate-700 mb-1">Tải lên file hóa đơn (PDF, Ảnh)</p>
-                    <p className="text-sm text-slate-500 mb-3">Hệ thống sẽ tự động đọc dữ liệu và điền vào form bên dưới. Hỗ trợ chọn nhiều file.</p>
+                    <p className="text-sm text-slate-500 mb-3">Hỗ trợ chọn nhiều file. Sau khi tải lên, bạn có thể nhấn nút "Đồng bộ" ở phần Chi tiết các phí để AI tự động đọc dữ liệu.</p>
                     
                     {formData.invoiceFileName && (
                       <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
@@ -1096,7 +1023,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               {/* Form Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
+                  </div>
                   <input
                     type="text"
                     name="paymentDate"
@@ -1108,7 +1037,20 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
                 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Line <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Line <span className="text-red-500">*</span></label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettingsTab('carriers');
+                        setIsSettingsModalOpen(true);
+                      }}
+                      className="text-slate-400 hover:text-teal-600 transition-colors"
+                      title="Cài đặt Carrier"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <select
                     name="line"
                     value={formData.line || ''}
@@ -1126,7 +1068,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Loại thanh toán <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Loại thanh toán <span className="text-red-500">*</span></label>
+                  </div>
                   <select
                     name="paymentType"
                     value={formData.paymentType || 'Local charge'}
@@ -1140,7 +1084,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center h-5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Số tiền (đã bao gồm VAT) <span className="text-red-500">*</span></label>
                     <button
                       type="button"
@@ -1162,7 +1106,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center h-5">
                     <label className="text-xs font-bold text-slate-500 uppercase">MBL <span className="text-red-500">*</span></label>
                     <button
                       type="button"
@@ -1191,7 +1135,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
+                  </div>
                   <input
                     type="text"
                     name="accountNumber"
@@ -1203,7 +1149,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
+                  </div>
                   <input
                     type="text"
                     name="note"
@@ -1215,7 +1163,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
+                  </div>
                   <select
                     name="wireOffStatus"
                     value={formData.wireOffStatus || 'Pending'}
@@ -1245,12 +1195,12 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     <Plus className="w-3 h-3" />
                     Thêm
                   </button>
-                  {editingOrder && formData.invoiceFileUrl && (
+                  {formData.invoiceFileUrl && (
                     <button
                       onClick={handleSyncFees}
                       disabled={isExtracting}
                       className="text-xs flex items-center gap-1 px-2 py-1 bg-teal-100 text-teal-700 hover:bg-teal-200 rounded-md transition-colors disabled:opacity-50"
-                      title="Đồng bộ lại dữ liệu phí từ file hóa đơn"
+                      title="Đồng bộ dữ liệu phí từ file hóa đơn"
                     >
                       <RefreshCw className={`w-3 h-3 ${isExtracting ? 'animate-spin' : ''}`} />
                       Đồng bộ
