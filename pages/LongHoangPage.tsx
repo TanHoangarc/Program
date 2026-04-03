@@ -1079,9 +1079,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   >
                     <option value="">-- Chọn Line --</option>
                     {carriers.map(c => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c.name} value={c.name}>{c.name}</option>
                     ))}
-                    {formData.line && !carriers.includes(formData.line) && (
+                    {formData.line && !carriers.some(c => c.name === formData.line) && (
                       <option value={formData.line}>{formData.line}</option>
                     )}
                   </select>
@@ -1161,11 +1161,17 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   <input
                     type="text"
                     name="accountNumber"
+                    list="account-numbers"
                     value={formData.accountNumber || ''}
                     onChange={handleChange}
                     placeholder="Số tài khoản ngân hàng"
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all font-mono"
                   />
+                  <datalist id="account-numbers">
+                    {formData.line && carriers.find(c => c.name === formData.line)?.accounts.map(acc => (
+                      <option key={acc} value={acc} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div className="space-y-1">
@@ -1451,9 +1457,29 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
-                          if (!carriers.includes(val)) {
-                            setCarriers([...carriers, val].sort((a, b) => a.localeCompare(b)));
+                          const accs = newCarrierAccounts.split(',').map(s => s.trim()).filter(Boolean);
+                          if (!carriers.some(c => c.name === val)) {
+                            setCarriers([...carriers, { name: val, accounts: accs }].sort((a, b) => a.name.localeCompare(b.name)));
                             setNewCarrier('');
+                            setNewCarrierAccounts('');
+                          }
+                        }
+                      }}
+                    />
+                    <input
+                      type="text"
+                      value={newCarrierAccounts}
+                      onChange={(e) => setNewCarrierAccounts(e.target.value)}
+                      placeholder="Số tài khoản (cách nhau bởi dấu phẩy)..."
+                      className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newCarrier.trim()) {
+                          const val = newCarrier.trim().toUpperCase();
+                          const accs = newCarrierAccounts.split(',').map(s => s.trim()).filter(Boolean);
+                          if (!carriers.some(c => c.name === val)) {
+                            setCarriers([...carriers, { name: val, accounts: accs }].sort((a, b) => a.name.localeCompare(b.name)));
+                            setNewCarrier('');
+                            setNewCarrierAccounts('');
                           }
                         }
                       }}
@@ -1462,9 +1488,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                       onClick={() => {
                         if (newCarrier.trim()) {
                           const val = newCarrier.trim().toUpperCase();
-                          if (!carriers.includes(val)) {
-                            setCarriers([...carriers, val].sort((a, b) => a.localeCompare(b)));
+                          const accs = newCarrierAccounts.split(',').map(s => s.trim()).filter(Boolean);
+                          if (!carriers.some(c => c.name === val)) {
+                            setCarriers([...carriers, { name: val, accounts: accs }].sort((a, b) => a.name.localeCompare(b.name)));
                             setNewCarrier('');
+                            setNewCarrierAccounts('');
                           }
                         }
                       }}
@@ -1482,14 +1510,15 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                           <thead className="bg-slate-50 sticky top-0">
                             <tr>
                               <th className="text-left py-2 px-3 font-semibold text-slate-600">Mã Line</th>
+                              <th className="text-left py-2 px-3 font-semibold text-slate-600">Số tài khoản</th>
                               <th className="w-10"></th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {carriers.map((carrier) => (
-                              <tr key={carrier} className="hover:bg-slate-50">
-                                <td className="py-2 px-3 text-slate-900 font-medium">
-                                  {editingCarrier === carrier ? (
+                              <tr key={carrier.name} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-900 font-medium w-1/3">
+                                  {editingCarrier === carrier.name ? (
                                     <input
                                       type="text"
                                       value={editCarrierValue}
@@ -1499,8 +1528,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                       onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                           const val = editCarrierValue.trim().toUpperCase();
-                                          if (val && (!carriers.includes(val) || val === carrier)) {
-                                            setCarriers(carriers.map(c => c === carrier ? val : c).sort((a, b) => a.localeCompare(b)));
+                                          const accs = editCarrierAccounts.split(',').map(s => s.trim()).filter(Boolean);
+                                          if (val && (!carriers.some(c => c.name === val) || val === carrier.name)) {
+                                            setCarriers(carriers.map(c => c.name === carrier.name ? { name: val, accounts: accs } : c).sort((a, b) => a.name.localeCompare(b.name)));
                                             setEditingCarrier(null);
                                           }
                                         } else if (e.key === 'Escape') {
@@ -1509,17 +1539,43 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                       }}
                                     />
                                   ) : (
-                                    carrier
+                                    carrier.name
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">
+                                  {editingCarrier === carrier.name ? (
+                                    <input
+                                      type="text"
+                                      value={editCarrierAccounts}
+                                      onChange={(e) => setEditCarrierAccounts(e.target.value)}
+                                      className="w-full px-2 py-1 border border-teal-500 rounded outline-none text-sm"
+                                      placeholder="Cách nhau bởi dấu phẩy"
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          const val = editCarrierValue.trim().toUpperCase();
+                                          const accs = editCarrierAccounts.split(',').map(s => s.trim()).filter(Boolean);
+                                          if (val && (!carriers.some(c => c.name === val) || val === carrier.name)) {
+                                            setCarriers(carriers.map(c => c.name === carrier.name ? { name: val, accounts: accs } : c).sort((a, b) => a.name.localeCompare(b.name)));
+                                            setEditingCarrier(null);
+                                          }
+                                        } else if (e.key === 'Escape') {
+                                          setEditingCarrier(null);
+                                        }
+                                      }}
+                                    />
+                                  ) : (
+                                    carrier.accounts.join(', ')
                                   )}
                                 </td>
                                 <td className="py-2 px-3 text-right whitespace-nowrap">
-                                  {editingCarrier === carrier ? (
+                                  {editingCarrier === carrier.name ? (
                                     <div className="flex items-center justify-end gap-2">
                                       <button
                                         onClick={() => {
                                           const val = editCarrierValue.trim().toUpperCase();
-                                          if (val && (!carriers.includes(val) || val === carrier)) {
-                                            setCarriers(carriers.map(c => c === carrier ? val : c).sort((a, b) => a.localeCompare(b)));
+                                          const accs = editCarrierAccounts.split(',').map(s => s.trim()).filter(Boolean);
+                                          if (val && (!carriers.some(c => c.name === val) || val === carrier.name)) {
+                                            setCarriers(carriers.map(c => c.name === carrier.name ? { name: val, accounts: accs } : c).sort((a, b) => a.name.localeCompare(b.name)));
                                             setEditingCarrier(null);
                                           }
                                         }}
@@ -1540,8 +1596,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                     <div className="flex items-center justify-end gap-2">
                                       <button
                                         onClick={() => {
-                                          setEditingCarrier(carrier);
-                                          setEditCarrierValue(carrier);
+                                          setEditingCarrier(carrier.name);
+                                          setEditCarrierValue(carrier.name);
+                                          setEditCarrierAccounts(carrier.accounts.join(', '));
                                         }}
                                         className="text-blue-400 hover:text-blue-600 transition-colors"
                                         title="Sửa"
@@ -1549,7 +1606,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                         <Edit className="w-4 h-4" />
                                       </button>
                                       <button
-                                        onClick={() => setCarriers(carriers.filter(c => c !== carrier))}
+                                        onClick={() => setCarriers(carriers.filter(c => c.name !== carrier.name))}
                                         className="text-red-400 hover:text-red-600 transition-colors"
                                         title="Xóa"
                                       >
