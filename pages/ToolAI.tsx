@@ -866,9 +866,9 @@ const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any 
 
     const fetchStamps = async () => {
         try {
-            const res = await axios.get(`${BACKEND_URL}/api/stamps`);
+            const res = await axios.get(`${BACKEND_URL}/stamps`);
             // Map server response to StampItem
-            const mapped: StampItem[] = res.data.stamps.map((s: any) => ({
+            const mapped: StampItem[] = res.data.map((s: any) => ({
                 id: s.name,
                 name: s.name.split('.')[0], // Display name
                 url: `${BACKEND_URL}${s.url}`,
@@ -900,7 +900,7 @@ const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any 
                     const formData = new FormData();
                     formData.append('file', resizedFile);
                     
-                    await axios.post(`${BACKEND_URL}/api/upload-stamp`, formData, {
+                    await axios.post(`${BACKEND_URL}/upload-stamp`, formData, {
                         headers: { 'Content-Type': 'multipart/form-data' }
                     });
                 }
@@ -919,7 +919,7 @@ const StampTool = ({ stamps, setStamps }: { stamps: StampItem[], setStamps: any 
         if(window.confirm("Bạn có chắc chắn muốn xóa con dấu này khỏi thư viện?")) {
             try {
                 // id in stamps state is actually the filename (mapped from s.name)
-                await axios.delete(`${BACKEND_URL}/api/stamps/${id}`);
+                await axios.delete(`${BACKEND_URL}/stamps/${id}`);
                 await fetchStamps(); // Refresh
                 if (selectedStamp === id) setSelectedStamp(null);
             } catch (err) {
@@ -1356,13 +1356,13 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
                 const formData = new FormData();
                 formData.append('file', file);
                 
-                await axios.post(`${BACKEND_URL}/api/upload-stamp`, formData, {
+                await axios.post(`${BACKEND_URL}/upload-stamp`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
                 
                 // Better: Fetch and update setStamps immediately
-                const res = await axios.get(`${BACKEND_URL}/api/stamps`);
-                const mapped = res.data.stamps.map((s: any) => ({
+                const res = await axios.get(`${BACKEND_URL}/stamps`);
+                const mapped = res.data.map((s: any) => ({
                     id: s.name,
                     name: s.name.split('.')[0],
                     url: `${BACKEND_URL}${s.url}`,

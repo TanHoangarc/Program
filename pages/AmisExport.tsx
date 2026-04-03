@@ -130,7 +130,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         setTemplateBuffer(null); 
         setTemplateName('');
         try {
-            const staticUrl = `${BACKEND_URL}/api/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}?v=${Date.now()}`;
+            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/${currentTemplateFileName}?v=${Date.now()}`;
             const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
             if (response.status === 200 && response.data) {
                 const buffer = response.data;
@@ -159,7 +159,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         setCongTrinhTemplateBuffer(null);
         setCongTrinhTemplateName('');
         try {
-            const staticUrl = `${BACKEND_URL}/api/uploads/${TEMPLATE_FOLDER}/Cong_Trinh.xlsx?v=${Date.now()}`;
+            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/Cong_Trinh.xlsx?v=${Date.now()}`;
             const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
             if (response.status === 200 && response.data) {
                 const buffer = response.data;
@@ -198,7 +198,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               formData.append("folderPath", TEMPLATE_FOLDER);
               formData.append("fileName", currentTemplateFileName);
               formData.append("file", file);
-              await axios.post(`${BACKEND_URL}/api/upload-file`, formData);
+              await axios.post(`${BACKEND_URL}/upload-file`, formData);
               alert(`Đã lưu mẫu "${displayName}" cho phần ${mode.toUpperCase()} thành công!`, "Thành công");
           } catch (err) {
               console.error("Lỗi upload mẫu:", err);
@@ -229,7 +229,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               formData.append("folderPath", TEMPLATE_FOLDER);
               formData.append("fileName", "Cong_Trinh.xlsx");
               formData.append("file", file);
-              await axios.post(`${BACKEND_URL}/api/upload-file`, formData);
+              await axios.post(`${BACKEND_URL}/upload-file`, formData);
               alert(`Đã lưu mẫu "Cong Trinh" thành công!`, "Thành công");
           } catch (err) {
               console.error("Lỗi upload mẫu:", err);
@@ -1272,7 +1272,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         const formData = new FormData();
         const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
-        const response = await axios.post(`${BACKEND_URL}/api/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+        const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
         if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
         else throw new Error(response.data?.message || "Server did not confirm save.");
     } catch (err) {
@@ -1294,7 +1294,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     let congTrinhBuffer = congTrinhTemplateBuffer || GLOBAL_TEMPLATE_CACHE['cong_trinh']?.buffer;
     if (!congTrinhBuffer) {
         try {
-            const staticUrl = `${BACKEND_URL}/api/uploads/${TEMPLATE_FOLDER}/Cong_Trinh.xlsx?v=${Date.now()}`;
+            const staticUrl = `${BACKEND_URL}/uploads/${TEMPLATE_FOLDER}/Cong_Trinh.xlsx?v=${Date.now()}`;
             const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
             congTrinhBuffer = response.data;
             GLOBAL_TEMPLATE_CACHE['cong_trinh'] = { buffer: congTrinhBuffer, name: 'Cong_Trinh.xlsx' };
@@ -1343,7 +1343,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         const formData = new FormData();
         const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
-        const response = await axios.post(`${BACKEND_URL}/api/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+        const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
         if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
         else throw new Error(response.data?.message || "Server did not confirm save.");
     } catch (err) {

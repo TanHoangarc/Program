@@ -102,7 +102,7 @@ export const DepositList: React.FC<DepositListProps> = ({
           formData.append("fileName", fileName); 
           formData.append("file", file);
 
-          const res = await axios.post(`${BACKEND_URL}/api/upload-cvhc`, formData, {
+          const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
               headers: { 'Content-Type': 'multipart/form-data' }
           });
 
@@ -263,7 +263,7 @@ export const DepositList: React.FC<DepositListProps> = ({
                   formData.append("fileName", fileName);
                   formData.append("file", matchedFile);
 
-                  const res = await axios.post(`${BACKEND_URL}/api/upload-cvhc`, formData, {
+                  const res = await axios.post(`${BACKEND_URL}/upload-cvhc`, formData, {
                       headers: { 'Content-Type': 'multipart/form-data' }
                   });
 

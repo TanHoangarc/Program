@@ -651,10 +651,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     let url = req.uncUrl;
     
     // Fix broken URL on the fly using E:\ServerData\UNC -> /files/unc
-    if (url && (url.includes('undefined') || !url.includes('http')) && req.uncFileName) {
+    if (url && url.includes('undefined') && req.uncFileName) {
         url = `${BACKEND_URL}/files/unc/${req.uncFileName}`;
-    } else if (url && !url.includes('http')) {
-        url = `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
     if (!url) {

@@ -596,7 +596,7 @@ app.post("/data/save", async (req, res) => {
 
         // 4. Trigger Async Disk Write
         triggerDiskSave(isAdmin); 
-        broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC', tabId: req.body.tabId });
+        broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
 
         res.json({ success: true, saved: "full_merged_admin" });
 
@@ -620,7 +620,7 @@ app.post("/data/save", async (req, res) => {
         
         // Trigger Disk Write for consistency (Docs cannot save Amis)
         triggerDiskSave(false); 
-        broadcast("data-updated", { time: Date.now(), source: 'Docs', tabId: req.body.tabId });
+        broadcast("data-updated", { time: Date.now(), source: 'Docs' });
 
         res.json({ success: true, saved: "payment_only", requireReload });
 
@@ -754,7 +754,7 @@ app.post("/approve", async (req, res) => {
     item.approvedTime = new Date().toISOString();
     await fsp.writeFile(PENDING_PATH, JSON.stringify(list, null, 2));
 
-    broadcast("data-updated", { approved: true, tabId: req.body.tabId });
+    broadcast("data-updated", { approved: true });
     res.json({ success: true });
 });
 

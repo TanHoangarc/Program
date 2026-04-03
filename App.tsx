@@ -18,8 +18,6 @@ import { NFCPage } from './pages/NFCPage';
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LongHoangPage } from './pages/LongHoangPage';
-
-const TAB_ID = Math.random().toString(36).substring(2, 15);
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -164,7 +162,6 @@ const App: React.FC = () => {
     else nextReceipts.push(newReceipt);
     
     setCustomReceipts(nextReceipts);
-    setReceiptsChanged(true);
     setIsOtherReceiptOpen(false);
   };
 
@@ -205,13 +202,6 @@ const App: React.FC = () => {
           return new Set();
       }
   });
-
-  const [customersChanged, setCustomersChanged] = useState(false);
-  const [linesChanged, setLinesChanged] = useState(false);
-  const [receiptsChanged, setReceiptsChanged] = useState(false);
-  const [salariesChanged, setSalariesChanged] = useState(false);
-  const [configsChanged, setConfigsChanged] = useState(false);
-  const [ordersChanged, setOrdersChanged] = useState(false);
 
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
@@ -660,7 +650,6 @@ const App: React.FC = () => {
   // --- SALARY HANDLERS ---
   const handleUpdateSalaries = (newSalaries: SalaryRecord[]) => {
       setSalaries(newSalaries);
-      setSalariesChanged(true);
   };
 
   // --- YEARLY CONFIG HANDLERS ---
@@ -672,7 +661,6 @@ const App: React.FC = () => {
           }
           return [...prev, config];
       });
-      setConfigsChanged(true);
   };
 
   // --- NFC HANDLERS ---
@@ -731,7 +719,6 @@ const App: React.FC = () => {
           const receiptIndex = customReceipts.findIndex(r => r.id === item.id);
           if (receiptIndex !== -1) {
               setCustomReceipts(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r));
-              setReceiptsChanged(true);
           }
       }
   };
@@ -746,7 +733,6 @@ const App: React.FC = () => {
       } else {
           // If not a job, delete from custom receipts
           setCustomReceipts(prev => prev.filter(r => r.id !== id));
-          setReceiptsChanged(true);
       }
   };
 
@@ -766,25 +752,17 @@ const App: React.FC = () => {
           type: 'other'
       };
       setCustomReceipts(prev => [...prev, newReceipt]);
-      setReceiptsChanged(true);
   };
   const handleBankMBEdit = (item: any) => {
       setCustomReceipts(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r));
-      setReceiptsChanged(true);
   };
   const handleBankMBDelete = (id: string) => {
       setCustomReceipts(prev => prev.filter(r => r.id !== id));
-      setReceiptsChanged(true);
   };
 
   // --- DATA SYNC FUNCTIONS ---
-  const handleAddCustomer = (c: Customer) => { setCustomers(prev => [...prev, c]); setCustomersChanged(true); };
-  const handleDeleteCustomer = (id: string) => { setCustomers(prev => prev.filter(cust => cust.id !== id)); setCustomersChanged(true); };
-  const handleAddLine = (code: string) => { setLines(prev => [...prev, { id: Date.now().toString(), code, name: code, mst: '' }]); setLinesChanged(true); };
-
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
-      setCustomersChanged(true);
       
       setJobs(prevJobs => prevJobs.map(job => {
           if (job.customerId === updatedCustomer.id) {
@@ -797,7 +775,6 @@ const App: React.FC = () => {
 
   const handleUpdateLine = (updatedLine: ShippingLine) => {
       setLines(prev => prev.map(l => l.id === updatedLine.id ? updatedLine : l));
-      setLinesChanged(true);
   };
 
   // --- API FUNCTIONS ---
@@ -814,30 +791,26 @@ const App: React.FC = () => {
         const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
         const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
 
-        const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || deletedJobIds.size > 0 || localDeletedIds.size > 0 || customersChanged || linesChanged || receiptsChanged || salariesChanged || configsChanged || ordersChanged;
+        const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0;
         
         if (!hasChanges) {
-            alert("Không có thay đổi nào mới để gửi đi.", "Thông báo");
+            alert("Không có thay đổi nào mới (Job hoặc Thanh toán) để gửi đi.", "Thông báo");
             return;
         }
 
         payload = {
             user: currentUser.username, 
-            role: currentUser.role,
-            tabId: TAB_ID,
             timestamp: new Date().toISOString(),
             jobs: jobsToSend, 
             paymentRequests: paymentsToSend,
-            deletedJobIds: Array.from(deletedJobIds),
-            processedRequestIds: Array.from(localDeletedIds),
+            customers: [...customers],
+            lines: [...lines],
+            customReceipts: [...customReceipts],
+            salaries: [...salaries], 
+            yearlyConfigs: [...yearlyConfigs],
+            longHoangOrders: [...longHoangOrders],
             lockedIds: Array.from(lockedIds) 
         };
-        if (customersChanged) payload.customers = [...customers];
-        if (linesChanged) payload.lines = [...lines];
-        if (receiptsChanged) payload.customReceipts = [...customReceipts];
-        if (salariesChanged) payload.salaries = [...salaries];
-        if (configsChanged) payload.yearlyConfigs = [...yearlyConfigs];
-        if (ordersChanged) payload.longHoangOrders = [...longHoangOrders];
     }
     
     if (!isServerAvailable) {
@@ -865,18 +838,8 @@ const App: React.FC = () => {
               
               alert(`Đã gửi thành công: ${msgParts.join(', ')}!`, "Thành công");
               
-              const sentJobIds = new Set(payload.jobs.map((j: any) => j.id));
-              const sentPaymentIds = new Set(payload.paymentRequests.map((p: any) => p.id));
-              setModifiedJobIds(prev => { const next = new Set(prev); sentJobIds.forEach(id => next.delete(id)); return next; });
-              setModifiedPaymentIds(prev => { const next = new Set(prev); sentPaymentIds.forEach(id => next.delete(id)); return next; });
-              if (payload.deletedJobIds && payload.deletedJobIds.length > 0) setDeletedJobIds(new Set());
-              if (payload.processedRequestIds && payload.processedRequestIds.length > 0) setLocalDeletedIds(new Set());
-              if (customersChanged) setCustomersChanged(false);
-              if (linesChanged) setLinesChanged(false);
-              if (receiptsChanged) setReceiptsChanged(false);
-              if (salariesChanged) setSalariesChanged(false);
-              if (configsChanged) setConfigsChanged(false);
-              if (ordersChanged) setOrdersChanged(false);
+              setModifiedJobIds(new Set());
+              setModifiedPaymentIds(new Set());
           } 
       } else {
           throw new Error(`Server returned ${response.status}`);
@@ -1166,34 +1129,23 @@ const App: React.FC = () => {
     if (!isServerAvailable || !isInitialSyncDone) return; 
 
     try {
-      const jobsToSend = jobs.filter(j => modifiedJobIds.has(j.id));
-      const paymentsToSend = paymentRequests.filter(p => modifiedPaymentIds.has(p.id));
-      
-      const hasChanges = jobsToSend.length > 0 || paymentsToSend.length > 0 || 
-                         deletedJobIds.size > 0 || localDeletedIds.size > 0 ||
-                         customersChanged || linesChanged || receiptsChanged || 
-                         salariesChanged || configsChanged || ordersChanged;
-                         
-      if (!hasChanges) return;
-
-      const data: any = {
-        role: currentUser.role,
-        tabId: TAB_ID,
+      const data = {
+        role: currentUser.role, // VITAL: Pass Role for Server Filtering
         timestamp: new Date().toISOString(),
         version: "2.4",
-        jobs: jobsToSend,
-        paymentRequests: paymentsToSend,
+        jobs,
+        paymentRequests,
+        customers,
+        lines,
         lockedIds: Array.from(lockedIds),
         processedRequestIds: Array.from(localDeletedIds),
         deletedJobIds: Array.from(deletedJobIds),
+        customReceipts,
+        salaries,
+        yearlyConfigs,
+        longHoangOrders
+        // NFC EXCLUDED FROM GENERAL BACKUP
       };
-      
-      if (customersChanged) data.customers = customers;
-      if (linesChanged) data.lines = lines;
-      if (receiptsChanged) data.customReceipts = customReceipts;
-      if (salariesChanged) data.salaries = salaries;
-      if (configsChanged) data.yearlyConfigs = yearlyConfigs;
-      if (ordersChanged) data.longHoangOrders = longHoangOrders;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -1219,18 +1171,8 @@ const App: React.FC = () => {
           }, 1000);
       } else {
           console.log("AUTO BACKUP SUCCESS");
-          const sentJobIds = new Set(jobsToSend.map(j => j.id));
-          const sentPaymentIds = new Set(paymentsToSend.map(p => p.id));
-          setModifiedJobIds(prev => { const next = new Set(prev); sentJobIds.forEach(id => next.delete(id)); return next; });
-          setModifiedPaymentIds(prev => { const next = new Set(prev); sentPaymentIds.forEach(id => next.delete(id)); return next; });
+          // Clear deleted IDs once server has processed them
           if (deletedJobIds.size > 0) setDeletedJobIds(new Set());
-          if (localDeletedIds.size > 0) setLocalDeletedIds(new Set());
-          if (customersChanged) setCustomersChanged(false);
-          if (linesChanged) setLinesChanged(false);
-          if (receiptsChanged) setReceiptsChanged(false);
-          if (salariesChanged) setSalariesChanged(false);
-          if (configsChanged) setConfigsChanged(false);
-          if (ordersChanged) setOrdersChanged(false);
       }
 
     } catch (err) {
@@ -1302,10 +1244,8 @@ const App: React.FC = () => {
         fetchPendingRequests();
       }
       
-      // Also re-fetch main data if it was a FULL_SYNC from another tab, or if a pending request was approved, or if Docs updated
-      if ((data.type === 'FULL_SYNC' && data.tabId !== TAB_ID) || 
-          (data.approved && data.tabId !== TAB_ID) ||
-          (data.source === 'Docs' && data.tabId !== TAB_ID)) {
+      // Also re-fetch main data if it was a FULL_SYNC from another user
+      if (data.type === 'FULL_SYNC' && data.source !== currentUser?.role) {
           // Re-fetch main data
           fetch(`${BACKEND_URL}/data`)
             .then(res => res.json())
@@ -1464,9 +1404,9 @@ const App: React.FC = () => {
                 onEditJob={handleEditJob}
                 onDeleteJob={handleDeleteJob}
                 customers={customers}
-                onAddCustomer={handleAddCustomer}
+                onAddCustomer={(c) => setCustomers([...customers, c])}
                 lines={lines}
-                onAddLine={handleAddLine}
+                onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
                 initialJobId={targetJobId}
                 onClearTargetJob={() => setTargetJobId(null)}
                 customReceipts={customReceipts}
@@ -1480,8 +1420,8 @@ const App: React.FC = () => {
                 onUpdateJob={handleEditJob}
                 customers={customers}
                 lines={lines}
-                onAddCustomer={handleAddCustomer}
-                onAddLine={handleAddLine}
+                onAddCustomer={(c) => setCustomers([...customers, c])}
+                onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
               />
             )}
             
@@ -1493,8 +1433,8 @@ const App: React.FC = () => {
                     onClearTargetBooking={() => setTargetBookingId(null)}
                     customers={customers}
                     lines={lines}
-                    onAddLine={handleAddLine}
-                    onAddCustomer={handleAddCustomer}
+                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+                    onAddCustomer={(c) => setCustomers([...customers, c])}
                     customReceipts={customReceipts}
                 />
             )}
@@ -1510,8 +1450,8 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={(r) => { setCustomReceipts(r); setReceiptsChanged(true); }}
-                    onAddCustomer={handleAddCustomer}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
             {currentPage === 'amis-chi' && (
@@ -1524,8 +1464,8 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock}
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={(r) => { setCustomReceipts(r); setReceiptsChanged(true); }}
-                    onAddCustomer={handleAddCustomer}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
             {currentPage === 'amis-ban' && (
@@ -1538,8 +1478,8 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={(r) => { setCustomReceipts(r); setReceiptsChanged(true); }}
-                    onAddCustomer={handleAddCustomer}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
             {currentPage === 'amis-mua' && (
@@ -1552,8 +1492,8 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={(r) => { setCustomReceipts(r); setReceiptsChanged(true); }}
-                    onAddCustomer={handleAddCustomer}
+                    onUpdateCustomReceipts={setCustomReceipts}
+                    onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
 
@@ -1561,9 +1501,9 @@ const App: React.FC = () => {
               <DataManagement 
                 mode="lines" 
                 data={lines} 
-                onAdd={(line) => { setLines([...lines, line]); setLinesChanged(true); }} 
+                onAdd={(line) => setLines([...lines, line])} 
                 onEdit={handleUpdateLine}
-                onDelete={(id) => { setLines(prev => prev.filter(l => l.id !== id)); setLinesChanged(true); }}
+                onDelete={(id) => setLines(prev => prev.filter(l => l.id !== id))}
               />
             )}
 
@@ -1571,9 +1511,9 @@ const App: React.FC = () => {
               <DataManagement 
                 mode="customers" 
                 data={customers} 
-                onAdd={handleAddCustomer} 
+                onAdd={(c) => setCustomers([...customers, c])} 
                 onEdit={handleUpdateCustomer}
-                onDelete={handleDeleteCustomer}
+                onDelete={(id) => setCustomers(prev => prev.filter(cust => cust.id !== id))}
               />
             )}
 
@@ -1592,7 +1532,7 @@ const App: React.FC = () => {
                 onUpdateJob={handleEditJob}
                 onAddJob={handleAddJob}
                 customers={customers} 
-                onAddCustomer={handleAddCustomer}
+                onAddCustomer={(c) => setCustomers([...customers, c])}
               />
             )}
 
@@ -1602,8 +1542,8 @@ const App: React.FC = () => {
                     customers={customers} 
                     onUpdateJob={handleEditJob} 
                     lines={lines}
-                    onAddLine={handleAddLine}
-                    onAddCustomer={handleAddCustomer}
+                    onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+                    onAddCustomer={(c) => setCustomers([...customers, c])}
                 />
             )}
 
@@ -1640,10 +1580,10 @@ const App: React.FC = () => {
             {currentPage === 'long-hoang' && (
               <LongHoangPage 
                 orders={longHoangOrders}
-                onAddOrder={(order) => { setLongHoangOrders(prev => [order, ...prev]); setOrdersChanged(true); }}
-                onEditOrder={(order) => { setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o)); setOrdersChanged(true); }}
-                onDeleteOrder={(id) => { setLongHoangOrders(prev => prev.filter(o => o.id !== id)); setOrdersChanged(true); }}
-                onRestoreOrders={(orders) => { setLongHoangOrders(orders); setOrdersChanged(true); }}
+                onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
+                onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
+                onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
+                onRestoreOrders={(orders) => setLongHoangOrders(orders)}
               />
             )}
 
@@ -1782,7 +1722,7 @@ const App: React.FC = () => {
             customers={customers}
             allJobs={jobs}
             usedDocNos={customReceipts.map(r => r.docNo).filter(Boolean)}
-            onAddCustomer={handleAddCustomer}
+            onAddCustomer={(newCust) => setCustomers(prev => [...prev, newCust])}
           />
         )}
       </main>
