@@ -373,7 +373,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         ...formData,
         paymentType: formData.paymentType || 'Local charge'
       } as LongHoangOrder);
-      alert('Đã cập nhật lệnh thanh toán', 'Thành công');
     } else {
       onAddOrder({
         ...formData,
@@ -440,7 +439,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         invoiceFileUrl: uploadedUrls.join(','),
         invoiceFileName: uploadedNames.join(',')
       }));
-      alert('Đã tải lên file hóa đơn thành công', 'Thành công');
 
     } catch (error) {
       console.error('Process error:', error);
@@ -1304,32 +1302,49 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                           displayUsd = (fee.amount / currentRate).toFixed(2);
                         }
 
+                        const isInvoiceRow = fee.name.startsWith('--- ') && fee.name.endsWith(' ---');
+
                         return (
                           <tr key={idx} className="group">
-                            <td className="py-2 text-slate-700">
-                              <FeeNameInput
-                                value={fee.name}
-                                onChange={(val) => handleFeeChange(idx, 'name', val)}
-                              />
+                            <td className={`py-2 ${isInvoiceRow ? 'text-indigo-600 font-semibold' : 'text-slate-700'}`} colSpan={isInvoiceRow ? 3 : 1}>
+                              {isInvoiceRow ? (
+                                <div className="flex items-center border-b border-transparent hover:border-indigo-300 focus-within:border-indigo-500 transition-colors">
+                                  <input
+                                    type="text"
+                                    value={fee.name}
+                                    onChange={(e) => handleFeeChange(idx, 'name', e.target.value)}
+                                    className="w-full bg-transparent outline-none py-1 text-indigo-600 font-semibold"
+                                  />
+                                </div>
+                              ) : (
+                                <FeeNameInput
+                                  value={fee.name}
+                                  onChange={(val) => handleFeeChange(idx, 'name', val)}
+                                />
+                              )}
                             </td>
-                            <td className="py-2 text-slate-900 font-medium text-right">
-                              <input 
-                                type="text" 
-                                value={fee.amount === 0 ? '' : fee.amount.toLocaleString('vi-VN')} 
-                                onChange={(e) => handleFeeChange(idx, 'amount', e.target.value)}
-                                placeholder="0"
-                                className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none text-right transition-colors"
-                              />
-                            </td>
-                            <td className="py-2 text-slate-900 font-medium text-right">
-                              <input 
-                                type="text" 
-                                value={displayUsd} 
-                                onChange={(e) => handleFeeChange(idx, 'usdAmount', e.target.value)}
-                                placeholder="0.00"
-                                className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none text-right transition-colors"
-                              />
-                            </td>
+                            {!isInvoiceRow && (
+                              <>
+                                <td className="py-2 text-slate-900 font-medium text-right">
+                                  <input 
+                                    type="text" 
+                                    value={fee.amount === 0 ? '' : fee.amount.toLocaleString('vi-VN')} 
+                                    onChange={(e) => handleFeeChange(idx, 'amount', e.target.value)}
+                                    placeholder="0"
+                                    className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none text-right transition-colors"
+                                  />
+                                </td>
+                                <td className="py-2 text-slate-900 font-medium text-right">
+                                  <input 
+                                    type="text" 
+                                    value={displayUsd} 
+                                    onChange={(e) => handleFeeChange(idx, 'usdAmount', e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none text-right transition-colors"
+                                  />
+                                </td>
+                              </>
+                            )}
                             <td className="py-2 text-right opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => handleRemoveFee(idx)}
