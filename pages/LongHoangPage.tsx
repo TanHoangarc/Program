@@ -539,22 +539,60 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
   };
 
-  const handleFeeChange = (idx: number, field: 'name' | 'amount' | 'usdAmount' | 'taxRate', value: string) => {
+  const handleGlobalTaxChange = (newTaxRate: 'none' | '8' | '5.263') => {
+    const currentRate = formData.paymentDate ? exchangeRates[formData.paymentDate] : 0;
+    
+    setFormData(prev => {
+      const oldTaxRate = prev.globalTaxRate || 'none';
+      if (newTaxRate === oldTaxRate) return prev;
+
+      const newFees = (prev.fees || []).map(fee => {
+        // Ensure originalAmount is set
+        if (fee.originalAmount === undefined) {
+           fee.originalAmount = fee.amount;
+        }
+        
+        const baseAmount = fee.originalAmount!;
+        let finalAmount = baseAmount;
+        
+        if (newTaxRate === '8') {
+          finalAmount = Math.round(baseAmount / 1.08);
+        } else if (newTaxRate === '5.263') {
+          finalAmount = Math.round(baseAmount / 1.05263);
+        }
+        
+        return {
+          ...fee,
+          amount: finalAmount,
+          usdAmount: currentRate > 0 ? finalAmount / currentRate : ''
+        };
+      });
+
+      return {
+        ...prev,
+        globalTaxRate: newTaxRate,
+        fees: newFees
+      };
+    });
+  };
+
+  const handleFeeChange = (idx: number, field: 'name' | 'amount' | 'usdAmount', value: string) => {
     const currentRate = formData.paymentDate ? exchangeRates[formData.paymentDate] : 0;
     
     setFormData(prev => {
       if (!prev.fees) return prev;
       const newFees = [...prev.fees];
+      const currentTaxRate = prev.globalTaxRate || 'none';
       
       if (field === 'name') {
         newFees[idx].name = value;
       } else if (field === 'amount') {
         const numValue = parseInt(value.replace(/\D/g, ""), 10) || 0;
         
-        // Update originalAmount based on current taxRate
-        if (newFees[idx].taxRate === '8') {
+        // Update originalAmount based on current globalTaxRate
+        if (currentTaxRate === '8') {
           newFees[idx].originalAmount = Math.round(numValue * 1.08);
-        } else if (newFees[idx].taxRate === '5.263') {
+        } else if (currentTaxRate === '5.263') {
           newFees[idx].originalAmount = Math.round(numValue * 1.05263);
         } else {
           newFees[idx].originalAmount = numValue;
@@ -575,41 +613,13 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           const calculatedAmount = Math.round(numValue * currentRate);
           newFees[idx].amount = calculatedAmount;
           
-          // Update originalAmount based on current taxRate
-          if (newFees[idx].taxRate === '8') {
+          // Update originalAmount based on current globalTaxRate
+          if (currentTaxRate === '8') {
             newFees[idx].originalAmount = Math.round(calculatedAmount * 1.08);
-          } else if (newFees[idx].taxRate === '5.263') {
+          } else if (currentTaxRate === '5.263') {
             newFees[idx].originalAmount = Math.round(calculatedAmount * 1.05263);
           } else {
             newFees[idx].originalAmount = calculatedAmount;
-          }
-        }
-      } else if (field === 'taxRate') {
-        const newTaxRate = value as 'none' | '8' | '5.263';
-        const oldTaxRate = newFees[idx].taxRate || 'none';
-        
-        if (newTaxRate !== oldTaxRate) {
-          // Ensure originalAmount is set
-          if (newFees[idx].originalAmount === undefined) {
-             newFees[idx].originalAmount = newFees[idx].amount;
-          }
-          
-          const baseAmount = newFees[idx].originalAmount!;
-          let finalAmount = baseAmount;
-          
-          if (newTaxRate === '8') {
-            finalAmount = Math.round(baseAmount / 1.08);
-          } else if (newTaxRate === '5.263') {
-            finalAmount = Math.round(baseAmount / 1.05263);
-          }
-          
-          newFees[idx].taxRate = newTaxRate;
-          newFees[idx].amount = finalAmount;
-          
-          if (currentRate > 0) {
-            newFees[idx].usdAmount = finalAmount / currentRate;
-          } else {
-            newFees[idx].usdAmount = '';
           }
         }
       }
@@ -1388,13 +1398,50 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   )}
                 </div>
               </div>
+              
+              <div className="flex items-center gap-4 mb-3 px-2 py-2 bg-white rounded-lg border border-slate-200 shadow-sm">
+                <span className="text-sm font-medium text-slate-700">Thuế:</span>
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-600 hover:text-slate-900">
+                  <input 
+                    type="radio" 
+                    name="globalTaxRate" 
+                    value="none" 
+                    checked={!formData.globalTaxRate || formData.globalTaxRate === 'none'} 
+                    onChange={(e) => handleGlobalTaxChange(e.target.value as any)}
+                    className="text-teal-600 focus:ring-teal-500 w-4 h-4"
+                  />
+                  None
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-600 hover:text-slate-900">
+                  <input 
+                    type="radio" 
+                    name="globalTaxRate" 
+                    value="8" 
+                    checked={formData.globalTaxRate === '8'} 
+                    onChange={(e) => handleGlobalTaxChange(e.target.value as any)}
+                    className="text-teal-600 focus:ring-teal-500 w-4 h-4"
+                  />
+                  8%
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-600 hover:text-slate-900">
+                  <input 
+                    type="radio" 
+                    name="globalTaxRate" 
+                    value="5.263" 
+                    checked={formData.globalTaxRate === '5.263'} 
+                    onChange={(e) => handleGlobalTaxChange(e.target.value as any)}
+                    className="text-teal-600 focus:ring-teal-500 w-4 h-4"
+                  />
+                  5.263%
+                </label>
+              </div>
+
               {formData.fees && formData.fees.length > 0 ? (
                 <div className="overflow-y-auto flex-1 custom-scrollbar pr-2">
                   <table className="w-full text-sm">
                     <thead className="text-xs text-slate-500 uppercase border-b border-slate-200">
                       <tr>
                         <th className="text-left py-2 font-semibold">Tên phí</th>
-                        <th className="text-center py-2 font-semibold w-32">Thuế</th>
                         <th className="text-right py-2 font-semibold w-24">Số tiền</th>
                         <th className="text-right py-2 font-semibold w-20">USD</th>
                         <th className="w-6"></th>
@@ -1416,7 +1463,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
 
                         return (
                           <tr key={idx} className="group">
-                            <td className={`py-2 ${isInvoiceRow ? 'text-indigo-600 font-semibold' : 'text-slate-700'}`} colSpan={isInvoiceRow ? 4 : 1}>
+                            <td className={`py-2 ${isInvoiceRow ? 'text-indigo-600 font-semibold' : 'text-slate-700'}`} colSpan={isInvoiceRow ? 3 : 1}>
                               {isInvoiceRow ? (
                                 <div className="flex items-center border-b border-transparent hover:border-indigo-300 focus-within:border-indigo-500 transition-colors">
                                   <input
@@ -1435,43 +1482,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             </td>
                             {!isInvoiceRow && (
                               <>
-                                <td className="py-2">
-                                  <div className="flex items-center justify-center gap-2 text-[10px]">
-                                    <label className="flex items-center gap-1 cursor-pointer" title="Không tính thuế">
-                                      <input 
-                                        type="radio" 
-                                        name={`tax-${idx}`} 
-                                        value="none" 
-                                        checked={!fee.taxRate || fee.taxRate === 'none'} 
-                                        onChange={(e) => handleFeeChange(idx, 'taxRate', e.target.value)}
-                                        className="text-teal-600 focus:ring-teal-500 w-3 h-3"
-                                      />
-                                      None
-                                    </label>
-                                    <label className="flex items-center gap-1 cursor-pointer" title="Trừ thuế 8%">
-                                      <input 
-                                        type="radio" 
-                                        name={`tax-${idx}`} 
-                                        value="8" 
-                                        checked={fee.taxRate === '8'} 
-                                        onChange={(e) => handleFeeChange(idx, 'taxRate', e.target.value)}
-                                        className="text-teal-600 focus:ring-teal-500 w-3 h-3"
-                                      />
-                                      8%
-                                    </label>
-                                    <label className="flex items-center gap-1 cursor-pointer" title="Trừ thuế 5.263%">
-                                      <input 
-                                        type="radio" 
-                                        name={`tax-${idx}`} 
-                                        value="5.263" 
-                                        checked={fee.taxRate === '5.263'} 
-                                        onChange={(e) => handleFeeChange(idx, 'taxRate', e.target.value)}
-                                        className="text-teal-600 focus:ring-teal-500 w-3 h-3"
-                                      />
-                                      5.263%
-                                    </label>
-                                  </div>
-                                </td>
                                 <td className="py-2 text-slate-900 font-medium text-right">
                                   <input 
                                     type="text" 

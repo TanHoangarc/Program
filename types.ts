@@ -441,6 +441,7 @@ export interface LongHoangOrder {
   invoiceFileName?: string;
   note?: string;
   wireOffStatus?: 'Pending' | 'Wired Off';
+  globalTaxRate?: 'none' | '8' | '5.263';
   fees?: { name: string; amount: number; usdAmount?: number | string; taxRate?: 'none' | '8' | '5.263'; originalAmount?: number }[];
   isChecked?: boolean;
   isLocked?: boolean;
