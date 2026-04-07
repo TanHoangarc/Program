@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Download, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Download, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock, Eye } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -104,6 +104,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [templateName, setTemplateName] = useState<string>('');
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{url: string, name: string} | null>(null);
 
   const currentTemplateFileName = TEMPLATE_MAP['chi'];
 
@@ -816,7 +817,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-3 font-semibold w-10 text-center">
+                <th className="px-2 py-3 font-semibold w-8 text-center">
                   <input 
                     type="checkbox" 
                     className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
@@ -831,16 +832,16 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     }}
                   />
                 </th>
-                <th className="px-4 py-3 font-semibold">Ngày thanh toán</th>
-                <th className="px-4 py-3 font-semibold">Line</th>
-                <th className="px-4 py-3 font-semibold text-right">Số tiền (đã gồm VAT)</th>
-                <th className="px-4 py-3 font-semibold w-32">MBL</th>
-                <th className="px-4 py-3 font-semibold">Số tài khoản</th>
-                <th className="px-4 py-3 font-semibold">File Inv</th>
-                <th className="px-4 py-3 font-semibold">Note</th>
-                <th className="px-4 py-3 font-semibold">Wire Off</th>
-                <th className="px-4 py-3 font-semibold text-center w-24">Thao tác</th>
-                <th className="px-4 py-3 font-semibold text-center w-24">Màu sắc</th>
+                <th className="px-2 py-3 font-semibold whitespace-nowrap">Ngày TT</th>
+                <th className="px-2 py-3 font-semibold">Line</th>
+                <th className="px-2 py-3 font-semibold text-right whitespace-nowrap">Số tiền</th>
+                <th className="px-2 py-3 font-semibold">MBL</th>
+                <th className="px-2 py-3 font-semibold">STK</th>
+                <th className="px-2 py-3 font-semibold">File</th>
+                <th className="px-2 py-3 font-semibold">Note</th>
+                <th className="px-2 py-3 font-semibold whitespace-nowrap">Wire Off</th>
+                <th className="px-2 py-3 font-semibold text-center w-20">Thao tác</th>
+                <th className="px-2 py-3 font-semibold text-center w-12">Màu</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -857,7 +858,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   
                   return (
                   <tr key={order.id} className={`hover:bg-slate-50 transition-colors ${order.isChecked ? 'bg-teal-50/30' : ''} ${order.color === 'blue' ? 'bg-blue-50' : order.color === 'orange' ? 'bg-orange-50' : ''}`}>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-2 py-3 text-center">
                       <input 
                         type="checkbox" 
                         className={`rounded border-slate-300 text-teal-600 focus:ring-teal-500 ${order.isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
@@ -866,25 +867,25 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         disabled={order.isLocked}
                       />
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-700">
+                    <td className="px-2 py-3 font-medium text-slate-700 whitespace-nowrap">
                       {formattedDate}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{order.line}</td>
-                    <td className="px-4 py-3 text-slate-900 font-bold text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="px-2 py-3 text-slate-600 truncate max-w-[80px]" title={order.line}>{order.line}</td>
+                    <td className="px-2 py-3 text-slate-900 font-bold text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
                         <span>{order.amount.toLocaleString('vi-VN')}</span>
                         <button
                           onClick={() => handleCopy(order.amount.toString(), `${order.id}-amount`)}
-                          className="text-slate-400 hover:text-teal-600 transition-colors"
+                          className="text-slate-400 hover:text-teal-600 transition-colors shrink-0"
                           title="Copy số tiền"
                         >
                           {copiedKey === `${order.id}-amount` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      <div className="flex items-center gap-2">
-                        <span>{order.mbl}</span>
+                    <td className="px-2 py-3 text-slate-600">
+                      <div className="flex items-center gap-1">
+                        <span className="truncate max-w-[100px]" title={order.mbl}>{order.mbl}</span>
                         <button
                           onClick={() => {
                             const type = order.paymentType || 'Local charge';
@@ -893,20 +894,20 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             if (type === 'Demurage') copyText = `LONG HOANG PAYMENT GH BL ${order.mbl} MST 0316113070`;
                             handleCopy(copyText, `${order.id}-mbl`);
                           }}
-                          className="text-slate-400 hover:text-teal-600 transition-colors"
+                          className="text-slate-400 hover:text-teal-600 transition-colors shrink-0"
                           title="Copy nội dung MBL"
                         >
                           {copiedKey === `${order.id}-mbl` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">
-                      <div className="flex items-center gap-2">
-                        <span>{order.accountNumber}</span>
+                    <td className="px-2 py-3 text-slate-600 font-mono text-xs">
+                      <div className="flex items-center gap-1">
+                        <span className="truncate max-w-[90px]" title={order.accountNumber}>{order.accountNumber}</span>
                         {order.accountNumber && (
                           <button
                             onClick={() => handleCopy(order.accountNumber, `${order.id}-account`)}
-                            className="text-slate-400 hover:text-teal-600 transition-colors"
+                            className="text-slate-400 hover:text-teal-600 transition-colors shrink-0"
                             title="Copy số tài khoản"
                           >
                             {copiedKey === `${order.id}-account` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -914,28 +915,35 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       {order.invoiceFileUrl ? (
-                        <a 
-                          href={order.invoiceFileUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                          title={order.invoiceFileName || 'Xem file'}
-                        >
-                          <FileText className="w-4 h-4" />
-                        </a>
+                        <div className="flex items-center gap-1 flex-wrap max-w-[80px]">
+                          {order.invoiceFileUrl.split(',').filter(Boolean).map((url, idx) => {
+                            const names = order.invoiceFileName ? order.invoiceFileName.split(',').filter(Boolean) : [];
+                            const name = names[idx] || `File ${idx + 1}`;
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => setPreviewFile({ url, name })}
+                                className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                                title={name}
+                              >
+                                <FileText className="w-3 h-3" />
+                              </button>
+                            );
+                          })}
+                        </div>
                       ) : (
-                        <span className="text-slate-400 italic text-sm">Trống</span>
+                        <span className="text-slate-400 italic text-xs">Trống</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      <div className="flex items-center gap-2">
-                        <span>{order.note}</span>
+                    <td className="px-2 py-3 text-slate-600">
+                      <div className="flex items-center gap-1">
+                        <span className="truncate max-w-[100px]" title={order.note}>{order.note}</span>
                         {order.note && (
                           <button
                             onClick={() => handleCopy(order.note, `${order.id}-note`)}
-                            className="text-slate-400 hover:text-teal-600 transition-colors"
+                            className="text-slate-400 hover:text-teal-600 transition-colors shrink-0"
                             title="Copy ghi chú"
                           >
                             {copiedKey === `${order.id}-note` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -943,16 +951,16 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${order.wireOffStatus === 'Wired Off' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    <td className="px-2 py-3 whitespace-nowrap">
+                      <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${order.wireOffStatus === 'Wired Off' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                         {order.wireOffStatus || 'Pending'}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="px-2 py-3">
+                      <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => onEditOrder({ ...order, isLocked: !order.isLocked })}
-                          className={`p-1.5 rounded-lg transition-colors ${order.isLocked ? 'text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                          className={`p-1 rounded-lg transition-colors ${order.isLocked ? 'text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                           title={order.isLocked ? "Mở khóa" : "Khóa"}
                         >
                           {order.isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
@@ -960,7 +968,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         <button
                           onClick={() => handleOpenModal(order)}
                           disabled={order.isLocked}
-                          className={`p-1.5 rounded-lg transition-colors ${order.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
+                          className={`p-1 rounded-lg transition-colors ${order.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
                           title="Sửa"
                         >
                           <Edit className="w-4 h-4" />
@@ -968,23 +976,18 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         <button
                           onClick={() => handleDelete(order.id)}
                           disabled={order.isLocked}
-                          className={`p-1.5 rounded-lg transition-colors ${order.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-red-600 hover:bg-red-50'}`}
+                          className={`p-1 rounded-lg transition-colors ${order.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-red-600 hover:bg-red-50'}`}
                           title="Xóa"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => onEditOrder({ ...order, color: order.color === 'blue' ? null : 'blue' })}
-                          className={`w-6 h-6 rounded-full border-2 transition-all ${order.color === 'blue' ? 'border-blue-500 bg-blue-200' : 'border-slate-200 bg-blue-50 hover:border-blue-300'}`}
-                          title="Màu kem xanh"
-                        />
+                    <td className="px-2 py-3">
+                      <div className="flex items-center justify-center">
                         <button
                           onClick={() => onEditOrder({ ...order, color: order.color === 'orange' ? null : 'orange' })}
-                          className={`w-6 h-6 rounded-full border-2 transition-all ${order.color === 'orange' ? 'border-orange-500 bg-orange-200' : 'border-slate-200 bg-orange-50 hover:border-orange-300'}`}
+                          className={`w-5 h-5 rounded-full border-2 transition-all ${order.color === 'orange' ? 'border-orange-500 bg-orange-200' : 'border-slate-200 bg-orange-50 hover:border-orange-300'}`}
                           title="Màu kem cam"
                         />
                       </div>
@@ -1073,12 +1076,30 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     
                     {formData.invoiceFileName && (
                       <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
-                        {formData.invoiceFileName.split(',').filter(Boolean).map((name, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-sm text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100">
+                        {formData.invoiceFileName.split(',').filter(Boolean).map((name, idx) => {
+                          const urls = formData.invoiceFileUrl ? formData.invoiceFileUrl.split(',').filter(Boolean) : [];
+                          const url = urls[idx];
+                          return (
+                          <div key={idx} className="flex items-center gap-2 text-sm text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100 relative z-10">
                             <FileText className="w-4 h-4" />
                             <span className="font-medium truncate max-w-[200px]">{name}</span>
+                            {url && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setPreviewFile({ url, name });
+                                }}
+                                className="ml-1 p-1 hover:bg-teal-100 rounded-md transition-colors"
+                                title="Xem trước"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </>
@@ -1703,6 +1724,29 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   <Save className="w-4 h-4" />
                   Lưu Tỷ Giá
                 </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {previewFile && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col animate-in zoom-in-95">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800">Xem trước: {previewFile.name}</h3>
+              <button onClick={() => setPreviewFile(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="flex-1 p-4 bg-slate-100 overflow-hidden rounded-b-2xl">
+              {previewFile.url.toLowerCase().endsWith('.pdf') ? (
+                <iframe src={previewFile.url} className="w-full h-full rounded-xl border border-slate-200" title="PDF Preview" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center overflow-auto">
+                  <img src={previewFile.url} alt="Preview" className="max-w-full max-h-full object-contain rounded-xl shadow-sm" />
+                </div>
               )}
             </div>
           </div>
