@@ -148,6 +148,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const [line, setLine] = useState("");
   const [pod, setPod] = useState<'HCM' | 'HPH'>("HCM");
   const [booking, setBooking] = useState("");
+  const [previewFile, setPreviewFile] = useState<{url: string, name: string} | null>(null);
   const [amount, setAmount] = useState<number>(0);
   const [type, setType] = useState<'Local Charge' | 'Deposit' | 'Demurrage'>('Local Charge');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
@@ -643,7 +644,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         alert("Không tìm thấy file!", "Lỗi");
         return;
     }
-    window.open(url, "_blank");
+    setPreviewFile({ url, name: fileName || "File" });
   };
 
   // Always force download UNC with correct path
@@ -1440,6 +1441,44 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                     </button>
                 </div>
             </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Preview Modal */}
+      {previewFile && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+              <h3 className="font-bold text-slate-800 text-lg flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-indigo-500" />
+                {previewFile.name}
+              </h3>
+              <button onClick={() => setPreviewFile(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center overflow-hidden">
+              {previewFile.url.toLowerCase().endsWith('.pdf') ? (
+                <iframe src={previewFile.url} className="w-full h-full rounded-xl border border-slate-200" title="PDF Preview" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center overflow-auto bg-white rounded-xl border border-slate-200 p-4">
+                  <img src={previewFile.url} alt="Preview" className="max-w-full max-h-full object-contain rounded-xl shadow-sm" />
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-end">
+              <a 
+                href={previewFile.url} 
+                download={previewFile.name}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg font-medium transition-colors flex items-center"
+              >
+                <Download className="w-4 h-4 mr-2" /> Tải xuống
+              </a>
+            </div>
+          </div>
         </div>,
         document.body
       )}
