@@ -105,6 +105,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const [previewFile, setPreviewFile] = useState<{url: string, name: string} | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [startingDocNo, setStartingDocNo] = useState('');
 
   const currentTemplateFileName = TEMPLATE_MAP['chi'];
 
@@ -537,7 +539,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
   };
 
-  const handleFeeChange = (idx: number, field: 'name' | 'amount' | 'usdAmount', value: string) => {
+  const handleFeeChange = (idx: number, field: 'name' | 'amount' | 'usdAmount' | 'taxRate', value: string) => {
     const currentRate = formData.paymentDate ? exchangeRates[formData.paymentDate] : 0;
     
     setFormData(prev => {
@@ -548,6 +550,16 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         newFees[idx].name = value;
       } else if (field === 'amount') {
         const numValue = parseInt(value.replace(/\D/g, ""), 10) || 0;
+        
+        // Update originalAmount based on current taxRate
+        if (newFees[idx].taxRate === '8') {
+          newFees[idx].originalAmount = Math.round(numValue * 1.08);
+        } else if (newFees[idx].taxRate === '5.263') {
+          newFees[idx].originalAmount = Math.round(numValue * 1.05263);
+        } else {
+          newFees[idx].originalAmount = numValue;
+        }
+
         newFees[idx].amount = numValue;
         if (currentRate > 0) {
           newFees[idx].usdAmount = numValue / currentRate;
@@ -560,7 +572,45 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
         
         const numValue = Number(cleanValue);
         if (!isNaN(numValue) && currentRate > 0) {
-          newFees[idx].amount = Math.round(numValue * currentRate);
+          const calculatedAmount = Math.round(numValue * currentRate);
+          newFees[idx].amount = calculatedAmount;
+          
+          // Update originalAmount based on current taxRate
+          if (newFees[idx].taxRate === '8') {
+            newFees[idx].originalAmount = Math.round(calculatedAmount * 1.08);
+          } else if (newFees[idx].taxRate === '5.263') {
+            newFees[idx].originalAmount = Math.round(calculatedAmount * 1.05263);
+          } else {
+            newFees[idx].originalAmount = calculatedAmount;
+          }
+        }
+      } else if (field === 'taxRate') {
+        const newTaxRate = value as 'none' | '8' | '5.263';
+        const oldTaxRate = newFees[idx].taxRate || 'none';
+        
+        if (newTaxRate !== oldTaxRate) {
+          // Ensure originalAmount is set
+          if (newFees[idx].originalAmount === undefined) {
+             newFees[idx].originalAmount = newFees[idx].amount;
+          }
+          
+          const baseAmount = newFees[idx].originalAmount!;
+          let finalAmount = baseAmount;
+          
+          if (newTaxRate === '8') {
+            finalAmount = Math.round(baseAmount / 1.08);
+          } else if (newTaxRate === '5.263') {
+            finalAmount = Math.round(baseAmount / 1.05263);
+          }
+          
+          newFees[idx].taxRate = newTaxRate;
+          newFees[idx].amount = finalAmount;
+          
+          if (currentRate > 0) {
+            newFees[idx].usdAmount = finalAmount / currentRate;
+          } else {
+            newFees[idx].usdAmount = '';
+          }
         }
       }
       
@@ -638,12 +688,30 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     }
   };
 
-  const handleExportExcel = async () => {
+  const handleOpenExportModal = () => {
     const selectedOrders = filteredOrders.filter(o => o.isChecked);
     if (selectedOrders.length === 0) {
       alert('Vui lòng chọn ít nhất một dòng để xuất Excel', 'error');
       return;
     }
+    setStartingDocNo('');
+    setIsExportModalOpen(true);
+  };
+
+  const handleConfirmExport = async () => {
+    setIsExportModalOpen(false);
+    await handleExportExcel(startingDocNo);
+  };
+
+  const handleExportExcel = async (startDocNo: string) => {
+    const selectedOrders = filteredOrders.filter(o => o.isChecked);
+    if (selectedOrders.length === 0) {
+      alert('Vui lòng chọn ít nhất một dòng để xuất Excel', 'error');
+      return;
+    }
+
+    // Sort selected orders by paymentDate ascending
+    const sortedOrders = [...selectedOrders].sort((a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime());
 
     try {
       const workbook = new ExcelJS.Workbook();
@@ -658,7 +726,9 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
       const START_ROW = 9;
       const styleRow = templateBuffer ? worksheet.getRow(START_ROW) : null;
       
-      selectedOrders.forEach((order, index) => {
+      let currentDocNo = startDocNo;
+
+      sortedOrders.forEach((order, index) => {
           const currentRowIndex = START_ROW + index;
           const row = worksheet.getRow(currentRowIndex);
           if (styleRow && currentRowIndex > START_ROW) {
@@ -679,7 +749,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           row.getCell(1).value = "Ủy nhiệm chi"; 
           row.getCell(2).value = formatDateVN(order.paymentDate); 
           row.getCell(3).value = formatDateVN(order.paymentDate); 
-          row.getCell(4).value = ""; // docNo
+          row.getCell(4).value = currentDocNo; // docNo
           row.getCell(5).value = "Chi khác"; 
           row.getCell(6).value = desc; 
           row.getCell(7).value = "19135447033015"; 
@@ -693,6 +763,24 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           row.getCell(24).value = order.amount; 
           row.getCell(26).value = order.line;
           row.commit();
+
+          // Increment docNo for next row
+          if (currentDocNo) {
+            const match = currentDocNo.match(/^(.*?)(\d+)(\D*)$/);
+            if (match) {
+              const prefix = match[1];
+              const numStr = match[2];
+              const suffix = match[3];
+              const num = parseInt(numStr, 10) + 1;
+              const paddedNum = String(num).padStart(numStr.length, '0');
+              currentDocNo = `${prefix}${paddedNum}${suffix}`;
+            } else {
+              const num = parseInt(currentDocNo, 10);
+              if (!isNaN(num)) {
+                 currentDocNo = String(num + 1);
+              }
+            }
+          }
       });
       
       const buffer = await workbook.xlsx.writeBuffer();
@@ -772,7 +860,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           </div>
 
           <button
-            onClick={handleExportExcel}
+            onClick={handleOpenExportModal}
             className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-sm"
           >
             <FileText className="w-5 h-5" />
@@ -1306,6 +1394,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     <thead className="text-xs text-slate-500 uppercase border-b border-slate-200">
                       <tr>
                         <th className="text-left py-2 font-semibold">Tên phí</th>
+                        <th className="text-center py-2 font-semibold w-32">Thuế</th>
                         <th className="text-right py-2 font-semibold w-24">Số tiền</th>
                         <th className="text-right py-2 font-semibold w-20">USD</th>
                         <th className="w-6"></th>
@@ -1327,7 +1416,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
 
                         return (
                           <tr key={idx} className="group">
-                            <td className={`py-2 ${isInvoiceRow ? 'text-indigo-600 font-semibold' : 'text-slate-700'}`} colSpan={isInvoiceRow ? 3 : 1}>
+                            <td className={`py-2 ${isInvoiceRow ? 'text-indigo-600 font-semibold' : 'text-slate-700'}`} colSpan={isInvoiceRow ? 4 : 1}>
                               {isInvoiceRow ? (
                                 <div className="flex items-center border-b border-transparent hover:border-indigo-300 focus-within:border-indigo-500 transition-colors">
                                   <input
@@ -1346,6 +1435,43 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             </td>
                             {!isInvoiceRow && (
                               <>
+                                <td className="py-2">
+                                  <div className="flex items-center justify-center gap-2 text-[10px]">
+                                    <label className="flex items-center gap-1 cursor-pointer" title="Không tính thuế">
+                                      <input 
+                                        type="radio" 
+                                        name={`tax-${idx}`} 
+                                        value="none" 
+                                        checked={!fee.taxRate || fee.taxRate === 'none'} 
+                                        onChange={(e) => handleFeeChange(idx, 'taxRate', e.target.value)}
+                                        className="text-teal-600 focus:ring-teal-500 w-3 h-3"
+                                      />
+                                      None
+                                    </label>
+                                    <label className="flex items-center gap-1 cursor-pointer" title="Trừ thuế 8%">
+                                      <input 
+                                        type="radio" 
+                                        name={`tax-${idx}`} 
+                                        value="8" 
+                                        checked={fee.taxRate === '8'} 
+                                        onChange={(e) => handleFeeChange(idx, 'taxRate', e.target.value)}
+                                        className="text-teal-600 focus:ring-teal-500 w-3 h-3"
+                                      />
+                                      8%
+                                    </label>
+                                    <label className="flex items-center gap-1 cursor-pointer" title="Trừ thuế 5.263%">
+                                      <input 
+                                        type="radio" 
+                                        name={`tax-${idx}`} 
+                                        value="5.263" 
+                                        checked={fee.taxRate === '5.263'} 
+                                        onChange={(e) => handleFeeChange(idx, 'taxRate', e.target.value)}
+                                        className="text-teal-600 focus:ring-teal-500 w-3 h-3"
+                                      />
+                                      5.263%
+                                    </label>
+                                  </div>
+                                </td>
                                 <td className="py-2 text-slate-900 font-medium text-right">
                                   <input 
                                     type="text" 
@@ -1725,6 +1851,58 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   Lưu Tỷ Giá
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col animate-in zoom-in-95">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-slate-800">Xuất Excel</h3>
+              <button onClick={() => setIsExportModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Số chứng từ bắt đầu</label>
+                  <input
+                    type="text"
+                    value={startingDocNo}
+                    onChange={(e) => setStartingDocNo(e.target.value)}
+                    placeholder="VD: PC001"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleConfirmExport();
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-slate-500 mt-2">
+                    Số chứng từ sẽ được tự động tăng dần theo ngày của các lệnh được chọn.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-2xl">
+              <button
+                onClick={() => setIsExportModalOpen(false)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl font-medium transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirmExport}
+                className="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg shadow-teal-600/20"
+              >
+                <Check className="w-4 h-4" />
+                Xác nhận
+              </button>
             </div>
           </div>
         </div>
