@@ -1101,29 +1101,38 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.", "Thông báo"); return; }
     
-    if (mode === 'ban' || mode === 'mua') {
-      setExportStartVoucher('');
-      setIsExportPromptOpen(true);
-    } else {
-      executeExport();
-    }
+    setExportStartVoucher('');
+    setIsExportPromptOpen(true);
   };
 
   const executeExport = async (startVoucher?: string) => {
     const rowsToExport = selectedIds.size > 0 ? exportData.filter(d => selectedIds.has(d.docNo)) : [];
     if (rowsToExport.length === 0) { alert("Vui lòng chọn ít nhất một phiếu để xuất Excel.", "Thông báo"); return; }
 
-    let minDocNoNumeric = Infinity;
-    if ((mode === 'ban' || mode === 'mua') && startVoucher) {
-        rowsToExport.forEach(r => {
-            const match = r.docNo.match(/^([A-Za-z\-_]*)(\d+)$/);
-            if (match) {
-                const num = parseInt(match[2], 10);
-                if (num < minDocNoNumeric) {
-                    minDocNoNumeric = num;
-                }
-            }
-        });
+    const docNoMapping = new Map<string, string>();
+    if (startVoucher) {
+        const startMatch = startVoucher.match(/^([A-Za-z\-_]*)(\d+)$/);
+        if (startMatch) {
+            const startPrefix = startMatch[1];
+            const startNum = parseInt(startMatch[2], 10);
+            const padLength = startMatch[2].length;
+
+            const uniqueDocNos = Array.from(new Set(rowsToExport.map(r => r.docNo)));
+            
+            // Sort unique docNos by their numeric part
+            uniqueDocNos.sort((a, b) => {
+                const matchA = a.match(/^([A-Za-z\-_]*)(\d+)$/);
+                const matchB = b.match(/^([A-Za-z\-_]*)(\d+)$/);
+                const numA = matchA ? parseInt(matchA[2], 10) : 0;
+                const numB = matchB ? parseInt(matchB[2], 10) : 0;
+                return numA - numB;
+            });
+
+            uniqueDocNos.forEach((origDocNo, idx) => {
+                const newNum = startNum + idx;
+                docNoMapping.set(origDocNo, `${startPrefix}${String(newNum).padStart(padLength, '0')}`);
+            });
+        }
     }
 
     const workbook = new ExcelJS.Workbook();
@@ -1138,18 +1147,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
         const data = rowsToExport[index];
 
         let exportDocNo = data.docNo;
-        if ((mode === 'ban' || mode === 'mua') && startVoucher && minDocNoNumeric !== Infinity) {
-            const origMatch = data.docNo.match(/^([A-Za-z\-_]*)(\d+)$/);
-            const startMatch = startVoucher.match(/^([A-Za-z\-_]*)(\d+)$/);
-            if (origMatch && startMatch) {
-                const currentNum = parseInt(origMatch[2], 10);
-                const diff = currentNum - minDocNoNumeric;
-                const startPrefix = startMatch[1];
-                const startNum = parseInt(startMatch[2], 10);
-                const newNum = startNum + diff;
-                const padLength = startMatch[2].length;
-                exportDocNo = `${startPrefix}${String(newNum).padStart(padLength, '0')}`;
-            } else if (!origMatch && index === 0) {
+        if (startVoucher) {
+            if (docNoMapping.has(data.docNo)) {
+                exportDocNo = docNoMapping.get(data.docNo)!;
+            } else if (index === 0) {
                 exportDocNo = startVoucher;
             }
         }
@@ -1587,7 +1588,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 type="text"
                 value={exportStartVoucher}
                 onChange={(e) => setExportStartVoucher(e.target.value)}
-                placeholder={mode === 'ban' ? "VD: BH30999" : "VD: MH30999"}
+                placeholder={mode === 'ban' ? "VD: BH30999" : mode === 'mua' ? "VD: MH30999" : mode === 'thu' ? "VD: PT30999" : "VD: PC30999"}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
                 autoFocus
               />
