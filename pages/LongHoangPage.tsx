@@ -1454,7 +1454,11 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         // Format USD amount for display if it's calculated, otherwise show raw input
                         let displayUsd = '';
                         if (fee.usdAmount !== undefined && fee.usdAmount !== '') {
-                          displayUsd = String(fee.usdAmount);
+                          if (typeof fee.usdAmount === 'number') {
+                            displayUsd = fee.usdAmount.toFixed(2);
+                          } else {
+                            displayUsd = String(fee.usdAmount);
+                          }
                         } else if (currentRate > 0 && fee.amount > 0) {
                           displayUsd = (fee.amount / currentRate).toFixed(2);
                         }
@@ -1496,6 +1500,12 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                                     type="text" 
                                     value={displayUsd} 
                                     onChange={(e) => handleFeeChange(idx, 'usdAmount', e.target.value)}
+                                    onBlur={(e) => {
+                                      const val = Number(e.target.value);
+                                      if (!isNaN(val) && e.target.value !== '') {
+                                        handleFeeChange(idx, 'usdAmount', val.toFixed(2));
+                                      }
+                                    }}
                                     placeholder="0.00"
                                     className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 outline-none text-right transition-colors"
                                   />
