@@ -28,7 +28,7 @@ interface CVHCRow {
   previewUrl?: string; // Preview URL for PDF page
 }
 
-const BACKEND_URL = window.location.origin + "/api";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 
 export const CVHCPage: React.FC<CVHCPageProps> = ({ 
   jobs, customers, lines, onUpdateJob, onAddLine, onAddCustomer 

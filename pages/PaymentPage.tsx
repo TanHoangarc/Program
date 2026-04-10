@@ -30,7 +30,7 @@ interface PaymentPageProps {
 }
 
 // BACKEND API (Cloudflare Tunnel)
-const BACKEND_URL = window.location.origin + "/api";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 
 // Internal Interface for Convert Modal State
 interface ConvertJobData {

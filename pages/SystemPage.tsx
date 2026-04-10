@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { JobData, Customer, ShippingLine, UserAccount, EmailConfig } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight, Trash, Mail, ShieldCheck } from 'lucide-react';
-import axios from 'axios';
+import { JobData, Customer, ShippingLine, UserAccount } from '../types';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight, Trash } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -25,7 +24,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   onRestore, onAddUser, onEditUser, onDeleteUser,
   pendingRequests = [], onApproveRequest, onRejectRequest, onConfirmMismatch
 }) => {
-  const BACKEND_URL = window.location.origin + "/api";
+  const BACKEND_URL = "https://api.kimberry.id.vn";
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [formUser, setFormUser] = useState<UserAccount>({ username: '', pass: '', role: 'Docs' });
@@ -35,73 +34,6 @@ export const SystemPage: React.FC<SystemPageProps> = ({
   const [historyData, setHistoryData] = useState<any>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyFileName, setHistoryFileName] = useState('');
-
-  // --- EMAIL CONFIG STATE ---
-  const [emailConfig, setEmailConfig] = useState<EmailConfig>({
-    user: '',
-    pass: '',
-    imapHost: 'imap.gmail.com',
-    imapPort: 993,
-    smtpHost: 'smtp.gmail.com',
-    smtpPort: 465,
-    secure: true
-  });
-  const [isEmailConfigLoading, setIsEmailConfigLoading] = useState(false);
-  const [isTestingEmail, setIsTestingEmail] = useState(false);
-  const [showEmailPass, setShowEmailPass] = useState(false);
-
-  useEffect(() => {
-    if (currentUser?.role === 'Admin') {
-        fetchEmailConfig();
-    }
-  }, [currentUser]);
-
-  const fetchEmailConfig = async () => {
-    try {
-        const res = await axios.get(`${BACKEND_URL}/email-config`);
-        if (res.data && res.data.success) {
-            setEmailConfig(prev => ({ ...prev, ...res.data.config, pass: '' }));
-        }
-    } catch (err) {
-        console.error("Failed to fetch email config", err);
-    }
-  };
-
-  const handleSaveEmailConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsEmailConfigLoading(true);
-    try {
-        const res = await axios.post(`${BACKEND_URL}/email-config`, emailConfig);
-        if (res.data && res.data.success) {
-            alert("Đã lưu cấu hình Email thành công!");
-            fetchEmailConfig();
-        }
-    } catch (err) {
-        console.error("Save email config error", err);
-        alert("Lỗi khi lưu cấu hình Email.");
-    } finally {
-        setIsEmailConfigLoading(false);
-    }
-  };
-
-  const handleTestEmailConfig = async () => {
-    setIsTestingEmail(true);
-    try {
-        const res = await axios.post(`${BACKEND_URL}/emails/test`, emailConfig);
-        if (res.data.success) {
-            alert("Thành công: Kết nối Email thành công! Cả IMAP và SMTP đều hoạt động.");
-        } else {
-            const imapMsg = res.data.results.imap.message;
-            const smtpMsg = res.data.results.smtp.message;
-            alert(`Lỗi Kết Nối:\n\n[IMAP]: ${imapMsg}\n\n[SMTP]: ${smtpMsg}\n\nGợi ý: Kiểm tra lại Mật khẩu ứng dụng và cấu hình SSL/TLS.`);
-        }
-    } catch (err: any) {
-        console.error("Test email config error", err);
-        alert("Lỗi khi kiểm tra kết nối Email: " + (err.response?.data?.message || err.message));
-    } finally {
-        setIsTestingEmail(false);
-    }
-  };
 
   // Helper to check if a user is Docs
   const isDocsUser = (username?: string) => {
@@ -440,7 +372,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
       )}
 
       {/* User Management Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         {/* User List */}
         <div className="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -583,150 +515,6 @@ export const SystemPage: React.FC<SystemPageProps> = ({
            </div>
         </div>
       </div>
-
-      {/* Email Configuration Section (Admin Only) */}
-      {currentUser?.role === 'Admin' && (
-          <div className="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
-              <h3 className="text-lg font-bold text-slate-700 flex items-center mb-6">
-                  <Mail className="w-5 h-5 mr-2 text-teal-600" /> Cấu Hình Email (IMAP/SMTP)
-              </h3>
-              
-              <form onSubmit={handleSaveEmailConfig} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <div className="space-y-4">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tài khoản</h4>
-                      <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email / Username</label>
-                          <input 
-                              type="text" 
-                              value={emailConfig.user}
-                              onChange={(e) => setEmailConfig({...emailConfig, user: e.target.value})}
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
-                              placeholder="example@gmail.com"
-                          />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mật khẩu (App Password)</label>
-                          <div className="relative">
-                              <input 
-                                  type={showEmailPass ? "text" : "password"} 
-                                  value={emailConfig.pass}
-                                  onChange={(e) => setEmailConfig({...emailConfig, pass: e.target.value})}
-                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
-                                  placeholder="••••••••••••••••"
-                              />
-                              <button type="button" onClick={() => setShowEmailPass(!showEmailPass)} className="absolute right-2 top-2 text-slate-400 hover:text-teal-600">
-                                  {showEmailPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                              </button>
-                          </div>
-                          <p className="mt-1 text-[10px] text-slate-400 italic">
-                              * Với Tencent Exmail, bạn phải dùng "Mật khẩu ứng dụng" (Authorization Code) nếu đã bật Bảo mật đăng nhập.
-                          </p>
-                          
-                          <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
-                              <h5 className="text-[11px] font-bold text-amber-800 mb-1 flex items-center">
-                                  <ShieldCheck className="w-3 h-3 mr-1" /> Hướng dẫn Tencent Exmail:
-                              </h5>
-                              <ol className="text-[10px] text-amber-700 space-y-1 list-decimal ml-3">
-                                  <li>Đăng nhập <b>exmail.qq.com</b> trên web.</li>
-                                  <li>Vào <b>Settings (Cài đặt)</b> &gt; <b>Account (Tài khoản)</b>.</li>
-                                  <li>Tìm mục <b>Client Password</b> hoặc <b>Authorization Code</b>.</li>
-                                  <li>Nhấn <b>Generate (Tạo mã)</b> và copy mã đó vào ô mật khẩu ở đây.</li>
-                              </ol>
-                          </div>
-                      </div>
-                  </div>
-
-                  <div className="space-y-4">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">IMAP (Nhận thư)</h4>
-                      <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-2">
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Host</label>
-                              <input 
-                                  type="text" 
-                                  value={emailConfig.imapHost}
-                                  onChange={(e) => setEmailConfig({...emailConfig, imapHost: e.target.value})}
-                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
-                              />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Port</label>
-                              <input 
-                                  type="number" 
-                                  value={emailConfig.imapPort}
-                                  onChange={(e) => setEmailConfig({...emailConfig, imapPort: parseInt(e.target.value)})}
-                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
-                              />
-                          </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                          <input 
-                              type="checkbox" 
-                              id="imap-secure"
-                              checked={emailConfig.secure}
-                              onChange={(e) => setEmailConfig({...emailConfig, secure: e.target.checked})}
-                              className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500"
-                          />
-                          <label htmlFor="imap-secure" className="text-sm text-slate-600">Sử dụng SSL/TLS (Secure)</label>
-                      </div>
-                  </div>
-
-                  <div className="space-y-4">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">SMTP (Gửi thư)</h4>
-                      <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-2">
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Host</label>
-                              <input 
-                                  type="text" 
-                                  value={emailConfig.smtpHost}
-                                  onChange={(e) => setEmailConfig({...emailConfig, smtpHost: e.target.value})}
-                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
-                              />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Port</label>
-                              <input 
-                                  type="number" 
-                                  value={emailConfig.smtpPort}
-                                  onChange={(e) => setEmailConfig({...emailConfig, smtpPort: parseInt(e.target.value)})}
-                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
-                              />
-                          </div>
-                      </div>
-                      <div className="pt-4 flex gap-2">
-                          <button 
-                              type="button"
-                              onClick={handleTestEmailConfig}
-                              disabled={isTestingEmail || isEmailConfigLoading}
-                              className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                              {isTestingEmail ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                              Thử Kết Nối
-                          </button>
-                          <button 
-                              type="submit" 
-                              disabled={isEmailConfigLoading || isTestingEmail}
-                              className="flex-[2] py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-lg shadow-teal-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                              {isEmailConfigLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                              Lưu Cấu Hình
-                          </button>
-                      </div>
-                  </div>
-              </form>
-              
-              <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-blue-700 leading-relaxed">
-                      <p className="font-bold mb-1">Lưu ý cho Gmail:</p>
-                      <ul className="list-disc ml-4 space-y-1">
-                          <li>Bạn phải bật <strong>Xác minh 2 bước</strong> cho tài khoản Google.</li>
-                          <li>Sử dụng <strong>Mật khẩu ứng dụng (App Password)</strong> thay vì mật khẩu chính.</li>
-                          <li>IMAP Host: <code>imap.gmail.com</code> (Port 993), SMTP Host: <code>smtp.gmail.com</code> (Port 465).</li>
-                      </ul>
-                  </div>
-              </div>
-          </div>
-      )}
 
       {/* User Modal */}
       {isUserModalOpen && (

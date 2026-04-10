@@ -28,7 +28,7 @@ interface AmisExportProps {
   onUpdateCustomReceipts?: (receipts: any[]) => void;
 }
 
-const BACKEND_URL = window.location.origin + "/api";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 const TEMPLATE_FOLDER = "Invoice"; 
 
 const TEMPLATE_MAP: Record<string, string> = {
@@ -1121,8 +1121,8 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             
             // Sort unique docNos by their numeric part
             uniqueDocNos.sort((a, b) => {
-                const matchA = (a as string).match(/^([A-Za-z\-_]*)(\d+)$/);
-                const matchB = (b as string).match(/^([A-Za-z\-_]*)(\d+)$/);
+                const matchA = a.match(/^([A-Za-z\-_]*)(\d+)$/);
+                const matchB = b.match(/^([A-Za-z\-_]*)(\d+)$/);
                 const numA = matchA ? parseInt(matchA[2], 10) : 0;
                 const numB = matchB ? parseInt(matchB[2], 10) : 0;
                 return numA - numB;
@@ -1130,7 +1130,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
             uniqueDocNos.forEach((origDocNo, idx) => {
                 const newNum = startNum + idx;
-                docNoMapping.set(origDocNo as string, `${startPrefix}${String(newNum).padStart(padLength, '0')}`);
+                docNoMapping.set(origDocNo, `${startPrefix}${String(newNum).padStart(padLength, '0')}`);
             });
         }
     }

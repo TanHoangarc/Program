@@ -7,10 +7,6 @@ import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { fileURLToPath } from 'url';
-// Moved problematic imports to dynamic imports inside routes
-// import nodemailer from 'nodemailer';
-// import { ImapFlow } from 'imapflow';
-// import { simpleParser } from 'mailparser';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,29 +22,12 @@ async function startServer() {
     app.use(express.urlencoded({ extended: true, limit: "100mb" }));
     app.use(cors({ origin: "*" }));
 
-    // Health check
-    app.get("/api/health", (req, res) => {
-        res.json({ status: "ok", uptime: process.uptime() });
-    });
-
     // ======================================================
     // PATH CONFIG
     // ======================================================
-    let ROOT_DIR = path.join(process.cwd(), "ServerData");
-    
-    try {
-        // Try to use E:\ServerData if on Windows or if it exists
-        if (process.platform === "win32" || fs.existsSync("E:\\ServerData")) {
-            // Check if E: drive is actually accessible by trying to stat it or just checking existence
-            if (fs.existsSync("E:\\")) {
-                ROOT_DIR = "E:\\ServerData";
-            }
-        }
-    } catch (e) {
-        console.warn("[SERVER] E: drive not accessible, falling back to local ServerData");
-    }
-
-    console.log(`[SERVER] Data directory: ${ROOT_DIR}`);
+    const ROOT_DIR = process.platform === "win32" || fs.existsSync("E:\\ServerData")
+        ? "E:\\ServerData" 
+        : path.join(process.cwd(), "ServerData");
 
     const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, Customers, etc.)
     const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting Data (Admin Only)
@@ -57,31 +36,7 @@ async function startServer() {
     const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
     const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
     const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Data
-    const EMAIL_CONFIG_PATH = path.join(ROOT_DIR, "email-config.json"); // Email Config
     const HISTORY_ROOT = path.join(ROOT_DIR, "history");
-
-    // Fallback Email Config
-    const DEFAULT_EMAIL_CONFIG = {
-        user: 'Fin_vn@kimberryline.com',
-        pass: 'Finance@7602',
-        imapHost: 'imap.exmail.qq.com',
-        imapPort: 993,
-        smtpHost: 'smtp.exmail.qq.com',
-        smtpPort: 465,
-        secure: true
-    };
-
-    async function getEmailConfig() {
-        try {
-            if (fs.existsSync(EMAIL_CONFIG_PATH)) {
-                const content = await fsp.readFile(EMAIL_CONFIG_PATH, "utf8");
-                return JSON.parse(content);
-            }
-        } catch (e) {
-            console.error("[SERVER] Failed to read email config file, using fallback", e);
-        }
-        return DEFAULT_EMAIL_CONFIG;
-    }
 
     const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
     const INV_DIR = path.join(ROOT_DIR, "INV");
@@ -92,7 +47,7 @@ async function startServer() {
     // ======================================================
     // INIT DIRECTORIES & FILES
     // ======================================================
-    const dirsToCreate = [
+    [
         ROOT_DIR,
         HISTORY_ROOT,
         INVOICE_ROOT,
@@ -100,30 +55,17 @@ async function startServer() {
         UNC_DIR,
         CVHC_ROOT,
         SIGN_DIR
-    ];
-
-    for (const d of dirsToCreate) {
-        try {
-            if (!fs.existsSync(d)) {
-                fs.mkdirSync(d, { recursive: true });
-                console.log(`[SERVER] Created directory: ${d}`);
-            }
-        } catch (err) {
-            console.error(`[SERVER] Failed to create directory ${d}:`, err);
-        }
-    }
+    ].forEach(d => {
+        if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+    });
 
     // Initialize files if not exist
-    try {
-        if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
-        if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
-        if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
-        if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
-        if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
-        if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
-    } catch (err) {
-        console.error("[SERVER] Failed to initialize data files:", err);
-    }
+    if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
+    if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
+    if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
+    if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
+    if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
+    if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
 
     // ======================================================
     // MEMORY + LOCK STATE
@@ -555,6 +497,7 @@ async function startServer() {
             if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
             if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
             if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
+            if (safeData.emails) memoryData.emails = mergeLists(memoryData.emails || [], safeData.emails);
 
             triggerDiskSave(isAdmin); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
@@ -799,310 +742,6 @@ async function startServer() {
         }
     });
 
-    // ======================================================
-    // EMAIL API
-    // ======================================================
-    app.get("/api/emails", async (req, res) => {
-        const folder = req.query.folder || 'INBOX';
-        const limit = parseInt(req.query.limit as string) || 50;
-        
-        try {
-            const { ImapFlow } = await import('imapflow');
-            const { simpleParser } = await import('mailparser');
-            
-            const config = await getEmailConfig();
-            let targetFolder = folder as string;
-            if (targetFolder === 'SENT') targetFolder = 'Sent Messages';
-            if (targetFolder === 'DRAFTS') targetFolder = 'Drafts';
-            if (targetFolder === 'TRASH') targetFolder = 'Deleted Messages';
-            if (targetFolder === 'SPAM') targetFolder = 'Junk';
-
-            const client = new ImapFlow({
-                host: config.imapHost,
-                port: config.imapPort,
-                secure: config.secure,
-                auth: {
-                    user: config.user,
-                    pass: config.pass
-                },
-                logger: false,
-                tls: { 
-                    rejectUnauthorized: false,
-                    minVersion: 'TLSv1.2'
-                },
-                connectionTimeout: 15000,
-                greetingTimeout: 15000
-            });
-
-            await client.connect();
-            
-            let lock;
-            try {
-                lock = await client.getMailboxLock(targetFolder);
-            } catch (lockErr) {
-                // Fallback to INBOX if folder not found
-                console.warn(`Folder ${targetFolder} not found, falling back to INBOX`);
-                lock = await client.getMailboxLock('INBOX');
-            }
-            
-            try {
-                const status = await client.status(client.mailbox ? client.mailbox.path : 'INBOX', { messages: true, unseen: true });
-                const count = status.messages || 0;
-                const unreadCount = status.unseen || 0;
-                
-                const messages = [];
-                if (count > 0) {
-                    // Fetch last N messages based on limit
-                    const range = count > limit ? `${count - (limit - 1)}:*` : '1:*';
-                    for await (let message of client.fetch(range, { envelope: true, source: true, flags: true })) {
-                        try {
-                            const parsed = await simpleParser(message.source);
-                            messages.push({
-                                id: message.id.toString(),
-                                uid: message.uid,
-                                from: parsed.from?.text || "",
-                                to: parsed.to?.text || "",
-                                subject: parsed.subject || "",
-                                body: parsed.text || "",
-                                html: parsed.html || "",
-                                timestamp: parsed.date?.toISOString() || new Date().toISOString(),
-                                isRead: message.flags.has('\\Seen'),
-                                isFlagged: message.flags.has('\\Flagged'),
-                                attachments: parsed.attachments.map(att => ({
-                                    name: att.filename || "unnamed",
-                                    size: att.size,
-                                    contentType: att.contentType
-                                }))
-                            });
-                        } catch (parseErr) {
-                            console.error("Error parsing message source:", parseErr);
-                        }
-                    }
-                }
-                
-                // Sort by date descending
-                messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-                
-                res.json({ success: true, emails: messages, totalUnread: unreadCount });
-            } finally {
-                if (lock) lock.release();
-                await client.logout();
-            }
-        } catch (err: any) {
-            console.error("IMAP Error details:", err);
-            res.status(500).json({ success: false, message: `IMAP Connection Error: ${err.message}` });
-        }
-    });
-
-    app.post("/api/emails/flags", async (req, res) => {
-        const { uid, folder, flags, action } = req.body; // action: 'add' | 'remove' | 'set'
-        
-        try {
-            const { ImapFlow } = await import('imapflow');
-            const config = await getEmailConfig();
-            const client = new ImapFlow({
-                host: config.imapHost,
-                port: config.imapPort,
-                secure: config.secure,
-                auth: { user: config.user, pass: config.pass },
-                logger: false,
-                tls: { rejectUnauthorized: false }
-            });
-
-            await client.connect();
-            let targetFolder = (folder as string) || 'INBOX';
-            if (targetFolder === 'SENT') targetFolder = 'Sent Messages';
-            
-            let lock = await client.getMailboxLock(targetFolder);
-            try {
-                if (action === 'add') {
-                    await client.messageFlagsAdd(uid, flags, { uid: true });
-                } else if (action === 'remove') {
-                    await client.messageFlagsRemove(uid, flags, { uid: true });
-                } else {
-                    await client.messageFlagsSet(uid, flags, { uid: true });
-                }
-                res.json({ success: true });
-            } finally {
-                if (lock) lock.release();
-                await client.logout();
-            }
-        } catch (err: any) {
-            console.error("IMAP Flags Error:", err);
-            res.status(500).json({ success: false, message: err.message });
-        }
-    });
-
-    app.get("/api/emails/attachment", async (req, res) => {
-        const { uid, folder, filename } = req.query;
-        
-        try {
-            const { ImapFlow } = await import('imapflow');
-            const { simpleParser } = await import('mailparser');
-            const config = await getEmailConfig();
-            const client = new ImapFlow({
-                host: config.imapHost,
-                port: config.imapPort,
-                secure: config.secure,
-                auth: { user: config.user, pass: config.pass },
-                logger: false,
-                tls: { rejectUnauthorized: false }
-            });
-
-            await client.connect();
-            let targetFolder = (folder as string) || 'INBOX';
-            if (targetFolder === 'SENT') targetFolder = 'Sent Messages';
-            
-            let lock = await client.getMailboxLock(targetFolder);
-            try {
-                const message = await client.fetchOne(uid as string, { source: true }, { uid: true });
-                if (!message) {
-                    return res.status(404).json({ success: false, message: "Message not found" });
-                }
-
-                const parsed = await simpleParser(message.source);
-                const attachment = parsed.attachments.find(att => att.filename === filename);
-
-                if (!attachment) {
-                    return res.status(404).json({ success: false, message: "Attachment not found" });
-                }
-
-                res.setHeader('Content-Type', attachment.contentType);
-                res.setHeader('Content-Disposition', `inline; filename="${attachment.filename}"`);
-                res.send(attachment.content);
-            } finally {
-                lock.release();
-                await client.logout();
-            }
-        } catch (err: any) {
-            console.error("Attachment Fetch Error:", err);
-            res.status(500).json({ success: false, message: err.message });
-        }
-    });
-
-    app.post("/api/emails/send", async (req, res) => {
-        const { to, subject, body, html } = req.body;
-
-        try {
-            const nodemailer = (await import('nodemailer')).default;
-            const config = await getEmailConfig();
-            const transporter = nodemailer.createTransport({
-                host: config.smtpHost,
-                port: config.smtpPort,
-                secure: config.secure,
-                auth: {
-                    user: config.user,
-                    pass: config.pass
-                }
-            });
-
-            const info = await transporter.sendMail({
-                from: config.user,
-                to,
-                subject,
-                text: body,
-                html: html || body
-            });
-
-            res.json({ success: true, messageId: info.messageId });
-        } catch (err: any) {
-            console.error("SMTP Error:", err);
-            res.status(500).json({ success: false, message: err.message });
-        }
-    });
-
-    app.post("/api/emails/test", async (req, res) => {
-        let config = req.body;
-        
-        // If password is empty, try to use the saved one
-        if (!config.pass && fs.existsSync(EMAIL_CONFIG_PATH)) {
-            try {
-                const savedConfig = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
-                config = { ...config, pass: savedConfig.pass };
-            } catch (e) {
-                console.error("Failed to read saved config for test", e);
-            }
-        }
-
-        const results = { imap: { success: false, message: "" }, smtp: { success: false, message: "" } };
-
-        // Test IMAP
-        try {
-            const { ImapFlow } = await import('imapflow');
-            const client = new ImapFlow({
-                host: config.imapHost,
-                port: config.imapPort,
-                secure: config.secure,
-                auth: { user: config.user, pass: config.pass },
-                logger: false,
-                tls: { 
-                    rejectUnauthorized: false,
-                    minVersion: 'TLSv1.2'
-                },
-                connectionTimeout: 10000,
-                greetingTimeout: 10000
-            });
-            await client.connect();
-            await client.logout();
-            results.imap.success = true;
-            results.imap.message = "Kết nối IMAP thành công";
-        } catch (err: any) {
-            console.error("Test IMAP Error:", err);
-            results.imap.message = `${err.name}: ${err.message}`;
-        }
-
-        // Test SMTP
-        try {
-            const nodemailer = (await import('nodemailer')).default;
-            const transporter = nodemailer.createTransport({
-                host: config.smtpHost,
-                port: config.smtpPort,
-                secure: config.secure,
-                auth: { user: config.user, pass: config.pass },
-                tls: { 
-                    rejectUnauthorized: false,
-                    minVersion: 'TLSv1.2'
-                },
-                connectionTimeout: 10000
-            });
-            await transporter.verify();
-            results.smtp.success = true;
-            results.smtp.message = "Kết nối SMTP thành công";
-        } catch (err: any) {
-            console.error("Test SMTP Error:", err);
-            results.smtp.message = `${err.name}: ${err.message}`;
-        }
-
-        res.json({ success: results.imap.success && results.smtp.success, results });
-    });
-
-    app.get("/api/email-config", async (req, res) => {
-        try {
-            const config = await getEmailConfig();
-            // Don't send password back
-            const safeConfig = { ...config };
-            delete safeConfig.pass;
-            res.json({ success: true, config: safeConfig });
-        } catch (err) {
-            res.status(500).json({ success: false });
-        }
-    });
-
-    app.post("/api/email-config", async (req, res) => {
-        try {
-            const config = req.body;
-            // If password is missing but config exists, preserve old password
-            if (!config.pass && fs.existsSync(EMAIL_CONFIG_PATH)) {
-                const oldConfig = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
-                config.pass = oldConfig.pass;
-            }
-            await fsp.writeFile(EMAIL_CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
-            res.json({ success: true });
-        } catch (err: any) {
-            res.status(500).json({ success: false, message: err.message });
-        }
-    });
-
     app.get("/api/long-hoang/restore", async (req, res) => {
         try {
             if (!fs.existsSync(LHOANG_PATH)) {
@@ -1242,24 +881,7 @@ async function startServer() {
 
     app.listen(PORT, "0.0.0.0", () => {
         console.log(`🚀 Server running on http://localhost:${PORT}`);
-    }).on('error', (err: any) => {
-        if (err.code === 'EADDRINUSE') {
-            console.error(`[SERVER] Port ${PORT} is already in use. Please restart the dev server.`);
-        } else {
-            console.error('[SERVER] Failed to start server:', err);
-        }
     });
 }
 
-// Global error handlers
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('[SERVER] Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (err) => {
-    console.error('[SERVER] Uncaught Exception:', err);
-});
-
-startServer().catch(err => {
-    console.error("[SERVER] Fatal error during startup:", err);
-});
+startServer();

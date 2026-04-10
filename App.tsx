@@ -18,7 +18,7 @@ import { NFCPage } from './pages/NFCPage';
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LongHoangPage } from './pages/LongHoangPage';
-import { EmailPage } from './pages/EmailPage';
+import { EmailInbox } from './pages/EmailInbox';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -28,7 +28,7 @@ import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from '
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder, EmailMessage } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -91,7 +91,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'mail'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'email'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -289,7 +289,7 @@ const App: React.FC = () => {
   const [isAutoUploading, setIsAutoUploading] = useState(false);
   const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
-  const BACKEND_URL = window.location.origin + "/api";
+  const BACKEND_URL = "https://api.kimberry.id.vn";
 
   useEffect(() => {
     localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));
@@ -519,6 +519,33 @@ const App: React.FC = () => {
       try {
           const saved = localStorage.getItem('kb_long_hoang_orders');
           return saved ? JSON.parse(saved) : [];
+      } catch {
+          return [];
+      }
+  });
+
+  // --- EMAIL STATE ---
+  const [emails, setEmails] = useState<EmailMessage[]>(() => {
+      try {
+          const saved = localStorage.getItem('kb_emails');
+          return saved ? JSON.parse(saved) : [
+            {
+              id: '1',
+              sender: 'Hệ thống Kimberry',
+              subject: 'Chào mừng bạn đến với hệ thống quản lý mới',
+              content: 'Chào mừng bạn đã truy cập vào hệ thống quản lý Logistics Kimberry. Đây là nơi bạn có thể quản lý Job, Booking, Thanh toán và nhiều tính năng khác.',
+              timestamp: new Date().toISOString(),
+              isRead: false
+            },
+            {
+              id: '2',
+              sender: 'Phòng Kế toán',
+              subject: 'Nhắc nhở đối soát cuối tháng',
+              content: 'Vui lòng kiểm tra lại các phiếu thu/chi trong tháng để đảm bảo dữ liệu khớp với AMIS.',
+              timestamp: new Date(Date.now() - 86400000).toISOString(),
+              isRead: true
+            }
+          ];
       } catch {
           return [];
       }
@@ -761,6 +788,15 @@ const App: React.FC = () => {
       setCustomReceipts(prev => prev.filter(r => r.id !== id));
   };
 
+  // --- EMAIL HANDLERS ---
+  const handleUpdateEmail = (updatedEmail: EmailMessage) => {
+      setEmails(prev => prev.map(e => e.id === updatedEmail.id ? updatedEmail : e));
+  };
+
+  const handleDeleteEmail = (id: string) => {
+      setEmails(prev => prev.filter(e => e.id !== id));
+  };
+
   // --- DATA SYNC FUNCTIONS ---
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
@@ -985,7 +1021,7 @@ const App: React.FC = () => {
     const fetchServerData = async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); 
+        const timeoutId = setTimeout(() => controller.abort(), 2000); 
 
         // Fetch BOTH general data and NFC data
         const [dataRes, nfcRes, headerRes] = await Promise.all([
@@ -1046,6 +1082,10 @@ const App: React.FC = () => {
 
         if (data.longHoangOrders && Array.isArray(data.longHoangOrders)) {
             setLongHoangOrders(data.longHoangOrders);
+        }
+
+        if (data.emails && Array.isArray(data.emails)) {
+            setEmails(data.emails);
         }
 
         setIsInitialSyncDone(true);
@@ -1144,7 +1184,8 @@ const App: React.FC = () => {
         customReceipts,
         salaries,
         yearlyConfigs,
-        longHoangOrders
+        longHoangOrders,
+        emails
         // NFC EXCLUDED FROM GENERAL BACKUP
       };
 
@@ -1218,6 +1259,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
+  useEffect(() => { localStorage.setItem('kb_emails', JSON.stringify(emails)); }, [emails]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
   useEffect(() => {
@@ -1588,8 +1630,12 @@ const App: React.FC = () => {
               />
             )}
 
-            {currentPage === 'mail' && (
-              <EmailPage />
+            {currentPage === 'email' && (
+              <EmailInbox 
+                emails={emails}
+                onUpdateEmail={handleUpdateEmail}
+                onDeleteEmail={handleDeleteEmail}
+              />
             )}
 
             {currentPage === 'system' && (

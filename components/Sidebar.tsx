@@ -83,6 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewData = isAdmin; 
   const canViewSystem = isAdmin; 
   const canViewToolAI = isAdmin; 
+  const canViewEmail = isAdmin || isDocs;
   const canViewNfc = isAdmin; 
   
   const canSendPending = false;
@@ -339,16 +340,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <MenuItem active={currentPage === 'tool-ai'} onClick={(e) => handleNavigate(e, 'tool-ai')} icon={Cpu} label="Tool AI" />
           )}
 
+          {canViewEmail && (
+            <MenuItem active={currentPage === 'email'} onClick={(e) => handleNavigate(e, 'email')} icon={Mail} label="Hộp thư Email" />
+          )}
+
           {canViewNfc && (
             <MenuItem active={currentPage === 'nfc'} onClick={(e) => handleNavigate(e, 'nfc')} icon={IdCard} label="NFC Cards" />
           )}
 
           {canViewNfc && (
             <MenuItem active={currentPage === 'long-hoang'} onClick={(e) => handleNavigate(e, 'long-hoang')} icon={Briefcase} label="Trang Long Hoàng" />
-          )}
-
-          {canViewNfc && (
-            <MenuItem active={currentPage === 'mail'} onClick={(e) => handleNavigate(e, 'mail')} icon={Mail} label="Hộp thư Email" />
           )}
 
           {canViewSystem && (

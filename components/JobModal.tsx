@@ -8,7 +8,7 @@ import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
 import { CustomerModal } from './CustomerModal';
 import axios from 'axios';
 
-const BACKEND_URL = window.location.origin + "/api";
+const BACKEND_URL = "https://api.kimberry.id.vn";
 
 interface JobModalProps {
   isOpen: boolean;
