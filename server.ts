@@ -7,6 +7,9 @@ import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { fileURLToPath } from 'url';
+import nodemailer from 'nodemailer';
+import { ImapFlow } from 'imapflow';
+import { simpleParser } from 'mailparser';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +39,7 @@ async function startServer() {
     const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
     const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
     const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Data
+    const EMAIL_CONFIG_PATH = path.join(ROOT_DIR, "email-config.json"); // Email Config
     const HISTORY_ROOT = path.join(ROOT_DIR, "history");
 
     const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
@@ -736,6 +740,323 @@ async function startServer() {
             const { orders } = req.body;
             await fsp.writeFile(LHOANG_PATH, JSON.stringify(orders, null, 2), "utf8");
             res.json({ success: true, message: "Backup saved successfully" });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message });
+        }
+    });
+
+    // ======================================================
+    // EMAIL API
+    // ======================================================
+    app.get("/api/emails", async (req, res) => {
+        const folder = req.query.folder || 'INBOX';
+        const limit = parseInt(req.query.limit as string) || 50;
+        
+        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
+            return res.json({ success: false, message: "Email config not found" });
+        }
+
+        try {
+            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            
+            // Map common folder names to server-specific ones if needed
+            let targetFolder = folder as string;
+            if (targetFolder === 'SENT') targetFolder = 'Sent Messages';
+            if (targetFolder === 'DRAFTS') targetFolder = 'Drafts';
+            if (targetFolder === 'TRASH') targetFolder = 'Deleted Messages';
+            if (targetFolder === 'SPAM') targetFolder = 'Junk';
+
+            const client = new ImapFlow({
+                host: config.imapHost,
+                port: config.imapPort,
+                secure: config.secure,
+                auth: {
+                    user: config.user,
+                    pass: config.pass
+                },
+                logger: false,
+                tls: { 
+                    rejectUnauthorized: false,
+                    minVersion: 'TLSv1.2'
+                },
+                connectionTimeout: 15000,
+                greetingTimeout: 15000
+            });
+
+            await client.connect();
+            
+            let lock;
+            try {
+                lock = await client.getMailboxLock(targetFolder);
+            } catch (lockErr) {
+                // Fallback to INBOX if folder not found
+                console.warn(`Folder ${targetFolder} not found, falling back to INBOX`);
+                lock = await client.getMailboxLock('INBOX');
+            }
+            
+            try {
+                const status = await client.status(client.mailbox ? client.mailbox.path : 'INBOX', { messages: true, unseen: true });
+                const count = status.messages || 0;
+                const unreadCount = status.unseen || 0;
+                
+                const messages = [];
+                if (count > 0) {
+                    // Fetch last N messages based on limit
+                    const range = count > limit ? `${count - (limit - 1)}:*` : '1:*';
+                    for await (let message of client.fetch(range, { envelope: true, source: true, flags: true })) {
+                        try {
+                            const parsed = await simpleParser(message.source);
+                            messages.push({
+                                id: message.id.toString(),
+                                uid: message.uid,
+                                from: parsed.from?.text || "",
+                                to: parsed.to?.text || "",
+                                subject: parsed.subject || "",
+                                body: parsed.text || "",
+                                html: parsed.html || "",
+                                timestamp: parsed.date?.toISOString() || new Date().toISOString(),
+                                isRead: message.flags.has('\\Seen'),
+                                isFlagged: message.flags.has('\\Flagged'),
+                                attachments: parsed.attachments.map(att => ({
+                                    name: att.filename || "unnamed",
+                                    size: att.size,
+                                    contentType: att.contentType
+                                }))
+                            });
+                        } catch (parseErr) {
+                            console.error("Error parsing message source:", parseErr);
+                        }
+                    }
+                }
+                
+                // Sort by date descending
+                messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                
+                res.json({ success: true, emails: messages, totalUnread: unreadCount });
+            } finally {
+                if (lock) lock.release();
+                await client.logout();
+            }
+        } catch (err: any) {
+            console.error("IMAP Error details:", err);
+            res.status(500).json({ success: false, message: `IMAP Connection Error: ${err.message}` });
+        }
+    });
+
+    app.post("/api/emails/flags", async (req, res) => {
+        const { uid, folder, flags, action } = req.body; // action: 'add' | 'remove' | 'set'
+        
+        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
+            return res.status(404).json({ success: false, message: "Email config not found" });
+        }
+
+        try {
+            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            const client = new ImapFlow({
+                host: config.imapHost,
+                port: config.imapPort,
+                secure: config.secure,
+                auth: { user: config.user, pass: config.pass },
+                logger: false,
+                tls: { rejectUnauthorized: false }
+            });
+
+            await client.connect();
+            let targetFolder = (folder as string) || 'INBOX';
+            if (targetFolder === 'SENT') targetFolder = 'Sent Messages';
+            
+            let lock = await client.getMailboxLock(targetFolder);
+            try {
+                if (action === 'add') {
+                    await client.messageFlagsAdd(uid, flags, { uid: true });
+                } else if (action === 'remove') {
+                    await client.messageFlagsRemove(uid, flags, { uid: true });
+                } else {
+                    await client.messageFlagsSet(uid, flags, { uid: true });
+                }
+                res.json({ success: true });
+            } finally {
+                if (lock) lock.release();
+                await client.logout();
+            }
+        } catch (err: any) {
+            console.error("IMAP Flags Error:", err);
+            res.status(500).json({ success: false, message: err.message });
+        }
+    });
+
+    app.get("/api/emails/attachment", async (req, res) => {
+        const { uid, folder, filename } = req.query;
+        
+        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
+            return res.status(404).json({ success: false, message: "Email config not found" });
+        }
+
+        try {
+            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            const client = new ImapFlow({
+                host: config.imapHost,
+                port: config.imapPort,
+                secure: config.secure,
+                auth: { user: config.user, pass: config.pass },
+                logger: false,
+                tls: { rejectUnauthorized: false }
+            });
+
+            await client.connect();
+            let targetFolder = (folder as string) || 'INBOX';
+            if (targetFolder === 'SENT') targetFolder = 'Sent Messages';
+            
+            let lock = await client.getMailboxLock(targetFolder);
+            try {
+                const message = await client.fetchOne(uid as string, { source: true }, { uid: true });
+                if (!message) {
+                    return res.status(404).json({ success: false, message: "Message not found" });
+                }
+
+                const parsed = await simpleParser(message.source);
+                const attachment = parsed.attachments.find(att => att.filename === filename);
+
+                if (!attachment) {
+                    return res.status(404).json({ success: false, message: "Attachment not found" });
+                }
+
+                res.setHeader('Content-Type', attachment.contentType);
+                res.setHeader('Content-Disposition', `inline; filename="${attachment.filename}"`);
+                res.send(attachment.content);
+            } finally {
+                lock.release();
+                await client.logout();
+            }
+        } catch (err: any) {
+            console.error("Attachment Fetch Error:", err);
+            res.status(500).json({ success: false, message: err.message });
+        }
+    });
+
+    app.post("/api/emails/send", async (req, res) => {
+        const { to, subject, body, html } = req.body;
+
+        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
+            return res.json({ success: false, message: "Email config not found" });
+        }
+
+        try {
+            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            const transporter = nodemailer.createTransport({
+                host: config.smtpHost,
+                port: config.smtpPort,
+                secure: config.secure,
+                auth: {
+                    user: config.user,
+                    pass: config.pass
+                }
+            });
+
+            const info = await transporter.sendMail({
+                from: config.user,
+                to,
+                subject,
+                text: body,
+                html: html || body
+            });
+
+            res.json({ success: true, messageId: info.messageId });
+        } catch (err: any) {
+            console.error("SMTP Error:", err);
+            res.status(500).json({ success: false, message: err.message });
+        }
+    });
+
+    app.post("/api/emails/test", async (req, res) => {
+        let config = req.body;
+        
+        // If password is empty, try to use the saved one
+        if (!config.pass && fs.existsSync(EMAIL_CONFIG_PATH)) {
+            try {
+                const savedConfig = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+                config = { ...config, pass: savedConfig.pass };
+            } catch (e) {
+                console.error("Failed to read saved config for test", e);
+            }
+        }
+
+        const results = { imap: { success: false, message: "" }, smtp: { success: false, message: "" } };
+
+        // Test IMAP
+        try {
+            const client = new ImapFlow({
+                host: config.imapHost,
+                port: config.imapPort,
+                secure: config.secure,
+                auth: { user: config.user, pass: config.pass },
+                logger: false,
+                tls: { 
+                    rejectUnauthorized: false,
+                    minVersion: 'TLSv1.2'
+                },
+                connectionTimeout: 10000,
+                greetingTimeout: 10000
+            });
+            await client.connect();
+            await client.logout();
+            results.imap.success = true;
+            results.imap.message = "Kết nối IMAP thành công";
+        } catch (err: any) {
+            console.error("Test IMAP Error:", err);
+            results.imap.message = `${err.name}: ${err.message}`;
+        }
+
+        // Test SMTP
+        try {
+            const transporter = nodemailer.createTransport({
+                host: config.smtpHost,
+                port: config.smtpPort,
+                secure: config.secure,
+                auth: { user: config.user, pass: config.pass },
+                tls: { 
+                    rejectUnauthorized: false,
+                    minVersion: 'TLSv1.2'
+                },
+                connectionTimeout: 10000
+            });
+            await transporter.verify();
+            results.smtp.success = true;
+            results.smtp.message = "Kết nối SMTP thành công";
+        } catch (err: any) {
+            console.error("Test SMTP Error:", err);
+            results.smtp.message = `${err.name}: ${err.message}`;
+        }
+
+        res.json({ success: results.imap.success && results.smtp.success, results });
+    });
+
+    app.get("/api/email-config", async (req, res) => {
+        try {
+            if (fs.existsSync(EMAIL_CONFIG_PATH)) {
+                const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+                // Don't send password back
+                const safeConfig = { ...config };
+                delete safeConfig.pass;
+                res.json({ success: true, config: safeConfig });
+            } else {
+                res.json({ success: false });
+            }
+        } catch (err) {
+            res.status(500).json({ success: false });
+        }
+    });
+
+    app.post("/api/email-config", async (req, res) => {
+        try {
+            const config = req.body;
+            // If password is missing but config exists, preserve old password
+            if (!config.pass && fs.existsSync(EMAIL_CONFIG_PATH)) {
+                const oldConfig = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+                config.pass = oldConfig.pass;
+            }
+            await fsp.writeFile(EMAIL_CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+            res.json({ success: true });
         } catch (err: any) {
             res.status(500).json({ success: false, message: err.message });
         }

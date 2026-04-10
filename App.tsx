@@ -18,6 +18,7 @@ import { NFCPage } from './pages/NFCPage';
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LongHoangPage } from './pages/LongHoangPage';
+import { EmailPage } from './pages/EmailPage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -90,7 +91,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'mail'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -288,7 +289,7 @@ const App: React.FC = () => {
   const [isAutoUploading, setIsAutoUploading] = useState(false);
   const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
-  const BACKEND_URL = "https://api.kimberry.id.vn";
+  const BACKEND_URL = window.location.origin + "/api";
 
   useEffect(() => {
     localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));
@@ -984,7 +985,7 @@ const App: React.FC = () => {
     const fetchServerData = async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); 
+        const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
         // Fetch BOTH general data and NFC data
         const [dataRes, nfcRes, headerRes] = await Promise.all([
@@ -1585,6 +1586,10 @@ const App: React.FC = () => {
                 onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
                 onRestoreOrders={(orders) => setLongHoangOrders(orders)}
               />
+            )}
+
+            {currentPage === 'mail' && (
+              <EmailPage />
             )}
 
             {currentPage === 'system' && (

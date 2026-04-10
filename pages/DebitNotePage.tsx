@@ -7,7 +7,7 @@ import axios from 'axios';
 import ExcelJS from 'exceljs';
 import { formatDateVN } from '../utils';
 
-const BACKEND_URL = "https://api.kimberry.id.vn";
+const BACKEND_URL = window.location.origin + "/api";
 const TEMPLATE_FOLDER = "Invoice";
 const TEMPLATE_MAP: Record<string, string> = {
   debit: "Debit_Note_Mau.xlsx"

@@ -450,6 +450,51 @@ export interface LongHoangOrder {
 }
 
 // ============================================================
+// EMAIL SYSTEM
+// ============================================================
+export interface EmailAttachment {
+  name: string;
+  url: string;
+  size: number;
+  contentType?: string;
+}
+
+export interface EmailMessage {
+  id: string;
+  uid?: number; // IMAP UID
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+  html?: string;
+  timestamp: string;
+  isRead: boolean;
+  isFlagged?: boolean;
+  attachments?: EmailAttachment[];
+  folder?: string;
+}
+
+export interface EmailConfig {
+  user: string;
+  pass: string;
+  imapHost: string;
+  imapPort: number;
+  smtpHost: string;
+  smtpPort: number;
+  secure: boolean;
+}
+
+export interface DebitNoteData {
+  id: string;
+  [key: string]: any;
+}
+
+export interface PhieuInvOrder {
+  id: string;
+  [key: string]: any;
+}
+
+// ============================================================
 // INITIAL JOB (DEFAULT OBJECT)
 // ============================================================
 

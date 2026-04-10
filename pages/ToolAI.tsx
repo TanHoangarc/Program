@@ -24,7 +24,7 @@ if (pdfjsLib.GlobalWorkerOptions) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.530/build/pdf.worker.min.mjs';
 }
 
-const BACKEND_URL = "https://api.kimberry.id.vn";
+const BACKEND_URL = window.location.origin + "/api";
 
 type ToolType = 'split' | 'compress' | 'merge' | 'images_to_pdf' | 'unlock' | 'edit' | 'stamp' | 'extract' | 'smart_edit';
 

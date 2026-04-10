@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp, Mail } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang';
@@ -345,6 +345,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {canViewNfc && (
             <MenuItem active={currentPage === 'long-hoang'} onClick={(e) => handleNavigate(e, 'long-hoang')} icon={Briefcase} label="Trang Long Hoàng" />
+          )}
+
+          {canViewNfc && (
+            <MenuItem active={currentPage === 'mail'} onClick={(e) => handleNavigate(e, 'mail')} icon={Mail} label="Hộp thư Email" />
           )}
 
           {canViewSystem && (
