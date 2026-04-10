@@ -7,9 +7,10 @@ import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { fileURLToPath } from 'url';
-import nodemailer from 'nodemailer';
-import { ImapFlow } from 'imapflow';
-import { simpleParser } from 'mailparser';
+// Moved problematic imports to dynamic imports inside routes
+// import nodemailer from 'nodemailer';
+// import { ImapFlow } from 'imapflow';
+// import { simpleParser } from 'mailparser';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,15 +22,21 @@ async function startServer() {
     // ======================================================
     // GLOBAL MIDDLEWARE
     // ======================================================
-    app.use(express.json({ limit: "100mb" }));
-    app.use(express.urlencoded({ extended: true, limit: "100mb" }));
+    app.use(express.json({ limit: "50mb" }));
+    app.use(express.urlencoded({ extended: true, limit: "50mb" }));
     app.use(cors({ origin: "*" }));
+
+    // Health check
+    app.get("/api/health", (req, res) => {
+        res.json({ status: "ok", uptime: process.uptime() });
+    });
 
     // ======================================================
     // PATH CONFIG
     // ======================================================
-    const ROOT_DIR = fs.existsSync("E:\\ServerData")
-        ? "E:\\ServerData" 
+    // Restore original logic: prioritize E:\ServerData if it exists or if on Windows (safer fallback)
+    const ROOT_DIR = (process.platform === "win32" || fs.existsSync("E:\\ServerData"))
+        ? (fs.existsSync("E:\\ServerData") ? "E:\\ServerData" : path.join(process.cwd(), "ServerData"))
         : path.join(process.cwd(), "ServerData");
 
     console.log(`[SERVER] Data directory: ${ROOT_DIR}`);
@@ -76,7 +83,7 @@ async function startServer() {
     // ======================================================
     // INIT DIRECTORIES & FILES
     // ======================================================
-    [
+    const dirsToCreate = [
         ROOT_DIR,
         HISTORY_ROOT,
         INVOICE_ROOT,
@@ -84,9 +91,18 @@ async function startServer() {
         UNC_DIR,
         CVHC_ROOT,
         SIGN_DIR
-    ].forEach(d => {
-        if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
-    });
+    ];
+
+    for (const d of dirsToCreate) {
+        try {
+            if (!fs.existsSync(d)) {
+                fs.mkdirSync(d, { recursive: true });
+                console.log(`[SERVER] Created directory: ${d}`);
+            }
+        } catch (err) {
+            console.error(`[SERVER] Failed to create directory ${d}:`, err);
+        }
+    }
 
     // Initialize files if not exist
     if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
@@ -778,9 +794,10 @@ async function startServer() {
         const limit = parseInt(req.query.limit as string) || 50;
         
         try {
-            const config = await getEmailConfig();
+            const { ImapFlow } = await import('imapflow');
+            const { simpleParser } = await import('mailparser');
             
-            // Map common folder names to server-specific ones if needed
+            const config = await getEmailConfig();
             let targetFolder = folder as string;
             if (targetFolder === 'SENT') targetFolder = 'Sent Messages';
             if (targetFolder === 'DRAFTS') targetFolder = 'Drafts';
@@ -868,6 +885,7 @@ async function startServer() {
         const { uid, folder, flags, action } = req.body; // action: 'add' | 'remove' | 'set'
         
         try {
+            const { ImapFlow } = await import('imapflow');
             const config = await getEmailConfig();
             const client = new ImapFlow({
                 host: config.imapHost,
@@ -906,6 +924,8 @@ async function startServer() {
         const { uid, folder, filename } = req.query;
         
         try {
+            const { ImapFlow } = await import('imapflow');
+            const { simpleParser } = await import('mailparser');
             const config = await getEmailConfig();
             const client = new ImapFlow({
                 host: config.imapHost,
@@ -951,6 +971,7 @@ async function startServer() {
         const { to, subject, body, html } = req.body;
 
         try {
+            const nodemailer = (await import('nodemailer')).default;
             const config = await getEmailConfig();
             const transporter = nodemailer.createTransport({
                 host: config.smtpHost,
@@ -994,6 +1015,7 @@ async function startServer() {
 
         // Test IMAP
         try {
+            const { ImapFlow } = await import('imapflow');
             const client = new ImapFlow({
                 host: config.imapHost,
                 port: config.imapPort,
@@ -1018,6 +1040,7 @@ async function startServer() {
 
         // Test SMTP
         try {
+            const nodemailer = (await import('nodemailer')).default;
             const transporter = nodemailer.createTransport({
                 host: config.smtpHost,
                 port: config.smtpPort,
@@ -1206,7 +1229,24 @@ async function startServer() {
 
     app.listen(PORT, "0.0.0.0", () => {
         console.log(`🚀 Server running on http://localhost:${PORT}`);
+    }).on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(`[SERVER] Port ${PORT} is already in use. Please restart the dev server.`);
+        } else {
+            console.error('[SERVER] Failed to start server:', err);
+        }
     });
 }
 
-startServer();
+// Global error handlers
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[SERVER] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[SERVER] Uncaught Exception:', err);
+});
+
+startServer().catch(err => {
+    console.error("[SERVER] Fatal error during startup:", err);
+});
