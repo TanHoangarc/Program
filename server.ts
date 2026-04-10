@@ -28,9 +28,11 @@ async function startServer() {
     // ======================================================
     // PATH CONFIG
     // ======================================================
-    const ROOT_DIR = process.platform === "win32" || fs.existsSync("E:\\ServerData")
+    const ROOT_DIR = fs.existsSync("E:\\ServerData")
         ? "E:\\ServerData" 
         : path.join(process.cwd(), "ServerData");
+
+    console.log(`[SERVER] Data directory: ${ROOT_DIR}`);
 
     const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, Customers, etc.)
     const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting Data (Admin Only)
@@ -41,6 +43,29 @@ async function startServer() {
     const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Data
     const EMAIL_CONFIG_PATH = path.join(ROOT_DIR, "email-config.json"); // Email Config
     const HISTORY_ROOT = path.join(ROOT_DIR, "history");
+
+    // Fallback Email Config
+    const DEFAULT_EMAIL_CONFIG = {
+        user: 'Fin_vn@kimberryline.com',
+        pass: 'Finance@7602',
+        imapHost: 'imap.exmail.qq.com',
+        imapPort: 993,
+        smtpHost: 'smtp.exmail.qq.com',
+        smtpPort: 465,
+        secure: true
+    };
+
+    async function getEmailConfig() {
+        try {
+            if (fs.existsSync(EMAIL_CONFIG_PATH)) {
+                const content = await fsp.readFile(EMAIL_CONFIG_PATH, "utf8");
+                return JSON.parse(content);
+            }
+        } catch (e) {
+            console.error("[SERVER] Failed to read email config file, using fallback", e);
+        }
+        return DEFAULT_EMAIL_CONFIG;
+    }
 
     const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
     const INV_DIR = path.join(ROOT_DIR, "INV");
@@ -752,12 +777,8 @@ async function startServer() {
         const folder = req.query.folder || 'INBOX';
         const limit = parseInt(req.query.limit as string) || 50;
         
-        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
-            return res.json({ success: false, message: "Email config not found" });
-        }
-
         try {
-            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            const config = await getEmailConfig();
             
             // Map common folder names to server-specific ones if needed
             let targetFolder = folder as string;
@@ -846,12 +867,8 @@ async function startServer() {
     app.post("/api/emails/flags", async (req, res) => {
         const { uid, folder, flags, action } = req.body; // action: 'add' | 'remove' | 'set'
         
-        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
-            return res.status(404).json({ success: false, message: "Email config not found" });
-        }
-
         try {
-            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            const config = await getEmailConfig();
             const client = new ImapFlow({
                 host: config.imapHost,
                 port: config.imapPort,
@@ -888,12 +905,8 @@ async function startServer() {
     app.get("/api/emails/attachment", async (req, res) => {
         const { uid, folder, filename } = req.query;
         
-        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
-            return res.status(404).json({ success: false, message: "Email config not found" });
-        }
-
         try {
-            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            const config = await getEmailConfig();
             const client = new ImapFlow({
                 host: config.imapHost,
                 port: config.imapPort,
@@ -937,12 +950,8 @@ async function startServer() {
     app.post("/api/emails/send", async (req, res) => {
         const { to, subject, body, html } = req.body;
 
-        if (!fs.existsSync(EMAIL_CONFIG_PATH)) {
-            return res.json({ success: false, message: "Email config not found" });
-        }
-
         try {
-            const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
+            const config = await getEmailConfig();
             const transporter = nodemailer.createTransport({
                 host: config.smtpHost,
                 port: config.smtpPort,
@@ -1033,15 +1042,11 @@ async function startServer() {
 
     app.get("/api/email-config", async (req, res) => {
         try {
-            if (fs.existsSync(EMAIL_CONFIG_PATH)) {
-                const config = JSON.parse(await fsp.readFile(EMAIL_CONFIG_PATH, "utf8"));
-                // Don't send password back
-                const safeConfig = { ...config };
-                delete safeConfig.pass;
-                res.json({ success: true, config: safeConfig });
-            } else {
-                res.json({ success: false });
-            }
+            const config = await getEmailConfig();
+            // Don't send password back
+            const safeConfig = { ...config };
+            delete safeConfig.pass;
+            res.json({ success: true, config: safeConfig });
         } catch (err) {
             res.status(500).json({ success: false });
         }
