@@ -22,8 +22,8 @@ async function startServer() {
     // ======================================================
     // GLOBAL MIDDLEWARE
     // ======================================================
-    app.use(express.json({ limit: "50mb" }));
-    app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+    app.use(express.json({ limit: "100mb" }));
+    app.use(express.urlencoded({ extended: true, limit: "100mb" }));
     app.use(cors({ origin: "*" }));
 
     // Health check
@@ -34,10 +34,19 @@ async function startServer() {
     // ======================================================
     // PATH CONFIG
     // ======================================================
-    // Restore original logic: prioritize E:\ServerData if it exists or if on Windows (safer fallback)
-    const ROOT_DIR = (process.platform === "win32" || fs.existsSync("E:\\ServerData"))
-        ? (fs.existsSync("E:\\ServerData") ? "E:\\ServerData" : path.join(process.cwd(), "ServerData"))
-        : path.join(process.cwd(), "ServerData");
+    let ROOT_DIR = path.join(process.cwd(), "ServerData");
+    
+    try {
+        // Try to use E:\ServerData if on Windows or if it exists
+        if (process.platform === "win32" || fs.existsSync("E:\\ServerData")) {
+            // Check if E: drive is actually accessible by trying to stat it or just checking existence
+            if (fs.existsSync("E:\\")) {
+                ROOT_DIR = "E:\\ServerData";
+            }
+        }
+    } catch (e) {
+        console.warn("[SERVER] E: drive not accessible, falling back to local ServerData");
+    }
 
     console.log(`[SERVER] Data directory: ${ROOT_DIR}`);
 
@@ -105,12 +114,16 @@ async function startServer() {
     }
 
     // Initialize files if not exist
-    if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
-    if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
-    if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
-    if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
-    if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
-    if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
+    try {
+        if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
+        if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
+        if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
+        if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
+        if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
+        if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
+    } catch (err) {
+        console.error("[SERVER] Failed to initialize data files:", err);
+    }
 
     // ======================================================
     // MEMORY + LOCK STATE
