@@ -18,7 +18,6 @@ import { NFCPage } from './pages/NFCPage';
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
 import { LongHoangPage } from './pages/LongHoangPage';
-import { EmailInbox } from './pages/EmailInbox';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -28,7 +27,7 @@ import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from '
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder, EmailMessage } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -91,7 +90,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'email'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
       try {
           const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUser) {
@@ -524,33 +523,6 @@ const App: React.FC = () => {
       }
   });
 
-  // --- EMAIL STATE ---
-  const [emails, setEmails] = useState<EmailMessage[]>(() => {
-      try {
-          const saved = localStorage.getItem('kb_emails');
-          return saved ? JSON.parse(saved) : [
-            {
-              id: '1',
-              sender: 'Hệ thống Kimberry',
-              subject: 'Chào mừng bạn đến với hệ thống quản lý mới',
-              content: 'Chào mừng bạn đã truy cập vào hệ thống quản lý Logistics Kimberry. Đây là nơi bạn có thể quản lý Job, Booking, Thanh toán và nhiều tính năng khác.',
-              timestamp: new Date().toISOString(),
-              isRead: false
-            },
-            {
-              id: '2',
-              sender: 'Phòng Kế toán',
-              subject: 'Nhắc nhở đối soát cuối tháng',
-              content: 'Vui lòng kiểm tra lại các phiếu thu/chi trong tháng để đảm bảo dữ liệu khớp với AMIS.',
-              timestamp: new Date(Date.now() - 86400000).toISOString(),
-              isRead: true
-            }
-          ];
-      } catch {
-          return [];
-      }
-  });
-
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
   const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
       try {
@@ -786,45 +758,6 @@ const App: React.FC = () => {
   };
   const handleBankMBDelete = (id: string) => {
       setCustomReceipts(prev => prev.filter(r => r.id !== id));
-  };
-
-  // --- EMAIL HANDLERS ---
-  const handleUpdateEmail = (updatedEmail: EmailMessage) => {
-      setEmails(prev => prev.map(e => e.id === updatedEmail.id ? updatedEmail : e));
-  };
-
-  const handleDeleteEmail = (id: string) => {
-      setEmails(prev => prev.filter(e => e.id !== id));
-  };
-
-  const handleFetchEmails = async () => {
-      if (!isServerAvailable) return { success: false, error: "Server unavailable" };
-      try {
-          const res = await fetch(`${BACKEND_URL}/api/email/fetch`);
-          const data = await res.json();
-          if (data.success && Array.isArray(data.emails)) {
-              setEmails(data.emails);
-              return { success: true };
-          }
-          return { success: false, error: data.error };
-      } catch (err: any) {
-          return { success: false, error: err.message };
-      }
-  };
-
-  const handleSendEmail = async (to: string, subject: string, content: string) => {
-      if (!isServerAvailable) return { success: false, error: "Server unavailable" };
-      try {
-          const res = await fetch(`${BACKEND_URL}/api/email/send`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to, subject, content })
-          });
-          const data = await res.json();
-          return data;
-      } catch (err: any) {
-          return { success: false, error: err.message };
-      }
   };
 
   // --- DATA SYNC FUNCTIONS ---
@@ -1114,10 +1047,6 @@ const App: React.FC = () => {
             setLongHoangOrders(data.longHoangOrders);
         }
 
-        if (data.emails && Array.isArray(data.emails)) {
-            setEmails(data.emails);
-        }
-
         setIsInitialSyncDone(true);
         setIsServerAvailable(true);
 
@@ -1214,8 +1143,7 @@ const App: React.FC = () => {
         customReceipts,
         salaries,
         yearlyConfigs,
-        longHoangOrders,
-        emails
+        longHoangOrders
         // NFC EXCLUDED FROM GENERAL BACKUP
       };
 
@@ -1289,7 +1217,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
-  useEffect(() => { localStorage.setItem('kb_emails', JSON.stringify(emails)); }, [emails]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
   useEffect(() => {
@@ -1330,17 +1257,8 @@ const App: React.FC = () => {
                 if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                 if (serverData.salaries) setSalaries(serverData.salaries);
                 if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
-                if (serverData.emails) setEmails(serverData.emails);
             })
             .catch(err => console.warn("Failed to re-fetch after sync", err));
-      }
-    });
-
-    eventSource.addEventListener('email-updated', (event: any) => {
-      const data = JSON.parse(event.data);
-      if (data.emails && Array.isArray(data.emails)) {
-        console.log("📧 Realtime Email Update:", data.emails.length);
-        setEmails(data.emails);
       }
     });
 
@@ -1666,17 +1584,6 @@ const App: React.FC = () => {
                 onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
                 onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
                 onRestoreOrders={(orders) => setLongHoangOrders(orders)}
-              />
-            )}
-
-            {currentPage === 'email' && (
-              <EmailInbox 
-                emails={emails}
-                onUpdateEmail={handleUpdateEmail}
-                onDeleteEmail={handleDeleteEmail}
-                onFetchEmails={handleFetchEmails}
-                onSendEmail={handleSendEmail}
-                isServerAvailable={isServerAvailable}
               />
             )}
 

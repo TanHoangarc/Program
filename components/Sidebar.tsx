@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp, Mail } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang';
@@ -83,7 +83,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewData = isAdmin; 
   const canViewSystem = isAdmin; 
   const canViewToolAI = isAdmin; 
-  const canViewEmail = isAdmin || isDocs;
   const canViewNfc = isAdmin; 
   
   const canSendPending = false;
@@ -338,10 +337,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {canViewToolAI && (
             <MenuItem active={currentPage === 'tool-ai'} onClick={(e) => handleNavigate(e, 'tool-ai')} icon={Cpu} label="Tool AI" />
-          )}
-
-          {canViewEmail && (
-            <MenuItem active={currentPage === 'email'} onClick={(e) => handleNavigate(e, 'email')} icon={Mail} label="Hộp thư Email" />
           )}
 
           {canViewNfc && (
