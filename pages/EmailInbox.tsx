@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Mail, Search, Trash2, Star, Archive, Inbox, Send, AlertCircle, ChevronLeft, ChevronRight, Paperclip, Reply, Forward, MoreVertical, Filter, X, CheckCircle2, Clock, FileText, Plus, Download } from 'lucide-react';
+import { Mail, Search, Trash2, Star, Archive, Inbox, Send, AlertCircle, ChevronLeft, ChevronRight, Paperclip, Reply, Forward, MoreVertical, Filter, X, CheckCircle2, Clock, FileText, Plus, Download, RefreshCw } from 'lucide-react';
 import { EmailMessage } from '../types';
 import { formatDateVN } from '../utils';
 
@@ -8,12 +8,26 @@ interface EmailInboxProps {
   emails: EmailMessage[];
   onUpdateEmail: (email: EmailMessage) => void;
   onDeleteEmail: (id: string) => void;
+  onFetchEmails: () => Promise<{ success: boolean; error?: string }>;
+  onSendEmail: (to: string, subject: string, content: string) => Promise<{ success: boolean; error?: string }>;
+  isServerAvailable: boolean;
 }
 
-export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, onDeleteEmail }) => {
+export const EmailInbox: React.FC<EmailInboxProps> = ({ 
+  emails, 
+  onUpdateEmail, 
+  onDeleteEmail, 
+  onFetchEmails, 
+  onSendEmail,
+  isServerAvailable 
+}) => {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [filterText, setFilterText] = useState('');
   const [activeTab, setActiveTab] = useState<'inbox' | 'unread' | 'starred' | 'archived'>('inbox');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [composeData, setComposeData] = useState({ to: '', subject: '', content: '' });
+  const [isSending, setIsSending] = useState(false);
 
   const selectedEmail = useMemo(() => 
     emails.find(e => e.id === selectedEmailId), 
@@ -24,8 +38,6 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
     let result = emails;
     
     if (activeTab === 'unread') result = result.filter(e => !e.isRead);
-    // Note: Starred and Archived would need fields in EmailMessage, adding them for UI demo
-    // if (activeTab === 'starred') result = result.filter(e => e.isStarred);
     
     if (filterText) {
       const search = filterText.toLowerCase();
@@ -48,8 +60,34 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    onDeleteEmail(id);
-    if (selectedEmailId === id) setSelectedEmailId(null);
+    if (window.confirm('Bạn có chắc chắn muốn xóa email này?')) {
+      onDeleteEmail(id);
+      if (selectedEmailId === id) setSelectedEmailId(null);
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (isRefreshing || !isServerAvailable) return;
+    setIsRefreshing(true);
+    await onFetchEmails();
+    setIsRefreshing(false);
+  };
+
+  const handleSend = async () => {
+    if (!composeData.to || !composeData.subject || !composeData.content) {
+      alert('Vui lòng điền đầy đủ thông tin');
+      return;
+    }
+    setIsSending(true);
+    const result = await onSendEmail(composeData.to, composeData.subject, composeData.content);
+    setIsSending(false);
+    if (result.success) {
+      setIsComposeOpen(false);
+      setComposeData({ to: '', subject: '', content: '' });
+      alert('Đã gửi email thành công');
+    } else {
+      alert('Lỗi gửi email: ' + result.error);
+    }
   };
 
   return (
@@ -61,7 +99,7 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
             <Mail className="w-7 h-7 text-indigo-600" />
             Hộp thư Email
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Quản lý thông báo và trao đổi qua email</p>
+          <p className="text-sm text-slate-500 mt-1">Kết nối: Fin_vn@kimberryline.com</p>
         </div>
         
         <div className="flex items-center gap-2 w-full md:w-auto">
@@ -75,8 +113,20 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
               className="w-full pl-10 pr-4 py-2 bg-white/50 border border-white/40 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
             />
           </div>
-          <button className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+          <button 
+            onClick={handleRefresh}
+            disabled={isRefreshing || !isServerAvailable}
+            className={`p-2 bg-white/50 text-slate-600 rounded-xl hover:bg-white/80 transition-all border border-white/40 ${isRefreshing ? 'animate-spin' : ''}`}
+            title="Làm mới"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => setIsComposeOpen(true)}
+            className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 flex items-center gap-2 px-4"
+          >
             <Plus className="w-5 h-5" />
+            <span className="hidden sm:inline font-bold text-sm">Soạn thư</span>
           </button>
         </div>
       </div>
@@ -110,6 +160,16 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
             label="Lưu trữ" 
           />
           
+          {!isServerAvailable && (
+            <div className="mt-4 p-3 bg-orange-50 rounded-xl border border-orange-100">
+              <div className="flex items-center gap-2 text-orange-600 mb-1">
+                <AlertCircle className="w-4 h-4" />
+                <span className="text-[10px] font-bold uppercase">Chế độ Offline</span>
+              </div>
+              <p className="text-[10px] text-orange-500 leading-tight">Không thể tải email mới hoặc gửi thư lúc này.</p>
+            </div>
+          )}
+
           <div className="mt-auto pt-4 border-t border-white/20">
             <div className="hidden md:block px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhãn</div>
             <LabelButton color="bg-blue-400" label="Công việc" />
@@ -168,6 +228,14 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
               <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8">
                 <Mail className="w-16 h-16 mb-4 opacity-20" />
                 <p className="text-sm font-medium">Không có email nào</p>
+                {isServerAvailable && (
+                  <button 
+                    onClick={handleRefresh}
+                    className="mt-4 text-indigo-600 text-xs font-bold hover:underline"
+                  >
+                    Tải email từ server
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -248,7 +316,7 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-bold text-slate-700 truncate">{file.name}</div>
-                              <div className="text-[10px] text-slate-400">PDF Document</div>
+                              <div className="text-[10px] text-slate-400">Tài liệu</div>
                             </div>
                             <Download className="w-4 h-4 text-slate-300 group-hover:text-indigo-500" />
                           </a>
@@ -279,9 +347,89 @@ export const EmailInbox: React.FC<EmailInboxProps> = ({ emails, onUpdateEmail, o
           </div>
         )}
       </div>
+
+      {/* Compose Modal */}
+      {isComposeOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+            <div className="p-6 bg-indigo-600 text-white flex justify-between items-center">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Send className="w-5 h-5" />
+                Soạn thư mới
+              </h3>
+              <button 
+                onClick={() => setIsComposeOpen(false)}
+                className="p-2 hover:bg-white/20 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Tới</label>
+                <input 
+                  type="email" 
+                  placeholder="Địa chỉ người nhận"
+                  value={composeData.to}
+                  onChange={(e) => setComposeData({...composeData, to: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Chủ đề</label>
+                <input 
+                  type="text" 
+                  placeholder="Chủ đề email"
+                  value={composeData.subject}
+                  onChange={(e) => setComposeData({...composeData, subject: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Nội dung</label>
+                <textarea 
+                  placeholder="Nhập nội dung thư..."
+                  rows={8}
+                  value={composeData.content}
+                  onChange={(e) => setComposeData({...composeData, content: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
+                ></textarea>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button 
+                onClick={() => setIsComposeOpen(false)}
+                className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-200 rounded-xl transition-all"
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={handleSend}
+                disabled={isSending || !isServerAvailable}
+                className="px-8 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSending ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Đang gửi...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Gửi ngay
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 
 const TabButton = ({ active, onClick, icon: Icon, label, count }: { active: boolean, onClick: () => void, icon: any, label: string, count?: number }) => (
   <button 

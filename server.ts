@@ -7,6 +7,9 @@ import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { fileURLToPath } from 'url';
+import { ImapFlow } from 'imapflow';
+import nodemailer from 'nodemailer';
+import { simpleParser } from 'mailparser';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -433,6 +436,7 @@ async function startServer() {
         if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
         if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
         if (!memoryData.longHoangOrders) memoryData.longHoangOrders = [];
+        if (!memoryData.emails) memoryData.emails = [];
 
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
         memoryPayments = JSON.parse(rawPayment || "[]");
@@ -855,6 +859,167 @@ async function startServer() {
             res.json(contents ? data : { text: data.candidates?.[0]?.content?.parts?.[0]?.text || "" });
         } catch (err: any) { res.status(500).json({ error: err.message }); }
     });
+
+    // ======================================================
+    // EMAIL API (IMAP & SMTP)
+    // ======================================================
+    const emailConfig = {
+        user: process.env.EMAIL_USER || "Fin_vn@kimberryline.com",
+        pass: process.env.EMAIL_PASS || "Finance@7602",
+        imap: {
+            host: process.env.EMAIL_IMAP_HOST || "imap.exmail.qq.com",
+            port: parseInt(process.env.EMAIL_IMAP_PORT || "993"),
+            secure: true
+        },
+        smtp: {
+            host: process.env.EMAIL_SMTP_HOST || "smtp.exmail.qq.com",
+            port: parseInt(process.env.EMAIL_SMTP_PORT || "465"),
+            secure: true
+        }
+    };
+
+    app.get("/api/email/fetch", async (req, res) => {
+        const client = new ImapFlow({
+            host: emailConfig.imap.host,
+            port: emailConfig.imap.port,
+            secure: emailConfig.imap.secure,
+            auth: {
+                user: emailConfig.user,
+                pass: emailConfig.pass
+            },
+            logger: false
+        });
+
+        try {
+            await client.connect();
+            let mailbox = await client.mailboxOpen('INBOX');
+            try {
+                const emails = [];
+                const totalMessages = mailbox.exists;
+                const startRange = Math.max(1, totalMessages - 49); // Fetch last 50
+                
+                for await (let message of client.fetch(`${startRange}:*`, { envelope: true, source: true })) {
+                    const parsed = await simpleParser(message.source);
+                    emails.push({
+                        id: message.uid.toString(),
+                        sender: parsed.from?.text || "Unknown",
+                        subject: parsed.subject || "(No Subject)",
+                        content: parsed.text || parsed.html || "",
+                        timestamp: parsed.date?.toISOString() || new Date().toISOString(),
+                        isRead: message.flags?.has('\\Seen') || false,
+                        attachments: parsed.attachments?.map(att => ({
+                            name: att.filename || "attachment",
+                            url: `data:${att.contentType};base64,${att.content.toString('base64')}`
+                        }))
+                    });
+                }
+                // Sort by date descending
+                const sortedEmails = emails.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                
+                // Update cache
+                memoryData.emails = sortedEmails;
+                triggerDiskSave();
+                
+                res.json({ success: true, emails: sortedEmails });
+            } finally {
+                await client.mailboxClose();
+            }
+            await client.logout();
+        } catch (err: any) {
+            console.error("IMAP Error:", err);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    app.post("/api/email/send", async (req, res) => {
+        const { to, subject, content } = req.body;
+        const transporter = nodemailer.createTransport({
+            host: emailConfig.smtp.host,
+            port: emailConfig.smtp.port,
+            secure: emailConfig.smtp.secure,
+            auth: {
+                user: emailConfig.user,
+                pass: emailConfig.pass
+            }
+        });
+
+        try {
+            await transporter.sendMail({
+                from: emailConfig.user,
+                to,
+                subject,
+                text: content
+            });
+            res.json({ success: true });
+        } catch (err: any) {
+            console.error("SMTP Error:", err);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // ======================================================
+    // BACKGROUND EMAIL FETCHING
+    // ======================================================
+    async function fetchEmailsInBackground() {
+        const client = new ImapFlow({
+            host: emailConfig.imap.host,
+            port: emailConfig.imap.port,
+            secure: emailConfig.imap.secure,
+            auth: {
+                user: emailConfig.user,
+                pass: emailConfig.pass
+            },
+            logger: false
+        });
+
+        try {
+            await client.connect();
+            let mailbox = await client.mailboxOpen('INBOX');
+            try {
+                const fetchedEmails = [];
+                const totalMessages = mailbox.exists;
+                const startRange = Math.max(1, totalMessages - 49); // Fetch last 50
+                
+                for await (let message of client.fetch(`${startRange}:*`, { envelope: true, source: true })) {
+                    const parsed = await simpleParser(message.source);
+                    fetchedEmails.push({
+                        id: message.uid.toString(),
+                        sender: parsed.from?.text || "Unknown",
+                        subject: parsed.subject || "(No Subject)",
+                        content: parsed.text || parsed.html || "",
+                        timestamp: parsed.date?.toISOString() || new Date().toISOString(),
+                        isRead: message.flags?.has('\\Seen') || false,
+                        attachments: parsed.attachments?.map(att => ({
+                            name: att.filename || "attachment",
+                            url: `data:${att.contentType};base64,${att.content.toString('base64')}`
+                        }))
+                    });
+                }
+                const sortedEmails = fetchedEmails.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                
+                // Update memoryData
+                memoryData.emails = sortedEmails;
+                
+                // Save to disk
+                await triggerDiskSave();
+                
+                // Broadcast to clients
+                broadcast("email-updated", { emails: sortedEmails });
+                
+                console.log(`📧 Background Email Sync: ${sortedEmails.length} emails loaded.`);
+            } finally {
+                await client.mailboxClose();
+            }
+            await client.logout();
+        } catch (err) {
+            console.warn("Background IMAP Error:", err);
+        }
+    }
+
+    // Start background sync every 10 minutes
+    setInterval(fetchEmailsInBackground, 10 * 60 * 1000);
+    // Initial fetch after 15 seconds to avoid blocking startup
+    setTimeout(fetchEmailsInBackground, 15000);
 
     // Static files
     app.use("/api/files/invoice", express.static(INVOICE_ROOT));

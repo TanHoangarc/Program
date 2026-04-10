@@ -450,6 +450,43 @@ export interface LongHoangOrder {
 }
 
 // ============================================================
+// DEBIT NOTE DATA
+// ============================================================
+export interface DebitNoteData {
+  id: string;
+  paymentDate: string;
+  line: string;
+  amount: number;
+  mbl: string;
+  accountNumber: string;
+  wireOffStatus: 'Pending' | 'Wired Off';
+  fees: { name: string; amount: number; usdAmount?: number | string }[];
+  paymentType?: 'Local charge' | 'Deposit' | 'Demurage';
+  note?: string;
+  invoiceFileUrl?: string;
+  invoiceFileName?: string;
+}
+
+// ============================================================
+// PHIEU INV ORDER
+// ============================================================
+export interface PhieuInvOrder {
+  id: string;
+  date: string;
+  carrier: string;
+  amount: number;
+  bill: string;
+  stk: string;
+  shipment: string;
+  wireOffStatus: 'Pending' | 'Wired Off';
+  fees: { name: string; amount: number; usdAmount?: number | string }[];
+  type: 'Local charge' | 'Deposit' | 'Demurrage';
+  note?: string;
+  invoiceFileUrl?: string;
+  invoiceFileName?: string;
+}
+
+// ============================================================
 // EMAIL MESSAGE
 // ============================================================
 export interface EmailMessage {

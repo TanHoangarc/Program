@@ -797,6 +797,36 @@ const App: React.FC = () => {
       setEmails(prev => prev.filter(e => e.id !== id));
   };
 
+  const handleFetchEmails = async () => {
+      if (!isServerAvailable) return { success: false, error: "Server unavailable" };
+      try {
+          const res = await fetch(`${BACKEND_URL}/api/email/fetch`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.emails)) {
+              setEmails(data.emails);
+              return { success: true };
+          }
+          return { success: false, error: data.error };
+      } catch (err: any) {
+          return { success: false, error: err.message };
+      }
+  };
+
+  const handleSendEmail = async (to: string, subject: string, content: string) => {
+      if (!isServerAvailable) return { success: false, error: "Server unavailable" };
+      try {
+          const res = await fetch(`${BACKEND_URL}/api/email/send`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to, subject, content })
+          });
+          const data = await res.json();
+          return data;
+      } catch (err: any) {
+          return { success: false, error: err.message };
+      }
+  };
+
   // --- DATA SYNC FUNCTIONS ---
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
@@ -1300,8 +1330,17 @@ const App: React.FC = () => {
                 if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                 if (serverData.salaries) setSalaries(serverData.salaries);
                 if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
+                if (serverData.emails) setEmails(serverData.emails);
             })
             .catch(err => console.warn("Failed to re-fetch after sync", err));
+      }
+    });
+
+    eventSource.addEventListener('email-updated', (event: any) => {
+      const data = JSON.parse(event.data);
+      if (data.emails && Array.isArray(data.emails)) {
+        console.log("📧 Realtime Email Update:", data.emails.length);
+        setEmails(data.emails);
       }
     });
 
@@ -1635,6 +1674,9 @@ const App: React.FC = () => {
                 emails={emails}
                 onUpdateEmail={handleUpdateEmail}
                 onDeleteEmail={handleDeleteEmail}
+                onFetchEmails={handleFetchEmails}
+                onSendEmail={handleSendEmail}
+                isServerAvailable={isServerAvailable}
               />
             )}
 
