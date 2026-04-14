@@ -765,7 +765,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           row.getCell(7).value = "19135447033015"; 
           row.getCell(8).value = "Ngân hàng TMCP Kỹ thương Việt Nam - Gia Định"; 
           row.getCell(9).value = order.line; 
-          row.getCell(10).value = order.line; 
           row.getCell(19).value = "VND"; 
           row.getCell(21).value = desc; 
           row.getCell(22).value = "3311"; 
