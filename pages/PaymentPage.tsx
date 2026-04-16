@@ -644,7 +644,11 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         alert("Không tìm thấy file!", "Lỗi");
         return;
     }
-    setPreviewFile({ url, name: fileName || "File" });
+    
+    // Add cache buster to prevent showing old file after re-upload
+    const urlWithCacheBuster = `${url}?t=${Date.now()}`;
+    
+    setPreviewFile({ url: urlWithCacheBuster, name: fileName || "File" });
   };
 
   // Always force download UNC with correct path
@@ -662,7 +666,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     }
 
     try {
-      const response = await axios.get(url, { responseType: "blob" });
+      const response = await axios.get(`${url}?t=${Date.now()}`, { responseType: "blob" });
 
       const finalBlobUrl = URL.createObjectURL(
         new Blob([response.data], { type: "application/pdf" })
