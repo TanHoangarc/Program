@@ -1474,7 +1474,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               </button>
             </div>
             <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center overflow-hidden">
-              {previewFile.url.toLowerCase().endsWith('.pdf') ? (
+              {previewFile.name.toLowerCase().endsWith('.pdf') ? (
                 <iframe src={previewFile.url} className="w-full h-full rounded-xl border border-slate-200" title="PDF Preview" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center overflow-auto bg-white rounded-xl border border-slate-200 p-4">
