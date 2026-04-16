@@ -270,7 +270,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             user: currentUser.username,
             timestamp: new Date().toISOString(),
             autoApprove: true, 
-            paymentRequests: updatedRequests, 
+            paymentRequests: [newReq], // ONLY send the new request to prevent overwriting Admin's deletions
             jobs: [],
             customers: [],
             lines: []
@@ -298,8 +298,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       );
       onUpdateRequests(updated);
       
-      // Auto sync update for Docs/Admin
-      if (['Docs', 'Admin'].includes(currentUser?.role || '') && onSendPending) {
+      // Auto sync update for Admin
+      if (currentUser?.role === 'Admin' && onSendPending) {
           const payload = {
               user: currentUser.username,
               timestamp: new Date().toISOString(),
@@ -320,8 +320,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const updatedRequests = requests.filter(r => r.id !== id);
     onUpdateRequests(updatedRequests);
     
-    // Auto sync deletion for Docs and Admin
-    if (['Docs', 'Admin'].includes(currentUser?.role || '') && onSendPending) {
+    // Auto sync deletion for Admin
+    if (currentUser?.role === 'Admin' && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),
@@ -371,15 +371,15 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             uncPath: uploaded.serverPath,
             uncUrl: `${BACKEND_URL}${uploaded.url}`,
             uncBlobUrl: URL.createObjectURL(uncFile),
-            completedAt: new Date().toISOString()
+            completedAt: r.completedAt || new Date().toISOString()
           } as PaymentRequest)
         : r
     );
 
     onUpdateRequests(updated);
     
-    // Auto sync completion for Docs and Admin
-    if (['Docs', 'Admin'].includes(currentUser?.role || '') && onSendPending) {
+    // Auto sync completion for Admin
+    if (currentUser?.role === 'Admin' && onSendPending) {
         const payload = {
             user: currentUser.username,
             timestamp: new Date().toISOString(),
@@ -1092,6 +1092,15 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                   <td className="px-6 py-4 text-center">
                     <div className="flex justify-center space-x-2">
                       
+                      {/* Re-upload UNC Button */}
+                      <button
+                        onClick={() => initiateComplete(req.id)}
+                        className="text-emerald-600 p-2 bg-emerald-50 border border-emerald-100 rounded-lg hover:bg-emerald-100 transition-colors"
+                        title="Up lại UNC"
+                      >
+                        <Upload className="w-4 h-4" />
+                      </button>
+
                       {/* Convert to Job Button */}
                       <button
                         onClick={() => handleOpenConvert(req)}
@@ -1160,7 +1169,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             )}
 
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-lg font-bold">Hoàn tất thanh toán</h3>
+              <h3 className="text-lg font-bold">
+                {requests.find(r => r.id === completingId)?.status === 'completed' ? 'Up lại file UNC' : 'Hoàn tất thanh toán'}
+              </h3>
               <button onClick={() => setCompletingId(null)}>
                 <X className="w-6 h-6 text-slate-500 hover:text-red-500" />
               </button>
