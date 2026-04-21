@@ -448,6 +448,10 @@ function broadcast(event, data) {
         if (!memoryData.deletedPaymentIds) {
             memoryData.deletedPaymentIds = [];
         }
+        if (!memoryData.headerMessages) memoryData.headerMessages = [];
+        if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
+        if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
+        if (!memoryData.longHoangOrders) memoryData.longHoangOrders = [];
 
         // 2. Load Payment Data
         const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
@@ -593,6 +597,7 @@ app.post("/data/save", async (req, res) => {
         if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
         if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
         if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
+        if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
 
         // 4. Trigger Async Disk Write
         triggerDiskSave(isAdmin); 
@@ -616,6 +621,10 @@ app.post("/data/save", async (req, res) => {
             });
 
             memoryPayments = mergeLists(memoryPayments, validRequests);
+        }
+        
+        if (safeData.longHoangOrders) {
+            memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
         }
         
         // Trigger Disk Write for consistency (Docs cannot save Amis)

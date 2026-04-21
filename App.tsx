@@ -1598,6 +1598,7 @@ const App: React.FC = () => {
                   setJobs(sanitizeData(d.jobs));
                   setCustomers(d.customers);
                   setLines(d.lines);
+                  if (d.longHoangOrders) setLongHoangOrders(d.longHoangOrders);
                 }}
                 onAddUser={(u) => setUsers([...users, u])}
                 onEditUser={(u, oldName) => setUsers(users.map(user => user.username === oldName ? u : user))}

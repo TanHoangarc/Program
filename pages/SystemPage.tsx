@@ -9,7 +9,7 @@ interface SystemPageProps {
   lines: ShippingLine[];
   users: UserAccount[];
   currentUser: { username: string, role: string } | null;
-  onRestore: (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[] }) => void;
+  onRestore: (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[], longHoangOrders?: any[] }) => void;
   onAddUser: (user: UserAccount) => void;
   onEditUser: (user: UserAccount, originalUsername: string) => void;
   onDeleteUser: (username: string) => void;
@@ -193,7 +193,8 @@ export const SystemPage: React.FC<SystemPageProps> = ({
           onRestore({
               jobs: newJobs,
               customers: newCustomers,
-              lines: lines // No changes to lines for now
+              lines: lines, // No changes to lines for now
+              longHoangOrders: historyData.longHoangOrders
           });
           alert("Đã đồng bộ dữ liệu từ History thành công!");
       }
