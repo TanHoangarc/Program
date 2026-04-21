@@ -288,8 +288,43 @@ const App: React.FC = () => {
   const [isAutoUploading, setIsAutoUploading] = useState(false);
   const [autoUploadProgress, setAutoUploadProgress] = useState('');
 
-  const BACKEND_URL = "/api";
+  const BACKEND_URL = "https://api.kimberry.id.vn";
+
+  useEffect(() => {
+    localStorage.setItem('kb_header_messages', JSON.stringify(headerMessages));
+  }, [headerMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('kb_header_notifications', JSON.stringify(headerNotifications));
+  }, [headerNotifications]);
+
+  useEffect(() => {
+    localStorage.setItem('kb_header_updates', JSON.stringify(headerUpdates));
+  }, [headerUpdates]);
+
   const lastSavedHeaderData = useRef<string>("");
+
+  useEffect(() => {
+    if (!isServerAvailable || !isInitialSyncDone) return;
+    
+    const currentDataString = JSON.stringify({
+      messages: headerMessages,
+      notifications: headerNotifications,
+      updates: headerUpdates
+    });
+
+    if (currentDataString === lastSavedHeaderData.current) return;
+
+    const timeoutId = setTimeout(() => {
+      lastSavedHeaderData.current = currentDataString;
+      fetch(`${BACKEND_URL}/header-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: currentDataString
+      }).catch(e => console.warn("Header Backup failed", e));
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [headerMessages, headerNotifications, headerUpdates, isServerAvailable, isInitialSyncDone]);
 
   const addHeaderMessage = (username: string, carrier: string, booking: string, jobCode?: string) => {
     const newMessage: HeaderMessage = {
@@ -512,55 +547,6 @@ const App: React.FC = () => {
     }
     return DEFAULT_USERS;
   });
-
-  // --- INITIAL LOAD FROM BACKEND ---
-  useEffect(() => {
-    const loadAllData = async () => {
-      try {
-        const types = ['jobs', 'customers', 'lines', 'paymentRequests', 'salaries', 'nfcProfiles', 'customReceipts', 'users'];
-        for (const type of types) {
-          const res = await axios.get(`${BACKEND_URL}/load-data/${type}`);
-          if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-            switch (type) {
-              case 'jobs': setJobs(sanitizeData(res.data)); break;
-              case 'customers': setCustomers(res.data); break;
-              case 'lines': setLines(res.data); break;
-              case 'paymentRequests': setPaymentRequests(res.data); break;
-              case 'salaries': setSalaries(res.data); break;
-              case 'nfcProfiles': setNfcProfiles(res.data); break;
-              case 'customReceipts': setCustomReceipts(res.data); break;
-              case 'users': setUsers(res.data); break;
-            }
-          }
-        }
-        setIsInitialSyncDone(true);
-      } catch (error) {
-        console.error("Failed to load data from backend:", error);
-        setIsInitialSyncDone(true); // Still proceed
-      }
-    };
-    loadAllData();
-  }, []);
-
-  // --- SYNC TO BACKEND HELPER ---
-  const syncToBackend = useCallback(async (type: string, data: any) => {
-    if (!isInitialSyncDone) return;
-    try {
-      await axios.post(`${BACKEND_URL}/sync-data`, { type, data });
-    } catch (error) {
-      console.warn(`Sync failed for ${type}`, error);
-    }
-  }, [isInitialSyncDone]);
-
-  // Sync effects
-  useEffect(() => { syncToBackend('jobs', jobs); localStorage.setItem('logistics_jobs_v2', JSON.stringify(jobs)); }, [jobs, syncToBackend]);
-  useEffect(() => { syncToBackend('customers', customers); localStorage.setItem('logistics_customers_v1', JSON.stringify(customers)); }, [customers, syncToBackend]);
-  useEffect(() => { syncToBackend('lines', lines); localStorage.setItem('logistics_lines_v1', JSON.stringify(lines)); }, [lines, syncToBackend]);
-  useEffect(() => { syncToBackend('paymentRequests', paymentRequests); localStorage.setItem('payment_requests_v1', JSON.stringify(paymentRequests)); }, [paymentRequests, syncToBackend]);
-  useEffect(() => { syncToBackend('salaries', salaries); localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries, syncToBackend]);
-  useEffect(() => { syncToBackend('nfcProfiles', nfcProfiles); localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles, syncToBackend]);
-  useEffect(() => { syncToBackend('customReceipts', customReceipts); localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts, syncToBackend]);
-  useEffect(() => { syncToBackend('users', users); localStorage.setItem('logistics_users_v1', JSON.stringify(users)); }, [users, syncToBackend]);
 
   // --- INTEGRITY CHECK LOGIC ---
   useEffect(() => {

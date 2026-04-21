@@ -450,53 +450,6 @@ export interface LongHoangOrder {
 }
 
 // ============================================================
-// DEBIT NOTE DATA
-// ============================================================
-export interface DebitNoteData {
-  id: string;
-  docNo: string;
-  date: string;
-  customerId: string;
-  customerName: string;
-  booking: string;
-  line: string;
-  totalAmount: number;
-  items: any[];
-}
-
-// ============================================================
-// EMAIL DATA
-// ============================================================
-export interface EmailMessage {
-  id: string;
-  from: string;
-  subject: string;
-  body: string;
-  receivedAt: string;
-  isRead: boolean;
-  attachments?: { name: string; url: string }[];
-}
-
-export interface EmailConfig {
-  email: string;
-  server: string;
-  port: number;
-  useSsl: boolean;
-}
-
-// ============================================================
-// PHIEU INV (INVOICE ORDER)
-// ============================================================
-export interface PhieuInvOrder {
-  id: string;
-  orderNo: string;
-  date: string;
-  customerName: string;
-  items: any[];
-  total: number;
-}
-
-// ============================================================
 // INITIAL JOB (DEFAULT OBJECT)
 // ============================================================
 
