@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Edit, Trash2, FileText, Upload, Download, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Upload, Download, Loader2, X, Save, Copy, Check, Settings, RefreshCw, Lock, Unlock, Eye, Calendar } from 'lucide-react';
 import { LongHoangOrder } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { GoogleGenAI } from '@google/genai';
@@ -1209,14 +1209,36 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   <div className="flex justify-between items-center h-5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
                   </div>
-                  <input
-                    type="text"
-                    name="paymentDate"
-                    value={displayDate}
-                    onChange={handleDateChange}
-                    placeholder="dd/mm/yyyy"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      name="paymentDate"
+                      value={displayDate}
+                      onChange={handleDateChange}
+                      placeholder="dd/mm/yyyy"
+                      className="w-full pl-3 pr-10 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                      <Calendar className="w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input 
+                        type="date"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        onChange={(e) => {
+                          const val = e.target.value; // YYYY-MM-DD
+                          if (val) {
+                            const parts = val.split('-');
+                            if (parts.length === 3) {
+                              setDisplayDate(`${parts[2]}/${parts[1]}/${parts[0]}`);
+                              setFormData(prev => ({ ...prev, paymentDate: val }));
+                            }
+                          } else {
+                            setDisplayDate('');
+                            setFormData(prev => ({ ...prev, paymentDate: '' }));
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="space-y-1">
