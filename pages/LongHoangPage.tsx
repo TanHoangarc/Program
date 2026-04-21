@@ -660,7 +660,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
     const status = order.wireOffStatus || 'Pending';
     const matchStatus = filterStatus === 'All' ? true : status === filterStatus;
     return matchDate && matchStatus;
-  });
+  }).sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
 
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -935,7 +935,27 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 <th className="px-2 py-3 font-semibold">MBL</th>
                 <th className="px-2 py-3 font-semibold">STK</th>
                 <th className="px-2 py-3 font-semibold">File</th>
-                <th className="px-2 py-3 font-semibold">Note</th>
+                <th className="px-2 py-3 font-semibold">
+                  <div className="flex items-center gap-1">
+                    Note
+                    {paginatedOrders.some(o => o.isChecked) && (
+                      <button
+                        onClick={() => {
+                          const selectedNotes = paginatedOrders.filter(o => o.isChecked && o.note).map(o => o.note).join('\n');
+                          if (selectedNotes) {
+                            navigator.clipboard.writeText(selectedNotes);
+                            setCopiedKey('all-notes');
+                            setTimeout(() => setCopiedKey(null), 2000);
+                          }
+                        }}
+                        className="text-slate-400 hover:text-teal-600 transition-colors shrink-0"
+                        title="Copy note các dòng đã chọn"
+                      >
+                        {copiedKey === 'all-notes' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                  </div>
+                </th>
                 <th className="px-2 py-3 font-semibold whitespace-nowrap">Wire Off</th>
                 <th className="px-2 py-3 font-semibold text-center w-20">Thao tác</th>
                 <th className="px-2 py-3 font-semibold text-center w-12">Màu</th>
