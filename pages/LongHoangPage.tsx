@@ -754,7 +754,17 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                row.height = styleRow.height;
           }
           
-          const desc = order.note ? `Chi tiền cho ncc lô ${order.note} BILL ${order.mbl}` : `Chi tiền BILL ${order.mbl}`;
+          const type = order.paymentType || 'Local charge';
+          let desc = order.note ? `Chi tiền cho ncc lô ${order.note} BILL ${order.mbl}` : `Chi tiền BILL ${order.mbl}`;
+          if (type === 'Deposit') {
+            desc = order.note ? `Chi tiền cho ncc CƯỢC lô ${order.note} BILL ${order.mbl}` : `Chi tiền CƯỢC BILL ${order.mbl}`;
+          } else if (type === 'Demurage') {
+            desc = order.note ? `Chi tiền cho ncc GH lô ${order.note} BILL ${order.mbl}` : `Chi tiền GH BILL ${order.mbl}`;
+          } else if (type === 'Repair') {
+            desc = order.note ? `Chi tiền cho ncc PHÍ SỬA CHỮA lô ${order.note} BILL ${order.mbl}` : `Chi tiền PHÍ SỬA CHỮA BILL ${order.mbl}`;
+          } else if (type === 'Telex') {
+            desc = order.note ? `Chi tiền cho ncc PHÍ TELEX lô ${order.note} BILL ${order.mbl}` : `Chi tiền PHÍ TELEX BILL ${order.mbl}`;
+          }
           
           row.getCell(1).value = "Ủy nhiệm chi"; 
           row.getCell(2).value = formatDateVN(order.paymentDate); 
@@ -1009,6 +1019,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             let copyText = `LONG HOANG PAYMENT BL ${order.mbl} MST 0316113070`;
                             if (type === 'Deposit') copyText = `LONG HOANG PAYMENT CUOC BL ${order.mbl} MST 0316113070`;
                             if (type === 'Demurage') copyText = `LONG HOANG PAYMENT GH BL ${order.mbl} MST 0316113070`;
+                            if (type === 'Repair') copyText = `LONG HOANG PAYMENT PHI SUA CHUA BL ${order.mbl} MST 0316113070`;
+                            if (type === 'Telex') copyText = `LONG HOANG PAYMENT PHI TELEX BL ${order.mbl} MST 0316113070`;
                             handleCopy(copyText, `${order.id}-mbl`);
                           }}
                           className="text-slate-400 hover:text-teal-600 transition-colors shrink-0"
@@ -1305,6 +1317,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     <option value="Local charge">Local charge</option>
                     <option value="Deposit">Deposit</option>
                     <option value="Demurage">Demurage</option>
+                    <option value="Repair">Repair</option>
+                    <option value="Telex">Telex</option>
                   </select>
                 </div>
 
@@ -1341,6 +1355,8 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                         let copyText = `LONG HOANG PAYMENT BL ${mbl} MST 0316113070`;
                         if (type === 'Deposit') copyText = `LONG HOANG PAYMENT CUOC BL ${mbl} MST 0316113070`;
                         if (type === 'Demurage') copyText = `LONG HOANG PAYMENT GH BL ${mbl} MST 0316113070`;
+                        if (type === 'Repair') copyText = `LONG HOANG PAYMENT PHI SUA CHUA BL ${mbl} MST 0316113070`;
+                        if (type === 'Telex') copyText = `LONG HOANG PAYMENT PHI TELEX BL ${mbl} MST 0316113070`;
                         handleCopy(copyText, 'modal-mbl');
                       }}
                       className="text-slate-400 hover:text-teal-600 transition-colors"
@@ -1382,6 +1398,14 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 <div className="space-y-1">
                   <div className="flex justify-between items-center h-5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(formData.note || '', 'modal-note')}
+                      className="text-slate-400 hover:text-teal-600 transition-colors"
+                      title="Copy ghi chú"
+                    >
+                      {copiedKey === 'modal-note' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
                   <input
                     type="text"
