@@ -1236,7 +1236,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
               </div>
 
               {/* Form Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <div className="flex justify-between items-center h-5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Ngày thanh toán <span className="text-red-500">*</span></label>
@@ -1306,25 +1306,27 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
 
                 <div className="space-y-1">
                   <div className="flex justify-between items-center h-5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Loại thanh toán <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
                   </div>
-                  <select
-                    name="paymentType"
-                    value={formData.paymentType || 'Local charge'}
+                  <input
+                    type="text"
+                    name="accountNumber"
+                    list="account-numbers"
+                    value={formData.accountNumber || ''}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                  >
-                    <option value="Local charge">Local charge</option>
-                    <option value="Deposit">Deposit</option>
-                    <option value="Demurage">Demurage</option>
-                    <option value="Repair">Repair</option>
-                    <option value="Telex">Telex</option>
-                  </select>
+                    placeholder="Số tài khoản"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all font-mono"
+                  />
+                  <datalist id="account-numbers">
+                    {formData.line && carriers.find(c => c.name === formData.line)?.accounts.map(acc => (
+                      <option key={acc} value={acc} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div className="space-y-1">
                   <div className="flex justify-between items-center h-5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Số tiền (đã bao gồm VAT) <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">Số tiền (đã gồm VAT) <span className="text-red-500">*</span></label>
                     <button
                       type="button"
                       onClick={() => handleCopy(formData.amount?.toString() || '', 'modal-amount')}
@@ -1345,6 +1347,39 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                 </div>
 
                 <div className="space-y-1">
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Loại TT <span className="text-red-500">*</span></label>
+                  </div>
+                  <select
+                    name="paymentType"
+                    value={formData.paymentType || 'Local charge'}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  >
+                    <option value="Local charge">Local charge</option>
+                    <option value="Deposit">Deposit</option>
+                    <option value="Demurage">Demurage</option>
+                    <option value="Repair">Repair</option>
+                    <option value="Telex">Telex</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center h-5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
+                  </div>
+                  <select
+                    name="wireOffStatus"
+                    value={formData.wireOffStatus || 'Pending'}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="Wired Off">Wired Off</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1 md:col-span-3">
                   <div className="flex justify-between items-center h-5">
                     <label className="text-xs font-bold text-slate-500 uppercase">MBL <span className="text-red-500">*</span></label>
                     <button
@@ -1375,27 +1410,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center h-5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Số tài khoản <span className="text-red-500">*</span></label>
-                  </div>
-                  <input
-                    type="text"
-                    name="accountNumber"
-                    list="account-numbers"
-                    value={formData.accountNumber || ''}
-                    onChange={handleChange}
-                    placeholder="Số tài khoản ngân hàng"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all font-mono"
-                  />
-                  <datalist id="account-numbers">
-                    {formData.line && carriers.find(c => c.name === formData.line)?.accounts.map(acc => (
-                      <option key={acc} value={acc} />
-                    ))}
-                  </datalist>
-                </div>
-
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-3">
                   <div className="flex justify-between items-center h-5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Note</label>
                     <button
@@ -1415,21 +1430,6 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                     placeholder="Ghi chú thêm..."
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                   />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center h-5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Wire Off</label>
-                  </div>
-                  <select
-                    name="wireOffStatus"
-                    value={formData.wireOffStatus || 'Pending'}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="Wired Off">Wired Off</option>
-                  </select>
                 </div>
               </div>
             </div>
