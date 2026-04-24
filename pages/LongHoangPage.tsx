@@ -1213,18 +1213,43 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
                             <FileText className="w-4 h-4" />
                             <span className="font-medium truncate max-w-[200px]">{name}</span>
                             {url && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setPreviewFile({ url, name });
-                                }}
-                                className="ml-1 p-1 hover:bg-teal-100 rounded-md transition-colors"
-                                title="Xem trước"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setPreviewFile({ url, name });
+                                  }}
+                                  className="ml-1 p-1 hover:bg-teal-100 rounded-md transition-colors text-teal-600"
+                                  title="Xem trước"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    
+                                    const currentUrls = formData.invoiceFileUrl ? formData.invoiceFileUrl.split(',').filter(Boolean) : [];
+                                    const currentNames = formData.invoiceFileName ? formData.invoiceFileName.split(',').filter(Boolean) : [];
+                                    
+                                    const newUrls = currentUrls.filter((_, i) => i !== idx);
+                                    const newNames = currentNames.filter((_, i) => i !== idx);
+                                    
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      invoiceFileUrl: newUrls.join(','),
+                                      invoiceFileName: newNames.join(',')
+                                    }));
+                                  }}
+                                  className="p-1 hover:bg-red-100 rounded-md transition-colors text-red-500"
+                                  title="Xóa"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             )}
                           </div>
                           );
