@@ -34,7 +34,7 @@ import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from 
 const DEFAULT_USERS: UserAccount[] = [
   { username: 'KimberryAdmin', pass: 'Jwckim@123#', role: 'Admin' },
   { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' },
-  { username: 'CushcmLH', pass: 'Jwckim@689', role: 'Docs' }
+  { username: 'CushcmLH', pass: 'Jwckim@689', role: 'Cus' }
 ];
 
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
@@ -92,10 +92,14 @@ const App: React.FC = () => {
   // --- APP STATE ---
   const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
       try {
-          const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
-          if (savedUser) {
-              const user = JSON.parse(savedUser);
-              if (user.role === 'Docs') return 'payment';
+          const savedUserStr = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
+          if (savedUserStr) {
+              const u = JSON.parse(savedUserStr);
+              // Force check role from DEFAULT_USERS
+              const defaultU = DEFAULT_USERS.find(d => d.username === u.username);
+              const role = defaultU ? defaultU.role : u.role;
+              if (role === 'Docs') return 'payment';
+              if (role === 'Cus') return 'tool-ai';
           }
       } catch {}
       return 'entry';
@@ -203,6 +207,15 @@ const App: React.FC = () => {
       }
   });
 
+  const [deletedPaymentIds, setDeletedPaymentIds] = useState<Set<string>>(() => {
+      try {
+          const saved = localStorage.getItem('kb_deleted_payment_ids');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch {
+          return new Set();
+      }
+  });
+
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
       try {
@@ -221,6 +234,10 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('kb_deleted_job_ids', JSON.stringify(Array.from(deletedJobIds)));
   }, [deletedJobIds]);
+
+  useEffect(() => {
+      localStorage.setItem('kb_deleted_payment_ids', JSON.stringify(Array.from(deletedPaymentIds)));
+  }, [deletedPaymentIds]);
 
   useEffect(() => {
       localStorage.setItem('kb_modified_job_ids', JSON.stringify(Array.from(modifiedJobIds)));
@@ -539,8 +556,11 @@ const App: React.FC = () => {
         const localUsers = JSON.parse(saved);
         const updatedUsers = [...localUsers];
         DEFAULT_USERS.forEach(defUser => {
-            if (!updatedUsers.some(u => u.username === defUser.username)) {
+            const existing = updatedUsers.find(u => u.username === defUser.username);
+            if (!existing) {
                 updatedUsers.push(defUser);
+            } else {
+                existing.role = defUser.role; // force role sync
             }
         });
         return updatedUsers;
@@ -621,6 +641,15 @@ const App: React.FC = () => {
 
   // --- PAYMENT HANDLERS WITH TRACKING ---
   const handleUpdatePaymentRequests = (newRequests: PaymentRequest[]) => {
+      // Detect deletions for Admin
+      if (currentUser?.role === 'Admin' && newRequests.length < paymentRequests.length) {
+          paymentRequests.forEach(oldReq => {
+              if (!newRequests.find(n => n.id === oldReq.id)) {
+                  setDeletedPaymentIds(prev => new Set(prev).add(oldReq.id));
+              }
+          });
+      }
+
       const currentMap = new Map<string, PaymentRequest>(paymentRequests.map(r => [r.id, r]));
       const changedIds = new Set<string>();
       
@@ -1062,14 +1091,20 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
+    const savedUserStr = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
+    if (savedUserStr) {
+      let user = JSON.parse(savedUserStr);
+      const defaultUser = DEFAULT_USERS.find(u => u.username === user.username);
+      if (defaultUser) {
+          user.role = defaultUser.role; // sync role
+      }
       setIsAuthenticated(true);
       setCurrentUser(user);
       
       if (user.role === 'Docs') {
           setCurrentPage('payment');
+      } else if (user.role === 'Cus') {
+          setCurrentPage('tool-ai');
       }
     }
   }, []);
@@ -1105,6 +1140,8 @@ const App: React.FC = () => {
 
       if (user.role === 'Docs') {
           setCurrentPage('payment');
+      } else if (user.role === 'Cus') {
+          setCurrentPage('tool-ai');
       } else {
           setCurrentPage('entry');
       }
@@ -1129,23 +1166,31 @@ const App: React.FC = () => {
     if (!isServerAvailable || !isInitialSyncDone) return; 
 
     try {
-      const data = {
+      const data: any = {
         role: currentUser.role, // VITAL: Pass Role for Server Filtering
         timestamp: new Date().toISOString(),
         version: "2.4",
-        jobs,
-        paymentRequests,
-        customers,
-        lines,
-        lockedIds: Array.from(lockedIds),
-        processedRequestIds: Array.from(localDeletedIds),
-        deletedJobIds: Array.from(deletedJobIds),
-        customReceipts,
-        salaries,
-        yearlyConfigs,
-        longHoangOrders
-        // NFC EXCLUDED FROM GENERAL BACKUP
       };
+
+      // Only include specific fields based on role
+      if (currentUser.role === 'Admin') {
+          data.jobs = jobs;
+          data.customers = customers;
+          data.lines = lines;
+          data.lockedIds = Array.from(lockedIds);
+          data.processedRequestIds = Array.from(localDeletedIds);
+          data.deletedJobIds = Array.from(deletedJobIds);
+          data.deletedPaymentIds = Array.from(deletedPaymentIds);
+          data.customReceipts = customReceipts;
+          data.salaries = salaries;
+          data.yearlyConfigs = yearlyConfigs;
+          data.paymentRequests = paymentRequests;
+          data.longHoangOrders = longHoangOrders;
+      } else if (currentUser.role === 'Docs') {
+          // Docs only updates these
+          data.paymentRequests = paymentRequests;
+          data.longHoangOrders = longHoangOrders;
+      }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -1173,6 +1218,7 @@ const App: React.FC = () => {
           console.log("AUTO BACKUP SUCCESS");
           // Clear deleted IDs once server has processed them
           if (deletedJobIds.size > 0) setDeletedJobIds(new Set());
+          if (deletedPaymentIds.size > 0) setDeletedPaymentIds(new Set());
       }
 
     } catch (err) {
@@ -1244,19 +1290,24 @@ const App: React.FC = () => {
         fetchPendingRequests();
       }
       
-      // Also re-fetch main data if it was a FULL_SYNC from another user
-      if (data.type === 'FULL_SYNC' && data.source !== currentUser?.role) {
-          // Re-fetch main data
+      // Also re-fetch data if it was a sync from another user
+      if ((data.type === 'FULL_SYNC' || data.type === 'DOCS_SYNC') && data.source !== currentUser?.role) {
           fetch(`${BACKEND_URL}/data`)
             .then(res => res.json())
             .then(serverData => {
-                if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
+                if (data.type === 'FULL_SYNC') {
+                    // Full sync: refresh everything Admin manages
+                    if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
+                    if (serverData.customers) setCustomers(serverData.customers);
+                    if (serverData.lines) setLines(serverData.lines);
+                    if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
+                    if (serverData.salaries) setSalaries(serverData.salaries);
+                    if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
+                }
+                
+                // Both DOCS_SYNC and FULL_SYNC can affect these
                 if (serverData.paymentRequests) setPaymentRequests(serverData.paymentRequests);
-                if (serverData.customers) setCustomers(serverData.customers);
-                if (serverData.lines) setLines(serverData.lines);
-                if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
-                if (serverData.salaries) setSalaries(serverData.salaries);
-                if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
+                if (serverData.longHoangOrders) setLongHoangOrders(serverData.longHoangOrders || []);
             })
             .catch(err => console.warn("Failed to re-fetch after sync", err));
       }
@@ -1587,7 +1638,7 @@ const App: React.FC = () => {
               />
             )}
 
-            {currentPage === 'system' && (
+            {currentPage === 'system' && currentUser?.role === 'Admin' && (
               <SystemPage
                 jobs={jobs}
                 customers={customers}
