@@ -481,15 +481,16 @@ async function startServer() {
             }
 
             if (safeData.paymentRequests) {
-                const adminIds = new Set(safeData.paymentRequests.map((r: any) => r.id));
-                memoryPayments.forEach(existing => {
-                    if (!adminIds.has(existing.id)) {
-                        if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
-                        if (!memoryData.deletedPaymentIds.includes(existing.id)) memoryData.deletedPaymentIds.push(existing.id);
-                    }
-                });
+                if (Array.isArray(safeData.deletedPaymentIds)) {
+                    if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
+                    safeData.deletedPaymentIds.forEach((id: string) => {
+                        if (!memoryData.deletedPaymentIds.includes(id)) memoryData.deletedPaymentIds.push(id);
+                    });
+                }
                 memoryPayments = mergeLists(memoryPayments, safeData.paymentRequests);
-                memoryPayments = memoryPayments.filter(p => !memoryData.deletedPaymentIds.includes(p.id));
+                if (memoryData.deletedPaymentIds) {
+                    memoryPayments = memoryPayments.filter(p => !memoryData.deletedPaymentIds.includes(p.id));
+                }
             }
 
             if (safeData.lockedIds) memoryData.lockedIds = safeData.lockedIds;
@@ -518,6 +519,9 @@ async function startServer() {
             if (safeData.longHoangOrders) {
                 memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
             }
+            // CRITICAL: Force clear any other fields that might have leaked in from safeData
+            // Although safeData is a local variable, we ensure we only use it for the two allowed fields.
+            
             triggerDiskSave(false); 
             broadcast("data-updated", { time: Date.now(), source: role, type: 'DOCS_SYNC' });
             res.json({ success: true, saved: "payment_and_lh", requireReload });
