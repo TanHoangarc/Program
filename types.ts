@@ -339,7 +339,7 @@ export interface BankTransaction {
 export interface UserAccount {
   username: string;
   pass: string;
-  role: "Admin" | "Docs" | "sales" | "admin"; // Extended for NFC
+  role: "Admin" | "Docs" | "sales" | "admin" | "Cus"; // Extended for NFC
   allowedProfileIds?: string[]; // For NFC Sales role
 }
 

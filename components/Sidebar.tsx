@@ -74,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const role = currentUser?.role || 'Guest';
   const isAdmin = role === 'Admin';
   const isDocs = role === 'Docs';
+  const isCus = role === 'Cus';
 
   // Permission Logic
   const canViewOverview = isAdmin; 
@@ -82,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewAccounting = isAdmin; 
   const canViewData = isAdmin; 
   const canViewSystem = isAdmin; 
-  const canViewToolAI = isAdmin; 
+  const canViewToolAI = isAdmin || isCus; 
   const canViewNfc = isAdmin; 
   
   const canSendPending = false;
