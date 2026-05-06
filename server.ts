@@ -456,6 +456,32 @@ async function startServer() {
         res.json({ ...memoryData, paymentRequests: memoryPayments });
     });
 
+    app.get("/api/export/long-hoang-jobs", (req, res) => {
+        const jobs = memoryData.jobs || [];
+        // Filter jobs for customer LONG HOANG LOGISTICS (case-insensitive)
+        const lhJobs = jobs.filter((j: any) => 
+            j.customerName && (
+                j.customerName.toUpperCase().includes('LONG HOANG LOGISTICS') || 
+                j.customerName.toUpperCase() === 'LONG HOANG'
+            )
+        );
+        
+        // Map required fields
+        const result = lhJobs.map((j: any) => ({
+            monthYear: `${j.month}/${j.year}`,
+            jobCode: j.jobCode || '',
+            booking: j.booking || '',
+            hbl: j.hbl || '',
+            line: j.line || '',
+            cont20: j.cont20 || 0,
+            cont40: j.cont40 || 0,
+            sell: j.sell || 0
+        }));
+
+        // Allow specific cross-origin request if needed, though cors() is globally applied
+        res.json({ success: true, count: result.length, data: result });
+    });
+
     app.post("/api/data/save", async (req, res) => {
         const { role, ...data } = req.body; 
         const safeData = sanitizePayload(data);
