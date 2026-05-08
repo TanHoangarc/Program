@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { JobData, Customer, ShippingLine, UserAccount } from '../types';
-import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight, Trash, Sparkles } from 'lucide-react';
+import { Settings, Users, Plus, Edit2, Trash2, X, Eye, EyeOff, FileInput, Check, UserCheck, Clock, FileText, AlertTriangle, CreditCard, Lock, List, Receipt, Database, RefreshCw, ArrowRight, Trash } from 'lucide-react';
 
 interface SystemPageProps {
   jobs: JobData[];
@@ -10,7 +10,6 @@ interface SystemPageProps {
   users: UserAccount[];
   currentUser: { username: string, role: string } | null;
   onRestore: (data: { jobs: JobData[], customers: Customer[], lines: ShippingLine[], longHoangOrders?: any[] }) => void;
-  onMigrate?: () => void;
   onAddUser: (user: UserAccount) => void;
   onEditUser: (user: UserAccount, originalUsername: string) => void;
   onDeleteUser: (username: string) => void;
@@ -22,7 +21,7 @@ interface SystemPageProps {
 
 export const SystemPage: React.FC<SystemPageProps> = ({ 
   jobs, customers, lines, users, currentUser, 
-  onRestore, onMigrate, onAddUser, onEditUser, onDeleteUser,
+  onRestore, onAddUser, onEditUser, onDeleteUser,
   pendingRequests = [], onApproveRequest, onRejectRequest, onConfirmMismatch
 }) => {
   const BACKEND_URL = "https://api.kimberry.id.vn";
@@ -370,31 +369,6 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                       </div>
                   </div>
               )}
-          </div>
-      )}
-
-      {/* FIREBASE MIGRATION SECTION (ADMIN ONLY) */}
-      {currentUser?.role === 'Admin' && (
-          <div className="mb-8 glass-panel p-6 rounded-2xl shadow-sm border border-slate-200 bg-blue-50/30">
-              <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-slate-700 flex items-center">
-                      <Sparkles className="w-5 h-5 mr-2 text-blue-600" /> Firebase Migration
-                  </h3>
-              </div>
-              <div className="flex flex-col md:flex-row gap-4 items-center">
-                  <div className="flex-1">
-                      <p className="text-sm text-slate-600">
-                          Chuyển đổi dữ liệu từ hệ thống máy chủ cũ (JSON) lên Firebase Firestore. 
-                          Hành động này sẽ ghi đè tất cả dữ liệu hiện tại trên Firebase bằng dữ liệu từ máy chủ.
-                      </p>
-                  </div>
-                  <button 
-                      onClick={() => onMigrate?.()}
-                      className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg flex items-center gap-2 shrink-0 transition-all hover:scale-105"
-                  >
-                      <RefreshCw className="w-5 h-5" /> Di chuyển lên Firebase
-                  </button>
-              </div>
           </div>
       )}
 

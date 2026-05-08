@@ -7,9 +7,47 @@ import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { fileURLToPath } from 'url';
+import admin from 'firebase-admin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const configStr = fs.readFileSync(path.join(__dirname, 'firebase-applet-config.json'), 'utf8');
+const firebaseConfig = JSON.parse(configStr);
+
+// Use Admin SDK with the correct project
+admin.initializeApp({
+  projectId: firebaseConfig.projectId
+});
+const db = admin.firestore();
+
+async function saveToFirestore(docId: string, dataObj: any) {
+    const jsonStr = JSON.stringify(dataObj);
+    const CHUNK_SIZE = 900000;
+    const numChunks = Math.ceil(jsonStr.length / CHUNK_SIZE);
+    await db.collection('backups').doc(docId).set({ chunks: numChunks, updatedAt: Date.now() });
+    for (let i = 0; i < numChunks; i++) {
+        const chunk = jsonStr.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        await db.collection('backups').doc(`${docId}_chunk_${i}`).set({ data: chunk });
+    }
+}
+
+async function loadFromFirestore(docId: string, defaultData: any) {
+    try {
+        const metaDoc = await db.collection('backups').doc(docId).get();
+        if (!metaDoc.exists) return defaultData;
+        const { chunks } = metaDoc.data() || {};
+        let jsonStr = "";
+        for (let i = 0; i < (chunks || 0); i++) {
+            const chunkDoc = await db.collection('backups').doc(`${docId}_chunk_${i}`).get();
+            jsonStr += chunkDoc.data()?.data || "";
+        }
+        return JSON.parse(jsonStr || "null") || defaultData;
+    } catch(e) {
+        console.error("Firebase read error", e);
+        return defaultData;
+    }
+}
 
 async function startServer() {
     const app = express();
@@ -274,12 +312,12 @@ async function startServer() {
                 const { amisData } = splitAmisData(dataSnapshot);
 
                 const writePromises = [
-                    fsp.writeFile(DATA_PATH, JSON.stringify(dataSnapshot, null, 2), "utf8"),
-                    fsp.writeFile(PAYMENT_PATH, JSON.stringify(paymentSnapshot, null, 2), "utf8")
+                    saveToFirestore('backup', dataSnapshot),
+                    saveToFirestore('payment', paymentSnapshot)
                 ];
 
                 if (shouldWriteAmis) {
-                    writePromises.push(fsp.writeFile(AMIS_PATH, JSON.stringify(amisData, null, 2), "utf8"));
+                    writePromises.push(saveToFirestore('amis', amisData));
                 }
 
                 await Promise.all(writePromises);
@@ -289,11 +327,11 @@ async function startServer() {
                     paymentRequests: paymentSnapshot
                 });
 
-                console.log(`💾 Disk save completed. (Amis Saved: ${shouldWriteAmis})`);
+                console.log(`💾 Firebase save completed. (Amis Saved: ${shouldWriteAmis})`);
             } while (writePending);
             
         } catch (err) {
-            console.error("❌ Disk Write Error:", err);
+            console.error("❌ Firebase Write Error:", err);
         } finally {
             writeLock = false;
         }
@@ -301,7 +339,7 @@ async function startServer() {
 
     async function saveStaffData(data: any) {
         try {
-            await fsp.writeFile(STAFF_PATH, JSON.stringify(data, null, 2), "utf8");
+            await saveToFirestore('staff', data);
         } catch (e) {
             console.error("Staff write error", e);
         }
@@ -323,69 +361,35 @@ async function startServer() {
 
     async function writeHistoryBackup(data: any, maxFiles = 3) {
         try {
-            const fileName = "history-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
-            const filePath = path.join(HISTORY_ROOT, fileName);
+            const fileName = "history-" + new Date().toISOString().replace(/[:.]/g, "-");
+            // Also store a timestamped backup into Firestore if needed 
+            // but to avoid quota/limit we might just store the latest one
+            await saveToFirestore(fileName, data);
 
-            await fsp.writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
-
-            let files = await fsp.readdir(HISTORY_ROOT);
-            files = files.filter(f => f.startsWith("history-") && f.endsWith(".json"));
+            // Clean up old history from Firestore
+            const historyDocs = await db.collection('backups').get();
+            const files = historyDocs.docs
+                .map(d => d.id)
+                .filter(id => id.startsWith("history-") && !id.includes("_chunk_"));
             
-            const fileInfos = await Promise.all(
-                files.map(async f => {
-                    const fullPath = path.join(HISTORY_ROOT, f);
-                    let score = 0;
-                    try {
-                        const content = await fsp.readFile(fullPath, "utf8");
-                        const parsed = JSON.parse(content);
-                        score = calculateDataScore(parsed);
-                    } catch (e) {}
-                    return { 
-                        name: f, 
-                        path: fullPath, 
-                        time: (await fsp.stat(fullPath)).mtimeMs,
-                        score
-                    };
-                })
-            );
+            if (files.length <= maxFiles) return;
 
-            if (fileInfos.length <= maxFiles) return;
-
-            // Sort by time descending (newest first)
-            fileInfos.sort((a, b) => b.time - a.time);
-
-            // Find the one with the highest score (most complete data)
-            let maxScore = -1;
-            let bestFileIndex = -1;
-            fileInfos.forEach((f, i) => {
-                if (f.score > maxScore) {
-                    maxScore = f.score;
-                    bestFileIndex = i;
-                }
+            let fileInfos = files.map(f => {
+                return { name: f };
             });
+            fileInfos.sort((a, b) => b.name.localeCompare(a.name)); // newest first based on ISO string
 
-            const filesToKeep = new Set();
-            // Always keep the one with the most complete data
-            if (bestFileIndex !== -1) {
-                filesToKeep.add(fileInfos[bestFileIndex].path);
-            }
-            
-            // Keep the newest files until we reach maxFiles
-            let keptCount = filesToKeep.size;
-            for (let i = 0; i < fileInfos.length && keptCount < maxFiles; i++) {
-                if (!filesToKeep.has(fileInfos[i].path)) {
-                    filesToKeep.add(fileInfos[i].path);
-                    keptCount++;
+            for (let i = maxFiles; i < fileInfos.length; i++) {
+                const docIdToDelete = fileInfos[i].name;
+                const docRef = await db.collection('backups').doc(docIdToDelete).get();
+                if (docRef.exists) {
+                    const { chunks } = docRef.data() || {};
+                    await db.collection('backups').doc(docIdToDelete).delete();
+                    for(let c=0; c<(chunks||0); c++) {
+                        await db.collection('backups').doc(`${docIdToDelete}_chunk_${c}`).delete();
+                    }
                 }
             }
-
-            // Delete the rest
-            for (let i = 0; i < fileInfos.length; i++) {
-                if (!filesToKeep.has(fileInfos[i].path)) {
-                    await fsp.unlink(fileInfos[i].path);
-                }
-            }
-
         } catch (err) {
             console.error("History backup error:", err);
         }
@@ -419,12 +423,11 @@ async function startServer() {
 
     // Load Initial Data
     try {
-        const rawData = await fsp.readFile(DATA_PATH, "utf8");
-        memoryData = sanitizePayload(JSON.parse(rawData || "{}"));
+        memoryData = await loadFromFirestore('backup', {});
+        memoryData = sanitizePayload(memoryData);
         
         try {
-            const rawAmis = await fsp.readFile(AMIS_PATH, "utf8");
-            const amisData = JSON.parse(rawAmis || "{}");
+            const amisData = await loadFromFirestore('amis', {});
             mergeAmisData(memoryData, amisData);
         } catch (e) {}
         
@@ -434,12 +437,11 @@ async function startServer() {
         if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
         if (!memoryData.longHoangOrders) memoryData.longHoangOrders = [];
 
-        const rawPayment = await fsp.readFile(PAYMENT_PATH, "utf8");
-        memoryPayments = JSON.parse(rawPayment || "[]");
+        memoryPayments = await loadFromFirestore('payment', []);
 
-        nfcMemoryData = JSON.parse(await fsp.readFile(NFC_PATH, "utf8") || "[]");
+        nfcMemoryData = await loadFromFirestore('nfc', []);
 
-        console.log("✅ Database loaded into RAM");
+        console.log("✅ Database loaded into RAM from Firebase");
     } catch (err) {
         console.error("Startup load error:", err);
         memoryData = { deletedPaymentIds: [] };
@@ -577,34 +579,18 @@ async function startServer() {
 
     app.get("/api/history/latest", async (req, res) => {
         try {
-            let files = await fsp.readdir(HISTORY_ROOT);
-            files = files.filter(f => f.startsWith("history-") && f.endsWith(".json"));
+            const historyDocs = await db.collection('backups').get();
+            const files = historyDocs.docs
+                .map(d => ({ name: d.id, time: d.data().updatedAt || 0 }))
+                .filter(f => f.name.startsWith("history-") && !f.name.includes("_chunk_"));
+                
             if (files.length === 0) return res.json({ found: false });
+
+            // Sort by time descending
+            files.sort((a, b) => b.time - a.time);
             
-            const fileInfos = await Promise.all(files.map(async f => {
-                const fullPath = path.join(HISTORY_ROOT, f);
-                let score = 0;
-                try {
-                    const content = await fsp.readFile(fullPath, "utf8");
-                    const parsed = JSON.parse(content);
-                    score = calculateDataScore(parsed);
-                } catch(e) {}
-                return { 
-                    name: f, 
-                    time: (await fsp.stat(fullPath)).mtimeMs, 
-                    path: fullPath,
-                    score
-                };
-            }));
-            
-            // Sort by score descending, then by time descending
-            fileInfos.sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score;
-                return b.time - a.time;
-            });
-            
-            const bestFile = fileInfos[0];
-            const data = JSON.parse(await fsp.readFile(bestFile.path, "utf8") || "{}");
+            const bestFile = files[0];
+            const data = await loadFromFirestore(bestFile.name, {});
             res.json({ found: true, fileName: bestFile.name, timestamp: bestFile.time, data });
         } catch (err) {
             res.status(500).json({ error: "Failed to read history" });
@@ -615,7 +601,7 @@ async function startServer() {
     app.post("/api/nfc/save", async (req, res) => {
         try {
             nfcMemoryData = req.body;
-            await fsp.writeFile(NFC_PATH, JSON.stringify(nfcMemoryData, null, 2));
+            await saveToFirestore('nfc', nfcMemoryData);
             res.json({ success: true });
         } catch {
             res.status(500).json({ success: false });
@@ -641,24 +627,22 @@ async function startServer() {
 
     app.get("/api/pending", async (req, res) => {
         try {
-            const json = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]");
-            res.json(Array.isArray(json) ? json : []);
+            const list = await loadFromFirestore('pending', []);
+            res.json(Array.isArray(list) ? list : []);
         } catch { res.json([]); }
     });
 
     app.post("/api/pending", async (req, res) => {
-        let list = [];
-        try { list = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]"); } catch {}
+        let list = await loadFromFirestore('pending', []);
         const item = { id: Date.now().toString(), time: new Date().toISOString(), data: req.body, status: "pending" };
         list.push(item);
-        await fsp.writeFile(PENDING_PATH, JSON.stringify(list, null, 2));
+        await saveToFirestore('pending', list);
         res.json({ success: true, id: item.id });
     });
 
     app.post("/api/approve", async (req, res) => {
-        let list = [];
-        try { list = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]"); } catch {}
-        const item = list.find(i => i.id === req.body.id);
+        let list = await loadFromFirestore('pending', []);
+        const item = list.find((i: any) => i.id === req.body.id);
         if (!item) return res.status(404).json({ success: false });
         const fullData = sanitizePayload(item.data);
         memoryData.jobs = mergeLists(memoryData.jobs || [], fullData.jobs || []);
@@ -672,16 +656,15 @@ async function startServer() {
         triggerDiskSave();
         item.status = "approved";
         item.approvedTime = new Date().toISOString();
-        await fsp.writeFile(PENDING_PATH, JSON.stringify(list, null, 2));
+        await saveToFirestore('pending', list);
         broadcast("data-updated", { approved: true });
         res.json({ success: true });
     });
 
     app.delete("/api/pending/:id", async (req, res) => {
-        let list = [];
-        try { list = JSON.parse(await fsp.readFile(PENDING_PATH, "utf8") || "[]"); } catch {}
-        list = list.filter(i => i.id !== req.params.id);
-        await fsp.writeFile(PENDING_PATH, JSON.stringify(list, null, 2));
+        let list = await loadFromFirestore('pending', []);
+        list = list.filter((i: any) => i.id !== req.params.id);
+        await saveToFirestore('pending', list);
         res.json({ success: true });
     });
 
@@ -764,7 +747,7 @@ async function startServer() {
     app.post("/api/long-hoang/backup", async (req, res) => {
         try {
             const { orders } = req.body;
-            await fsp.writeFile(LHOANG_PATH, JSON.stringify(orders, null, 2), "utf8");
+            await saveToFirestore('lhoang', orders);
             res.json({ success: true, message: "Backup saved successfully" });
         } catch (err: any) {
             res.status(500).json({ success: false, message: err.message });
@@ -773,11 +756,10 @@ async function startServer() {
 
     app.get("/api/long-hoang/restore", async (req, res) => {
         try {
-            if (!fs.existsSync(LHOANG_PATH)) {
+            const orders = await loadFromFirestore('lhoang', null);
+            if (!orders) {
                 return res.status(404).json({ success: false, message: "Backup file not found" });
             }
-            const content = await fsp.readFile(LHOANG_PATH, "utf8");
-            const orders = JSON.parse(content);
             res.json({ success: true, orders });
         } catch (err: any) {
             res.status(500).json({ success: false, message: err.message });
