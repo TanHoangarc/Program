@@ -26,6 +26,23 @@ import { generateNextDocNo } from './utils';
 import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from 'lucide-react';
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
+import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  signOut 
+} from 'firebase/auth';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  getDoc,
+  query,
+  where,
+  deleteDoc,
+  writeBatch
+} from 'firebase/firestore';
 
 import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
@@ -118,10 +135,86 @@ const App: React.FC = () => {
   
   // --- SYNC STATUS ---
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
+  const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
 
   // --- SYNC CVHC CHOICE ---
   const [isSyncCvhcChoiceOpen, setIsSyncCvhcChoiceOpen] = useState(false);
   const [syncCvhcMode, setSyncCvhcMode] = useState<'all' | 'missing'>('missing');
+
+  // --- AUTH OBSERVER ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserAccount;
+            setCurrentUser(userData);
+            setIsAuthenticated(true);
+          } else {
+            console.warn("User has no profile in Firestore");
+            setIsAuthenticated(false);
+            setCurrentUser(null);
+          }
+        } catch (err) {
+          console.error("Error fetching user profile:", err);
+          setIsAuthenticated(false);
+        }
+      } else {
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+      }
+      setIsFirebaseLoaded(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // --- DATA SYNC (FIRESTORE) ---
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+
+    const collections = [
+      { name: 'jobs', setter: setJobs },
+      { name: 'customers', setter: setCustomers },
+      { name: 'lines', setter: setLines },
+      { name: 'paymentRequests', setter: setPaymentRequests },
+      { name: 'salaries', setter: setSalaries },
+      { name: 'yearlyConfigs', setter: setYearlyConfigs },
+      { name: 'nfcProfiles', setter: setNfcProfiles },
+      { name: 'longHoangOrders', setter: setLongHoangOrders },
+      { name: 'users', setter: setUsers }
+    ];
+
+    const unsubscribes = collections.map(coll => {
+      return onSnapshot(collection(db, coll.name), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        if (coll.name === 'jobs') {
+          setJobs(sanitizeData(data as any[] as JobData[]));
+        } else if (coll.name === 'customers') {
+          setCustomers(data as any[] as Customer[]);
+        } else if (coll.name === 'lines') {
+          setLines(data as any[] as ShippingLine[]);
+        } else if (coll.name === 'paymentRequests') {
+          setPaymentRequests(data as any[] as PaymentRequest[]);
+        } else if (coll.name === 'salaries') {
+          setSalaries(data as any[] as SalaryRecord[]);
+        } else if (coll.name === 'yearlyConfigs') {
+          setYearlyConfigs(data as any[] as YearlyConfig[]);
+        } else if (coll.name === 'nfcProfiles') {
+          setNfcProfiles(data as any[] as WebNfcProfile[]);
+        } else if (coll.name === 'longHoangOrders') {
+          setLongHoangOrders(data as any[] as LongHoangOrder[]);
+        } else if (coll.name === 'users') {
+          setUsers(data as any[] as UserAccount[]);
+        }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, coll.name);
+      });
+    });
+
+    setIsInitialSyncDone(true);
+    return () => unsubscribes.forEach(unsub => unsub());
+  }, [isAuthenticated, currentUser]);
 
   // --- OTHER RECEIPT MODAL ---
   const [isOtherReceiptOpen, setIsOtherReceiptOpen] = useState(false);
@@ -608,112 +701,129 @@ const App: React.FC = () => {
   }, [currentUser, isServerAvailable, jobs]); // Re-run if jobs change significantly or user changes
 
   // --- JOB HANDLERS WITH TRACKING ---
-  const handleAddJob = (job: JobData) => {
-      // Use functional update to ensure batch updates work correctly in loops
-      setJobs(prevJobs => [job, ...prevJobs]);
-      setModifiedJobIds(prev => new Set(prev).add(job.id));
-      
-      // Add header message
+  const handleAddJob = async (job: JobData) => {
+    try {
+      await setDoc(doc(db, 'jobs', job.id), job);
       if (currentUser) {
         addHeaderMessage(currentUser.username, job.line, job.booking, job.jobCode);
         addHeaderUpdate(currentUser.username, job.line, job.booking, 'Created', job.jobCode);
       }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `jobs/${job.id}`);
+    }
   };
 
-  const handleEditJob = (job: JobData) => {
-      setJobs(prev => prev.map(x => x.id === job.id ? job : x));
-      setModifiedJobIds(prev => new Set(prev).add(job.id));
-
+  const handleEditJob = async (job: JobData) => {
+    try {
+      await setDoc(doc(db, 'jobs', job.id), job);
       if (currentUser) {
         addHeaderUpdate(currentUser.username, job.line, job.booking, 'Updated', job.jobCode);
       }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `jobs/${job.id}`);
+    }
   };
 
-  const handleDeleteJob = (id: string) => {
-      setJobs(prev => prev.filter(x => x.id !== id));
-      setDeletedJobIds(prev => new Set(prev).add(id));
-      setModifiedJobIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(id);
-          return newSet;
-      });
+  const handleDeleteJob = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'jobs', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `jobs/${id}`);
+    }
   };
 
   // --- PAYMENT HANDLERS WITH TRACKING ---
-  const handleUpdatePaymentRequests = (newRequests: PaymentRequest[]) => {
-      // Detect deletions for Admin
-      if (currentUser?.role === 'Admin' && newRequests.length < paymentRequests.length) {
-          paymentRequests.forEach(oldReq => {
-              if (!newRequests.find(n => n.id === oldReq.id)) {
-                  setDeletedPaymentIds(prev => new Set(prev).add(oldReq.id));
-              }
-          });
+  const handleUpdatePaymentRequests = async (newRequests: PaymentRequest[]) => {
+    const oldMap = new Map<string, PaymentRequest>(paymentRequests.map(r => [r.id, r]));
+    const newMap = new Map<string, PaymentRequest>(newRequests.map(r => [r.id, r]));
+
+    const batch = writeBatch(db);
+    let count = 0;
+
+    for (const req of newRequests) {
+      const old = oldMap.get(req.id);
+      if (!old || JSON.stringify(old) !== JSON.stringify(req)) {
+        batch.set(doc(db, 'paymentRequests', req.id), req);
+        count++;
+        if (old && old.status !== 'completed' && req.status === 'completed' && req.uncUrl) {
+          if (currentUser) addHeaderNotification(currentUser.username, req.booking);
+        }
       }
+    }
 
-      const currentMap = new Map<string, PaymentRequest>(paymentRequests.map(r => [r.id, r]));
-      const changedIds = new Set<string>();
-      
-      newRequests.forEach(req => {
-          const current = currentMap.get(req.id);
-          if (!current || JSON.stringify(current) !== JSON.stringify(req)) {
-              changedIds.add(req.id);
-              
-              // Check if UNC was just uploaded (status changed to completed)
-              if (current && current.status !== 'completed' && req.status === 'completed' && req.uncUrl) {
-                if (currentUser) {
-                  addHeaderNotification(currentUser.username, req.booking);
-                }
-              }
-          }
-      });
+    if (currentUser?.role === 'Admin') {
+      for (const old of paymentRequests) {
+        if (!newMap.has(old.id)) {
+          batch.delete(doc(db, 'paymentRequests', old.id));
+          count++;
+        }
+      }
+    }
 
-      setPaymentRequests(newRequests);
-      
-      setModifiedPaymentIds(prev => {
-          const next = new Set(prev);
-          changedIds.forEach(id => next.add(id));
-          return next;
-      });
+    if (count > 0) {
+      try {
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, 'paymentRequests');
+      }
+    }
   };
 
   // --- SALARY HANDLERS ---
-  const handleUpdateSalaries = (newSalaries: SalaryRecord[]) => {
-      setSalaries(newSalaries);
+  const handleUpdateSalaries = async (newSalaries: SalaryRecord[]) => {
+    const batch = writeBatch(db);
+    newSalaries.forEach(s => {
+      batch.set(doc(db, 'salaries', s.id), s);
+    });
+    try { await batch.commit(); } catch (err) { handleFirestoreError(err, OperationType.WRITE, 'salaries'); }
   };
 
   // --- YEARLY CONFIG HANDLERS ---
-  const handleUpdateYearlyConfig = (config: YearlyConfig) => {
-      setYearlyConfigs(prev => {
-          const exists = prev.some(c => c.year === config.year);
-          if (exists) {
-              return prev.map(c => c.year === config.year ? config : c);
-          }
-          return [...prev, config];
-      });
+  const handleUpdateYearlyConfig = async (config: YearlyConfig) => {
+    try {
+      await setDoc(doc(db, 'yearlyConfigs', config.year.toString()), config);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `yearlyConfigs/${config.year}`);
+    }
   };
 
   // --- NFC HANDLERS ---
-  const handleAddNfcProfile = (profileData: Omit<WebNfcProfile, 'id' | 'visits' | 'interactions' | 'lastActive' | 'status' | 'fullUrl'>) => {
-      const newProfile: WebNfcProfile = {
-          ...profileData,
-          id: Date.now().toString(),
-          visits: 0,
-          interactions: 0,
-          lastActive: new Date().toISOString(),
-          status: 'active',
-          fullUrl: `${BASE_URL_PREFIX}${profileData.slug}`
-      };
-      setNfcProfiles(prev => [...prev, newProfile]);
+  const handleAddNfcProfile = async (profileData: Omit<WebNfcProfile, 'id' | 'visits' | 'interactions' | 'lastActive' | 'status' | 'fullUrl'>) => {
+    const id = Date.now().toString();
+    const newProfile: WebNfcProfile = {
+      ...profileData,
+      id,
+      visits: 0,
+      interactions: 0,
+      lastActive: new Date().toISOString(),
+      status: 'active',
+      fullUrl: `${BASE_URL_PREFIX}${profileData.slug}`
+    };
+    try {
+      await setDoc(doc(db, 'nfcProfiles', id), newProfile);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `nfcProfiles/${id}`);
+    }
   };
 
-  const handleUpdateNfcProfile = (id: string, updates: Partial<WebNfcProfile>) => {
-      setNfcProfiles(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+  const handleUpdateNfcProfile = async (id: string, updates: Partial<WebNfcProfile>) => {
+    const profile = nfcProfiles.find(p => p.id === id);
+    if (!profile) return;
+    try {
+      await setDoc(doc(db, 'nfcProfiles', id), { ...profile, ...updates });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `nfcProfiles/${id}`);
+    }
   };
 
   const handleDeleteNfcProfile = async (id: string) => {
-      if (await confirm("Are you sure you want to delete this profile?", "Confirm Delete")) {
-          setNfcProfiles(prev => prev.filter(p => p.id !== id));
+    if (await confirm("Are you sure you want to delete this profile?", "Confirm Delete")) {
+      try {
+        await deleteDoc(doc(db, 'nfcProfiles', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `nfcProfiles/${id}`);
       }
+    }
   };
 
   // --- BANK HANDLERS ---
@@ -790,20 +900,56 @@ const App: React.FC = () => {
   };
 
   // --- DATA SYNC FUNCTIONS ---
-  const handleUpdateCustomer = (updatedCustomer: Customer) => {
-      setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+  const handleUpdateCustomer = async (updatedCustomer: Customer) => {
+    try {
+      await setDoc(doc(db, 'customers', updatedCustomer.id), updatedCustomer);
       
-      setJobs(prevJobs => prevJobs.map(job => {
-          if (job.customerId === updatedCustomer.id) {
-              setModifiedJobIds(prev => new Set(prev).add(job.id));
-              return { ...job, customerName: updatedCustomer.name };
-          }
-          return job;
-      }));
+      // Update all jobs with this customer name (optional but consistent with current logic)
+      const jobsToUpdate = jobs.filter(j => j.customerId === updatedCustomer.id);
+      const batch = writeBatch(db);
+      jobsToUpdate.forEach(j => {
+        batch.set(doc(db, 'jobs', j.id), { ...j, customerName: updatedCustomer.name });
+      });
+      if (jobsToUpdate.length > 0) await batch.commit();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `customers/${updatedCustomer.id}`);
+    }
   };
 
-  const handleUpdateLine = (updatedLine: ShippingLine) => {
-      setLines(prev => prev.map(l => l.id === updatedLine.id ? updatedLine : l));
+  const handleUpdateLine = async (updatedLine: ShippingLine) => {
+    try {
+      await setDoc(doc(db, 'lines', updatedLine.id), updatedLine);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `lines/${updatedLine.id}`);
+    }
+  };
+
+  // --- USER MANAGEMENT HANDLERS ---
+  const handleAddUser = async (user: UserAccount) => {
+    try {
+      await setDoc(doc(db, 'users', user.username), user);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${user.username}`);
+    }
+  };
+
+  const handleEditUser = async (user: UserAccount, oldUsername: string) => {
+    try {
+      if (user.username !== oldUsername) {
+        await deleteDoc(doc(db, 'users', oldUsername));
+      }
+      await setDoc(doc(db, 'users', user.username), user);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${user.username}`);
+    }
+  };
+
+  const handleDeleteUser = async (username: string) => {
+    try {
+      await deleteDoc(doc(db, 'users', username));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${username}`);
+    }
   };
 
   // --- API FUNCTIONS ---
@@ -883,6 +1029,23 @@ const App: React.FC = () => {
   };
 
   // --- FORCE BACKUP TO CONFIRM MISMATCH ---
+  const handleRestoreData = async (d: { jobs: JobData[], customers: Customer[], lines: ShippingLine[], longHoangOrders?: any[] }) => {
+    const batch = writeBatch(db);
+    d.jobs.forEach(j => batch.set(doc(db, 'jobs', j.id), j));
+    d.customers.forEach(c => batch.set(doc(db, 'customers', c.id), c));
+    d.lines.forEach(l => batch.set(doc(db, 'lines', l.id), l));
+    if (d.longHoangOrders) {
+      d.longHoangOrders.forEach((o: any) => batch.set(doc(db, 'longHoangOrders', o.id), o));
+    }
+    
+    try {
+      await batch.commit();
+      alert("Khôi phục dữ liệu thành công!", "Thành công");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'restore-batch');
+    }
+  };
+
   const handleConfirmMismatch = async () => {
       // Force sync current data to server to resolve mismatch
       await autoBackup();
@@ -937,32 +1100,62 @@ const App: React.FC = () => {
       const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
       const incLongHoangOrders = Array.isArray(incomingData.longHoangOrders) ? incomingData.longHoangOrders : (incomingData.data?.longHoangOrders || incomingData.payload?.longHoangOrders || []);
 
-      const newJobs = mergeArrays(jobs, incJobs);
-      const newPayments = mergeArrays(paymentRequests, incPayments);
-      const newCustomers = mergeArrays(customers, incCustomers);
-      const newLines = mergeArrays(lines, incLines);
-      const newReceipts = mergeArrays(customReceipts, incReceipts);
-      const newSalaries = mergeArrays(salaries, incSalaries);
-      const newLongHoangOrders = mergeArrays(longHoangOrders, incLongHoangOrders);
+      const batch = writeBatch(db);
+      incJobs.forEach((j: any) => batch.set(doc(db, 'jobs', j.id), j));
+      incPayments.forEach((p: any) => batch.set(doc(db, 'paymentRequests', p.id), p));
+      incCustomers.forEach((c: any) => batch.set(doc(db, 'customers', c.id), c));
+      incLines.forEach((l: any) => batch.set(doc(db, 'lines', l.id), l));
+      incSalaries.forEach((s: any) => batch.set(doc(db, 'salaries', s.id), s));
+      incConfigs.forEach((c: any) => batch.set(doc(db, 'yearlyConfigs', c.year.toString()), c));
+      incLongHoangOrders.forEach((o: any) => batch.set(doc(db, 'longHoangOrders', o.id), o));
+
+      try {
+        await batch.commit();
+        await handleRejectRequest(requestId);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, 'approve-batch');
+      }
+  };
+
+  const migrateToFirebase = async () => {
+    if (!confirm("Bắt đầu di chuyển dữ liệu từ Server sang Firebase? Việc này sẽ ghi đè dữ liệu hiện tại trên Firebase.", "Xác nhận di chuyển")) return;
+    
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/data`);
+      const fullData = await res.json();
       
-      // Yearly Config Merge Logic (Merge based on Year)
-      const newConfigs = [...yearlyConfigs];
-      incConfigs.forEach((c: YearlyConfig) => {
-          const idx = newConfigs.findIndex(x => x.year === c.year);
-          if (idx >= 0) newConfigs[idx] = c;
-          else newConfigs.push(c);
-      });
+      const collections = [
+        { name: 'jobs', data: fullData.jobs || [] },
+        { name: 'customers', data: fullData.customers || [] },
+        { name: 'lines', data: fullData.lines || [] },
+        { name: 'paymentRequests', data: fullData.paymentRequests || [] },
+        { name: 'salaries', data: fullData.salaries || [] },
+        { name: 'yearlyConfigs', data: fullData.yearlyConfigs || [], idField: 'year' },
+        { name: 'nfcProfiles', data: fullData.nfcProfiles || [] },
+        { name: 'longHoangOrders', data: fullData.longHoangOrders || [] },
+        { name: 'users', data: users || [], idField: 'username' } // Use current local users list
+      ];
 
-      setJobs(sanitizeData(newJobs)); // Ensure years are populated
-      setPaymentRequests(newPayments);
-      setCustomers(newCustomers);
-      setLines(newLines);
-      setCustomReceipts(newReceipts);
-      setSalaries(newSalaries);
-      setYearlyConfigs(newConfigs);
-      setLongHoangOrders(newLongHoangOrders);
-
-      await handleRejectRequest(requestId);
+      for (const coll of collections) {
+         if (coll.data.length === 0) continue;
+         
+         // Process in chunks of 500
+         for (let i = 0; i < coll.data.length; i += 500) {
+            const batch = writeBatch(db);
+            const chunk = coll.data.slice(i, i + 500);
+            chunk.forEach((item: any) => {
+               const docId = coll.idField ? item[coll.idField].toString() : (item.id || Date.now().toString() + Math.random());
+               batch.set(doc(db, coll.name, docId), item);
+            });
+            await batch.commit();
+         }
+         console.log(`Migrated ${coll.data.length} items to ${coll.name}`);
+      }
+      alert("Di chuyển dữ liệu thành công!", "Thành công");
+    } catch (err) {
+      console.error("Migration failed:", err);
+      alert("Di chuyển thất bại: " + err, "Lỗi");
+    }
   };
 
   const fetchPendingRequests = async () => {
@@ -1122,40 +1315,116 @@ const App: React.FC = () => {
     return () => channel.close();
   }, [isAuthenticated, currentUser]);
 
-  const handleLogin = (username: string, pass: string, remember: boolean) => {
-    setLoginError('');
-    const user = users.find(u => u.username === username && u.pass === pass);
-
-    if (user) {
-      const userData = user;
-      setIsAuthenticated(true);
-      setCurrentUser(userData);
-      setSessionError('');
-      
-      const storage = remember ? localStorage : sessionStorage;
-      storage.setItem('kb_user', JSON.stringify(userData));
-      
-      if (remember) sessionStorage.removeItem('kb_user');
-      else localStorage.removeItem('kb_user');
-
-      if (user.role === 'Docs') {
-          setCurrentPage('payment');
-      } else if (user.role === 'Cus') {
-          setCurrentPage('tool-ai');
+  // --- AUTH OBSERVER ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserAccount;
+            setCurrentUser(userData);
+            setIsAuthenticated(true);
+          } else {
+            // New user from Firebase Auth but no profile in Firestore
+            // For now, let's just log them out or wait for admin to set them up
+            console.warn("User has no profile in Firestore");
+            setIsAuthenticated(false);
+            setCurrentUser(null);
+          }
+        } catch (err) {
+          console.error("Error fetching user profile:", err);
+          setIsAuthenticated(false);
+        }
       } else {
-          setCurrentPage('entry');
+        setIsAuthenticated(false);
+        setCurrentUser(null);
       }
-    } else {
-      setLoginError("Thông tin đăng nhập không đúng");
+      setIsFirebaseLoaded(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // --- DATA SYNC (FIRESTORE) ---
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+
+    const collections = [
+      { name: 'jobs', setter: setJobs },
+      { name: 'customers', setter: setCustomers },
+      { name: 'lines', setter: setLines },
+      { name: 'paymentRequests', setter: setPaymentRequests },
+      { name: 'salaries', setter: setSalaries },
+      { name: 'yearlyConfigs', setter: setYearlyConfigs },
+      { name: 'nfcProfiles', setter: setNfcProfiles },
+      { name: 'longHoangOrders', setter: setLongHoangOrders }
+    ];
+
+    const unsubscribes = collections.map(coll => {
+      return onSnapshot(collection(db, coll.name), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        if (coll.name === 'jobs') {
+          coll.setter(sanitizeData(data as JobData[]));
+        } else {
+          coll.setter(data as any[]);
+        }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, coll.name);
+      });
+    });
+
+    setIsInitialSyncDone(true);
+    return () => unsubscribes.forEach(unsub => unsub());
+  }, [isAuthenticated, currentUser]);
+
+  const handleLogin = async (username: string, pass: string, remember: boolean) => {
+    setLoginError('');
+    
+    // Check if it's a default user for first-time login
+    const defaultUser = DEFAULT_USERS.find(u => u.username === username && u.pass === pass);
+    
+    // Map username to email for Firebase Auth
+    const email = `${username.toLowerCase()}@logistics.com`;
+    
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      if (userDoc.exists()) {
+        const user = userDoc.data() as UserAccount;
+        if (user.role === 'Docs') setCurrentPage('payment');
+        else if (user.role === 'Cus') setCurrentPage('tool-ai');
+        else setCurrentPage('entry');
+      }
+    } catch (err: any) {
+      if (err.code !== 'auth/operation-not-allowed') {
+        console.error("Login attempt failed:", err.code || err.message);
+      } else {
+        console.log("Firebase Email/Password not yet enabled. Using local fallback.");
+      }
+      
+      // Fallback: If user exists in DEFAULT_USERS but not in Firebase Auth, allow legacy login
+      if (defaultUser) {
+          setCurrentUser(defaultUser);
+          setIsAuthenticated(true);
+          setSessionError('');
+          if (defaultUser.role === 'Docs') setCurrentPage('payment');
+          else if (defaultUser.role === 'Cus') setCurrentPage('tool-ai');
+          else setCurrentPage('entry');
+          console.log("Logged in via Legacy Auth fallback");
+      } else {
+          setLoginError("Thông tin đăng nhập không đúng");
+      }
     }
   };
 
-  const handleLogout = useCallback((forced = false) => {
+  const handleLogout = useCallback(async (forced = false) => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     setIsAuthenticated(false);
     setCurrentUser(null);
-    sessionStorage.removeItem('kb_user');
-    localStorage.removeItem('kb_user');
-    
     setSessionError(forced ? "Tài khoản đã được đăng nhập nơi khác." : "");
   }, []);
 
@@ -1645,15 +1914,11 @@ const App: React.FC = () => {
                 lines={lines}
                 users={users}
                 currentUser={currentUser}
-                onRestore={(d) => {
-                  setJobs(sanitizeData(d.jobs));
-                  setCustomers(d.customers);
-                  setLines(d.lines);
-                  if (d.longHoangOrders) setLongHoangOrders(d.longHoangOrders);
-                }}
-                onAddUser={(u) => setUsers([...users, u])}
-                onEditUser={(u, oldName) => setUsers(users.map(user => user.username === oldName ? u : user))}
-                onDeleteUser={(name) => setUsers(users.filter(u => u.username !== name))}
+                onRestore={handleRestoreData}
+                onMigrate={migrateToFirebase}
+                onAddUser={handleAddUser}
+                onEditUser={handleEditUser}
+                onDeleteUser={handleDeleteUser}
                 pendingRequests={pendingRequests}
                 onApproveRequest={handleApproveRequest}
                 onRejectRequest={handleRejectRequest}
