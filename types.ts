@@ -418,6 +418,7 @@ export interface WebNfcProfile {
   // Lists
   socialLinks: SocialLink[];
   projects: Project[];
+  securityItems?: SecurityItem[];
 
   // System
   visits: number;
@@ -425,6 +426,13 @@ export interface WebNfcProfile {
   lastActive: string;
   status: 'active' | 'inactive';
   fullUrl: string;
+}
+
+export interface SecurityItem {
+  id: string;
+  name: string;
+  account: string;
+  pass: string;
 }
 
 // ============================================================

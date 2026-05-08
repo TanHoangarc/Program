@@ -5,7 +5,7 @@ import { BASE_URL_PREFIX } from '../constants';
 import { 
   ExternalLink, Edit3, Trash2, Plus, Search, Settings, Download, X, 
   Link as LinkIcon, Image as ImageIcon, User, Phone, Copy, Save, 
-  Briefcase, Globe, FileText, ArrowLeft, Layout, ChevronDown, QrCode
+  Briefcase, Globe, FileText, ArrowLeft, Layout, ChevronDown, QrCode, Lock
 } from 'lucide-react';
 
 interface NFCPageProps {
@@ -168,7 +168,7 @@ const generateHtmlTemplate = (profile: WebNfcProfile) => {
 </html>`;
 };
 
-type Tab = 'general' | 'images' | 'content_vn' | 'content_en' | 'social' | 'projects';
+type Tab = 'general' | 'images' | 'content_vn' | 'content_en' | 'social' | 'projects' | 'security';
 
 export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, onDelete, onUpdate }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -188,7 +188,7 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
     name: '', slug: '', title: '', bio: '', headerTitleVi: '', footerRoleVi: '',
     titleEn: '', bioEn: '', headerTitleEn: '', footerRoleEn: '',
     phoneNumber: '', zaloNumber: '', avatarUrl: '', coverUrl: '', mainQrUrl: '',
-    socialLinks: [], projects: []
+    socialLinks: [], projects: [], securityItems: []
   });
 
   // --- FILTERING LOGIC ---
@@ -237,7 +237,7 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
         name: '', slug: '', title: '', bio: '', headerTitleVi: '', footerRoleVi: '',
         titleEn: '', bioEn: '', headerTitleEn: '', footerRoleEn: '',
         phoneNumber: '', zaloNumber: '', avatarUrl: '', coverUrl: '', mainQrUrl: '',
-        socialLinks: [], projects: []
+        socialLinks: [], projects: [], securityItems: []
     });
     setActiveTab('general');
   };
@@ -255,6 +255,10 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
   const updateProject = (id: string, field: keyof Project, value: any) => { setFormData(prev => ({...prev, projects: prev.projects?.map(p => p.id === id ? { ...p, [field]: value } : p)})); };
   const handleDetailImagesChange = (id: string, text: string) => { const urls = text.split('\n').map(u => u.trim()).filter(u => u !== ''); updateProject(id, 'detailImageUrls', urls); };
   const removeProject = (id: string) => { setFormData(prev => ({...prev, projects: prev.projects?.filter(p => p.id !== id) || []})); };
+
+  const addSecurityItem = () => { setFormData(prev => ({...prev, securityItems: [...(prev.securityItems || []), { id: Date.now().toString(), name: '', account: '', pass: '' }]})); };
+  const updateSecurityItem = (id: string, field: 'name' | 'account' | 'pass', value: string) => { setFormData(prev => ({...prev, securityItems: prev.securityItems?.map(s => s.id === id ? { ...s, [field]: value } : s)})); };
+  const removeSecurityItem = (id: string) => { setFormData(prev => ({...prev, securityItems: prev.securityItems?.filter(s => s.id !== id) || []})); };
 
   const handleEditRedirect = (profile: WebNfcProfile) => {
     setEditingId(profile.id);
@@ -275,7 +279,8 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
         coverUrl: profile.coverUrl,
         mainQrUrl: profile.mainQrUrl || '',
         socialLinks: profile.socialLinks || [],
-        projects: profile.projects || []
+        projects: profile.projects || [],
+        securityItems: profile.securityItems || []
     });
     setIsModalOpen(true);
   };
@@ -360,7 +365,7 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
                     
                     <div className="w-full mt-auto">
                         <a 
-                            href={profile.fullUrl} 
+                            href={`${BASE_URL_PREFIX}${profile.slug}`} 
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="text-xs text-slate-500 hover:text-indigo-600 flex items-center justify-center gap-2 bg-slate-50 p-2.5 rounded-lg truncate transition-colors border border-slate-100 hover:border-indigo-100 hover:bg-white hover:shadow-sm w-full"
@@ -432,7 +437,7 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
             <div className="flex flex-1 overflow-hidden">
                 <div className="w-64 bg-white border-r border-slate-200 flex flex-col overflow-y-auto">
                     <div className="p-4 space-y-1">
-                        {[{ id: 'general', label: 'Chung', icon: Settings }, { id: 'images', label: 'Hình ảnh', icon: ImageIcon }, { id: 'content_vn', label: 'Nội dung (VN)', icon: FileText }, { id: 'content_en', label: 'Nội dung (EN)', icon: Globe }, { id: 'social', label: 'Mạng Xã Hội', icon: LinkIcon }, { id: 'projects', label: 'Dự án', icon: Briefcase }].map((tab) => (
+                        {[{ id: 'general', label: 'Chung', icon: Settings }, { id: 'images', label: 'Hình ảnh', icon: ImageIcon }, { id: 'content_vn', label: 'Nội dung (VN)', icon: FileText }, { id: 'content_en', label: 'Nội dung (EN)', icon: Globe }, { id: 'social', label: 'Mạng Xã Hội', icon: LinkIcon }, { id: 'projects', label: 'Dự án', icon: Briefcase }, { id: 'security', label: 'Bảo mật', icon: Lock }].map((tab) => (
                             <button key={tab.id} onClick={() => setActiveTab(tab.id as Tab)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === tab.id ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}><tab.icon size={18} />{tab.label}</button>
                         ))}
                     </div>
@@ -492,6 +497,13 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
                             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                                 <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6"><h4 className="text-lg font-bold text-slate-900">Dự Án</h4><button onClick={addProject} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2"><Plus size={16} /> Thêm Dự Án</button></div>
                                 <div className="space-y-4">{formData.projects && formData.projects.length > 0 ? formData.projects.map((project, index) => (<div key={project.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-4"><div className="flex justify-between items-center mb-4"><h5 className="font-bold text-slate-800">Project #{index + 1}</h5><button onClick={() => removeProject(project.id)} className="text-red-500 hover:text-red-700 text-sm font-medium">Xóa</button></div><div className="space-y-4"><div><label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">TÊN DỰ ÁN</label><input type="text" value={project.name} onChange={e => updateProject(project.id, 'name', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2"/></div><div><label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">ẢNH THU NHỎ (THUMBNAIL)</label><input type="text" value={project.imageUrl || ''} onChange={e => updateProject(project.id, 'imageUrl', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-600"/></div><div><label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">MÔ TẢ</label><textarea value={project.description || ''} onChange={e => updateProject(project.id, 'description', e.target.value)} rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2"/></div><div><label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">ẢNH CHI TIẾT (MỖI DÒNG 1 LINK)</label><textarea value={project.detailImageUrls?.join('\n') || ''} onChange={e => handleDetailImagesChange(project.id, e.target.value)} rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-600"/></div></div></div>)) : <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><p className="text-slate-500">Chưa có dự án nào.</p></div>}</div>
+                            </div>
+                        )}
+                        {/* Tab: Security */}
+                        {activeTab === 'security' && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6"><h4 className="text-lg font-bold text-slate-900">Bảo mật (Nội bộ)</h4><button onClick={addSecurityItem} className="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2"><Plus size={16} /> Thêm Mục</button></div>
+                                <div className="space-y-4">{formData.securityItems && formData.securityItems.length > 0 ? formData.securityItems.map((item, index) => (<div key={item.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4"><div className="flex justify-between items-center mb-3"><input type="text" value={item.name} onChange={e => updateSecurityItem(item.id, 'name', e.target.value)} placeholder={`Mục #${index + 1}`} className="font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded px-2 py-1 outline-none text-base w-full mr-4 transition-colors"/><button onClick={() => removeSecurityItem(item.id)} className="text-red-500 hover:text-red-700 text-sm font-medium whitespace-nowrap">Xóa</button></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">TÀI KHOẢN</label><input type="text" value={item.account} onChange={e => updateSecurityItem(item.id, 'account', e.target.value)} className="w-full border border-slate-200 rounded-md px-3 py-1.5 font-mono text-sm"/></div><div><label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">MẬT KHẨU</label><input type="text" value={item.pass} onChange={e => updateSecurityItem(item.id, 'pass', e.target.value)} className="w-full border border-slate-200 rounded-md px-3 py-1.5 font-mono text-sm"/></div></div></div>)) : <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><p className="text-slate-500">Chưa có thông tin bảo mật nào.</p></div>}</div>
                             </div>
                         )}
                     </div>

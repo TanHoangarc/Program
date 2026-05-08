@@ -1043,6 +1043,13 @@ const App: React.FC = () => {
             if (headerData.updates) setHeaderUpdates(headerData.updates);
         }
 
+        if (nfcRes && nfcRes.ok) {
+            const nfcData = await nfcRes.json();
+            if (Array.isArray(nfcData) && nfcData.length > 0) {
+                setNfcProfiles(nfcData);
+            }
+        }
+
         if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(sanitizeData(data.jobs));
         if (data.paymentRequests && Array.isArray(data.paymentRequests)) setPaymentRequests(data.paymentRequests);
         if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
