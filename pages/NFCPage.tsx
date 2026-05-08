@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { WebNfcProfile, SocialLink, Project, AuthUser } from '../types';
 import { BASE_URL_PREFIX } from '../constants';
 import { 
@@ -191,6 +191,59 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
     socialLinks: [], projects: [], securityItems: []
   });
 
+  useEffect(() => {
+    if (!formData.bio || formData.bio.trim() === '') return;
+    const delayDebounceFn = setTimeout(async () => {
+        try {
+            const res = await fetch(`/api/ai/generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: `Dịch văn bản giới thiệu bản thân tiếng Việt sau đây sang tiếng Anh chuyên nghiệp. Chỉ trả về văn bản tiếng Anh, không bình luận hay xuất Markdown:\n\n${formData.bio}`
+                })
+            });
+            if (!res.ok) {
+                 throw new Error(`HTTP error: ${res.status}`);
+            }
+            const data = await res.json();
+            if (data && data.text && data.text.trim()) {
+                setFormData(prev => ({ ...prev, bioEn: data.text.trim() }));
+            }
+        } catch (e) {
+            console.error("Auto-translate failed", e);
+        }
+    }, 1500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [formData.bio]);
+
+  useEffect(() => {
+      setFormData(prev => {
+          if (!prev.securityItems || prev.securityItems.length === 0) return prev;
+          let updated = false;
+          let newSec = [...prev.securityItems];
+
+          const mailLink = prev.socialLinks.find(l => l.url && l.url.startsWith('mailto:'));
+          const mailAcc = mailLink ? mailLink.url.replace('mailto:', '') : '';
+          const mailItemIdx = newSec.findIndex(s => s.name === 'Mail');
+          if (mailItemIdx !== -1 && newSec[mailItemIdx].account !== mailAcc && mailAcc !== '') {
+              newSec[mailItemIdx] = { ...newSec[mailItemIdx], account: mailAcc };
+              updated = true;
+          }
+
+          const publicItemIdx = newSec.findIndex(s => s.name === 'Public');
+          if (publicItemIdx !== -1 && prev.slug !== '') {
+              const baseAccount = prev.slug.split('.')[0];
+              if (newSec[publicItemIdx].account !== baseAccount) {
+                  newSec[publicItemIdx] = { ...newSec[publicItemIdx], account: baseAccount };
+                  updated = true;
+              }
+          }
+
+          return updated ? { ...prev, securityItems: newSec } : prev;
+      });
+  }, [formData.socialLinks, formData.slug, formData.securityItems?.length]);
+
+
   // --- FILTERING LOGIC ---
   const filteredProfiles = profiles.filter(p => {
       // 1. Role-based filter (Sales can only see assigned)
@@ -237,15 +290,56 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
         name: '', slug: '', title: '', bio: '', headerTitleVi: '', footerRoleVi: '',
         titleEn: '', bioEn: '', headerTitleEn: '', footerRoleEn: '',
         phoneNumber: '', zaloNumber: '', avatarUrl: '', coverUrl: '', mainQrUrl: '',
-        socialLinks: [], projects: [], securityItems: []
+        socialLinks: [], projects: [], 
+        securityItems: [
+           { id: Date.now().toString() + '1', name: 'Mail', account: '', pass: '' },
+           { id: Date.now().toString() + '2', name: 'Public', account: '', pass: '' },
+           { id: Date.now().toString() + '3', name: 'Litemanager', account: '', pass: '' }
+        ]
     });
     setActiveTab('general');
+  };
+
+  const handlePhoneChange = (val: string) => {
+      let cleanPhone = val.replace(/\s+/g, '');
+      let autoZalo = val;
+      if (cleanPhone.startsWith('+84')) {
+          autoZalo = '0' + cleanPhone.substring(3);
+      } else {
+          autoZalo = cleanPhone;
+      }
+      setFormData(prev => {
+          const next = { ...prev, phoneNumber: val, zaloNumber: autoZalo };
+          const nextLinks = prev.socialLinks.map(l => {
+              if (l.platform === 'zalo' || l.label.toLowerCase() === 'zalo') {
+                   return { ...l, url: `https://zalo.me/${autoZalo}` };
+              }
+              return l;
+          });
+          return { ...next, socialLinks: nextLinks };
+      });
+  };
+
+  const handleTitleChange = (newTitle: string) => {
+      const index = titlesList.indexOf(newTitle);
+      setFormData(prev => {
+          let updates = { title: newTitle } as any;
+          if (index !== -1) {
+              if (rolesList[index]) updates.footerRoleVi = rolesList[index];
+              if (titlesEnList[index]) updates.titleEn = titlesEnList[index];
+              if (rolesEnList[index]) updates.footerRoleEn = rolesEnList[index];
+          }
+          return { ...prev, ...updates };
+      });
   };
 
   // ... (Social Link, Project helper functions) ...
   const addSocialLink = (presetId: string) => {
     const preset = SOCIAL_PRESETS.find(p => p.id === presetId);
-    const defaultUrl = DEFAULT_SOCIAL_URLS[presetId] || '';
+    let defaultUrl = DEFAULT_SOCIAL_URLS[presetId] || '';
+    if (presetId === 'zalo' && formData.zaloNumber) {
+        defaultUrl = `https://zalo.me/${formData.zaloNumber}`;
+    }
     setFormData(prev => ({...prev, socialLinks: [...prev.socialLinks, { id: Date.now().toString(), platform: presetId as any, url: defaultUrl, label: preset?.label || 'New Link', iconUrl: preset?.icon || '', qrImageUrl: '' }]}));
     setShowAddMenu(false);
   };
@@ -262,6 +356,24 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
 
   const handleEditRedirect = (profile: WebNfcProfile) => {
     setEditingId(profile.id);
+    let editingSecurity = profile.securityItems || [];
+    if (editingSecurity.length === 0) {
+        const baseSlug = profile.slug ? profile.slug.split('.')[0] : '';
+        editingSecurity = [
+           { id: Date.now().toString() + '1', name: 'Mail', account: '', pass: '' },
+           { id: Date.now().toString() + '2', name: 'Public', account: baseSlug, pass: '' },
+           { id: Date.now().toString() + '3', name: 'Litemanager', account: '', pass: '' }
+        ];
+    } else {
+        // Fix existing saved security items
+        const publicItemIdx = editingSecurity.findIndex(s => s.name === 'Public');
+        if (publicItemIdx !== -1) {
+            const baseSlug = profile.slug ? profile.slug.split('.')[0] : '';
+            if (editingSecurity[publicItemIdx].account === profile.slug && profile.slug.includes('.')) {
+                editingSecurity[publicItemIdx] = { ...editingSecurity[publicItemIdx], account: baseSlug };
+            }
+        }
+    }
     setFormData({
         name: profile.name,
         slug: profile.slug,
@@ -280,7 +392,7 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
         mainQrUrl: profile.mainQrUrl || '',
         socialLinks: profile.socialLinks || [],
         projects: profile.projects || [],
-        securityItems: profile.securityItems || []
+        securityItems: editingSecurity
     });
     setIsModalOpen(true);
   };
@@ -450,7 +562,7 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
                                 <h4 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-4 mb-6">Thông tin cơ bản</h4>
                                 <div><label className="block text-sm font-medium text-slate-700 mb-1">Tên quản lý (Admin) <span className="text-red-500">*</span></label><input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="New User" className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"/></div>
                                 <div><label className="block text-sm font-medium text-slate-700 mb-1">GitHub Slug / Domain <span className="text-red-500">*</span></label><input type="text" value={formData.slug} onChange={e => setFormData({...formData, slug: e.target.value})} placeholder="e.g. Andy (auto becomes Andy.github.io)" className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-mono text-sm"/></div>
-                                <div><label className="block text-sm font-medium text-slate-700 mb-1">Số điện thoại (Gọi)</label><input type="text" value={formData.phoneNumber} onChange={e => setFormData({...formData, phoneNumber: e.target.value})} placeholder="+84972133680" className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"/></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">Số điện thoại (Gọi)</label><input type="text" value={formData.phoneNumber} onChange={e => handlePhoneChange(e.target.value)} placeholder="+84972133680" className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"/></div>
                                 <div><label className="block text-sm font-medium text-slate-700 mb-1">Số Zalo (Liên hệ)</label><input type="text" value={formData.zaloNumber} onChange={e => setFormData({...formData, zaloNumber: e.target.value})} placeholder="0972133680" className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"/></div>
                             </div>
                         )}
@@ -470,7 +582,7 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
                             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                                 <h4 className="text-lg font-bold text-emerald-800 border-b border-emerald-100 pb-4 mb-6">Nội dung Tiếng Việt</h4>
                                 <div><label className="block text-sm font-medium text-slate-700 mb-1">Tên tiêu đề (Tiêu đề trên cùng)</label><input type="text" value={formData.headerTitleVi || ''} onChange={e => setFormData({...formData, headerTitleVi: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 bg-white"/></div>
-                                <div><label className="block text-sm font-medium text-slate-700 mb-1">Chức danh / Tiêu đề</label><div className="flex gap-2"><select value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="flex-1 border border-slate-300 rounded-lg px-4 py-2 bg-white"><option value="">-- Chọn Chức danh --</option>{titlesList.map((t) => (<option key={t} value={t}>{t}</option>))}{!titlesList.includes(formData.title) && formData.title && (<option value={formData.title}>{formData.title}</option>)}</select><button onClick={handleAddCustomTitle} className="bg-indigo-50 text-indigo-600 p-2 rounded-lg border border-indigo-200"><Plus size={20} /></button></div></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">Chức danh / Tiêu đề</label><div className="flex gap-2"><select value={formData.title} onChange={e => handleTitleChange(e.target.value)} className="flex-1 border border-slate-300 rounded-lg px-4 py-2 bg-white"><option value="">-- Chọn Chức danh --</option>{titlesList.map((t) => (<option key={t} value={t}>{t}</option>))}{!titlesList.includes(formData.title) && formData.title && (<option value={formData.title}>{formData.title}</option>)}</select><button onClick={handleAddCustomTitle} className="bg-indigo-50 text-indigo-600 p-2 rounded-lg border border-indigo-200"><Plus size={20} /></button></div></div>
                                 <div><label className="block text-sm font-medium text-slate-700 mb-1">Giới thiệu bản thân (Bio)</label><textarea value={formData.bio} onChange={e => setFormData({...formData, bio: e.target.value})} rows={6} className="w-full border border-slate-300 rounded-lg px-4 py-2"/></div>
                                 <div className="pt-4 border-t border-slate-100"><label className="block text-sm font-medium text-slate-700 mb-1">Chức vụ (Cuối trang)</label><div className="flex gap-2"><select value={formData.footerRoleVi || ''} onChange={e => setFormData({...formData, footerRoleVi: e.target.value})} className="flex-1 border border-slate-300 rounded-lg px-4 py-2 bg-white"><option value="">-- Chọn Chức vụ --</option>{rolesList.map((r) => (<option key={r} value={r}>{r}</option>))}{!rolesList.includes(formData.footerRoleVi || '') && formData.footerRoleVi && (<option value={formData.footerRoleVi}>{formData.footerRoleVi}</option>)}</select><button onClick={handleAddCustomRole} className="bg-indigo-50 text-indigo-600 p-2 rounded-lg border border-indigo-200"><Plus size={20} /></button></div></div>
                             </div>
