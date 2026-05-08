@@ -500,3 +500,11 @@ export const INITIAL_JOB: JobData = {
   additionalReceipts: [],
   refunds: []
 };
+
+// ============================================================
+// MISC TYPES (STUBS)
+// ============================================================
+export type DebitNoteData = any;
+export type EmailMessage = any;
+export type EmailConfig = any;
+export type PhieuInvOrder = any;

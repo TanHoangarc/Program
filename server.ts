@@ -67,15 +67,6 @@ async function startServer() {
         ? "E:\\ServerData" 
         : path.join(process.cwd(), "ServerData");
 
-    const DATA_PATH = path.join(ROOT_DIR, "backup.json");       // Main Data (Jobs, Customers, etc.)
-    const AMIS_PATH = path.join(ROOT_DIR, "amis.json");         // Amis Accounting Data (Admin Only)
-    const PAYMENT_PATH = path.join(ROOT_DIR, "payment.json");   // Payment Requests Only
-    const STAFF_PATH = path.join(ROOT_DIR, "staff.json");       // Staff Changes (Pending/Draft)
-    const NFC_PATH = path.join(ROOT_DIR, "NFC.json");
-    const PENDING_PATH = path.join(ROOT_DIR, "pending.json");   // Legacy Pending
-    const LHOANG_PATH = path.join(ROOT_DIR, "lhoang.json");     // Long Hoang Data
-    const HISTORY_ROOT = path.join(ROOT_DIR, "history");
-
     const INVOICE_ROOT = path.join(ROOT_DIR, "Invoice");
     const INV_DIR = path.join(ROOT_DIR, "INV");
     const UNC_DIR = path.join(ROOT_DIR, "UNC");
@@ -87,7 +78,6 @@ async function startServer() {
     // ======================================================
     [
         ROOT_DIR,
-        HISTORY_ROOT,
         INVOICE_ROOT,
         INV_DIR,
         UNC_DIR,
@@ -97,21 +87,44 @@ async function startServer() {
         if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
     });
 
-    // Initialize files if not exist
-    if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
-    if (!fs.existsSync(AMIS_PATH)) fs.writeFileSync(AMIS_PATH, "{}");
-    if (!fs.existsSync(PAYMENT_PATH)) fs.writeFileSync(PAYMENT_PATH, "[]");
-    if (!fs.existsSync(STAFF_PATH)) fs.writeFileSync(STAFF_PATH, "[]");
-    if (!fs.existsSync(NFC_PATH)) fs.writeFileSync(NFC_PATH, "[]");
-    if (!fs.existsSync(PENDING_PATH)) fs.writeFileSync(PENDING_PATH, "[]");
-
     // ======================================================
-    // MEMORY + LOCK STATE
+    // DATABASE STATE
     // ======================================================
-    let memoryData: any = {};        // Stores Jobs, Customers, Lines...
-    let memoryPayments: any[] = [];    // Stores Payment Requests
-    let nfcMemoryData: any[] = [];
     const editingMap: Record<string, string> = {};
+
+    let dbLock = Promise.resolve();
+
+    async function loadFullDatabase() {
+        return await loadFromFirestore('mainDatabase', {
+            jobs: [], customers: [], lines: [], deletedJobIds: [],
+            paymentRequests: [], deletedPaymentIds: [], nfc: [], 
+            pending: [], staff: [], longHoangOrders: [],
+            headerMessages: [], headerNotifications: [], headerUpdates: [],
+            customReceipts: [], salaries: [], yearlyConfigs: {},
+            lockedIds: [], processedRequestIds: []
+        });
+    }
+
+    async function saveFullDatabase(data: any) {
+        await saveToFirestore('mainDatabase', data);
+    }
+
+    function withDBLock(action: (dbState: any) => Promise<any> | any) {
+        return new Promise<any>((resolve, reject) => {
+            dbLock = dbLock.then(async () => {
+                try {
+                    const data = await loadFullDatabase();
+                    const result = await action(data);
+                    if (result !== false) {
+                        await saveFullDatabase(data);
+                    }
+                    resolve(result);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+    }
 
     // ======================================================
     // HELPER: DEDUPLICATE & MERGE DATA
@@ -202,199 +215,6 @@ async function startServer() {
             return mergedJob;
         });
     }
-
-    function splitAmisData(sourceData: any) {
-        const cleanData = JSON.parse(JSON.stringify(sourceData));
-        const amisData: any = { jobs: {} };
-        let hasAmisData = false;
-        let extractedCount = 0;
-
-        if (Array.isArray(cleanData.jobs)) {
-            cleanData.jobs.forEach((job: any) => {
-                const jobAmis: any = {};
-                let jobHasAmis = false;
-
-                AMIS_JOB_FIELDS.forEach(field => {
-                    if (job[field] !== undefined) {
-                        jobAmis[field] = job[field];
-                        delete job[field];
-                        jobHasAmis = true;
-                        extractedCount++;
-                    }
-                });
-
-                if (Array.isArray(job.extensions)) {
-                    const extAmisMap: any = {};
-                    let extHasAmis = false;
-                    
-                    job.extensions.forEach((ext: any) => {
-                        const singleExtAmis: any = {};
-                        let singleExtHas = false;
-                        AMIS_EXT_FIELDS.forEach(field => {
-                            if (ext[field] !== undefined) {
-                                singleExtAmis[field] = ext[field];
-                                delete ext[field];
-                                singleExtHas = true;
-                                extractedCount++;
-                            }
-                        });
-
-                        if (singleExtHas) {
-                            extAmisMap[ext.id] = singleExtAmis;
-                            extHasAmis = true;
-                        }
-                    });
-
-                    if (extHasAmis) {
-                        jobAmis.extensions = extAmisMap;
-                        jobHasAmis = true;
-                    }
-                }
-
-                if (jobHasAmis) {
-                    amisData.jobs[job.id] = jobAmis;
-                    hasAmisData = true;
-                }
-            });
-        }
-        
-        return { cleanData, amisData, hasAmisData };
-    }
-
-    function mergeAmisData(mainData: any, amisData: any) {
-        if (!mainData.jobs || !Array.isArray(mainData.jobs)) return;
-        if (!amisData || !amisData.jobs) return;
-
-        mainData.jobs.forEach((job: any) => {
-            const amisEntry = amisData.jobs[job.id];
-            if (amisEntry) {
-                Object.keys(amisEntry).forEach(key => {
-                    if (key !== 'extensions') {
-                        job[key] = amisEntry[key];
-                    }
-                });
-
-                if (amisEntry.extensions && Array.isArray(job.extensions)) {
-                    job.extensions.forEach((ext: any) => {
-                        const extAmis = amisEntry.extensions[ext.id];
-                        if (extAmis) {
-                            Object.assign(ext, extAmis);
-                        }
-                    });
-                }
-            }
-        });
-    }
-
-    let writeLock = false;
-    let writePending = false;
-    let pendingWriteIsAdmin = false;
-
-    async function triggerDiskSave(isAdmin = false) {
-        if (writeLock) {
-            writePending = true;
-            if (isAdmin) pendingWriteIsAdmin = true;
-            return;
-        }
-
-        writeLock = true;
-        if (isAdmin) pendingWriteIsAdmin = true;
-
-        try {
-            do {
-                writePending = false;
-                const shouldWriteAmis = pendingWriteIsAdmin;
-                pendingWriteIsAdmin = false;
-
-                const dataSnapshot = { ...memoryData };
-                const paymentSnapshot = [...memoryPayments];
-
-                const { amisData } = splitAmisData(dataSnapshot);
-
-                const writePromises = [
-                    saveToFirestore('backup', dataSnapshot),
-                    saveToFirestore('payment', paymentSnapshot)
-                ];
-
-                if (shouldWriteAmis) {
-                    writePromises.push(saveToFirestore('amis', amisData));
-                }
-
-                await Promise.all(writePromises);
-
-                await writeHistoryBackup({
-                    ...dataSnapshot,
-                    paymentRequests: paymentSnapshot
-                });
-
-                console.log(`💾 Firebase save completed. (Amis Saved: ${shouldWriteAmis})`);
-            } while (writePending);
-            
-        } catch (err) {
-            console.error("❌ Firebase Write Error:", err);
-        } finally {
-            writeLock = false;
-        }
-    }
-
-    async function saveStaffData(data: any) {
-        try {
-            await saveToFirestore('staff', data);
-        } catch (e) {
-            console.error("Staff write error", e);
-        }
-    }
-
-    function calculateDataScore(data: any) {
-        let score = 0;
-        if (Array.isArray(data.jobs)) {
-            score += data.jobs.length * 1000;
-            data.jobs.forEach((j: any) => {
-                if (Array.isArray(j.bookings)) score += j.bookings.length * 10;
-                if (Array.isArray(j.extensions)) score += j.extensions.length * 10;
-                AMIS_JOB_FIELDS.forEach(f => { if (j[f]) score += 1; });
-            });
-        }
-        if (Array.isArray(data.customers)) score += data.customers.length * 100;
-        return score;
-    }
-
-    async function writeHistoryBackup(data: any, maxFiles = 3) {
-        try {
-            const fileName = "history-" + new Date().toISOString().replace(/[:.]/g, "-");
-            // Also store a timestamped backup into Firestore if needed 
-            // but to avoid quota/limit we might just store the latest one
-            await saveToFirestore(fileName, data);
-
-            // Clean up old history from Firestore
-            const historyDocs = await db.collection('backups').get();
-            const files = historyDocs.docs
-                .map(d => d.id)
-                .filter(id => id.startsWith("history-") && !id.includes("_chunk_"));
-            
-            if (files.length <= maxFiles) return;
-
-            let fileInfos = files.map(f => {
-                return { name: f };
-            });
-            fileInfos.sort((a, b) => b.name.localeCompare(a.name)); // newest first based on ISO string
-
-            for (let i = maxFiles; i < fileInfos.length; i++) {
-                const docIdToDelete = fileInfos[i].name;
-                const docRef = await db.collection('backups').doc(docIdToDelete).get();
-                if (docRef.exists) {
-                    const { chunks } = docRef.data() || {};
-                    await db.collection('backups').doc(docIdToDelete).delete();
-                    for(let c=0; c<(chunks||0); c++) {
-                        await db.collection('backups').doc(`${docIdToDelete}_chunk_${c}`).delete();
-                    }
-                }
-            }
-        } catch (err) {
-            console.error("History backup error:", err);
-        }
-    }
-
     let clients: any[] = [];
 
     app.get("/api/events", (req, res) => {
@@ -421,54 +241,24 @@ async function startServer() {
         });
     }
 
-    // Load Initial Data
-    try {
-        memoryData = await loadFromFirestore('backup', {});
-        memoryData = sanitizePayload(memoryData);
-        
-        try {
-            const amisData = await loadFromFirestore('amis', {});
-            mergeAmisData(memoryData, amisData);
-        } catch (e) {}
-        
-        if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
-        if (!memoryData.headerMessages) memoryData.headerMessages = [];
-        if (!memoryData.headerNotifications) memoryData.headerNotifications = [];
-        if (!memoryData.headerUpdates) memoryData.headerUpdates = [];
-        if (!memoryData.longHoangOrders) memoryData.longHoangOrders = [];
 
-        memoryPayments = await loadFromFirestore('payment', []);
-
-        nfcMemoryData = await loadFromFirestore('nfc', []);
-
-        console.log("✅ Database loaded into RAM from Firebase");
-    } catch (err) {
-        console.error("Startup load error:", err);
-        memoryData = { deletedPaymentIds: [] };
-        memoryPayments = [];
-        nfcMemoryData = [];
-    }
-
-    // ======================================================
-    // API ROUTES
     // ======================================================
     app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-    app.get("/api/data", (req, res) => {
-        res.json({ ...memoryData, paymentRequests: memoryPayments });
+    app.get("/api/data", async (req, res) => {
+        const data = await loadFullDatabase();
+        res.json(data);
     });
 
-    app.get("/api/export/long-hoang-jobs", (req, res) => {
-        const jobs = memoryData.jobs || [];
-        // Filter jobs for customer LONG HOANG LOGISTICS (case-insensitive)
+    app.get("/api/export/long-hoang-jobs", async (req, res) => {
+        const data = await loadFullDatabase();
+        const jobs = data.jobs || [];
         const lhJobs = jobs.filter((j: any) => 
             j.customerName && (
                 j.customerName.toUpperCase().includes('LONG HOANG LOGISTICS') || 
                 j.customerName.toUpperCase() === 'LONG HOANG'
             )
         );
-        
-        // Map required fields
         const result = lhJobs.map((j: any) => ({
             monthYear: `${j.month}/${j.year}`,
             jobCode: j.jobCode || '',
@@ -479,8 +269,6 @@ async function startServer() {
             cont40: j.cont40 || 0,
             sell: j.sell || 0
         }));
-
-        // Allow specific cross-origin request if needed, though cors() is globally applied
         res.json({ success: true, count: result.length, data: result });
     });
 
@@ -491,117 +279,104 @@ async function startServer() {
         const isAdmin = userRole === 'admin';
         const isDocs = userRole === 'docs';
 
-        if (isAdmin) {
-            if (safeData.jobs) {
-                const enrichedJobs = preserveAmisData(memoryData.jobs || [], safeData.jobs);
-                memoryData.jobs = mergeLists(memoryData.jobs || [], enrichedJobs);
-            }
-            if (safeData.customers) memoryData.customers = mergeLists(memoryData.customers || [], safeData.customers);
-            if (safeData.lines) memoryData.lines = mergeLists(memoryData.lines || [], safeData.lines);
-            if (safeData.customReceipts) memoryData.customReceipts = mergeLists(memoryData.customReceipts || [], safeData.customReceipts);
-            
-            if (safeData.deletedJobIds && Array.isArray(safeData.deletedJobIds)) {
-                if (!memoryData.deletedJobIds) memoryData.deletedJobIds = [];
-                safeData.deletedJobIds.forEach((id: string) => {
-                    if (!memoryData.deletedJobIds.includes(id)) memoryData.deletedJobIds.push(id);
-                });
-                memoryData.jobs = (memoryData.jobs || []).filter((j: any) => !memoryData.deletedJobIds.includes(j.id));
-            }
-
-            if (safeData.paymentRequests) {
-                if (Array.isArray(safeData.deletedPaymentIds)) {
-                    if (!memoryData.deletedPaymentIds) memoryData.deletedPaymentIds = [];
-                    safeData.deletedPaymentIds.forEach((id: string) => {
-                        if (!memoryData.deletedPaymentIds.includes(id)) memoryData.deletedPaymentIds.push(id);
-                    });
-                }
-                memoryPayments = mergeLists(memoryPayments, safeData.paymentRequests);
-                if (memoryData.deletedPaymentIds) {
-                    memoryPayments = memoryPayments.filter(p => !memoryData.deletedPaymentIds.includes(p.id));
-                }
-            }
-
-            if (safeData.lockedIds) memoryData.lockedIds = safeData.lockedIds;
-            if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
-            if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
-            if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
-            if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
-
-            triggerDiskSave(isAdmin); 
-            broadcast("data-updated", { time: Date.now(), source: role, type: 'FULL_SYNC' });
-            res.json({ success: true, saved: "full_merged_admin" });
-
-        } else if (isDocs) {
-            let requireReload = false;
-            if (safeData.paymentRequests) {
-                const validRequests = safeData.paymentRequests.filter((req: any) => {
-                    const isDeleted = memoryData.deletedPaymentIds && memoryData.deletedPaymentIds.includes(req.id);
-                    if (isDeleted) {
-                        requireReload = true;
-                        return false;
-                    }
-                    return true;
-                });
-                memoryPayments = mergeLists(memoryPayments, validRequests);
-            }
-            if (safeData.longHoangOrders) {
-                memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
-            }
-            // CRITICAL: Force clear any other fields that might have leaked in from safeData
-            // Although safeData is a local variable, we ensure we only use it for the two allowed fields.
-            
-            triggerDiskSave(false); 
-            broadcast("data-updated", { time: Date.now(), source: role, type: 'DOCS_SYNC' });
-            res.json({ success: true, saved: "payment_and_lh", requireReload });
-
-        } else {
-            res.json({ success: false, message: "No permission to save" });
+        if (!isAdmin && !isDocs) {
+            return res.json({ success: false, message: "No permission to save" });
         }
+
+        let requireReload = false;
+
+        await withDBLock(async (dbState) => {
+            if (isAdmin) {
+                if (safeData.jobs) {
+                    const enrichedJobs = preserveAmisData(dbState.jobs || [], safeData.jobs);
+                    dbState.jobs = mergeLists(dbState.jobs || [], enrichedJobs);
+                }
+                if (safeData.customers) dbState.customers = mergeLists(dbState.customers || [], safeData.customers);
+                if (safeData.lines) dbState.lines = mergeLists(dbState.lines || [], safeData.lines);
+                if (safeData.customReceipts) dbState.customReceipts = mergeLists(dbState.customReceipts || [], safeData.customReceipts);
+                
+                if (safeData.deletedJobIds && Array.isArray(safeData.deletedJobIds)) {
+                    if (!dbState.deletedJobIds) dbState.deletedJobIds = [];
+                    safeData.deletedJobIds.forEach((id: string) => {
+                        if (!dbState.deletedJobIds.includes(id)) dbState.deletedJobIds.push(id);
+                    });
+                    dbState.jobs = (dbState.jobs || []).filter((j: any) => !dbState.deletedJobIds.includes(j.id));
+                }
+
+                if (safeData.paymentRequests) {
+                    if (Array.isArray(safeData.deletedPaymentIds)) {
+                        if (!dbState.deletedPaymentIds) dbState.deletedPaymentIds = [];
+                        safeData.deletedPaymentIds.forEach((id: string) => {
+                            if (!dbState.deletedPaymentIds.includes(id)) dbState.deletedPaymentIds.push(id);
+                        });
+                    }
+                    dbState.paymentRequests = mergeLists(dbState.paymentRequests || [], safeData.paymentRequests);
+                    if (dbState.deletedPaymentIds) {
+                        dbState.paymentRequests = (dbState.paymentRequests || []).filter((p:any) => !dbState.deletedPaymentIds.includes(p.id));
+                    }
+                }
+
+                if (safeData.lockedIds) dbState.lockedIds = safeData.lockedIds;
+                if (safeData.processedRequestIds) dbState.processedRequestIds = safeData.processedRequestIds;
+                if (safeData.salaries) dbState.salaries = mergeLists(dbState.salaries || [], safeData.salaries);
+                if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs; 
+                if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
+
+            } else if (isDocs) {
+                if (safeData.paymentRequests) {
+                    const validRequests = safeData.paymentRequests.filter((req: any) => {
+                        const isDeleted = dbState.deletedPaymentIds && dbState.deletedPaymentIds.includes(req.id);
+                        if (isDeleted) {
+                            requireReload = true;
+                            return false;
+                        }
+                        return true;
+                    });
+                    dbState.paymentRequests = mergeLists(dbState.paymentRequests || [], validRequests);
+                }
+                if (safeData.longHoangOrders) {
+                    dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
+                }
+            }
+        });
+
+        broadcast("data-updated", { time: Date.now(), source: role, type: isAdmin ? 'FULL_SYNC' : 'DOCS_SYNC' });
+        res.json({ success: true, saved: isAdmin ? "full_merged_admin" : "payment_and_lh", requireReload });
     });
 
-    app.get("/api/header-data", (req, res) => {
+    app.get("/api/header-data", async (req, res) => {
+        const data = await loadFullDatabase();
         res.json({
-            messages: memoryData.headerMessages || [],
-            notifications: memoryData.headerNotifications || [],
-            updates: memoryData.headerUpdates || []
+            messages: data.headerMessages || [],
+            notifications: data.headerNotifications || [],
+            updates: data.headerUpdates || []
         });
     });
 
-    app.post("/api/header-data", (req, res) => {
+    app.post("/api/header-data", async (req, res) => {
         const { messages, notifications, updates } = req.body;
-        if (messages) memoryData.headerMessages = messages;
-        if (notifications) memoryData.headerNotifications = notifications;
-        if (updates) memoryData.headerUpdates = updates;
-        triggerDiskSave(false);
+        await withDBLock(async (dbState) => {
+            if (messages) dbState.headerMessages = messages;
+            if (notifications) dbState.headerNotifications = notifications;
+            if (updates) dbState.headerUpdates = updates;
+        });
         broadcast("header-updated", { time: Date.now() });
         res.json({ success: true });
     });
 
-    app.get("/api/history/latest", async (req, res) => {
-        try {
-            const historyDocs = await db.collection('backups').get();
-            const files = historyDocs.docs
-                .map(d => ({ name: d.id, time: d.data().updatedAt || 0 }))
-                .filter(f => f.name.startsWith("history-") && !f.name.includes("_chunk_"));
-                
-            if (files.length === 0) return res.json({ found: false });
-
-            // Sort by time descending
-            files.sort((a, b) => b.time - a.time);
-            
-            const bestFile = files[0];
-            const data = await loadFromFirestore(bestFile.name, {});
-            res.json({ found: true, fileName: bestFile.name, timestamp: bestFile.time, data });
-        } catch (err) {
-            res.status(500).json({ error: "Failed to read history" });
-        }
+    app.get("/api/history/latest", (req, res) => {
+        res.json({ found: false });
     });
 
-    app.get("/api/nfc", (req, res) => res.json(nfcMemoryData));
+    app.get("/api/nfc", async (req, res) => {
+        const data = await loadFullDatabase();
+        res.json(data.nfc || []);
+    });
     app.post("/api/nfc/save", async (req, res) => {
         try {
-            nfcMemoryData = req.body;
-            await saveToFirestore('nfc', nfcMemoryData);
+            await withDBLock(async (dbState) => {
+                dbState.nfc = req.body;
+            });
             res.json({ success: true });
         } catch {
             res.status(500).json({ success: false });
@@ -627,44 +402,58 @@ async function startServer() {
 
     app.get("/api/pending", async (req, res) => {
         try {
-            const list = await loadFromFirestore('pending', []);
-            res.json(Array.isArray(list) ? list : []);
+            const data = await loadFullDatabase();
+            res.json(Array.isArray(data.pending) ? data.pending : []);
         } catch { res.json([]); }
     });
 
     app.post("/api/pending", async (req, res) => {
-        let list = await loadFromFirestore('pending', []);
         const item = { id: Date.now().toString(), time: new Date().toISOString(), data: req.body, status: "pending" };
-        list.push(item);
-        await saveToFirestore('pending', list);
+        await withDBLock(async (dbState) => {
+            if(!dbState.pending) dbState.pending = [];
+            dbState.pending.push(item);
+        });
         res.json({ success: true, id: item.id });
     });
 
     app.post("/api/approve", async (req, res) => {
-        let list = await loadFromFirestore('pending', []);
-        const item = list.find((i: any) => i.id === req.body.id);
-        if (!item) return res.status(404).json({ success: false });
-        const fullData = sanitizePayload(item.data);
-        memoryData.jobs = mergeLists(memoryData.jobs || [], fullData.jobs || []);
-        memoryData.customers = mergeLists(memoryData.customers || [], fullData.customers || []);
-        memoryData.lines = mergeLists(memoryData.lines || [], fullData.lines || []);
-        if (fullData.yearlyConfigs) memoryData.yearlyConfigs = fullData.yearlyConfigs;
-        if (fullData.paymentRequests) {
-            memoryPayments = mergeLists(memoryPayments, fullData.paymentRequests);
-            if (memoryData.deletedPaymentIds) memoryPayments = memoryPayments.filter(p => !memoryData.deletedPaymentIds.includes(p.id));
+        let success = false;
+        await withDBLock(async (dbState) => {
+            if(!dbState.pending) dbState.pending = [];
+            const item = dbState.pending.find((i: any) => i.id === req.body.id);
+            if (!item) return false;
+
+            const fullData = sanitizePayload(item.data);
+            dbState.jobs = mergeLists(dbState.jobs || [], fullData.jobs || []);
+            dbState.customers = mergeLists(dbState.customers || [], fullData.customers || []);
+            dbState.lines = mergeLists(dbState.lines || [], fullData.lines || []);
+            
+            if (fullData.yearlyConfigs) dbState.yearlyConfigs = fullData.yearlyConfigs;
+            if (fullData.paymentRequests) {
+                dbState.paymentRequests = mergeLists(dbState.paymentRequests || [], fullData.paymentRequests);
+                if (dbState.deletedPaymentIds) {
+                    dbState.paymentRequests = (dbState.paymentRequests || []).filter((p:any) => !dbState.deletedPaymentIds.includes(p.id));
+                }
+            }
+            
+            item.status = "approved";
+            item.approvedTime = new Date().toISOString();
+            success = true;
+        });
+
+        if (success) {
+            broadcast("data-updated", { approved: true });
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ success: false });
         }
-        triggerDiskSave();
-        item.status = "approved";
-        item.approvedTime = new Date().toISOString();
-        await saveToFirestore('pending', list);
-        broadcast("data-updated", { approved: true });
-        res.json({ success: true });
     });
 
     app.delete("/api/pending/:id", async (req, res) => {
-        let list = await loadFromFirestore('pending', []);
-        list = list.filter((i: any) => i.id !== req.params.id);
-        await saveToFirestore('pending', list);
+        await withDBLock(async (dbState) => {
+            if(!dbState.pending) dbState.pending = [];
+            dbState.pending = dbState.pending.filter((i: any) => i.id !== req.params.id);
+        });
         res.json({ success: true });
     });
 
@@ -747,7 +536,9 @@ async function startServer() {
     app.post("/api/long-hoang/backup", async (req, res) => {
         try {
             const { orders } = req.body;
-            await saveToFirestore('lhoang', orders);
+            await withDBLock(async (dbState) => {
+                dbState.longHoangOrders = orders;
+            });
             res.json({ success: true, message: "Backup saved successfully" });
         } catch (err: any) {
             res.status(500).json({ success: false, message: err.message });
@@ -756,11 +547,11 @@ async function startServer() {
 
     app.get("/api/long-hoang/restore", async (req, res) => {
         try {
-            const orders = await loadFromFirestore('lhoang', null);
-            if (!orders) {
-                return res.status(404).json({ success: false, message: "Backup file not found" });
+            const data = await loadFullDatabase();
+            if (!data.longHoangOrders) {
+                return res.status(404).json({ success: false, message: "Backup not found" });
             }
-            res.json({ success: true, orders });
+            res.json({ success: true, orders: data.longHoangOrders });
         } catch (err: any) {
             res.status(500).json({ success: false, message: err.message });
         }
