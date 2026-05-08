@@ -1121,16 +1121,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
             
             // Sort unique docNos by their numeric part
             uniqueDocNos.sort((a, b) => {
-                const matchA = a.match(/^([A-Za-z\-_]*)(\d+)$/);
-                const matchB = b.match(/^([A-Za-z\-_]*)(\d+)$/);
+                const matchA = (a as string).match(/^([A-Za-z\-_]*)(\d+)$/);
+                const matchB = (b as string).match(/^([A-Za-z\-_]*)(\d+)$/);
                 const numA = matchA ? parseInt(matchA[2], 10) : 0;
                 const numB = matchB ? parseInt(matchB[2], 10) : 0;
                 return numA - numB;
             });
 
-            uniqueDocNos.forEach((origDocNo, idx) => {
+            uniqueDocNos.forEach((origDocNo: any, idx: number) => {
                 const newNum = startNum + idx;
-                docNoMapping.set(origDocNo, `${startPrefix}${String(newNum).padStart(padLength, '0')}`);
+                docNoMapping.set(origDocNo as string, `${startPrefix}${String(newNum).padStart(padLength, '0')}`);
             });
         }
     }

@@ -1,0 +1,124 @@
+{
+  "entities": {
+    "Job": {
+      "title": "Job",
+      "description": "Logistics job entry details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "month": { "type": "string" },
+        "year": { "type": "number" },
+        "jobCode": { "type": "string" },
+        "booking": { "type": "string" },
+        "consol": { "type": "string" },
+        "line": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "hbl": { "type": "string" },
+        "transit": { "type": "string" },
+        "cost": { "type": "number" },
+        "sell": { "type": "number" },
+        "profit": { "type": "number" },
+        "cont20": { "type": "number" },
+        "cont40": { "type": "number" },
+        "chiPayment": { "type": "number" },
+        "chiCuoc": { "type": "number" },
+        "ngayChiCuoc": { "type": "string" },
+        "ngayChiHoan": { "type": "string" },
+        "localChargeInvoice": { "type": "string" },
+        "localChargeDate": { "type": "string" },
+        "localChargeNet": { "type": "number" },
+        "localChargeVat": { "type": "number" },
+        "localChargeTotal": { "type": "number" },
+        "bank": { "type": "string" },
+        "maKhCuocId": { "type": "string" },
+        "thuCuoc": { "type": "number" },
+        "ngayThuCuoc": { "type": "string" },
+        "ngayThuHoan": { "type": "string" },
+        "amisLcDocNo": { "type": "string" },
+        "amisLcDesc": { "type": "string" },
+        "amisLcAmount": { "type": "number" },
+        "cvhcUrl": { "type": "string" },
+        "cvhcFileName": { "type": "string" }
+      },
+      "required": ["id", "jobCode", "customerId"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "mst": { "type": "string" }
+      },
+      "required": ["id", "code", "name"]
+    },
+    "ShippingLine": {
+      "title": "Shipping Line",
+      "description": "Shipping line information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "mst": { "type": "string" },
+        "itemName": { "type": "string" }
+      },
+      "required": ["id", "code", "name"]
+    },
+    "PaymentRequest": {
+      "title": "Payment Request",
+      "description": "Request for payment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "lineCode": { "type": "string" },
+        "booking": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "invoiceUrl": { "type": "string" },
+        "uncUrl": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["id", "lineCode", "booking", "amount", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["Admin", "Docs", "Cus", "sales"] },
+        "email": { "type": "string" }
+      },
+      "required": ["userId", "role"]
+    }
+  },
+  "firestore": {
+    "jobs": {
+      "schema": "Job",
+      "description": "Collection of logistics jobs"
+    },
+    "customers": {
+      "schema": "Customer",
+      "description": "Collection of customers"
+    },
+    "lines": {
+      "schema": "ShippingLine",
+      "description": "Collection of shipping lines"
+    },
+    "paymentRequests": {
+      "schema": "PaymentRequest",
+      "description": "Collection of payment requests"
+    },
+    "users": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    }
+  }
+}

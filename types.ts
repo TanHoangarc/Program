@@ -500,3 +500,59 @@ export const INITIAL_JOB: JobData = {
   additionalReceipts: [],
   refunds: []
 };
+
+// ============================================================
+// MISSING TYPES FOR OTHER PAGES
+// ============================================================
+
+export interface DebitNoteData {
+  id: string;
+  date: string;
+  customerName: string;
+  booking?: string;
+  mbl?: string;
+  hbl?: string;
+  carrier?: string;
+  amount: number;
+  currency: string;
+  status: 'Pending' | 'Completed';
+  fees: { name: string; amount: number; vat: number; total: number }[];
+  fileUrl?: string;
+  fileName?: string;
+  paymentDate?: string;
+}
+
+export interface EmailMessage {
+  id: string;
+  subject: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: string;
+  isRead: boolean;
+  isFlagged?: boolean;
+  uid?: string;
+  folder?: string;
+  attachments?: { name: string; url: string; contentType: string }[];
+}
+
+export interface EmailConfig {
+  user: string;
+  pass: string;
+  host: string;
+  port: number;
+  secure: boolean;
+}
+
+export interface PhieuInvOrder {
+  id: string;
+  date: string;
+  carrier: string;
+  bill: string;
+  amount: number;
+  stk?: string;
+  shipment?: string;
+  wireOffStatus: 'Pending' | 'Wired Off';
+  fees?: { name: string; amount: number }[];
+  type?: string;
+}
