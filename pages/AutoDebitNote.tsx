@@ -51,10 +51,10 @@ export const AutoDebitNote = () => {
         });
 
         if (c20 > 0) {
-            const thc = transit === 'HCM' ? 3700000 : 3700000;
-            const cln = transit === 'HCM' ? 400000 : 400000;
-            const emc = transit === 'HCM' ? 770000 : 770000;
-            const cic = transit === 'HCM' ? 1300000 : 2500000;
+            const thc = 3700000;
+            const cln = 400000;
+            const emc = 770000;
+            const cic = transit === 'HCM' ? 1300000 : 3300000;
 
             const unit = (c20 > 0 && c40 > 0) ? "Cont 20'" : "Cont";
 
@@ -80,10 +80,10 @@ export const AutoDebitNote = () => {
         }
 
         if (c40 > 0) {
-            const thc = transit === 'HCM' ? 5500000 : 5500000;
-            const cln = transit === 'HCM' ? 520000 : 520000;
-            const emc = transit === 'HCM' ? 1150000 : 1150000;
-            const cic = transit === 'HCM' ? 2600000 : 5000000;
+            const thc = 5500000;
+            const cln = 520000;
+            const emc = 1150000;
+            const cic = transit === 'HCM' ? 2600000 : 6600000;
 
             const unit = (c20 > 0 && c40 > 0) ? "Cont 40'" : "Cont";
 
@@ -116,6 +116,8 @@ export const AutoDebitNote = () => {
       let text = "";
       if (field === 'vat') {
           text = rows.map(r => `${r.vat}%`).join('\n');
+      } else if (field === 'group') {
+          text = rows.map(r => `${r.unit}\t${r.quantity}\t${r.price}`).join('\n');
       } else {
           text = rows.map(r => r[field]).join('\n');
       }
@@ -217,22 +219,10 @@ export const AutoDebitNote = () => {
                                         <button onClick={() => handleCopyColumn('fee')} className="text-teal-600 hover:text-teal-800" title="Copy cột Fee"><Copy className="w-3.5 h-3.5" /></button>
                                     </div>
                                 </th>
-                                <th className="p-3 text-right font-semibold">
-                                    <div className="flex items-center justify-end gap-2">
-                                        Đơn giá
-                                        <button onClick={() => handleCopyColumn('price')} className="text-teal-600 hover:text-teal-800" title="Copy cột Đơn giá"><Copy className="w-3.5 h-3.5" /></button>
-                                    </div>
-                                </th>
-                                <th className="p-3 text-center font-semibold">
+                                <th className="p-3 text-center font-semibold" colSpan={3}>
                                     <div className="flex items-center justify-center gap-2">
-                                        Đơn vị tính
-                                        <button onClick={() => handleCopyColumn('unit')} className="text-teal-600 hover:text-teal-800" title="Copy cột Đơn vị tính"><Copy className="w-3.5 h-3.5" /></button>
-                                    </div>
-                                </th>
-                                <th className="p-3 text-center font-semibold">
-                                    <div className="flex items-center justify-center gap-2">
-                                        Số lượng
-                                        <button onClick={() => handleCopyColumn('quantity')} className="text-teal-600 hover:text-teal-800" title="Copy cột Số lượng"><Copy className="w-3.5 h-3.5" /></button>
+                                        ĐVT / SL / Đơn giá
+                                        <button onClick={() => handleCopyColumn('group')} className="text-teal-600 hover:text-teal-800" title="Copy 3 cột ĐVT, SL, Đơn giá"><Copy className="w-3.5 h-3.5" /></button>
                                     </div>
                                 </th>
                                 <th className="p-3 text-center font-semibold">
@@ -259,6 +249,8 @@ export const AutoDebitNote = () => {
                             {rows.map((r) => (
                                 <tr key={r.id} className="hover:bg-slate-50 transition-colors group">
                                     <td className="p-3 font-medium text-slate-800">{r.fee}</td>
+                                    <td className="p-3 text-center text-slate-600">{r.unit}</td>
+                                    <td className="p-3 text-center text-slate-600">{r.quantity}</td>
                                     <td className="p-3 text-right text-slate-600">
                                         {editingId === r.id ? (
                                             <div className="flex items-center justify-end gap-2">
@@ -287,8 +279,6 @@ export const AutoDebitNote = () => {
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-3 text-center text-slate-600">{r.unit}</td>
-                                    <td className="p-3 text-center text-slate-600">{r.quantity}</td>
                                     <td className="p-3 text-center text-slate-600">{r.vat}%</td>
                                     <td className="p-3 text-right font-bold text-slate-800">{r.total.toLocaleString('vi-VN')}</td>
                                     <td className="p-3 text-gray-500 font-mono text-xs">{r.jobCode}</td>
