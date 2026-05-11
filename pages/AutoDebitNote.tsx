@@ -120,7 +120,16 @@ export const AutoDebitNote = () => {
           text = rows.map(r => r[field]).join('\n');
       }
       navigator.clipboard.writeText(text);
-      alert("Đã copy cột");
+  };
+
+  const handleCopyJobString = () => {
+      if (!job) return;
+      navigator.clipboard.writeText(`BILL ${job}`);
+  };
+
+  const handleCopyNote = () => {
+      const text = `Vessel/Voy: ${vessel || '...'}\nPOL: ${pol || '...'}\nPOD: ${pod || '...'}`;
+      navigator.clipboard.writeText(text);
   };
 
   const handleEditStart = (id: string, price: number) => {
@@ -146,7 +155,14 @@ export const AutoDebitNote = () => {
         
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4 flex-wrap">
             <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Số Job</label>
+                <label className="text-sm font-medium text-slate-700 flex justify-between items-center">
+                    Số Job
+                    {job && (
+                        <button onClick={handleCopyJobString} className="text-teal-600 hover:text-teal-800" title="Copy BILL + Số Job">
+                            <Copy className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </label>
                 <input className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500" value={job} onChange={e => setJob(e.target.value)} placeholder="Nhập số job..." />
             </div>
             <div className="space-y-1">
@@ -289,7 +305,12 @@ export const AutoDebitNote = () => {
                 </div>
 
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-2 mt-4 text-sm text-yellow-800 shadow-sm">
-                    <div className="font-semibold text-yellow-900 border-b border-yellow-200/60 pb-2 mb-2 uppercase text-xs tracking-wider">Note</div>
+                    <div className="flex items-center justify-between border-b border-yellow-200/60 pb-2 mb-2">
+                        <span className="font-semibold text-yellow-900 uppercase text-xs tracking-wider">Note</span>
+                        <button onClick={handleCopyNote} className="text-yellow-700 hover:text-yellow-900" title="Copy Note">
+                            <Copy className="w-4 h-4" />
+                        </button>
+                    </div>
                     <p><strong>Vessel/Voy:</strong> {vessel || '...'}</p>
                     <p><strong>POL:</strong> {pol || '...'}</p>
                     <p><strong>POD:</strong> {pod || '...'}</p>
