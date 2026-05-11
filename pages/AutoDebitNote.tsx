@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { Copy, Edit2, Check, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Copy, Edit2, Check, X, Trash2 } from 'lucide-react';
+import { JobData } from '../types';
 
-export const AutoDebitNote = () => {
+export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
   const [job, setJob] = useState("");
   const [cont20, setCont20] = useState<number | "">("");
   const [cont40, setCont40] = useState<number | "">("");
@@ -14,6 +15,19 @@ export const AutoDebitNote = () => {
   const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const [deletedRowIds, setDeletedRowIds] = useState<Set<string>>(new Set());
+
+  // Auto-fill cont20 and cont40 if job exists
+  useEffect(() => {
+    if (job && jobs) {
+        const foundJob = jobs.find(j => j.jobCode === job);
+        if (foundJob) {
+            setCont20(foundJob.cont20 || 0);
+            setCont40(foundJob.cont40 || 0);
+            if (foundJob.transit) setTransit(foundJob.transit);
+        }
+    }
+  }, [job, jobs]);
 
   const jobCode = useMemo(() => {
     if (!job) return "";
@@ -108,8 +122,9 @@ export const AutoDebitNote = () => {
             pushFee("CIC", cic);
         }
 
-        return result;
-  }, [jobCode, cont20, cont40, vat, transit, job, priceOverrides]);
+        const baseRows =  result;
+        return baseRows.filter(r => !deletedRowIds.has(r.id));
+  }, [jobCode, cont20, cont40, vat, transit, job, priceOverrides, deletedRowIds]);
 
   const handleCopyColumn = (field: string) => {
       if (rows.length === 0) return;
@@ -147,8 +162,12 @@ export const AutoDebitNote = () => {
       setEditingId(null);
   };
 
-  const handleEditCancel = () => {
-      setEditingId(null);
+  const handleDeleteRow = (id: string) => {
+      setDeletedRowIds(prev => {
+          const next = new Set(prev);
+          next.add(id);
+          return next;
+      });
   };
 
   return (
@@ -219,10 +238,22 @@ export const AutoDebitNote = () => {
                                         <button onClick={() => handleCopyColumn('fee')} className="text-teal-600 hover:text-teal-800" title="Copy cột Fee"><Copy className="w-3.5 h-3.5" /></button>
                                     </div>
                                 </th>
-                                <th className="p-3 text-center font-semibold" colSpan={3}>
+                                <th className="p-3 text-center font-semibold">
                                     <div className="flex items-center justify-center gap-2">
-                                        ĐVT / SL / Đơn giá
-                                        <button onClick={() => handleCopyColumn('group')} className="text-teal-600 hover:text-teal-800" title="Copy 3 cột ĐVT, SL, Đơn giá"><Copy className="w-3.5 h-3.5" /></button>
+                                        ĐVT
+                                        <button onClick={() => handleCopyColumn('unit')} className="text-teal-600 hover:text-teal-800" title="Copy cột ĐVT"><Copy className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                </th>
+                                <th className="p-3 text-center font-semibold">
+                                    <div className="flex items-center justify-center gap-2">
+                                        SL
+                                        <button onClick={() => handleCopyColumn('quantity')} className="text-teal-600 hover:text-teal-800" title="Copy cột Số lượng"><Copy className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                </th>
+                                <th className="p-3 text-right font-semibold">
+                                    <div className="flex items-center justify-end gap-2">
+                                        Đơn giá
+                                        <button onClick={() => handleCopyColumn('price')} className="text-teal-600 hover:text-teal-800" title="Copy cột Đơn giá"><Copy className="w-3.5 h-3.5" /></button>
                                     </div>
                                 </th>
                                 <th className="p-3 text-center font-semibold">
@@ -282,6 +313,11 @@ export const AutoDebitNote = () => {
                                     <td className="p-3 text-center text-slate-600">{r.vat}%</td>
                                     <td className="p-3 text-right font-bold text-slate-800">{r.total.toLocaleString('vi-VN')}</td>
                                     <td className="p-3 text-gray-500 font-mono text-xs">{r.jobCode}</td>
+                                    <td className="p-3 text-center">
+                                        <button onClick={() => handleDeleteRow(r.id)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors" title="Xóa dòng">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
