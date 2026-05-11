@@ -264,20 +264,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const updatedRequests = [newReq, ...requests];
     onUpdateRequests(updatedRequests);
 
-    // --- AUTO SYNC FOR DOCS ---
-    if (currentUser?.role === 'Docs' && onSendPending) {
-        const payload = {
-            user: currentUser.username,
-            timestamp: new Date().toISOString(),
-            autoApprove: true, 
-            paymentRequests: [newReq], // ONLY send the new request to prevent overwriting Admin's deletions
-            jobs: [],
-            customers: [],
-            lines: []
-        };
-        onSendPending(payload).catch(err => console.error("Auto-sync failed", err));
-    }
-
     // Reset Form
     setLine("");
     setBooking("");

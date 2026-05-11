@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang';
+  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -298,7 +298,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <MenuItem active={currentPage === 'lookup'} onClick={(e) => handleNavigate(e, 'lookup')} icon={Search} label="Tra cứu" />
               <MenuItem active={currentPage === 'payment'} onClick={(e) => handleNavigate(e, 'payment')} icon={Landmark} label="Thanh Toán" />
               {isAdmin && (
-                <MenuItem active={currentPage === 'cvhc'} onClick={(e) => handleNavigate(e, 'cvhc')} icon={FileCheck} label="Nộp CVHC" />
+                <>
+                  <MenuItem active={currentPage === 'cvhc'} onClick={(e) => handleNavigate(e, 'cvhc')} icon={FileCheck} label="Nộp CVHC" />
+                  <MenuItem active={currentPage === 'debit-note'} onClick={(e) => handleNavigate(e, 'debit-note')} icon={FileText} label="Debit Note" />
+                </>
               )}
             </>
           )}

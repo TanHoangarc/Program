@@ -12,6 +12,7 @@ import { SystemPage } from './pages/SystemPage';
 import { LookupPage } from './pages/LookupPage'; 
 import { PaymentPage } from './pages/PaymentPage'; 
 import { CVHCPage } from './pages/CVHCPage';
+import { AutoDebitNote } from './pages/AutoDebitNote';
 import { SalaryPage } from './pages/SalaryPage';
 import { ToolAI } from './pages/ToolAI'; 
 import { NFCPage } from './pages/NFCPage'; 
@@ -90,7 +91,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang'>(() => {
       try {
           const savedUserStr = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUserStr) {
@@ -937,30 +938,22 @@ const App: React.FC = () => {
       const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
       const incLongHoangOrders = Array.isArray(incomingData.longHoangOrders) ? incomingData.longHoangOrders : (incomingData.data?.longHoangOrders || incomingData.payload?.longHoangOrders || []);
 
-      const newJobs = mergeArrays(jobs, incJobs);
-      const newPayments = mergeArrays(paymentRequests, incPayments);
-      const newCustomers = mergeArrays(customers, incCustomers);
-      const newLines = mergeArrays(lines, incLines);
-      const newReceipts = mergeArrays(customReceipts, incReceipts);
-      const newSalaries = mergeArrays(salaries, incSalaries);
-      const newLongHoangOrders = mergeArrays(longHoangOrders, incLongHoangOrders);
-      
-      // Yearly Config Merge Logic (Merge based on Year)
-      const newConfigs = [...yearlyConfigs];
-      incConfigs.forEach((c: YearlyConfig) => {
-          const idx = newConfigs.findIndex(x => x.year === c.year);
-          if (idx >= 0) newConfigs[idx] = c;
-          else newConfigs.push(c);
+      setJobs(prev => sanitizeData(mergeArrays(prev, incJobs)));
+      setPaymentRequests(prev => mergeArrays(prev, incPayments));
+      setCustomers(prev => mergeArrays(prev, incCustomers));
+      setLines(prev => mergeArrays(prev, incLines));
+      setCustomReceipts(prev => mergeArrays(prev, incReceipts));
+      setSalaries(prev => mergeArrays(prev, incSalaries));
+      setYearlyConfigs(prev => {
+          const newConfigs = [...prev];
+          incConfigs.forEach((c: YearlyConfig) => {
+              const idx = newConfigs.findIndex(x => x.year === c.year);
+              if (idx >= 0) newConfigs[idx] = c;
+              else newConfigs.push(c);
+          });
+          return newConfigs;
       });
-
-      setJobs(sanitizeData(newJobs)); // Ensure years are populated
-      setPaymentRequests(newPayments);
-      setCustomers(newCustomers);
-      setLines(newLines);
-      setCustomReceipts(newReceipts);
-      setSalaries(newSalaries);
-      setYearlyConfigs(newConfigs);
-      setLongHoangOrders(newLongHoangOrders);
+      setLongHoangOrders(prev => mergeArrays(prev, incLongHoangOrders));
 
       await handleRejectRequest(requestId);
   };
@@ -1603,6 +1596,10 @@ const App: React.FC = () => {
                     onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
                     onAddCustomer={(c) => setCustomers([...customers, c])}
                 />
+            )}
+
+            {currentPage === 'debit-note' && (
+                <AutoDebitNote />
             )}
 
             {currentPage === 'salary' && (
