@@ -162,6 +162,10 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
       setEditingId(null);
   };
 
+  const handleEditCancel = () => {
+      setEditingId(null);
+  };
+
   const handleDeleteRow = (id: string) => {
       setDeletedRowIds(prev => {
           const next = new Set(prev);

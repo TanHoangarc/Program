@@ -90,9 +90,10 @@ const MoneyInput: React.FC<{
   placeholder?: string;
 }> = ({ value, name, onChange, readOnly, className, placeholder }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/,/g, '');
-    if (!isNaN(Number(raw))) {
-      onChange(name || '', Number(raw));
+    const raw = e.target.value.replace(/[,.]/g, '');
+    const num = Number(raw);
+    if (!isNaN(num)) {
+      onChange(name || '', num);
     }
   };
 

@@ -917,7 +917,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               <input
                 value={amount ? new Intl.NumberFormat().format(amount) : ""}
                 onChange={e => {
-                  const v = Number(e.target.value.replace(/,/g, ""));
+                  const val = e.target.value.replace(/[,.]/g, "");
+                  const v = Number(val);
                   if (!isNaN(v)) setAmount(v);
                 }}
                 className="glass-input w-full px-3 rounded-xl h-11 text-sm text-right font-bold text-red-600 focus:ring-2 focus:ring-emerald-500 placeholder-slate-300"
