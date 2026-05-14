@@ -45,7 +45,7 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
   // Prevents undefined errors when data is malformed
   const rawDetails = (firstJob.bookingCostDetails || {}) as any;
   const safeDetails = {
-    localCharge: rawDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0, hasInvoice: true },
+    localCharge: rawDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0 },
     additionalLocalCharges: Array.isArray(rawDetails.additionalLocalCharges) ? rawDetails.additionalLocalCharges : [],
     extensionCosts: Array.isArray(rawDetails.extensionCosts) ? rawDetails.extensionCosts : [],
     deposits: Array.isArray(rawDetails.deposits) ? rawDetails.deposits : [],
