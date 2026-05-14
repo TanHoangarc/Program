@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2 } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
@@ -217,6 +217,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [isEditingDemurragePaid, setIsEditingDemurragePaid] = useState(false);
+  const [isEditingMscRefund, setIsEditingMscRefund] = useState(false);
 
   // FILE UPLOAD STATE
   const [uploadTarget, setUploadTarget] = useState<{ type: 'MAIN' | 'ADDITIONAL' | 'EXTENSION', id?: string } | null>(null);
@@ -1128,9 +1131,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         <div className="mt-4 pt-4 border-t border-slate-100">
                             <h4 className="text-[11px] font-bold text-slate-700 mb-2 uppercase flex items-center"><Banknote className="w-3.5 h-3.5 mr-1 text-emerald-600"/> Tạm thu (MSC)</h4>
                             <div className="grid grid-cols-4 gap-3">
-                                <div className="bg-slate-50 p-2 rounded border border-slate-200">
-                                    <div className="text-[10px] text-slate-500 mb-1">Số tiền đã thanh toán</div>
-                                    <MoneyInput value={demurragePaid} onChange={(_, v) => setManualDemurragePaid(v)} className="h-7 text-sm text-emerald-700 font-bold bg-white" />
+                                <div className="bg-slate-50 p-2 rounded border border-slate-200 group">
+                                    <div className="text-[10px] text-slate-500 mb-1 flex justify-between items-center">
+                                        Số tiền đã thanh toán
+                                        <button onClick={() => setIsEditingDemurragePaid(!isEditingDemurragePaid)} className={`transition-colors ${isEditingDemurragePaid ? 'text-emerald-600' : 'text-slate-300 hover:text-emerald-600 opacity-0 group-hover:opacity-100'}`}>
+                                            {isEditingDemurragePaid ? <Check className="w-3.5 h-3.5" /> : <Edit2 className="w-3 h-3" />}
+                                        </button>
+                                    </div>
+                                    {isEditingDemurragePaid ? (
+                                        <MoneyInput value={demurragePaid} onChange={(_, v) => setManualDemurragePaid(v)} className="h-7 text-sm text-emerald-700 font-bold bg-white" />
+                                    ) : (
+                                        <div 
+                                            className="font-bold text-emerald-700 text-sm mt-1" 
+                                            onDoubleClick={() => setIsEditingDemurragePaid(true)}
+                                            title="Double click to edit"
+                                        >
+                                            {formatMoney(demurragePaid)}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="bg-slate-50 p-2 rounded border border-slate-200">
                                     <div className="text-[10px] text-slate-500 mb-1">Số tiền xuất hoá đơn</div>
@@ -1142,9 +1160,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                         {formatMoney(demurrageSurplus)}
                                     </div>
                                 </div>
-                                <div className="bg-slate-50 p-2 rounded border border-slate-200 border-l-4 border-l-indigo-500">
-                                    <div className="text-[10px] text-indigo-700 font-bold mb-1">Đã Hoàn về MB</div>
-                                    <MoneyInput value={mscRefundToMB || 0} onChange={(_, v) => setMscRefundToMB(v)} className="h-7 text-sm text-indigo-700 font-bold bg-white" />
+                                <div className="bg-slate-50 p-2 rounded border border-slate-200 border-l-4 border-l-indigo-500 group">
+                                    <div className="text-[10px] text-indigo-700 font-bold mb-1 flex justify-between items-center">
+                                        Đã Hoàn về MB
+                                        <button onClick={() => setIsEditingMscRefund(!isEditingMscRefund)} className={`transition-colors ${isEditingMscRefund ? 'text-indigo-600' : 'text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100'}`}>
+                                            {isEditingMscRefund ? <Check className="w-3.5 h-3.5" /> : <Edit2 className="w-3 h-3" />}
+                                        </button>
+                                    </div>
+                                    {isEditingMscRefund ? (
+                                        <MoneyInput value={mscRefundToMB || 0} onChange={(_, v) => setMscRefundToMB(v)} className="h-7 text-sm text-indigo-700 font-bold bg-white" />
+                                    ) : (
+                                        <div 
+                                            className="font-bold text-indigo-700 text-sm mt-1"
+                                            onDoubleClick={() => setIsEditingMscRefund(true)}
+                                            title="Double click to edit"
+                                        >
+                                            {formatMoney(mscRefundToMB || 0)}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
