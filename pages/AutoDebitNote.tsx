@@ -23,6 +23,9 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
   const [taxAddress, setTaxAddress] = useState("");
   const [isLookingUpTax, setIsLookingUpTax] = useState(false);
 
+  const [emailExtractInput, setEmailExtractInput] = useState("");
+  const [emailExtractOutput, setEmailExtractOutput] = useState("");
+
   // Auto-fill cont20 and cont40 if job exists
   useEffect(() => {
     if (job && jobs) {
@@ -203,6 +206,23 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
   const handleOpenMasothue = () => {
       if (!taxCode) return;
       window.open(`https://masothue.com/Search/?q=${taxCode}`, '_blank');
+  };
+
+  const handleExtractEmails = (text: string) => {
+      setEmailExtractInput(text);
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const foundEmails = text.match(emailRegex);
+      if (foundEmails) {
+          const uniqueEmails = Array.from(new Set(foundEmails.map(e => e.toLowerCase())));
+          setEmailExtractOutput(uniqueEmails.join("; "));
+      } else {
+          setEmailExtractOutput("");
+      }
+  };
+
+  const handleCopyEmails = () => {
+      if (!emailExtractOutput) return;
+      navigator.clipboard.writeText(emailExtractOutput);
   };
 
   const handleEditStart = (id: string, price: number) => {
@@ -418,7 +438,7 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-600">MST</label>
+                    <label className="text-xs font-medium text-slate-600 h-6 flex items-center">MST</label>
                     <div className="flex">
                         <input 
                             className="w-full px-3 py-2 border border-slate-300 rounded-s-md outline-none focus:border-teal-500 text-sm" 
@@ -438,7 +458,7 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
                 </div>
                 
                 <div className="space-y-1 md:col-span-1">
-                    <label className="text-xs font-medium text-slate-600">Tên công ty</label>
+                    <label className="text-xs font-medium text-slate-600 h-6 flex items-center">Tên công ty</label>
                     <input 
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md outline-none text-sm text-slate-700" 
                         readOnly 
@@ -448,7 +468,7 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
                 </div>
                 
                 <div className="space-y-1 md:col-span-2">
-                    <label className="text-xs font-medium text-slate-600 flex justify-between items-center">
+                    <label className="text-xs font-medium text-slate-600 h-6 flex justify-between items-center">
                         Địa chỉ
                         {taxAddress && (
                             <button onClick={handleCopyTaxAddress} className="text-teal-600 hover:text-teal-800 flex items-center gap-1 bg-teal-50 px-2 py-0.5 rounded" title="Copy Địa chỉ">
@@ -462,6 +482,36 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
                         readOnly 
                         value={taxAddress}
                         placeholder="Kết quả địa chỉ..."
+                    />
+                </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4 mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600 h-6 flex items-center">Trích xuất Email từ nội dung</label>
+                    <textarea 
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500 text-sm h-20 resize-none" 
+                        placeholder="Dán nội dung (copy từ web, email,...) vào đây để lọc các email..."
+                        value={emailExtractInput}
+                        onChange={(e) => handleExtractEmails(e.target.value)}
+                    />
+                </div>
+                
+                <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600 h-6 flex justify-between items-center">
+                        Kết quả Email (đã lọc trùng)
+                        {emailExtractOutput && (
+                            <button onClick={handleCopyEmails} className="text-teal-600 hover:text-teal-800 flex items-center gap-1 bg-teal-50 px-2 py-0.5 rounded" title="Copy tất cả Email">
+                                <Copy className="w-3 h-3" />
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Copy</span>
+                            </button>
+                        )}
+                    </label>
+                    <textarea 
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md outline-none text-sm text-slate-700 h-20 resize-none" 
+                        readOnly 
+                        value={emailExtractOutput}
+                        placeholder="Kết quả email cách nhau bằng dấu chấm phẩy..."
                     />
                 </div>
             </div>
