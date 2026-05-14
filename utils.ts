@@ -45,10 +45,12 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
   // Prevents undefined errors when data is malformed
   const rawDetails = (firstJob.bookingCostDetails || {}) as any;
   const safeDetails = {
-    localCharge: rawDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0 },
+    localCharge: rawDetails.localCharge || { invoice: '', date: '', net: 0, vat: 0, total: 0, hasInvoice: true },
     additionalLocalCharges: Array.isArray(rawDetails.additionalLocalCharges) ? rawDetails.additionalLocalCharges : [],
     extensionCosts: Array.isArray(rawDetails.extensionCosts) ? rawDetails.extensionCosts : [],
-    deposits: Array.isArray(rawDetails.deposits) ? rawDetails.deposits : []
+    deposits: Array.isArray(rawDetails.deposits) ? rawDetails.deposits : [],
+    manualDemurragePaid: rawDetails.manualDemurragePaid,
+    mscRefundToMB: rawDetails.mscRefundToMB
   };
 
   const summary: BookingSummary = {
