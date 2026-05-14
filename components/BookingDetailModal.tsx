@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
@@ -212,6 +212,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   const [deposits, setDeposits] = useState<BookingDeposit[]>(booking.costDetails.deposits || []);
 
+  const [manualDemurragePaid, setManualDemurragePaid] = useState<number | undefined>(booking.costDetails.manualDemurragePaid);
+  const [mscRefundToMB, setMscRefundToMB] = useState<number | undefined>(booking.costDetails.mscRefundToMB);
+
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -299,9 +302,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const totalAdditionalLocalChargeNet = additionalLocalCharges.reduce((s, i) => s + (i.net || 0), 0);
   const totalAdditionalLocalChargeTotalAmount = additionalLocalCharges.reduce((s, i) => s + (i.net || 0) + (i.vat || 0), 0);
 
-  const totalExtensionCost = extensionCosts.reduce((s, i) => s + i.total, 0);
+  const totalExtensionCost = extensionCosts.reduce((s, i) => s + (i.total || 0), 0);
   const totalExtensionNetCost = extensionCosts.reduce((s, i) => s + (i.net || 0), 0);
   const totalDepositCost = deposits.reduce((s, d) => s + d.amount, 0);
+
+  const isMSC = booking.line?.toUpperCase().includes('MSC');
+  
+  const demurrageRequests = useMemo(() => {
+      try {
+          const reqs = JSON.parse(localStorage.getItem("payment_requests_v1") || "[]");
+          const targetBk = normalize(booking.bookingId);
+          return reqs.filter((r: any) => normalize(r.booking) === targetBk && r.type === 'Demurrage');
+      } catch { return []; }
+  }, [booking.bookingId]);
+
+  const autoDemurragePaid = demurrageRequests.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+  const demurragePaid = manualDemurragePaid !== undefined ? manualDemurragePaid : autoDemurragePaid;
+  const demurrageInvoiced = totalExtensionCost;
+  const demurrageSurplus = demurragePaid - demurrageInvoiced;
   
   // --- NEW FEES CALCULATIONS ---
   const totalFeeCic = booking.jobs.reduce((s, j) => s + (j.feeCic || 0), 0);
@@ -1083,8 +1101,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                 <div className="grid grid-cols-12 gap-2 items-center">
                                     <div className="col-span-3"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white" /></div>
                                     <div className="col-span-3"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7" /></div>
-                                    <div className="col-span-3"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} className="h-7 bg-white" /></div>
-                                    <div className="col-span-2"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} className="h-7 bg-white" /></div>
+                                    <div className="col-span-2"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} placeholder="Net" className="h-7 bg-white text-xs" /></div>
+                                    <div className="col-span-2"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} placeholder="VAT" className="h-7 bg-white text-xs" /></div>
+                                    <div className="col-span-2"><div className="h-7 px-2 border rounded border-orange-200 bg-orange-100 flex items-center justify-end font-semibold text-orange-800 text-[11px] shadow-sm">{formatMoney(ext.total)}</div></div>
                                     <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
                                 </div>
                                 
@@ -1104,6 +1123,32 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         {extensionCosts.length === 0 && <div className="text-center text-xs text-slate-400 italic py-2">Chưa có hóa đơn gia hạn</div>}
                     </div>
                     <div className="text-right mt-2 text-xs font-bold text-orange-700">Total: {formatMoney(totalExtensionCost)}</div>
+                    
+                    {isMSC && (
+                        <div className="mt-4 pt-4 border-t border-slate-100">
+                            <h4 className="text-[11px] font-bold text-slate-700 mb-2 uppercase flex items-center"><Banknote className="w-3.5 h-3.5 mr-1 text-emerald-600"/> Tạm thu (MSC)</h4>
+                            <div className="grid grid-cols-4 gap-3">
+                                <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                                    <div className="text-[10px] text-slate-500 mb-1">Số tiền đã thanh toán</div>
+                                    <MoneyInput value={demurragePaid} onChange={(_, v) => setManualDemurragePaid(v)} className="h-7 text-sm text-emerald-700 font-bold bg-white" />
+                                </div>
+                                <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                                    <div className="text-[10px] text-slate-500 mb-1">Số tiền xuất hoá đơn</div>
+                                    <div className="font-bold text-blue-700 text-sm mt-1">{formatMoney(demurrageInvoiced)}</div>
+                                </div>
+                                <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                                    <div className="text-[10px] text-slate-500 mb-1">Khoản tiền thừa</div>
+                                    <div className={`font-bold text-sm mt-1 ${demurrageSurplus > 0 ? 'text-green-600' : demurrageSurplus < 0 ? 'text-red-600' : 'text-slate-600'}`}>
+                                        {formatMoney(demurrageSurplus)}
+                                    </div>
+                                </div>
+                                <div className="bg-slate-50 p-2 rounded border border-slate-200 border-l-4 border-l-indigo-500">
+                                    <div className="text-[10px] text-indigo-700 font-bold mb-1">Đã Hoàn về MB</div>
+                                    <MoneyInput value={mscRefundToMB || 0} onChange={(_, v) => setMscRefundToMB(v)} className="h-7 text-sm text-indigo-700 font-bold bg-white" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
             </div>
@@ -1232,7 +1277,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
         {/* ================= FOOTER ================= */}
         <div className="px-5 py-3 border-t border-slate-200 bg-white shrink-0 flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50">Đóng</button>
-          <button onClick={() => onSave({ localCharge, additionalLocalCharges, extensionCosts, deposits })} className="px-4 py-2 bg-blue-700 text-white rounded-lg text-xs font-bold hover:bg-blue-800 shadow-md flex items-center">
+          <button onClick={() => onSave({ localCharge, additionalLocalCharges, extensionCosts, deposits, manualDemurragePaid, mscRefundToMB })} className="px-4 py-2 bg-blue-700 text-white rounded-lg text-xs font-bold hover:bg-blue-800 shadow-md flex items-center">
             <Save className="w-3.5 h-3.5 mr-1.5" /> Lưu Thay Đổi
           </button>
         </div>

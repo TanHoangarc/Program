@@ -25,7 +25,15 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
             setCont20(foundJob.cont20 || 0);
             setCont40(foundJob.cont40 || 0);
             if (foundJob.transit) setTransit(foundJob.transit);
+        } else {
+            setCont20("");
+            setCont40("");
+            setTransit("");
         }
+    } else if (!job) {
+        setCont20("");
+        setCont40("");
+        setTransit("HCM"); // default when no job is typed
     }
   }, [job, jobs]);
 
@@ -208,6 +216,7 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
             <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Transit</label>
                 <select className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500 bg-white" value={transit} onChange={e => setTransit(e.target.value)}>
+                    <option value="">-- Chọn --</option>
                     <option value="HCM">HCM</option>
                     <option value="HPH">HPH</option>
                 </select>

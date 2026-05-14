@@ -113,6 +113,8 @@ export interface BookingCostDetails {
   additionalLocalCharges?: BookingExtensionCost[];
   extensionCosts: BookingExtensionCost[];
   deposits: BookingDeposit[];
+  manualDemurragePaid?: number;
+  mscRefundToMB?: number;
 }
 
 // ============================================================
@@ -206,6 +208,8 @@ export interface JobData {
   ngayThuCuoc: string;
   ngayThuHoan: string;
   
+  jobDeposits?: { id: string; customerId: string; amount: number; dateIn: string; dateOut: string; }[];
+
   // AMIS Fields for Deposit In (Thu Cược)
   amisDepositDocNo?: string;
   amisDepositDesc?: string;

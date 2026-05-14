@@ -599,6 +599,42 @@ export const JobModal: React.FC<JobModalProps> = ({
     }));
   };
 
+  const handleJobDepositChange = (id: string, field: string, value: any) => {
+    if (isViewMode) return;
+    setFormData(prev => {
+      const newDeps = (prev.jobDeposits || []).map(d => {
+        if (d.id === id) {
+          return { ...d, [field]: value };
+        }
+        return d;
+      });
+      return { ...prev, jobDeposits: newDeps };
+    });
+  };
+
+  const addJobDeposit = () => {
+    if (isViewMode) return;
+    setFormData(prev => ({
+      ...prev,
+      jobDeposits: [...(prev.jobDeposits || []), { 
+        id: Date.now().toString(), 
+        customerId: '', 
+        amount: 0, 
+        dateIn: '',
+        dateOut: ''
+      }]
+    }));
+  };
+
+  const removeJobDeposit = (id: string) => {
+    if (isViewMode) return;
+    setFormData(prev => ({
+      ...prev,
+      jobDeposits: (prev.jobDeposits || []).filter(d => d.id !== id)
+    }));
+  };
+
+
   const handleCopyJobCode = () => {
     if (formData.jobCode) {
       navigator.clipboard.writeText(formData.jobCode);
@@ -1055,7 +1091,10 @@ export const JobModal: React.FC<JobModalProps> = ({
 
                         {/* Deposit Box */}
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 relative">
-                            <div className="absolute top-2 right-2 text-[10px] font-bold text-slate-400 uppercase">Deposit (Cược)</div>
+                            <div className="flex justify-between items-center mb-2 pb-2">
+                                <h3 className="text-[10px] font-bold text-slate-400 uppercase">Deposit (Cược)</h3>
+                                {!isViewMode && <button type="button" onClick={addJobDeposit} className="text-[10px] flex items-center bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-200 hover:bg-orange-100"><Plus className="w-3 h-3 mr-1" /> Thêm cược n.lần</button>}
+                            </div>
                             <div className="grid grid-cols-2 gap-3 mt-1">
                                 <div className="col-span-2">
                                     <Label>KH Cược</Label>
@@ -1115,6 +1154,33 @@ export const JobModal: React.FC<JobModalProps> = ({
                                     <div><Label>Ngày Hoàn</Label><DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} /></div>
                                 </div>
                             </div>
+                            
+                            {formData.jobDeposits && formData.jobDeposits.length > 0 && (
+                                <div className="mt-3 space-y-2 pt-3 border-t border-slate-200">
+                                    {formData.jobDeposits.map((dep, index) => (
+                                        <div key={dep.id} className="grid grid-cols-12 gap-2 items-end bg-white p-2 rounded border border-slate-200 relative group">
+                                            <div className="col-span-12">
+                                                <Label>KH Cược {index + 2}</Label>
+                                                <CustomerInput 
+                                                    value={dep.customerId} 
+                                                    onChange={(val) => handleJobDepositChange(dep.id, 'customerId', val)} 
+                                                    customers={customers} 
+                                                    readOnly={isViewMode} 
+                                                    placeholder="Mã KH" 
+                                                    className="h-8 text-xs" 
+                                                    onAddClick={() => handleOpenQuickAdd('DEPOSIT')}
+                                                />
+                                            </div>
+                                            <div className="col-span-4">
+                                                <MoneyInput label="Tiền Cược" value={dep.amount} onChange={(n, v) => handleJobDepositChange(dep.id, 'amount', v)} className="h-8 text-orange-700" />
+                                            </div>
+                                            <div className="col-span-4"><Label>Ngày Cược</Label><DateInput name="dateIn" value={dep.dateIn} onChange={(e) => handleJobDepositChange(dep.id, 'dateIn', e.target.value)} readOnly={isViewMode} /></div>
+                                            <div className="col-span-4"><Label>Ngày Hoàn</Label><DateInput name="dateOut" value={dep.dateOut} onChange={(e) => handleJobDepositChange(dep.id, 'dateOut', e.target.value)} readOnly={isViewMode} /></div>
+                                            {!isViewMode && <button type="button" onClick={() => removeJobDeposit(dep.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

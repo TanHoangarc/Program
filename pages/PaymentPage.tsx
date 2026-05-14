@@ -458,12 +458,15 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   };
 
   const handleOpenConvert = (req: PaymentRequest) => {
+      const initialLine = req.lineCode || '';
+      const defaultTransit = ['COSCOHP', 'MSC-HP', 'TSLN'].includes(initialLine) ? 'HPH' : (req.pod || 'HCM');
+
       setConvertData({
           month: new Date().getMonth() + 1 + '',
           booking: req.booking || '',
-          line: req.lineCode || '',
+          line: initialLine,
           consol: '',
-          transit: req.pod || 'HCM',
+          transit: defaultTransit,
           jobRows: [{ 
               id: Date.now().toString(), 
               jobCode: '', 
@@ -1348,7 +1351,14 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Line</label>
                                 <select
                                     value={convertData.line}
-                                    onChange={e => setConvertData(prev => ({...prev, line: e.target.value}))}
+                                    onChange={e => {
+                                        const newLine = e.target.value;
+                                        setConvertData(prev => ({
+                                            ...prev, 
+                                            line: newLine,
+                                            transit: ['COSCOHP', 'MSC-HP', 'TSLN'].includes(newLine) ? 'HPH' : prev.transit
+                                        }));
+                                    }}
                                     className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
                                 >
                                     <option value="">-- Chọn Line --</option>

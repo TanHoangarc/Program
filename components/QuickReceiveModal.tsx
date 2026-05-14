@@ -231,13 +231,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       }
   };
 
-  const recalculateDepositRefundMerge = (currentMainJob: JobData, extraJobs: JobData[]) => {
+  const recalculateDepositRelatedMerge = (currentMainJob: JobData, extraJobs: JobData[]) => {
       const allJobs = [currentMainJob, ...extraJobs];
       const totalAmount = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
       
       const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
-      const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
-      const newDesc = `${prefix} BL ${codes}`;
+      let newDesc = '';
+      if (mode === 'deposit') {
+          newDesc = `Thu tiền của KH CƯỢC CONT BL ${codes}`;
+      } else {
+          const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
+          newDesc = `${prefix} BL ${codes}`;
+      }
 
       setAmisAmount(totalAmount);
       setAmisDesc(newDesc);
@@ -735,8 +740,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           (found.extensions || []).forEach(e => { if (!e.amisDocNo) newSet.add(e.id); });
           setSelectedMergedExtIds(newSet);
           recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
-      } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
-          recalculateDepositRefundMerge(formData, newAddedJobs);
+      } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu' || mode === 'deposit') {
+          recalculateDepositRelatedMerge(formData, newAddedJobs);
       } else { 
           recalculateMerge(mainJobInvoice, newAddedJobs); 
       }
@@ -752,8 +757,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           if (jobToRemove?.extensions) jobToRemove.extensions.forEach(e => newSet.delete(e.id));
           setSelectedMergedExtIds(newSet);
           recalculateMerge(mainExtensionInvoice, newAddedJobs, newSet);
-      } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
-          recalculateDepositRefundMerge(formData, newAddedJobs);
+      } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu' || mode === 'deposit') {
+          recalculateDepositRelatedMerge(formData, newAddedJobs);
       } else {
           recalculateMerge(mainJobInvoice, newAddedJobs);
       }
@@ -800,7 +805,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
         <div className="overflow-y-auto p-6 custom-scrollbar bg-slate-50">
             <form onSubmit={handleSubmit} className="space-y-6">
             
-            {(mode === 'local' || mode === 'other' || mode === 'extension' || mode === 'deposit_refund') && (
+            {(mode === 'local' || mode === 'other' || mode === 'extension' || mode === 'deposit_refund' || mode === 'deposit') && (
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 shadow-sm mb-4">
                     <h3 className="text-xs font-bold text-blue-800 uppercase flex items-center mb-3"><Layers className="w-4 h-4 mr-2" /> Gộp Job (Thu cùng phiếu)</h3>
                     <div className="flex gap-2 mb-3">
@@ -852,7 +857,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                                                             )
                                                         })}
                                                     </div>
-                                                ) : <div className="text-right pt-1 font-bold text-slate-700">{new Intl.NumberFormat('en-US').format(mode === 'deposit_refund' ? j.thuCuoc : j.localChargeTotal || 0)}</div>}
+                                                ) : <div className="text-right pt-1 font-bold text-slate-700">{new Intl.NumberFormat('en-US').format((mode === 'deposit_refund' || mode === 'deposit') ? j.thuCuoc : j.localChargeTotal || 0)}</div>}
                                             </td>
                                             <td className="px-3 py-2 text-center align-top pt-2">{!isMain && <button type="button" onClick={() => handleRemoveAddedJob(j.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}</td>
                                         </tr>
