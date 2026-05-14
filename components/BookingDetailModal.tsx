@@ -214,6 +214,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
   const [manualDemurragePaid, setManualDemurragePaid] = useState<number | undefined>(booking.costDetails.manualDemurragePaid);
   const [mscRefundToMB, setMscRefundToMB] = useState<number | undefined>(booking.costDetails.mscRefundToMB);
+  const [mscNote, setMscNote] = useState<string>(booking.costDetails.mscNote || '');
 
   const [vatMode, setVatMode] = useState<'pre' | 'post'>('post');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1180,6 +1181,14 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                     )}
                                 </div>
                             </div>
+                            <div className="mt-3">
+                                <textarea
+                                    value={mscNote}
+                                    onChange={(e) => setMscNote(e.target.value)}
+                                    placeholder="Ghi chú thêm cho Tạm thu MSC..."
+                                    className="w-full text-xs border border-slate-200 rounded p-2 focus:outline-none focus:border-blue-500 text-slate-700 placeholder-slate-400 resize-none h-16"
+                                />
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1310,7 +1319,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
         {/* ================= FOOTER ================= */}
         <div className="px-5 py-3 border-t border-slate-200 bg-white shrink-0 flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50">Đóng</button>
-          <button onClick={() => onSave({ localCharge, additionalLocalCharges, extensionCosts, deposits, manualDemurragePaid, mscRefundToMB })} className="px-4 py-2 bg-blue-700 text-white rounded-lg text-xs font-bold hover:bg-blue-800 shadow-md flex items-center">
+          <button onClick={() => onSave({ localCharge, additionalLocalCharges, extensionCosts, deposits, manualDemurragePaid, mscRefundToMB, mscNote })} className="px-4 py-2 bg-blue-700 text-white rounded-lg text-xs font-bold hover:bg-blue-800 shadow-md flex items-center">
             <Save className="w-3.5 h-3.5 mr-1.5" /> Lưu Thay Đổi
           </button>
         </div>

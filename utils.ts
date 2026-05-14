@@ -50,7 +50,8 @@ export const calculateBookingSummary = (jobs: JobData[], bookingId: string): Boo
     extensionCosts: Array.isArray(rawDetails.extensionCosts) ? rawDetails.extensionCosts : [],
     deposits: Array.isArray(rawDetails.deposits) ? rawDetails.deposits : [],
     manualDemurragePaid: rawDetails.manualDemurragePaid,
-    mscRefundToMB: rawDetails.mscRefundToMB
+    mscRefundToMB: rawDetails.mscRefundToMB,
+    mscNote: rawDetails.mscNote
   };
 
   const summary: BookingSummary = {

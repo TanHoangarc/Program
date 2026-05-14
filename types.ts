@@ -115,6 +115,7 @@ export interface BookingCostDetails {
   deposits: BookingDeposit[];
   manualDemurragePaid?: number;
   mscRefundToMB?: number;
+  mscNote?: string;
 }
 
 // ============================================================
