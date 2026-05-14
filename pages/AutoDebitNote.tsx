@@ -17,6 +17,12 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
   const [editValue, setEditValue] = useState<string>("");
   const [deletedRowIds, setDeletedRowIds] = useState<Set<string>>(new Set());
 
+  // Tax lookup state
+  const [taxCode, setTaxCode] = useState("");
+  const [taxName, setTaxName] = useState("");
+  const [taxAddress, setTaxAddress] = useState("");
+  const [isLookingUpTax, setIsLookingUpTax] = useState(false);
+
   // Auto-fill cont20 and cont40 if job exists
   useEffect(() => {
     if (job && jobs) {
@@ -155,6 +161,48 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
   const handleCopyNote = () => {
       const text = `Vessel/Voy: ${vessel || '...'}\nPOL: ${pol || '...'}\nPOD: ${pod || '...'}`;
       navigator.clipboard.writeText(text);
+  };
+
+  const handleLookupTax = async () => {
+      if (!taxCode) return;
+      setIsLookingUpTax(true);
+      try {
+          const res = await fetch(`https://api.vietqr.io/v2/business/${taxCode}`);
+          const data = await res.json();
+          if (data && data.code === "00" && data.data) {
+              setTaxName(data.data.name || "");
+              
+              let fetchedAddress = data.data.address || "";
+              const lowerAddress = fetchedAddress.toLowerCase();
+              if (fetchedAddress && !lowerAddress.includes("việt nam") && !lowerAddress.includes("viet nam") && !lowerAddress.includes("vietnam")) {
+                  fetchedAddress = fetchedAddress.trim();
+                  if (fetchedAddress.endsWith(",")) {
+                      fetchedAddress = fetchedAddress.slice(0, -1);
+                  }
+                  fetchedAddress += ", Việt Nam";
+              }
+              setTaxAddress(fetchedAddress);
+          } else {
+              alert("Không tìm thấy thông tin hoặc MST không hợp lệ.");
+              setTaxName("");
+              setTaxAddress("");
+          }
+      } catch (err) {
+          console.error("Lỗi tra cứu MST", err);
+          alert("Có lỗi xảy ra khi tra cứu MST.");
+      } finally {
+          setIsLookingUpTax(false);
+      }
+  };
+
+  const handleCopyTaxAddress = () => {
+      if (!taxAddress) return;
+      navigator.clipboard.writeText(taxAddress);
+  };
+
+  const handleOpenMasothue = () => {
+      if (!taxCode) return;
+      window.open(`https://masothue.com/Search/?q=${taxCode}`, '_blank');
   };
 
   const handleEditStart = (id: string, price: number) => {
@@ -356,6 +404,69 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
                 </div>
             </div>
         )}
+
+        {/* Tax Lookup Group */}
+        <div className="bg-white p-4 lg:p-6 rounded-lg shadow-sm border border-gray-200 mt-6 space-y-4">
+            <div className="flex justify-between items-center">
+                <h2 className="text-sm font-semibold text-slate-700">Tra Cứu Mã Số Thuế Trực Tuyến</h2>
+                <div className="text-xs text-slate-500 flex gap-2">
+                    <button onClick={handleOpenMasothue} className="text-blue-600 hover:text-blue-800 hover:underline">
+                        Mở masothue.com
+                    </button>
+                </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">MST</label>
+                    <div className="flex">
+                        <input 
+                            className="w-full px-3 py-2 border border-slate-300 rounded-s-md outline-none focus:border-teal-500 text-sm" 
+                            placeholder="Nhập MST..." 
+                            value={taxCode}
+                            onChange={(e) => setTaxCode(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleLookupTax()}
+                        />
+                        <button 
+                            onClick={handleLookupTax}
+                            disabled={isLookingUpTax || !taxCode}
+                            className="bg-teal-600 hover:bg-teal-700 text-white px-4 rounded-e-md text-sm font-medium transition-colors disabled:opacity-50 min-w-[80px]"
+                        >
+                            {isLookingUpTax ? 'Đang tra...' : 'Tra cứu'}
+                        </button>
+                    </div>
+                </div>
+                
+                <div className="space-y-1 md:col-span-1">
+                    <label className="text-xs font-medium text-slate-600">Tên công ty</label>
+                    <input 
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md outline-none text-sm text-slate-700" 
+                        readOnly 
+                        value={taxName}
+                        placeholder="Kết quả tên công ty..."
+                    />
+                </div>
+                
+                <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs font-medium text-slate-600 flex justify-between items-center">
+                        Địa chỉ
+                        {taxAddress && (
+                            <button onClick={handleCopyTaxAddress} className="text-teal-600 hover:text-teal-800 flex items-center gap-1 bg-teal-50 px-2 py-0.5 rounded" title="Copy Địa chỉ">
+                                <Copy className="w-3 h-3" />
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Copy</span>
+                            </button>
+                        )}
+                    </label>
+                    <input 
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md outline-none text-sm text-slate-700" 
+                        readOnly 
+                        value={taxAddress}
+                        placeholder="Kết quả địa chỉ..."
+                    />
+                </div>
+            </div>
+        </div>
+        
     </div>
   );
 };
