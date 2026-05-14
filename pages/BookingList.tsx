@@ -31,6 +31,7 @@ export const BookingList: React.FC<BookingListProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [filterMonth, setFilterMonth] = useState('');
   const [filterYear, setFilterYear] = useState(''); // ADDED
+  const [filterLine, setFilterLine] = useState('');
   const [filterBooking, setFilterBooking] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null); // State for highlighting row
@@ -63,13 +64,14 @@ export const BookingList: React.FC<BookingListProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, filterYear, filterBooking]);
+  }, [filterMonth, filterYear, filterLine, filterBooking]);
 
   const bookingData = useMemo(() => {
     // 1. Filter Jobs First
     let filteredJobs = jobs;
     if (filterYear) filteredJobs = filteredJobs.filter(j => j.year === Number(filterYear));
     if (filterMonth) filteredJobs = filteredJobs.filter(j => j.month === filterMonth);
+    if (filterLine) filteredJobs = filteredJobs.filter(j => j.line === filterLine);
 
     // 2. Extract Booking IDs from filtered jobs
     const bookingIds = Array.from(new Set(filteredJobs.map(j => j.booking).filter((b): b is string => !!b)));
@@ -95,7 +97,7 @@ export const BookingList: React.FC<BookingListProps> = ({
       const bookingB = String(b.bookingId || '').toLowerCase();
       return bookingA.localeCompare(bookingB);
     });
-  }, [jobs, filterMonth, filterYear, filterBooking]);
+  }, [jobs, filterMonth, filterYear, filterLine, filterBooking]);
 
   const totalPages = Math.ceil(bookingData.length / ITEMS_PER_PAGE);
   const paginatedData = bookingData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -389,6 +391,14 @@ export const BookingList: React.FC<BookingListProps> = ({
                >
                  <option value="">Tất cả tháng</option>
                  {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+               </select>
+               <select
+                  value={filterLine}
+                  onChange={(e) => setFilterLine(e.target.value)}
+                  className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none cursor-pointer min-w-[100px] text-slate-700"
+               >
+                 <option value="">Tất cả Line</option>
+                 {lines.map(l => <option key={l.id} value={l.code}>{l.code}</option>)}
                </select>
            </div>
         </div>
