@@ -430,7 +430,7 @@ const App: React.FC = () => {
             setAutoUploadProgress(`Đang upload cho Job ${job.jobCode}...`);
             
             try {
-                const safeJobCode = job.jobCode.replace(/[^a-zA-Z0-9-_]/g, '');
+                const safeJobCode = String(job.jobCode).replace(/[^a-zA-Z0-9-_]/g, '');
                 const ext = matchedFile.name.split('.').pop();
                 const fileName = `CVHC_BL_${safeJobCode}_AUTO_${Date.now()}.${ext}`;
 

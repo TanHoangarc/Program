@@ -795,7 +795,7 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     setIsUploadingCVHC(true);
     try {
-      const safeJobCode = (formData.jobCode || 'JOB').replace(/[^a-zA-Z0-9-_]/g, '');
+      const safeJobCode = String(formData.jobCode || 'JOB').replace(/[^a-zA-Z0-9-_]/g, '');
       const ext = file.name.split('.').pop();
       const fileName = `CVHC_BL_${safeJobCode}_${Date.now()}.${ext}`;
 

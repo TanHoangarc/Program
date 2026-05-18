@@ -406,7 +406,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               const subPdfBytes = await subDoc.save();
               
               // Create File
-              const safeJobCode = row.jobCode.replace(/[^a-zA-Z0-9-_]/g, ''); 
+              const safeJobCode = String(row.jobCode).replace(/[^a-zA-Z0-9-_]/g, ''); 
               const subFileName = `CVHC BL ${safeJobCode}.pdf`;
               const subFile = new File([subPdfBytes], subFileName, { type: 'application/pdf' });
 
@@ -435,7 +435,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           const ext = file.name.split('.').pop() || 'pdf';
           
           const mainJobCode = rows[0]?.jobCode || 'Unknown';
-          const safeJobCode = mainJobCode.replace(/[^a-zA-Z0-9-_]/g, ''); 
+          const safeJobCode = String(mainJobCode).replace(/[^a-zA-Z0-9-_]/g, ''); 
           const svFileName = `CVHC BL ${safeJobCode}.${ext}`;
 
           setUploadProgress('Đang upload file...');

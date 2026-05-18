@@ -94,7 +94,7 @@ export const DepositList: React.FC<DepositListProps> = ({
       setUploadingId(targetJobIdForUpload);
 
       try {
-          const safeJobCode = job.jobCode.replace(/[^a-zA-Z0-9-_]/g, '');
+          const safeJobCode = String(job.jobCode).replace(/[^a-zA-Z0-9-_]/g, '');
           const ext = file.name.split('.').pop();
           const fileName = `CVHC_BL_${safeJobCode}_${Date.now()}.${ext}`;
 
@@ -255,7 +255,7 @@ export const DepositList: React.FC<DepositListProps> = ({
               setAutoUploadProgress(`Đang upload cho Job ${item.jobCode}...`);
               
               try {
-                  const safeJobCode = item.jobCode.replace(/[^a-zA-Z0-9-_]/g, '');
+                  const safeJobCode = String(item.jobCode).replace(/[^a-zA-Z0-9-_]/g, '');
                   const ext = matchedFile.name.split('.').pop();
                   const fileName = `CVHC_BL_${safeJobCode}_AUTO_${Date.now()}.${ext}`;
 

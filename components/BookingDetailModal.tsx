@@ -730,8 +730,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
           const folderPath = `Invoice/${year}.${month}`;
           
           const ext = file.name.split('.').pop();
-          const safeLine = (booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
-          const safeBooking = (booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+          const safeLine = String(booking.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+          const safeBooking = String(booking.bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
           const safeInvoice = String(invoiceNo).replace(/[^a-zA-Z0-9]/g, '');
           
           const fileName = `${safeLine}.${safeBooking}.${safeInvoice}.${day}.${month}.${year}.${ext}`;

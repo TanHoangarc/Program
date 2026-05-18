@@ -186,7 +186,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const ext = file.name.split(".").pop() || "pdf";
 
     const safeBooking =
-      (bookingFromReq || "").replace(/[^a-zA-Z0-9]/g, "") || "UNKNOWN";
+      String(bookingFromReq || "").replace(/[^a-zA-Z0-9]/g, "") || "UNKNOWN";
 
     // NEW FILE NAMING
     const fileName =
