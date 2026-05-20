@@ -131,7 +131,8 @@ const AttachmentRow = ({
     onDelete, 
     isUploading,
     onAnalyze,
-    isAnalyzing
+    isAnalyzing,
+    onPreview
 }: { 
     hasInvoice?: boolean, 
     fileUrl?: string, 
@@ -140,7 +141,8 @@ const AttachmentRow = ({
     onDelete: () => void,
     isUploading: boolean,
     onAnalyze?: () => void,
-    isAnalyzing?: boolean
+    isAnalyzing?: boolean,
+    onPreview?: (url: string, name: string) => void
 }) => {
     if (hasInvoice === false) return null; // Don't show if "Chưa HĐ"
 
@@ -149,9 +151,9 @@ const AttachmentRow = ({
             <div className="flex items-center gap-2 overflow-hidden">
                 <Paperclip className="w-3 h-3 text-slate-400 shrink-0" />
                 {fileUrl ? (
-                    <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline font-medium flex items-center truncate">
+                    <button onClick={() => onPreview && onPreview(fileUrl, fileName || 'Document')} className="text-xs text-blue-600 hover:underline font-medium flex items-center truncate text-left">
                         {fileName || "Xem file đính kèm"}
-                    </a>
+                    </button>
                 ) : (
                     <span className="text-[10px] text-slate-400 italic">Chưa có file đính kèm</span>
                 )}
@@ -222,9 +224,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const [isEditingDemurragePaid, setIsEditingDemurragePaid] = useState(false);
   const [isEditingMscRefund, setIsEditingMscRefund] = useState(false);
 
-  // FILE UPLOAD STATE
+  // FILE UPLOAD & PREVIEW STATE
   const [uploadTarget, setUploadTarget] = useState<{ type: 'MAIN' | 'ADDITIONAL' | 'EXTENSION', id?: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewFileUrl, setPreviewFileUrl] = useState<{url: string, name: string} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // AI Analysis State
@@ -687,6 +690,11 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const handleUpdateDeposit = (id: string, field: keyof BookingDeposit, val: any) => setDeposits(prev => prev.map(item => item.id === id ? { ...item, [field]: val } : item));
   const handleRemoveDeposit = (id: string) => setDeposits(prev => prev.filter(d => d.id !== id));
 
+  // --- FILE PREVIEW HANDLERS ---
+  const handlePreview = (url: string, name: string) => {
+      setPreviewFileUrl({ url, name });
+  };
+
   // --- FILE UPLOAD HANDLERS ---
   const handleUploadClick = (target: { type: 'MAIN' | 'ADDITIONAL' | 'EXTENSION', id?: string }) => {
       setUploadTarget(target);
@@ -753,7 +761,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
               } else if (uploadTarget.type === 'EXTENSION') {
                   setExtensionCosts(prev => prev.map(i => i.id === uploadTarget.id ? { ...i, fileUrl: fileUrl, fileName: fileName } : i));
               }
-              alert("Upload thành công!");
           } else {
               throw new Error(response.data?.message || "Upload failed");
           }
@@ -1051,6 +1058,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                             onUpload={() => handleUploadClick({ type: 'MAIN' })}
                             onDelete={() => handleDeleteFile({ type: 'MAIN' })}
                             isUploading={isUploading && uploadTarget?.type === 'MAIN'}
+                            onPreview={handlePreview}
                         />
                     </div>
 
@@ -1071,6 +1079,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                 onUpload={() => handleUploadClick({ type: 'ADDITIONAL', id: item.id })}
                                 onDelete={() => handleDeleteFile({ type: 'ADDITIONAL', id: item.id })}
                                 isUploading={isUploading && uploadTarget?.type === 'ADDITIONAL' && uploadTarget?.id === item.id}
+                                onPreview={handlePreview}
                             />
                         </div>
                     ))}
@@ -1121,6 +1130,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                     isUploading={isUploading && uploadTarget?.type === 'EXTENSION' && uploadTarget?.id === ext.id}
                                     onAnalyze={() => handleAnalyzeExtension(ext.id)}
                                     isAnalyzing={analyzingId === ext.id}
+                                    onPreview={handlePreview}
                                 />
                             </div>
                         ))}
@@ -1325,6 +1335,29 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
         </div>
 
       </div>
+      
+      {/* ================= FILE PREVIEW ================= */}
+      {previewFileUrl && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl shadow-2xl flex flex-col w-full h-full max-w-6xl max-h-[90vh]">
+                  <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-xl shrink-0">
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                          <Eye className="w-5 h-5 text-blue-600"/> {previewFileUrl.name}
+                      </h3>
+                      <button onClick={() => setPreviewFileUrl(null)} className="p-2 bg-slate-200 hover:bg-red-500 hover:text-white rounded-full transition-colors">
+                          <X className="w-4 h-4"/>
+                      </button>
+                  </div>
+                  <div className="flex-1 bg-slate-200 overflow-hidden relative">
+                      <iframe 
+                          src={previewFileUrl.url} 
+                          title="File Preview" 
+                          className="w-full h-full border-none"
+                      />
+                  </div>
+              </div>
+          </div>
+      )}
     </div>,
     document.body
   );
