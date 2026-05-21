@@ -447,13 +447,22 @@ export const BookingList: React.FC<BookingListProps> = ({
 
                 const hasMissingFile = missingLcFile || missingAddLcFile || missingExtFile;
 
+                const hasExtension = (booking.costDetails.extensionCosts && booking.costDetails.extensionCosts.length > 0) || booking.jobs.some(j => j.extensions && j.extensions.length > 0);
+
                 return (
                   <tr 
                     key={booking.bookingId} 
                     className={`transition-colors group ${selectedRowId === booking.bookingId ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-white/40'}`}
                   >
                     <td className="px-6 py-4 font-medium text-slate-500 cursor-pointer" onClick={() => handleOpenBooking(booking)}>T{booking.month}/{booking.year}</td>
-                    <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => handleOpenBooking(booking)}>{booking.bookingId}</td>
+                    <td className="px-6 py-4 text-blue-700 font-bold cursor-pointer hover:underline" onClick={() => handleOpenBooking(booking)}>
+                        <div className="flex items-center">
+                            {hasExtension && (
+                                <span className="inline-block w-2 h-2 mr-2 rounded-full bg-orange-500 shadow-sm flex-shrink-0" title="Có gia hạn"></span>
+                            )}
+                            <span className="truncate">{booking.bookingId}</span>
+                        </div>
+                    </td>
                     <td className="px-6 py-4 text-slate-600">{booking.line}</td>
                     <td className="px-6 py-4 text-center"><span className="bg-slate-100/80 text-slate-600 px-2 py-1 rounded-md text-[10px] font-bold border border-slate-200/50">{booking.jobCount}</span></td>
                     <td className="px-6 py-4 text-right text-slate-600">{formatCurrency(booking.totalSell)}</td>
