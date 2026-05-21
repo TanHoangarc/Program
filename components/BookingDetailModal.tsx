@@ -866,6 +866,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       return docs;
   }, [booking]);
 
+  const validExtJobs = useMemo(() => {
+    return booking.jobs.filter(job => job.extensions && job.extensions.some(ext => (ext.total || 0) > 0 || (ext.net || 0) > 0));
+  }, [booking.jobs]);
+
   return createPortal(
     <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${zIndex || 'z-[100]'}`}>
       {/* Hidden File Input used by all attachment rows */}
@@ -1112,12 +1116,36 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         {extensionCosts.map(ext => (
                             <div key={ext.id} className="bg-orange-50/30 p-2 rounded border border-orange-100 group relative mb-2">
                                 <div className="grid grid-cols-12 gap-2 items-center">
-                                    <div className="col-span-3"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white" /></div>
-                                    <div className="col-span-3"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7" /></div>
-                                    <div className="col-span-2"><MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} placeholder="Net" className="h-7 bg-white text-xs" /></div>
-                                    <div className="col-span-2"><MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} placeholder="VAT" className="h-7 bg-white text-xs" /></div>
-                                    <div className="col-span-2"><div className="h-7 px-2 border rounded border-orange-200 bg-orange-100 flex items-center justify-end font-semibold text-orange-800 text-[11px] shadow-sm">{formatMoney(ext.total)}</div></div>
-                                    <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
+                                    <div className="col-span-2"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white w-full" /></div>
+                                    <div className="col-span-2"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7 w-full" /></div>
+                                    <div className="col-span-2 relative group/net">
+                                        <MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} placeholder="Net" className="h-7 bg-white text-xs w-full pr-6" />
+                                        <div className="absolute right-1 top-1">
+                                            <button onClick={() => { navigator.clipboard.writeText(String(ext.net)); setCopiedId('net-'+ext.id); setTimeout(() => setCopiedId(null), 1000); }} className="p-0.5 hover:bg-slate-100 rounded text-slate-400 opacity-0 group-hover/net:opacity-100 transition-opacity bg-white" title="Copy Net">
+                                                {copiedId === 'net-'+ext.id ? <Check className="w-3 h-3 text-green-500"/> : <Copy className="w-3 h-3"/>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="col-span-2 relative group/vat">
+                                        <MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} placeholder="VAT" className="h-7 bg-white text-xs w-full pr-6" />
+                                        <div className="absolute right-1 top-1">
+                                            <button onClick={() => { navigator.clipboard.writeText(String(ext.vat)); setCopiedId('vat-'+ext.id); setTimeout(() => setCopiedId(null), 1000); }} className="p-0.5 hover:bg-slate-100 rounded text-slate-400 opacity-0 group-hover/vat:opacity-100 transition-opacity bg-white" title="Copy VAT">
+                                                {copiedId === 'vat-'+ext.id ? <Check className="w-3 h-3 text-green-500"/> : <Copy className="w-3 h-3"/>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="col-span-2"><div className="h-7 px-2 border rounded border-orange-200 bg-orange-100 flex items-center justify-end font-semibold text-orange-800 text-[11px] shadow-sm truncate">{formatMoney(ext.total)}</div></div>
+                                    <div className="col-span-2">
+                                        <select 
+                                            value={ext.jobCode || ''} 
+                                            onChange={(e) => handleUpdateExtensionCost(ext.id, "jobCode", e.target.value)} 
+                                            className="h-7 w-full text-[11px] border border-orange-200 rounded px-1 focus:ring-1 focus:ring-orange-500 bg-white outline-none"
+                                        >
+                                            <option value="">Chọn Job</option>
+                                            {validExtJobs.map(j => <option key={j.jobCode} value={j.jobCode}>{j.jobCode}</option>)}
+                                        </select>
+                                    </div>
+                                    <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100 z-10"><Trash2 className="w-3 h-3"/></button>
                                 </div>
                                 
                                 {/* ATTACHMENT ROW FOR EXTENSION */}

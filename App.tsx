@@ -398,6 +398,126 @@ const App: React.FC = () => {
     setIsSyncCvhcChoiceOpen(true);
   };
 
+  const handleSyncFileName = async () => {
+    setIsAutoUploading(true);
+    setAutoUploadProgress('Đang quét tất cả booking có file INV...');
+    let successCount = 0;
+    
+    // Create deep copy of jobs to modify
+    let updatedJobs = [...jobs];
+    let hasChanges = false;
+
+    // Group jobs by bookingId
+    const uniqueBookings = Array.from(new Set(updatedJobs.filter(j => j.booking).map(j => j.booking)));
+
+    for (const bookingId of uniqueBookings) {
+      const bJobs = updatedJobs.filter(j => j.booking === bookingId);
+      if (bJobs.length === 0) continue;
+      
+      const firstJob = bJobs[0];
+      if (!firstJob.bookingCostDetails) continue;
+      
+      const details = firstJob.bookingCostDetails;
+      // We will check localCharge, additionalLocalCharges, extensionCosts
+      let changesInBooking = false;
+      const invoicesToProcess: { type: string, obj: any, refList?: any[] }[] = [];
+
+      if (details.localCharge?.fileUrl && details.localCharge?.fileName?.startsWith('INV_')) {
+          invoicesToProcess.push({ type: 'MAIN', obj: details.localCharge });
+      }
+
+      (details.additionalLocalCharges || []).forEach(lc => {
+          if (lc.fileUrl && lc.fileName?.startsWith('INV_')) {
+              invoicesToProcess.push({ type: 'ADDITIONAL', obj: lc, refList: details.additionalLocalCharges });
+          }
+      });
+
+      (details.extensionCosts || []).forEach(ext => {
+          if (ext.fileUrl && ext.fileName?.startsWith('INV_')) {
+              invoicesToProcess.push({ type: 'EXTENSION', obj: ext, refList: details.extensionCosts });
+          }
+      });
+
+      if (invoicesToProcess.length === 0) continue;
+
+      for (const item of invoicesToProcess) {
+          setAutoUploadProgress(`Đang xử lý ${item.obj.fileName} của booking ${bookingId}...`);
+          try {
+              // Extract original info
+              const oldUrl = item.obj.fileUrl;
+              
+              // Target folder: Invoice/YYYY.MM based on job
+              const jobYear = firstJob.year || new Date().getFullYear();
+              const jobMonth = firstJob.month.padStart(2, '0');
+              const folderPath = `Invoice/${jobYear}.${jobMonth}`;
+              
+              const safeLine = String(firstJob.line || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+              const safeBooking = String(bookingId || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+              const safeInvoice = String(item.obj.invoice || 'UNK').replace(/[^a-zA-Z0-9]/g, '');
+              const [iyear, imonth, iday] = item.obj.date?.split('-') || ['YYYY', 'MM', 'DD'];
+              const ext = oldUrl.split('.').pop() || 'pdf';
+              
+              const newFileName = `${safeLine}.${safeBooking}.${safeInvoice}.${iday}.${imonth}.${iyear}.${ext}`;
+              
+              // Skip if already correct
+              if (item.obj.fileName === newFileName) continue;
+              
+              // Fetch file blob
+              const tf = oldUrl.startsWith('http') ? oldUrl : `${BACKEND_URL}${oldUrl.startsWith('/')?'': '/'}${oldUrl}`;
+              const resp = await fetch(tf);
+              if (!resp.ok) throw new Error("Could not download file: " + tf);
+              const blob = await resp.blob();
+              const fileToUpload = new File([blob], newFileName, { type: blob.type });
+
+              const formData = new FormData();
+              formData.append("folderPath", folderPath);
+              formData.append("fileName", newFileName);
+              formData.append("file", fileToUpload);
+
+              const uploadRes = await axios.post(`${BACKEND_URL}/upload-file`, formData);
+              if (uploadRes.data?.success) {
+                  const newFileUrl = `${BACKEND_URL}/uploads/${folderPath}/${newFileName}`;
+                  
+                  // Update object
+                  item.obj.fileName = newFileName;
+                  item.obj.fileUrl = newFileUrl;
+                  changesInBooking = true;
+                  successCount++;
+              }
+          } catch (e) {
+              console.error("Failed syncing file for booking", bookingId, e);
+          }
+      }
+
+      if (changesInBooking) {
+          hasChanges = true;
+          // Apply to all jobs in this booking
+          bJobs.forEach(job => {
+              if (job.bookingCostDetails) {
+                 job.bookingCostDetails = JSON.parse(JSON.stringify(details));
+              }
+          });
+      }
+    }
+
+    if (hasChanges) {
+      setAutoUploadProgress('Đang lưu thay đổi...');
+      setJobs(updatedJobs);
+      
+      // Collect the modified job IDs to queue them for synchronization
+      const modifiedIds = new Set(modifiedJobIds);
+      uniqueBookings.forEach(bookingId => {
+          const bJobs = updatedJobs.filter(j => j.booking === bookingId);
+          bJobs.forEach(job => modifiedIds.add(job.id));
+      });
+      setModifiedJobIds(modifiedIds);
+    }
+    
+    setIsAutoUploading(false);
+    setAutoUploadProgress('');
+    alert(`Hoàn tất đồng bộ! Đã đổi tên và chuyển thành công ${successCount} file.`);
+  };
+
   const handleAutoUploadFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -1389,6 +1509,7 @@ const App: React.FC = () => {
           onExport={handleExport}
           onSyncBooking={handleSyncBooking}
           onSyncCvhc={handleSyncCvhc}
+          onSyncFileName={handleSyncFileName}
           onAddOtherReceipt={handleAddOtherReceipt}
         />
 

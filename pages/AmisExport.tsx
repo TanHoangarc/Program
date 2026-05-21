@@ -735,9 +735,28 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                             const eNet = ext.net || Math.round(ext.total / 1.05);
                             const eVat = ext.vat || (ext.total - eNet);
                             const iDate = ext.date || jobDateFallback;
+                            let targetJob = j;
+                            if (ext.jobCode) {
+                                const specificJob = jobs.find(job => job.booking === j.booking && job.jobCode === ext.jobCode);
+                                if (specificJob) targetJob = specificJob;
+                            }
                             rawItems.push({
-                                jobId: j.id, booking: j.booking, date: iDate, invoice: ext.invoice || '', desc: `Phí gia hạn của ${supplierName} BILL ${j.booking}`,
-                                supplierCode: j.line, supplierName: supplierName, itemName: 'Phí phát sinh', netAmount: eNet, vatAmount: eVat, amount: ext.total, costType: 'Demurrage', sortDate: new Date(iDate).getTime()
+                                jobId: targetJob.id,
+                                targetJobCode: targetJob.jobCode,
+                                isExtension: true, 
+                                booking: j.booking, 
+                                date: iDate, 
+                                invoice: ext.invoice || '', 
+                                desc: `Mua hàng của ${supplierName} BILL ${j.booking}`,
+                                supplierCode: j.line, 
+                                supplierName: supplierName, 
+                                itemName: 'Phí lưu bãi', 
+                                lcc: 'DEM', 
+                                netAmount: eNet, 
+                                vatAmount: eVat, 
+                                amount: ext.total, 
+                                costType: 'Demurrage', 
+                                sortDate: new Date(iDate).getTime()
                             });
                         }
                     });
@@ -1157,7 +1176,16 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
         if (mode === 'mua') {
             const rowBooking = data.booking;
-            const bookingJobs = rowBooking ? jobs.filter(j => j.booking === rowBooking) : [jobs.find(j => j.id === data.jobId)].filter(Boolean);
+            let bookingJobs = rowBooking ? jobs.filter(j => j.booking === rowBooking) : [jobs.find(j => j.id === data.jobId)].filter(Boolean);
+            
+            if (data.isExtension) {
+                if (data.targetJobCode) {
+                    const specJob = jobs.find(j => j.jobCode === data.targetJobCode && j.booking === rowBooking);
+                    if (specJob) bookingJobs = [specJob];
+                } else {
+                    bookingJobs = [jobs.find(j => j.id === data.jobId)].filter(Boolean);
+                }
+            }
             
             if (bookingJobs.length > 0) {
                 const jobWeights = bookingJobs.map(job => {
@@ -1224,7 +1252,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                     row.getCell(14).value = data.objCode; 
                     row.getCell(19).value = data.desc; 
                     row.getCell(26).value = "VND"; 
-                    row.getCell(28).value = "LCC"; 
+                    row.getCell(28).value = data.lcc || "LCC"; 
                     row.getCell(29).value = data.itemName; 
                     row.getCell(30).value = "Không"; 
                     row.getCell(33).value = "63211"; 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw, Wallet, Info } from 'lucide-react';
+import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw, Wallet, Info, FileUp } from 'lucide-react';
 import { UserAccount, HeaderMessage, HeaderNotification, PaymentRequest } from '../types';
 import { MONTHS, YEARS } from '../constants';
 
@@ -18,6 +18,7 @@ interface HeaderProps {
   onExport?: () => void;
   onSyncBooking?: () => void;
   onSyncCvhc?: () => void;
+  onSyncFileName?: () => void;
   onAddOtherReceipt?: () => void;
 }
 
@@ -36,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   onExport,
   onSyncBooking,
   onSyncCvhc,
+  onSyncFileName,
   onAddOtherReceipt
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -312,6 +314,12 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
                       <Clock className="w-4 h-4 text-purple-600" /> Đồng bộ CVHC
+                    </button>
+                    <button 
+                      onClick={() => { onSyncFileName?.(); setActiveDropdown(null); }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+                    >
+                      <FileUp className="w-4 h-4 text-emerald-600" /> Đồng bộ tên file
                     </button>
                     <button 
                       onClick={() => { onAddOtherReceipt?.(); setActiveDropdown(null); }}

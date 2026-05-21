@@ -82,6 +82,7 @@ export interface BookingExtensionCost {
   vat: number;
   total: number;
   hasInvoice?: boolean;
+  jobCode?: string; // ADDED
   
   // Payment Info (Chi)
   amisDocNo?: string; 
