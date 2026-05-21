@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2 } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2, Layers } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
@@ -870,6 +870,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     return booking.jobs.filter(job => job.extensions && job.extensions.some(ext => (ext.total || 0) > 0 || (ext.net || 0) > 0));
   }, [booking.jobs]);
 
+  const uniqueConsols = useMemo(() => {
+    return Array.from(new Set(booking.jobs.map(j => j.consol).filter(c => c && c.trim() !== ''))).join(', ');
+  }, [booking.jobs]);
+
   return createPortal(
     <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${zIndex || 'z-[100]'}`}>
       {/* Hidden File Input used by all attachment rows */}
@@ -887,9 +891,14 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                 </span>
                 </h2>
                 <div className="h-4 w-px bg-slate-300"></div>
-                <div className="flex space-x-3 text-xs font-medium text-slate-500">
+                <div className="flex space-x-3 text-xs font-medium text-slate-500 items-center">
                 <span className="flex items-center"><Ship className="w-3.5 h-3.5 mr-1" /> {booking.line}</span>
                 <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1" /> Tháng {booking.month}</span>
+                {uniqueConsols && (
+                    <span className="flex items-center text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                        <Layers className="w-3.5 h-3.5 mr-1" /> Consol: {uniqueConsols}
+                    </span>
+                )}
                 </div>
             </div>
             
