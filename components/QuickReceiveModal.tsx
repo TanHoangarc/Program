@@ -501,8 +501,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           mainJobReceivable = formData.localChargeTotal || 0;
           currentCustomer = formData.customerId || '';
       } else if (mode === 'deposit' || mode === 'deposit_refund') {
-          currentTotalReceivable = (formData.thuCuoc || 0) + addedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-          mainJobReceivable = formData.thuCuoc || 0;
+          const mainDeps = (formData.jobDeposits || []).reduce((sum, d) => sum + (d.amount || 0), 0);
+          mainJobReceivable = (formData.thuCuoc || 0) + mainDeps;
+          currentTotalReceivable = mainJobReceivable + addedJobs.reduce((sum, j) => {
+              const jDeps = (j.jobDeposits || []).reduce((s, d) => s + (d.amount || 0), 0);
+              return sum + (j.thuCuoc || 0) + jDeps;
+          }, 0);
           currentCustomer = formData.maKhCuocId || '';
           currentInvoice = 'N/A'; 
       } else if (mode === 'extension') {

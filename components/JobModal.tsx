@@ -32,14 +32,17 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 ml-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{children}</label>
 );
 
-const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => (
-  <input 
-    {...props} 
-    ref={ref}
-    value={props.value ?? ''}
-    className={`w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:bg-slate-50 disabled:text-slate-500 placeholder-slate-400 transition-all shadow-sm h-9 ${props.className || ''}`}
-  />
-));
+const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => {
+  const hasHeight = props.className && /\bh-\d+\b/.test(props.className);
+  return (
+    <input 
+      {...props} 
+      ref={ref}
+      value={props.value ?? ''}
+      className={`w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:bg-slate-50 disabled:text-slate-500 placeholder-slate-400 transition-all shadow-sm ${hasHeight ? '' : 'h-9'} ${props.className || ''}`}
+    />
+  );
+});
 Input.displayName = 'Input';
 
 // --- CUSTOMER INPUT ---
@@ -117,8 +120,17 @@ const CustomerInput = ({
   const selectedObj = safeCustomers.find(c => c.id === value || c.code === value);
   const displayName = selectedObj ? selectedObj.name : '';
 
+  const classes = className || '';
+  const heightClass = classes.match(/\b(h-\d+|h-auto)\b/)?.[0] || 'h-9';
+  const outerClassName = classes.replace(/\b(h-\d+|h-auto)\b/g, '').trim();
+  const isSmall = heightClass === 'h-8';
+
+  const btnCommon = "flex items-center justify-center border transition-colors shrink-0";
+  const btnSize = isSmall ? "w-8 h-8 rounded-md" : "w-9 h-9 rounded-lg";
+  const iconSize = isSmall ? "w-3.5 h-3.5" : "w-4 h-4";
+
   return (
-    <div className={`relative group w-full ${className || ''}`}>
+    <div className={`relative group w-full ${outerClassName}`}>
       <div className="flex gap-1">
         <Input 
             value={internalValue}
@@ -128,36 +140,36 @@ const CustomerInput = ({
             readOnly={readOnly}
             placeholder={placeholder}
             autoComplete="off"
-            className="flex-1"
+            className={`flex-1 ${isSmall ? 'h-8 text-xs px-2.5 py-1 rounded-md' : 'h-9'}`}
         />
         {!readOnly && onAddClick && (
             <button 
                 type="button" 
                 onClick={onAddClick}
-                className="w-9 h-9 flex items-center justify-center bg-blue-50 border border-blue-100 rounded-lg text-blue-600 hover:bg-blue-100 transition-colors shrink-0"
+                className={`${btnSize} ${btnCommon} bg-blue-50 border-blue-100 text-blue-600 hover:bg-blue-100`}
                 title="Thêm khách hàng mới"
             >
-                <Plus className="w-4 h-4" />
+                <Plus className={iconSize} />
             </button>
         )}
         {cvhcUrl ? (
             <button 
                 type="button" 
                 onClick={() => window.open(cvhcUrl, '_blank')}
-                className="w-9 h-9 flex items-center justify-center bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0"
+                className={`${btnSize} ${btnCommon} bg-indigo-50 border-indigo-100 text-indigo-600 hover:bg-indigo-100`}
                 title="Xem file CVHC"
             >
-                <FileCheck className="w-4 h-4" />
+                <FileCheck className={iconSize} />
             </button>
         ) : onUploadClick && (
             <button 
                 type="button" 
                 onClick={onUploadClick}
                 disabled={isUploading}
-                className="w-9 h-9 flex items-center justify-center bg-red-50 border border-red-100 rounded-lg text-red-500 hover:bg-red-100 transition-colors shrink-0 disabled:opacity-50"
+                className={`${btnSize} ${btnCommon} bg-red-50 border-red-100 text-red-500 hover:bg-red-100 disabled:opacity-50`}
                 title="Upload CVHC"
             >
-                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {isUploading ? <Loader2 className={`${iconSize} animate-spin`} /> : <Upload className={iconSize} />}
             </button>
         )}
       </div>
@@ -178,7 +190,7 @@ const CustomerInput = ({
       )}
       
       {displayName && (
-        <div className="text-[10px] text-slate-500 mt-0.5 truncate px-1 font-medium italic h-3.5 leading-none">
+        <div className="text-[10px] text-slate-500 mt-1 truncate px-1 font-medium italic leading-normal pb-0.5">
           {displayName}
         </div>
       )}
@@ -618,7 +630,7 @@ export const JobModal: React.FC<JobModalProps> = ({
       ...prev,
       jobDeposits: [...(prev.jobDeposits || []), { 
         id: Date.now().toString(), 
-        customerId: '', 
+        customerId: prev.maKhCuocId || '', 
         amount: 0, 
         dateIn: '',
         dateOut: ''
@@ -678,6 +690,15 @@ export const JobModal: React.FC<JobModalProps> = ({
 
     // --- AUTO-UPDATE DESCRIPTIONS LOGIC ---
     let finalJobData = { ...formData };
+    
+    // Synchronize customerId for all additional deposits to match the main deposit customer (maKhCuocId)
+    if (finalJobData.jobDeposits) {
+        finalJobData.jobDeposits = finalJobData.jobDeposits.map(d => ({
+            ...d,
+            customerId: finalJobData.maKhCuocId || ''
+        }));
+    }
+
     const jobCodePlaceholder = `XXX BL ${finalJobData.jobCode}`;
 
     if (initialData) {
@@ -882,6 +903,23 @@ export const JobModal: React.FC<JobModalProps> = ({
           if (ref.docNo && !refundDocs.has(ref.docNo)) {
               refundDocs.add(ref.docNo);
               docs.push({ type: 'refund_overpayment', docNo: ref.docNo, label: 'Hoàn Tiền Thừa', isPayment: true, id: ref.id });
+          }
+      });
+
+      // Include other additional receipts (Các lần thu thêm)
+      (formData.additionalReceipts || []).forEach(rcpt => {
+          if (rcpt.docNo && !docs.some(d => d.docNo === rcpt.docNo)) {
+              let label = 'LC';
+              let type = rcpt.type;
+              if (rcpt.type === 'deposit') {
+                  label = 'Cược';
+              } else if (rcpt.type === 'extension') {
+                  label = 'GH';
+              } else if (rcpt.type === 'other') {
+                  label = 'Thác';
+                  type = 'local';
+              }
+              docs.push({ type, docNo: rcpt.docNo, label, isPayment: false });
           }
       });
 
@@ -1158,25 +1196,16 @@ export const JobModal: React.FC<JobModalProps> = ({
                             {formData.jobDeposits && formData.jobDeposits.length > 0 && (
                                 <div className="mt-3 space-y-2 pt-3 border-t border-slate-200">
                                     {formData.jobDeposits.map((dep, index) => (
-                                        <div key={dep.id} className="grid grid-cols-12 gap-2 items-end bg-white p-2 rounded border border-slate-200 relative group">
-                                            <div className="col-span-12">
-                                                <Label>KH Cược {index + 2}</Label>
-                                                <CustomerInput 
-                                                    value={dep.customerId} 
-                                                    onChange={(val) => handleJobDepositChange(dep.id, 'customerId', val)} 
-                                                    customers={customers} 
-                                                    readOnly={isViewMode} 
-                                                    placeholder="Mã KH" 
-                                                    className="h-8 text-xs" 
-                                                    onAddClick={() => handleOpenQuickAdd('DEPOSIT')}
-                                                />
+                                        <div key={dep.id} className="grid grid-cols-12 gap-2 items-end bg-white p-2.5 rounded-lg border border-slate-200 relative group">
+                                            <div className="col-span-12 flex justify-between items-center mb-1">
+                                                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded uppercase">Cược Lần {index + 2}</span>
                                             </div>
                                             <div className="col-span-4">
                                                 <MoneyInput label="Tiền Cược" value={dep.amount} onChange={(n, v) => handleJobDepositChange(dep.id, 'amount', v)} className="h-8 text-orange-700" />
                                             </div>
                                             <div className="col-span-4"><Label>Ngày Cược</Label><DateInput name="dateIn" value={dep.dateIn} onChange={(e) => handleJobDepositChange(dep.id, 'dateIn', e.target.value)} readOnly={isViewMode} /></div>
                                             <div className="col-span-4"><Label>Ngày Hoàn</Label><DateInput name="dateOut" value={dep.dateOut} onChange={(e) => handleJobDepositChange(dep.id, 'dateOut', e.target.value)} readOnly={isViewMode} /></div>
-                                            {!isViewMode && <button type="button" onClick={() => removeJobDeposit(dep.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>}
+                                            {!isViewMode && <button type="button" onClick={() => removeJobDeposit(dep.id)} className="absolute -right-2 -top-2 bg-white border border-slate-200 rounded-full p-1 text-slate-400 hover:text-red-500 hover:border-red-200 shadow opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5"/></button>}
                                         </div>
                                     ))}
                                 </div>

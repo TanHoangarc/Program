@@ -251,18 +251,18 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[], custom
   const lcDiff = totalCollectedLC - lcExpected;
 
   // 2. Deposit
-  const depositExpected = job.thuCuoc || 0;
+  const depositExpected = (job.thuCuoc || 0) + (job.jobDeposits || []).reduce((sum, d) => sum + (d.amount || 0), 0);
   
-  let depositMain = job.amisDepositDocNo ? (job.amisDepositAmount !== undefined ? job.amisDepositAmount : job.thuCuoc) : 0;
+  let depositMain = job.amisDepositDocNo ? (job.amisDepositAmount !== undefined ? job.amisDepositAmount : (job.thuCuoc || 0)) : 0;
 
-  if (allJobs && job.amisDepositDocNo && job.amisDepositAmount !== undefined && job.amisDepositAmount > depositExpected) {
+  if (allJobs && job.amisDepositDocNo && job.amisDepositAmount !== undefined && job.amisDepositAmount > (job.thuCuoc || 0)) {
       const groupTotal = allJobs.reduce((sum, j) => {
           if (j.amisDepositDocNo !== job.amisDepositDocNo) return sum;
           return sum + (j.thuCuoc || 0);
       }, 0);
       
       if (Math.abs(job.amisDepositAmount - groupTotal) < 5000) {
-          depositMain = depositExpected;
+          depositMain = job.thuCuoc || 0;
       }
   }
   

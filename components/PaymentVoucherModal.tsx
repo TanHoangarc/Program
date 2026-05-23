@@ -407,9 +407,9 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               } else if (allJobs) {
                   // Sum from all jobs sharing this DocNo (Merged Receipt)
                   const groupJobs = allJobs.filter(j => j.amisDepositRefundDocNo === targetDoc);
-                  initialData.amount = groupJobs.reduce((s, j) => s + (j.thuCuoc || 0), 0);
+                  initialData.amount = groupJobs.reduce((s, j) => s + (j.thuCuoc || 0) + (j.jobDeposits || []).reduce((sum, d) => sum + (d.amount || 0), 0), 0);
               } else {
-                  initialData.amount = job?.thuCuoc || 0;
+                  initialData.amount = (job?.thuCuoc || 0) + (job?.jobDeposits || []).reduce((s, d) => s + (d.amount || 0), 0);
               }
           } else {
               initialData.docNo = generateNextDocNo(jobsForCalc, 'NTTK', 5, extraDocNos);
@@ -420,7 +420,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
                   const firstDepositDate = booking.costDetails.deposits.find(d => d.dateIn)?.dateIn;
                   if (firstDepositDate) initialData.date = firstDepositDate;
               } else if (job) {
-                  initialData.amount = job.thuCuoc || 0;
+                  initialData.amount = (job.thuCuoc || 0) + (job.jobDeposits || []).reduce((s, d) => s + (d.amount || 0), 0);
                   initialData.receiverName = job.line;
                   initialData.paymentContent = generateDescription("Thu tiền của ncc HOÀN CƯỢC CONT lô", "BILL");
                   if (job.ngayThuHoan) initialData.date = job.ngayThuHoan;
