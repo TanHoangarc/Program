@@ -1,10 +1,11 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles } from 'lucide-react';
+import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles, X, RotateCcw } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { JobModal } from '../components/JobModal';
+import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
 import { GoogleGenAI } from "@google/genai";
 import { useNotification } from '../contexts/NotificationContext';
 
@@ -24,7 +25,7 @@ interface CVHCRow {
   customerId: string;
   amount: number;
   accountNumber?: string; // New field: Số tài khoản
-  jobId?: string; // Link to actual job if found
+  jobId?: string; // Link to actual job if found (can be comma-separated list of IDs)
   previewUrl?: string; // Preview URL for PDF page
 }
 
@@ -42,12 +43,67 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   const [uploadProgress, setUploadProgress] = useState('');
   const [pageCount, setPageCount] = useState<number>(1); // For combined mode
   const [isScanning, setIsScanning] = useState(false); // For AI Scan
+  const [iframePreviewUrl, setIframePreviewUrl] = useState<string | null>(null); // Embedded preview modal
 
   // Modal State
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobData | null>(null);
 
+  // Quick Receive (Chi Hoàn Cược) state
+  const [isQuickReceiveOpen, setIsQuickReceiveOpen] = useState(false);
+  const [quickReceiveJob, setQuickReceiveJob] = useState<JobData | null>(null);
+  const [quickReceiveMode, setQuickReceiveMode] = useState<ReceiveMode>('deposit_refund');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Memoize used document numbers to pass into the modal
+  const usedDocNos = useMemo(() => {
+    const list: string[] = [];
+    jobs.forEach(j => {
+      if (j.amisPaymentDocNo) list.push(j.amisPaymentDocNo);
+      if (j.amisDepositOutDocNo) list.push(j.amisDepositOutDocNo);
+      if (j.amisExtensionPaymentDocNo) list.push(j.amisExtensionPaymentDocNo);
+      if (j.amisDepositRefundDocNo) list.push(j.amisDepositRefundDocNo);
+      (j.extensions || []).forEach(e => { if (e.amisDocNo) list.push(e.amisDocNo); });
+      (j.refunds || []).forEach(r => { if (r.docNo) list.push(r.docNo); });
+      (j.additionalReceipts || []).forEach(r => { if (r.docNo) list.push(r.docNo); });
+    });
+    return list;
+  }, [jobs]);
+
+  // Handler for each row's refund action button
+  const handleRowRefund = (row: CVHCRow) => {
+    if (!row.jobId) return;
+    const firstId = row.jobId.split(',')[0];
+    const job = jobs.find(j => j.id === firstId);
+    if (job) {
+      setQuickReceiveJob(job);
+      setQuickReceiveMode('deposit_refund');
+      setIsQuickReceiveOpen(true);
+    } else {
+      alert("Không tìm thấy dữ liệu Job tương ứng để chi hoàn cược.", "Lỗi");
+    }
+  };
+
+  const handleSaveQuickReceive = (updatedJob: JobData) => {
+    onUpdateJob(updatedJob);
+    // Auto-refresh coordinates in table
+    setRows(prev => prev.map(row => {
+      const rowIds = row.jobId ? row.jobId.split(',').map(id => id.trim()).filter(Boolean) : [];
+      if (rowIds.includes(updatedJob.id)) {
+        const isMain = rowIds[0] === updatedJob.id;
+        const updatedRow = { ...row };
+        if (isMain) {
+          const custId = updatedJob.maKhCuocId || updatedJob.customerId;
+          const custName = findCustomer(custId)?.name || updatedJob.customerName;
+          updatedRow.customerName = custName;
+          updatedRow.customerId = custId;
+        }
+        return updatedRow;
+      }
+      return row;
+    }));
+  };
 
   // Helper to format currency
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -68,16 +124,24 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   const handleJobCodeChange = (id: string, code: string) => {
     setRows(prev => prev.map(row => {
       if (row.id === id) {
-        const job = findJob(code);
-        if (job) {
-          // Found Job -> Auto-fill
-          const custId = job.maKhCuocId || job.customerId;
-          const custName = findCustomer(custId)?.name || job.customerName;
+        const codes = code.split(',').map(s => s.trim()).filter(Boolean);
+        const matchedJobs = codes.map(c => findJob(c)).filter((j): j is JobData => !!j);
+
+        if (matchedJobs.length > 0) {
+          // Found Job(s) -> Auto-fill
+          const firstJob = matchedJobs[0];
+          const custId = firstJob.maKhCuocId || firstJob.customerId;
+          const custName = findCustomer(custId)?.name || firstJob.customerName;
+          
+          // Sum up the amounts of all found jobs
+          const totalAmount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+          const jobIds = matchedJobs.map(j => j.id).join(',');
+
           return {
             ...row,
             jobCode: code,
-            jobId: job.id,
-            amount: job.thuCuoc,
+            jobId: jobIds,
+            amount: totalAmount,
             customerId: custId,
             customerName: custName
           };
@@ -173,9 +237,9 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 
   // --- AI SCAN LOGIC ---
   const handleAutoScan = async () => {
-      const rowsToScan = rows.filter(r => r.previewUrl);
+      const rowsToScan = rows.filter(r => r.previewUrl && !r.jobCode.trim());
       if (rowsToScan.length === 0) {
-          alert("Không có trang nào để quét (Cần file đính kèm).", "Thông báo");
+          alert("Không có trang nào có số BL trống và có file đính kèm để quét.", "Thông báo");
           return;
       }
 
@@ -187,13 +251,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
         return;
       }
       const ai = new GoogleGenAI({ apiKey });
-      const model = "gemini-3-flash-preview";
+      const model = "gemini-3.5-flash";
 
       let successCount = 0;
 
       for (let i = 0; i < rows.length; i++) {
           const row = rows[i];
-          if (!row.previewUrl) continue;
+          if (!row.previewUrl || row.jobCode.trim()) continue;
 
           try {
               // 1. Fetch Blob
@@ -233,20 +297,23 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               if (data.jobCode || data.accountNumber) {
                   // If jobCode found, verify against database using existing handleJobCodeChange logic
                   if (data.jobCode) {
-                      // We can't call handleJobCodeChange directly easily inside loop due to state closure
-                      // So we replicate the logic: find job in 'jobs'
-                      const foundJob = findJob(data.jobCode);
+                      const codes = data.jobCode.split(',').map((s: string) => s.trim()).filter(Boolean);
+                      const matchedJobs = codes.map((c: string) => findJob(c)).filter((j): j is JobData => !!j);
                       
                       setRows(currentRows => currentRows.map(r => {
                           if (r.id === row.id) {
-                              if (foundJob) {
-                                  const custId = foundJob.maKhCuocId || foundJob.customerId;
-                                  const custName = findCustomer(custId)?.name || foundJob.customerName;
+                              if (matchedJobs.length > 0) {
+                                  const firstJob = matchedJobs[0];
+                                  const custId = firstJob.maKhCuocId || firstJob.customerId;
+                                  const custName = findCustomer(custId)?.name || firstJob.customerName;
+                                  const totalAmount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+                                  const jobIds = matchedJobs.map(j => j.id).join(',');
+
                                   return {
                                       ...r,
                                       jobCode: data.jobCode,
-                                      jobId: foundJob.id,
-                                      amount: foundJob.thuCuoc,
+                                      jobId: jobIds,
+                                      amount: totalAmount,
                                       customerId: custId,
                                       customerName: custName,
                                       accountNumber: data.accountNumber || r.accountNumber
@@ -303,69 +370,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       throw new Error(res.data?.message || "Upload failed");
   };
 
-  // --- BATCH PAYMENT CREATION ---
-  const handleBatchCreatePayment = async () => {
-      const validRows = rows.filter(r => r.jobId);
-      if (validRows.length === 0) {
-          alert("Chưa có Job nào được nhận diện (Có số BL hợp lệ) để tạo phiếu chi.", "Thông báo");
-          return;
-      }
-
-      if (!await confirm(`Bạn có chắc chắn muốn tạo ${validRows.length} phiếu chi hoàn cược nối tiếp cho danh sách này không?`, "Xác nhận tạo phiếu")) return;
-
-      // 1. Calculate base Max Number from existing jobs to ensure sequence
-      let maxNum = 0;
-      const regex = /^UNC(\d+)$/i;
-      
-      const checkVal = (val?: string) => {
-          if (!val) return;
-          const match = val.match(regex);
-          if (match) {
-              const n = parseInt(match[1], 10);
-              if (!isNaN(n) && n > maxNum) maxNum = n;
-          }
-      };
-
-      jobs.forEach(j => {
-          checkVal(j.amisPaymentDocNo);
-          checkVal(j.amisDepositOutDocNo);
-          checkVal(j.amisExtensionPaymentDocNo);
-          checkVal(j.amisDepositRefundDocNo);
-          (j.extensions || []).forEach(e => checkVal(e.amisDocNo));
-          (j.refunds || []).forEach(r => checkVal(r.docNo));
-          (j.additionalReceipts || []).forEach(r => checkVal(r.docNo));
-      });
-
-      // 2. Loop and Update
-      let count = 0;
-      const today = new Date().toISOString().split('T')[0];
-
-      validRows.forEach((row, index) => {
-          const job = jobs.find(j => j.id === row.jobId);
-          if (job) {
-              const nextVal = maxNum + 1 + index;
-              const docNo = `UNC${String(nextVal).padStart(5, '0')}`;
-              
-              const accountDesc = row.accountNumber ? ` - STK: ${row.accountNumber}` : '';
-
-              const updatedJob = {
-                  ...job,
-                  amisDepositRefundDocNo: docNo,
-                  amisDepositRefundDate: today,
-                  amisDepositRefundDesc: `Chi hoàn cược BL ${job.jobCode}${accountDesc}`,
-                  // Update amount/customer if changed in table
-                  thuCuoc: row.amount || job.thuCuoc,
-                  maKhCuocId: row.customerId || job.maKhCuocId
-              };
-              
-              onUpdateJob(updatedJob);
-              count++;
-          }
-      });
-
-      alert(`Đã tạo thành công ${count} phiếu chi hoàn cược.\n(Từ UNC${String(maxNum + 1).padStart(5, '0')} đến UNC${String(maxNum + count).padStart(5, '0')})`, "Thành công");
-  };
-
   const handleSubmit = async () => {
     // 1. Validation
     if (!file) {
@@ -413,18 +417,24 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               // Upload
               const result = await uploadSingleFile(subFile, subFileName);
 
-              // Update Job
-              const job = jobs.find(j => j.id === row.jobId);
-              if (job) {
-                  const updatedJob: JobData = {
-                      ...job,
-                      thuCuoc: row.amount,
-                      maKhCuocId: row.customerId || job.maKhCuocId,
-                      cvhcUrl: result.url,
-                      cvhcFileName: result.name
-                  };
-                  onUpdateJob(updatedJob);
-                  successCount++;
+              // Update Jobs mapped to this row
+              const jobIds = row.jobId ? row.jobId.split(',').map(id => id.trim()).filter(Boolean) : [];
+              const isMulti = jobIds.length > 1;
+
+              for (const jId of jobIds) {
+                  const job = jobs.find(j => j.id === jId);
+                  if (job) {
+                      const finalAmount = isMulti ? job.thuCuoc : row.amount;
+                      const updatedJob: JobData = {
+                          ...job,
+                          thuCuoc: finalAmount,
+                          maKhCuocId: row.customerId || job.maKhCuocId,
+                          cvhcUrl: result.url,
+                          cvhcFileName: result.name
+                      };
+                      onUpdateJob(updatedJob);
+                      successCount++;
+                  }
               }
           }
           
@@ -444,18 +454,24 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           // Update All Rows with SAME File (usually just 1 row now)
           let updatedCount = 0;
           rows.forEach(row => {
-             const job = jobs.find(j => j.id === row.jobId);
-             if (job) {
-                 const updatedJob: JobData = {
-                     ...job,
-                     thuCuoc: row.amount, 
-                     maKhCuocId: row.customerId || job.maKhCuocId,
-                     cvhcUrl: result.url,
-                     cvhcFileName: result.name
-                 };
-                 onUpdateJob(updatedJob);
-                 updatedCount++;
-             }
+              const jobIds = row.jobId ? row.jobId.split(',').map(id => id.trim()).filter(Boolean) : [];
+              const isMulti = jobIds.length > 1;
+
+              jobIds.forEach(jId => {
+                  const job = jobs.find(j => j.id === jId);
+                  if (job) {
+                      const finalAmount = isMulti ? job.thuCuoc : row.amount;
+                      const updatedJob: JobData = {
+                          ...job,
+                          thuCuoc: finalAmount, 
+                          maKhCuocId: row.customerId || job.maKhCuocId,
+                          cvhcUrl: result.url,
+                          cvhcFileName: result.name
+                      };
+                      onUpdateJob(updatedJob);
+                      updatedCount++;
+                  }
+              });
           });
           
           alert(`Đã nộp CVHC thành công cho ${updatedCount} Job! File: ${result.name}`, "Thành công");
@@ -590,6 +606,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                           <th className="px-4 py-3 w-48 text-right">Số tiền cược</th>
                           <th className="px-4 py-3 w-48">Số tài khoản</th>
                           <th className="px-4 py-3 w-16 text-center">Xem</th>
+                          <th className="px-4 py-3 w-28 text-center">Chi hoàn</th>
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -612,7 +629,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       </div>
                                       {row.jobId && (
                                           <button 
-                                              onClick={() => handleEditJobClick(row.jobId!)}
+                                              onClick={() => handleEditJobClick(row.jobId!.split(',')[0])}
                                               className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-200"
                                               title="Xem/Sửa Job"
                                           >
@@ -653,15 +670,28 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                               </td>
                               <td className="px-4 py-3 text-center">
                                   {row.previewUrl ? (
-                                      <a 
-                                        href={row.previewUrl} 
-                                        target="_blank" 
-                                        rel="noreferrer"
+                                      <button 
+                                        type="button"
+                                        onClick={() => setIframePreviewUrl(row.previewUrl || null)}
                                         className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                                        title="Xem trước trang này"
+                                        title="Xem trực tiếp tài liệu"
                                       >
                                           <Eye className="w-4 h-4" />
-                                      </a>
+                                      </button>
+                                  ) : (
+                                      <span className="text-slate-300">-</span>
+                                  )}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                  {row.jobId ? (
+                                      <button 
+                                        type="button"
+                                        onClick={() => handleRowRefund(row)}
+                                        className="inline-flex items-center justify-center p-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 hover:text-orange-700 rounded-lg border border-orange-200/50 transition-colors"
+                                        title="Chi hoàn cược cho Job này"
+                                      >
+                                          <RotateCcw className="w-4 h-4" />
+                                      </button>
                                   ) : (
                                       <span className="text-slate-300">-</span>
                                   )}
@@ -678,17 +708,9 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   {isUploading && <span className="text-sm font-bold text-indigo-600 animate-pulse flex items-center"><Loader2 className="w-4 h-4 mr-2 animate-spin"/> {uploadProgress}</span>}
               </div>
               <div className="flex space-x-3">
-                  <div className="px-4 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold text-sm">
+                  <div className="px-4 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold text-sm flex items-center">
                       Tổng tiền: <span className="text-indigo-600 ml-2 text-lg">{formatCurrency(rows.reduce((s, r) => s + r.amount, 0))}</span>
                   </div>
-                  
-                  <button 
-                      onClick={handleBatchCreatePayment}
-                      className="px-4 py-2 bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 rounded-lg font-bold shadow-sm transition-all flex items-center"
-                      title="Tạo phiếu chi hoàn cược cho tất cả các Job trong danh sách"
-                  >
-                      <Banknote className="w-4 h-4 mr-2" /> Tạo Phiếu Chi
-                  </button>
 
                   <button 
                       onClick={handleSubmit}
@@ -716,6 +738,48 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               isViewMode={false}
               existingJobs={jobs}
           />
+      )}
+
+      {isQuickReceiveOpen && quickReceiveJob && (
+          <QuickReceiveModal 
+              isOpen={isQuickReceiveOpen}
+              onClose={() => setIsQuickReceiveOpen(false)}
+              onSave={handleSaveQuickReceive}
+              job={quickReceiveJob}
+              mode={quickReceiveMode}
+              customers={customers}
+              allJobs={jobs}
+              usedDocNos={usedDocNos}
+              onAddCustomer={onAddCustomer}
+          />
+      )}
+
+      {/* Embedded Iframe Document Preview Modal */}
+      {iframePreviewUrl && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                          <Eye className="w-5 h-5 text-indigo-600" />
+                          <span className="font-bold text-slate-800 text-lg">Xem trước tài liệu</span>
+                      </div>
+                      <button 
+                          onClick={() => setIframePreviewUrl(null)}
+                          className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-800 transition-colors"
+                          title="Đóng xem trước"
+                      >
+                          <X className="w-5 h-5" />
+                      </button>
+                  </div>
+                  <div className="flex-1 bg-slate-100 p-2">
+                      <iframe 
+                          src={iframePreviewUrl} 
+                          className="w-full h-full border-0 rounded-lg"
+                          title="Document Page Preview"
+                      />
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );
