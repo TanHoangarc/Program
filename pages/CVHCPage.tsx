@@ -71,17 +71,37 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
     return list;
   }, [jobs]);
 
-  // Handler for each row's refund action button
-  const handleRowRefund = (row: CVHCRow) => {
-    if (!row.jobId) return;
-    const firstId = row.jobId.split(',')[0];
-    const job = jobs.find(j => j.id === firstId);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [expandedAction, setExpandedAction] = useState<'edit' | 'refund' | null>(null);
+
+  const handleRowRefundSingle = (jobId: string) => {
+    const job = jobs.find(j => j.id === jobId);
     if (job) {
       setQuickReceiveJob(job);
       setQuickReceiveMode('deposit_refund');
       setIsQuickReceiveOpen(true);
     } else {
       alert("Không tìm thấy dữ liệu Job tương ứng để chi hoàn cược.", "Lỗi");
+    }
+  };
+
+  const onRowActionClick = (row: CVHCRow, action: 'edit' | 'refund') => {
+    if (!row.jobId) return;
+    const ids = row.jobId.split(',').map(id => id.trim()).filter(Boolean);
+    if (ids.length === 1) {
+        if (action === 'edit') {
+            handleEditJobClick(ids[0]);
+        } else {
+            handleRowRefundSingle(ids[0]);
+        }
+    } else if (ids.length > 1) {
+        if (expandedRowId === row.id && expandedAction === action) {
+            setExpandedRowId(null);
+            setExpandedAction(null);
+        } else {
+            setExpandedRowId(row.id);
+            setExpandedAction(action);
+        }
     }
   };
 
@@ -611,7 +631,8 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                       {rows.map((row, idx) => (
-                          <tr key={row.id} className="hover:bg-slate-50/50">
+                          <React.Fragment key={row.id}>
+                          <tr className="hover:bg-slate-50/50">
                               <td className="px-4 py-3 text-center font-bold text-slate-500">
                                   {`Trang ${idx + 1}`}
                               </td>
@@ -629,8 +650,8 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       </div>
                                       {row.jobId && (
                                           <button 
-                                              onClick={() => handleEditJobClick(row.jobId!.split(',')[0])}
-                                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-200"
+                                              onClick={() => onRowActionClick(row, 'edit')}
+                                              className={`p-2 rounded-lg transition-colors border ${expandedRowId === row.id && expandedAction === 'edit' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 border-transparent hover:border-blue-200'}`}
                                               title="Xem/Sửa Job"
                                           >
                                               <Edit3 className="w-4 h-4" />
@@ -683,20 +704,73 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                   )}
                               </td>
                               <td className="px-4 py-3 text-center">
-                                  {row.jobId ? (
-                                      <button 
-                                        type="button"
-                                        onClick={() => handleRowRefund(row)}
-                                        className="inline-flex items-center justify-center p-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 hover:text-orange-700 rounded-lg border border-orange-200/50 transition-colors"
-                                        title="Chi hoàn cược cho Job này"
-                                      >
-                                          <RotateCcw className="w-4 h-4" />
-                                      </button>
-                                  ) : (
+                                  {row.jobId ? (() => {
+                                      const ids = row.jobId.split(',').map(id => id.trim()).filter(Boolean);
+                                      const hasUnrefunded = ids.some(id => {
+                                          const j = jobs.find(x => x.id === id);
+                                          return j && !j.amisDepositRefundDocNo;
+                                      });
+                                      if (!hasUnrefunded) {
+                                          return <span className="text-slate-300">-</span>;
+                                      }
+                                      return (
+                                          <button 
+                                            type="button"
+                                            onClick={() => onRowActionClick(row, 'refund')}
+                                            className={`inline-flex items-center justify-center p-1.5 rounded-lg border transition-colors ${expandedRowId === row.id && expandedAction === 'refund' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-orange-50 hover:bg-orange-100 text-orange-600 hover:text-orange-700 border-orange-200/50'}`}
+                                            title="Chi hoàn cược cho Job này"
+                                          >
+                                              <RotateCcw className="w-4 h-4" />
+                                          </button>
+                                      );
+                                  })() : (
                                       <span className="text-slate-300">-</span>
                                   )}
                               </td>
                           </tr>
+                          {expandedRowId === row.id && (
+                              <tr className="bg-slate-50/80 border-b border-slate-200 shadow-inner">
+                                  <td colSpan={7} className="p-4">
+                                      <div className="flex flex-col gap-2">
+                                          <div className="text-sm font-bold text-slate-700 mb-1">
+                                              {expandedAction === 'edit' ? 'Chọn Job để Xem/Sửa:' : 'Chọn Job để Chi hoàn cược:'}
+                                          </div>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                              {row.jobId!.split(',').map(id => id.trim()).filter(Boolean).map(jId => {
+                                                  const job = jobs.find(j => j.id === jId);
+                                                  if (!job) return null;
+                                                  
+                                                  const isRefunded = !!job.amisDepositRefundDocNo;
+                                                  if (expandedAction === 'refund' && isRefunded) return null;
+                                                  
+                                                  return (
+                                                      <button
+                                                          key={jId}
+                                                          onClick={() => {
+                                                              if (expandedAction === 'edit') {
+                                                                  handleEditJobClick(jId);
+                                                              } else {
+                                                                  handleRowRefundSingle(jId);
+                                                              }
+                                                              setExpandedRowId(null);
+                                                              setExpandedAction(null);
+                                                          }}
+                                                          className={`p-3 border rounded-xl text-left hover:bg-white shadow-sm transition-all flex justify-between items-center ${expandedAction === 'edit' ? 'border-blue-200 hover:border-blue-400' : 'border-orange-200 hover:border-orange-400'}`}
+                                                      >
+                                                          <div>
+                                                              <div className="font-bold text-slate-800">{job.jobCode}</div>
+                                                              <div className="text-xs text-slate-500 mt-0.5">Tiền cược: {formatCurrency(job.thuCuoc || 0)}</div>
+                                                          </div>
+                                                          {expandedAction === 'edit' ? <Edit3 className="w-4 h-4 text-blue-500" /> : <RotateCcw className="w-4 h-4 text-orange-500" />}
+                                                      </button>
+                                                  );
+                                              })}
+                                          </div>
+                                      </div>
+                                  </td>
+                              </tr>
+                          )}
+                          </React.Fragment>
                       ))}
                   </tbody>
               </table>

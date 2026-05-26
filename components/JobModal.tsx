@@ -1223,7 +1223,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                 </div>
                 <div className="space-y-2">
                     {(formData.extensions || []).map((ext) => (
-                        <div key={ext.id} className="grid grid-cols-12 gap-2 items-end bg-slate-50 p-2 rounded border border-slate-200">
+                        <div key={ext.id} className="grid grid-cols-12 gap-2 items-start bg-slate-50 p-2 rounded border border-slate-200">
                             <div className="col-span-5">
                                 <Label>Khách hàng</Label>
                                 <CustomerInput 
@@ -1238,7 +1238,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                             </div>
                             <div className="col-span-3"><Label>Invoice</Label><Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode} className="h-8 text-xs" /></div>
                             <div className="col-span-3"><Label>Amount</Label><input type="text" value={new Intl.NumberFormat('en-US').format(ext.total)} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val); }} readOnly={isViewMode} className="w-full px-2 py-1 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-orange-500 text-right font-bold text-orange-700 h-8" placeholder="0" /></div>
-                            <div className="col-span-1 flex justify-center">{!isViewMode && <button type="button" onClick={() => removeExtension(ext.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</div>
+                            <div className="col-span-1 flex justify-center mt-5">{!isViewMode && <button type="button" onClick={() => removeExtension(ext.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</div>
                         </div>
                     ))}
                     {(!formData.extensions || formData.extensions.length === 0) && <div className="text-xs text-slate-400 italic text-center py-2">Chưa có phát sinh</div>}
