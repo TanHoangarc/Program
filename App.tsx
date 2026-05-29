@@ -18,8 +18,6 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
-import { LongHoangPage } from './pages/LongHoangPage';
-import { MeInvoicePage } from './pages/MeInvoicePage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -29,7 +27,7 @@ import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from '
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification, LongHoangOrder } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -92,7 +90,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'long-hoang' | 'meinvoice'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit'>(() => {
       try {
           const savedUserStr = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUserStr) {
@@ -652,16 +650,6 @@ const App: React.FC = () => {
       }
   });
 
-  // --- LONG HOANG STATE ---
-  const [longHoangOrders, setLongHoangOrders] = useState<LongHoangOrder[]>(() => {
-      try {
-          const saved = localStorage.getItem('kb_long_hoang_orders');
-          return saved ? JSON.parse(saved) : [];
-      } catch {
-          return [];
-      }
-  });
-
   // --- AMIS CUSTOM RECEIPTS (THU KHÁC) ---
   const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
       try {
@@ -671,6 +659,10 @@ const App: React.FC = () => {
           return [];
       }
   });
+
+  const [systemPopupContent, setSystemPopupContent] = useState<string>('');
+  const [showSystemPopup, setShowSystemPopup] = useState<boolean>(false);
+  const [hasShownPopup, setHasShownPopup] = useState<boolean>(false);
 
   const [users, setUsers] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('logistics_users_v1');
@@ -959,7 +951,6 @@ const App: React.FC = () => {
             customReceipts: [...customReceipts],
             salaries: [...salaries], 
             yearlyConfigs: [...yearlyConfigs],
-            longHoangOrders: [...longHoangOrders],
             lockedIds: Array.from(lockedIds) 
         };
     }
@@ -1057,7 +1048,6 @@ const App: React.FC = () => {
       const incReceipts = Array.isArray(incomingData.customReceipts) ? incomingData.customReceipts : (incomingData.data?.customReceipts || incomingData.payload?.customReceipts || []);
       const incSalaries = Array.isArray(incomingData.salaries) ? incomingData.salaries : (incomingData.data?.salaries || incomingData.payload?.salaries || []);
       const incConfigs = Array.isArray(incomingData.yearlyConfigs) ? incomingData.yearlyConfigs : (incomingData.data?.yearlyConfigs || incomingData.payload?.yearlyConfigs || []);
-      const incLongHoangOrders = Array.isArray(incomingData.longHoangOrders) ? incomingData.longHoangOrders : (incomingData.data?.longHoangOrders || incomingData.payload?.longHoangOrders || []);
 
       setJobs(prev => sanitizeData(mergeArrays(prev, incJobs)));
       setPaymentRequests(prev => mergeArrays(prev, incPayments));
@@ -1074,7 +1064,6 @@ const App: React.FC = () => {
           });
           return newConfigs;
       });
-      setLongHoangOrders(prev => mergeArrays(prev, incLongHoangOrders));
 
       await handleRejectRequest(requestId);
   };
@@ -1193,8 +1182,8 @@ const App: React.FC = () => {
             setYearlyConfigs(data.yearlyConfigs);
         }
 
-        if (data.longHoangOrders && Array.isArray(data.longHoangOrders)) {
-            setLongHoangOrders(data.longHoangOrders);
+        if (data.systemPopupContent !== undefined) {
+             setSystemPopupContent(data.systemPopupContent || "");
         }
 
         setIsInitialSyncDone(true);
@@ -1242,6 +1231,13 @@ const App: React.FC = () => {
 
     return () => channel.close();
   }, [isAuthenticated, currentUser]);
+
+  useEffect(() => {
+    if (isAuthenticated && systemPopupContent && !hasShownPopup) {
+      setShowSystemPopup(true);
+      setHasShownPopup(true);
+    }
+  }, [isAuthenticated, systemPopupContent, hasShownPopup]);
 
   const handleLogin = (username: string, pass: string, remember: boolean) => {
     setLoginError('');
@@ -1306,11 +1302,10 @@ const App: React.FC = () => {
           data.salaries = salaries;
           data.yearlyConfigs = yearlyConfigs;
           data.paymentRequests = paymentRequests;
-          data.longHoangOrders = longHoangOrders;
+          data.systemPopupContent = systemPopupContent;
       } else if (currentUser.role === 'Docs') {
           // Docs only updates these
           data.paymentRequests = paymentRequests;
-          data.longHoangOrders = longHoangOrders;
       }
 
       const controller = new AbortController();
@@ -1372,7 +1367,7 @@ const App: React.FC = () => {
     }, delay); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, longHoangOrders, isServerAvailable, currentUser]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1382,7 +1377,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('amis_custom_receipts', JSON.stringify(customReceipts)); }, [customReceipts]);
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
-  useEffect(() => { localStorage.setItem('kb_long_hoang_orders', JSON.stringify(longHoangOrders)); }, [longHoangOrders]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
@@ -1424,11 +1418,11 @@ const App: React.FC = () => {
                     if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                     if (serverData.salaries) setSalaries(serverData.salaries);
                     if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
+                    if (serverData.systemPopupContent !== undefined) setSystemPopupContent(serverData.systemPopupContent);
                 }
                 
                 // Both DOCS_SYNC and FULL_SYNC can affect these
                 if (serverData.paymentRequests) setPaymentRequests(serverData.paymentRequests);
-                if (serverData.longHoangOrders) setLongHoangOrders(serverData.longHoangOrders || []);
             })
             .catch(err => console.warn("Failed to re-fetch after sync", err));
       }
@@ -1754,20 +1748,6 @@ const App: React.FC = () => {
               />
             )}
 
-            {currentPage === 'long-hoang' && (
-              <LongHoangPage 
-                orders={longHoangOrders}
-                onAddOrder={(order) => setLongHoangOrders(prev => [order, ...prev])}
-                onEditOrder={(order) => setLongHoangOrders(prev => prev.map(o => o.id === order.id ? order : o))}
-                onDeleteOrder={(id) => setLongHoangOrders(prev => prev.filter(o => o.id !== id))}
-                onRestoreOrders={(orders) => setLongHoangOrders(orders)}
-              />
-            )}
-
-            {currentPage === 'meinvoice' && (
-              <MeInvoicePage />
-            )}
-
             {currentPage === 'system' && currentUser?.role === 'Admin' && (
               <SystemPage
                 jobs={jobs}
@@ -1779,7 +1759,6 @@ const App: React.FC = () => {
                   setJobs(sanitizeData(d.jobs));
                   setCustomers(d.customers);
                   setLines(d.lines);
-                  if (d.longHoangOrders) setLongHoangOrders(d.longHoangOrders);
                 }}
                 onAddUser={(u) => setUsers([...users, u])}
                 onEditUser={(u, oldName) => setUsers(users.map(user => user.username === oldName ? u : user))}
@@ -1788,6 +1767,8 @@ const App: React.FC = () => {
                 onApproveRequest={handleApproveRequest}
                 onRejectRequest={handleRejectRequest}
                 onConfirmMismatch={handleConfirmMismatch}
+                systemPopupContent={systemPopupContent}
+                onUpdateSystemPopup={setSystemPopupContent}
               />
             )}
 
@@ -1906,6 +1887,32 @@ const App: React.FC = () => {
             usedDocNos={customReceipts.map(r => r.docNo).filter(Boolean)}
             onAddCustomer={(newCust) => setCustomers(prev => [...prev, newCust])}
           />
+        )}
+
+        {showSystemPopup && systemPopupContent && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white">
+                <h2 className="font-bold text-base flex items-center"><AlertTriangle className="w-5 h-5 mr-2 text-blue-200" /> THÔNG BÁO TỪ HỆ THỐNG</h2>
+                <button onClick={() => setShowSystemPopup(false)} className="text-white hover:text-blue-200 transition-colors p-1 rounded-full hover:bg-blue-700">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6">
+                <div className="whitespace-pre-wrap text-slate-700 leading-relaxed font-medium">
+                  {systemPopupContent}
+                </div>
+              </div>
+              <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex justify-end">
+                <button 
+                  onClick={() => setShowSystemPopup(false)}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold transition-colors shadow-sm"
+                >
+                  Tôi đã hiểu
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>

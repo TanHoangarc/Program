@@ -17,12 +17,15 @@ interface SystemPageProps {
   onApproveRequest?: (requestId: string, data: any, silent?: boolean) => void;
   onRejectRequest?: (requestId: string) => void;
   onConfirmMismatch?: () => void;
+  systemPopupContent?: string;
+  onUpdateSystemPopup?: (content: string) => void;
 }
 
 export const SystemPage: React.FC<SystemPageProps> = ({ 
   jobs, customers, lines, users, currentUser, 
   onRestore, onAddUser, onEditUser, onDeleteUser,
-  pendingRequests = [], onApproveRequest, onRejectRequest, onConfirmMismatch
+  pendingRequests = [], onApproveRequest, onRejectRequest, onConfirmMismatch,
+  systemPopupContent = '', onUpdateSystemPopup
 }) => {
   const BACKEND_URL = "https://api.kimberry.id.vn";
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -405,6 +408,20 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                  </div>
               ))}
            </div>
+        </div>
+
+        {/* Popup Config Box */}
+        <div className="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="text-lg font-bold text-slate-700 flex items-center mb-3">
+                <AlertTriangle className="w-5 h-5 mr-2 text-orange-600" /> Thông Báo Toàn Hệ Thống
+            </h3>
+            <p className="text-xs text-slate-500 mb-3">Nội dung này hiển thị dạng Popup khi User đăng nhập/tải lại trang.</p>
+            <textarea
+              className="w-full border border-slate-300 rounded-lg p-3 text-sm min-h-[120px] focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Nhập thông báo tại đây..."
+              value={systemPopupContent}
+              onChange={(e) => onUpdateSystemPopup && onUpdateSystemPopup(e.target.value)}
+            />
         </div>
 
         {/* Pending Data Section */}

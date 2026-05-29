@@ -442,28 +442,6 @@ export interface SecurityItem {
 }
 
 // ============================================================
-// LONG HOÀNG ORDER
-// ============================================================
-export interface LongHoangOrder {
-  id: string;
-  paymentDate: string;
-  line: string;
-  amount: number;
-  mbl: string;
-  accountNumber: string;
-  invoiceFileUrl?: string;
-  invoiceFileName?: string;
-  note?: string;
-  wireOffStatus?: 'Pending' | 'Wired Off';
-  globalTaxRate?: 'none' | '8' | '5.263';
-  fees?: { name: string; amount: number; usdAmount?: number | string; taxRate?: 'none' | '8' | '5.263'; originalAmount?: number }[];
-  isChecked?: boolean;
-  isLocked?: boolean;
-  color?: 'blue' | 'orange' | null;
-  paymentType?: 'Local charge' | 'Deposit' | 'Demurage' | 'Repair' | 'Telex';
-}
-
-// ============================================================
 // INITIAL JOB (DEFAULT OBJECT)
 // ============================================================
 
