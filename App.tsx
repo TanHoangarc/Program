@@ -1180,10 +1180,10 @@ const App: React.FC = () => {
 
         if (data.yearlyConfigs && Array.isArray(data.yearlyConfigs)) {
             setYearlyConfigs(data.yearlyConfigs);
-        }
-
-        if (data.systemPopupContent !== undefined) {
-             setSystemPopupContent(data.systemPopupContent || "");
+            const popupConfig = data.yearlyConfigs.find((c: any) => c.year === 9999);
+            if (popupConfig && popupConfig.note !== undefined) {
+                setSystemPopupContent(popupConfig.note);
+            }
         }
 
         setIsInitialSyncDone(true);
@@ -1302,7 +1302,6 @@ const App: React.FC = () => {
           data.salaries = salaries;
           data.yearlyConfigs = yearlyConfigs;
           data.paymentRequests = paymentRequests;
-          data.systemPopupContent = systemPopupContent;
       } else if (currentUser.role === 'Docs') {
           // Docs only updates these
           data.paymentRequests = paymentRequests;
@@ -1417,8 +1416,13 @@ const App: React.FC = () => {
                     if (serverData.lines) setLines(serverData.lines);
                     if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                     if (serverData.salaries) setSalaries(serverData.salaries);
-                    if (serverData.yearlyConfigs) setYearlyConfigs(serverData.yearlyConfigs);
-                    if (serverData.systemPopupContent !== undefined) setSystemPopupContent(serverData.systemPopupContent);
+                    if (serverData.yearlyConfigs) {
+                        setYearlyConfigs(serverData.yearlyConfigs);
+                        const popupConfig = serverData.yearlyConfigs.find((c: any) => c.year === 9999);
+                        if (popupConfig && popupConfig.note !== undefined) {
+                            setSystemPopupContent(popupConfig.note);
+                        }
+                    }
                 }
                 
                 // Both DOCS_SYNC and FULL_SYNC can affect these
@@ -1768,7 +1772,17 @@ const App: React.FC = () => {
                 onRejectRequest={handleRejectRequest}
                 onConfirmMismatch={handleConfirmMismatch}
                 systemPopupContent={systemPopupContent}
-                onUpdateSystemPopup={setSystemPopupContent}
+                onUpdateSystemPopup={(content) => {
+                    setSystemPopupContent(content);
+                    setYearlyConfigs(prev => {
+                        const existing = prev.find(c => c.year === 9999);
+                        if (existing) {
+                            return prev.map(c => c.year === 9999 ? { ...c, note: content } : c);
+                        } else {
+                            return [...prev, { year: 9999, exchangeRate: 23500, tax: 0, note: content }];
+                        }
+                    });
+                }}
               />
             )}
 
