@@ -110,19 +110,64 @@ async function startServer() {
     }
 
     function withDBLock(action: (dbState: any) => Promise<any> | any) {
-        return new Promise<any>((resolve, reject) => {
-            dbLock = dbLock.then(async () => {
-                try {
-                    const data = await loadFullDatabase();
-                    const result = await action(data);
-                    if (result !== false) {
-                        await saveFullDatabase(data);
-                    }
-                    resolve(result);
-                } catch (e) {
-                    reject(e);
+        return db.runTransaction(async (transaction) => {
+            const metaRef = db.collection('backups').doc('mainDatabase');
+            const metaDoc = await transaction.get(metaRef);
+            
+            let chunksCount = 0;
+            let currentMeta: any = null;
+            if (metaDoc.exists) {
+                currentMeta = metaDoc.data();
+                chunksCount = currentMeta.chunks || 0;
+            }
+            
+            let jsonStr = "";
+            const chunkRefs = [];
+            for (let i = 0; i < chunksCount; i++) {
+                const chunkRef = db.collection('backups').doc(`mainDatabase_chunk_${i}`);
+                chunkRefs.push(chunkRef);
+            }
+            
+            if (chunkRefs.length > 0) {
+                const chunkDocs = await Promise.all(chunkRefs.map(ref => transaction.get(ref)));
+                for (const chunkDoc of chunkDocs) {
+                    jsonStr += chunkDoc.data()?.data || "";
                 }
-            });
+            }
+            
+            const dbState = JSON.parse(jsonStr || "null") || {
+                jobs: [], customers: [], lines: [], deletedJobIds: [],
+                paymentRequests: [], deletedPaymentIds: [], nfc: [], 
+                pending: [], staff: [], longHoangOrders: [],
+                headerMessages: [], headerNotifications: [], headerUpdates: [],
+                customReceipts: [], salaries: [], yearlyConfigs: {},
+                lockedIds: [], processedRequestIds: []
+            };
+            
+            const result = await action(dbState);
+            
+            if (result !== false) {
+                const newJsonStr = JSON.stringify(dbState);
+                const CHUNK_SIZE = 900000;
+                const numChunks = Math.ceil(newJsonStr.length / CHUNK_SIZE);
+                
+                transaction.set(metaRef, { chunks: numChunks, updatedAt: Date.now() });
+                
+                for (let i = 0; i < numChunks; i++) {
+                    const chunkRef = db.collection('backups').doc(`mainDatabase_chunk_${i}`);
+                    const chunkData = newJsonStr.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+                    transaction.set(chunkRef, { data: chunkData });
+                }
+                
+                if (chunksCount > numChunks) {
+                    for (let i = numChunks; i < chunksCount; i++) {
+                        const oldChunkRef = db.collection('backups').doc(`mainDatabase_chunk_${i}`);
+                        transaction.delete(oldChunkRef);
+                    }
+                }
+            }
+            
+            return result;
         });
     }
 
@@ -162,6 +207,58 @@ async function startServer() {
         incomingList.forEach(item => {
             if (item && item[idField]) {
                 dataMap.set(item[idField], item);
+            }
+        });
+
+        return Array.from(dataMap.values());
+    }
+
+    function mergePaymentRequests(currentList: any[], incomingList: any[]) {
+        if (!Array.isArray(incomingList)) return currentList || [];
+        if (!Array.isArray(currentList)) return incomingList;
+
+        const dataMap = new Map(currentList.map(item => [item.id, item]));
+
+        incomingList.forEach(incomingItem => {
+            if (incomingItem && incomingItem.id) {
+                const currentItem = dataMap.get(incomingItem.id);
+                if (!currentItem) {
+                    dataMap.set(incomingItem.id, incomingItem);
+                } else {
+                    const merged = { ...currentItem };
+                    
+                    if (incomingItem.status === 'completed' || currentItem.status === 'completed') {
+                        merged.status = 'completed';
+                    } else {
+                        merged.status = incomingItem.status || currentItem.status || 'pending';
+                    }
+                    
+                    if (incomingItem.uncUrl) merged.uncUrl = incomingItem.uncUrl;
+                    if (incomingItem.uncFileName) merged.uncFileName = incomingItem.uncFileName;
+                    if (incomingItem.uncPath) merged.uncPath = incomingItem.uncPath;
+                    if (incomingItem.uncBlobUrl) merged.uncBlobUrl = incomingItem.uncBlobUrl;
+                    if (incomingItem.completedAt) merged.completedAt = incomingItem.completedAt;
+
+                    if (incomingItem.invoiceUrl) merged.invoiceUrl = incomingItem.invoiceUrl;
+                    if (incomingItem.invoiceFileName) merged.invoiceFileName = incomingItem.invoiceFileName;
+                    if (incomingItem.invoicePath) merged.invoicePath = incomingItem.invoicePath;
+                    if (incomingItem.invoiceBlobUrl) merged.invoiceBlobUrl = incomingItem.invoiceBlobUrl;
+
+                    if (incomingItem.isOrderCreated || currentItem.isOrderCreated) {
+                        merged.isOrderCreated = true;
+                    } else {
+                        merged.isOrderCreated = false;
+                    }
+
+                    merged.lineCode = incomingItem.lineCode || currentItem.lineCode;
+                    merged.pod = incomingItem.pod || currentItem.pod;
+                    merged.booking = incomingItem.booking || currentItem.booking;
+                    merged.amount = incomingItem.amount || currentItem.amount;
+                    merged.type = incomingItem.type || currentItem.type;
+                    merged.createdAt = incomingItem.createdAt || currentItem.createdAt;
+
+                    dataMap.set(incomingItem.id, merged);
+                }
             }
         });
 
@@ -310,7 +407,7 @@ async function startServer() {
                             if (!dbState.deletedPaymentIds.includes(id)) dbState.deletedPaymentIds.push(id);
                         });
                     }
-                    dbState.paymentRequests = mergeLists(dbState.paymentRequests || [], safeData.paymentRequests);
+                    dbState.paymentRequests = mergePaymentRequests(dbState.paymentRequests || [], safeData.paymentRequests);
                     if (dbState.deletedPaymentIds) {
                         dbState.paymentRequests = (dbState.paymentRequests || []).filter((p:any) => !dbState.deletedPaymentIds.includes(p.id));
                     }
@@ -332,7 +429,7 @@ async function startServer() {
                         }
                         return true;
                     });
-                    dbState.paymentRequests = mergeLists(dbState.paymentRequests || [], validRequests);
+                    dbState.paymentRequests = mergePaymentRequests(dbState.paymentRequests || [], validRequests);
                 }
                 if (safeData.longHoangOrders) {
                     dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
@@ -413,6 +510,7 @@ async function startServer() {
             if(!dbState.pending) dbState.pending = [];
             dbState.pending.push(item);
         });
+        broadcast("data-updated", { time: Date.now(), source: "Docs", type: "PENDING_SYNC" });
         res.json({ success: true, id: item.id });
     });
 
@@ -430,7 +528,7 @@ async function startServer() {
             
             if (fullData.yearlyConfigs) dbState.yearlyConfigs = fullData.yearlyConfigs;
             if (fullData.paymentRequests) {
-                dbState.paymentRequests = mergeLists(dbState.paymentRequests || [], fullData.paymentRequests);
+                dbState.paymentRequests = mergePaymentRequests(dbState.paymentRequests || [], fullData.paymentRequests);
                 if (dbState.deletedPaymentIds) {
                     dbState.paymentRequests = (dbState.paymentRequests || []).filter((p:any) => !dbState.deletedPaymentIds.includes(p.id));
                 }
@@ -454,6 +552,7 @@ async function startServer() {
             if(!dbState.pending) dbState.pending = [];
             dbState.pending = dbState.pending.filter((i: any) => i.id !== req.params.id);
         });
+        broadcast("data-updated", { time: Date.now(), source: "Admin", type: "PENDING_SYNC" });
         res.json({ success: true });
     });
 
