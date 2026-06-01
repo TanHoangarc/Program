@@ -95,6 +95,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
   const [amisDesc, setAmisDesc] = useState('');
   const [amisAmount, setAmisAmount] = useState(0); 
   const [amisDate, setAmisDate] = useState(''); 
+  const [amisAccount, setAmisAccount] = useState('Công ty');
 
   // --- NEW: STATE FOR MAIN JOB/EXTENSION INVOICE (INDEPENDENT OF MERGED RESULT) ---
   const [mainJobInvoice, setMainJobInvoice] = useState('');
@@ -108,7 +109,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
     amisDocNo: '',
     amisDesc: '',
     amisAmount: 0,
-    amisDate: '' 
+    amisDate: '',
+    amisAccount: 'Công ty'
   });
   
   const [originalGroupDocNo, setOriginalGroupDocNo] = useState('');
@@ -119,7 +121,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       amount: 0,
       date: new Date().toISOString().split('T')[0],
       desc: '',
-      docNo: ''
+      docNo: '',
+      account: 'Công ty'
   });
 
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -360,7 +363,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             amisDocNo: currentDocNo,
             amisDesc: desc,
             amisAmount: finalAmount, // Use Fixed Amount
-            amisDate: targetExt?.amisDate || targetExt?.invoiceDate || new Date().toISOString().split('T')[0]
+            amisDate: targetExt?.amisDate || targetExt?.invoiceDate || new Date().toISOString().split('T')[0],
+            amisAccount: targetExt?.amisAccount || 'Công ty'
           });
 
           const foundCust = customers.find(c => c.id === custId);
@@ -416,15 +420,18 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               setAmisAmount(deepCopyJob.amisLcAmount !== undefined ? deepCopyJob.amisLcAmount : (deepCopyJob.localChargeTotal || 0));
               setAmisDate(deepCopyJob.localChargeDate || new Date().toISOString().split('T')[0]);
               setAmisDesc(deepCopyJob.amisLcDesc || generateMergedDescription(mergedInv, false));
+              setAmisAccount(deepCopyJob.amisLcAccount || 'Công ty');
               setFormData(prev => ({ ...prev, localChargeInvoice: mergedInv }));
           } else if (mode === 'deposit') {
               setAmisDocNo(orgDoc || generateNextDocNo(jobsForCalc, 'NTTK', 5, extra));
               setAmisAmount(deepCopyJob.amisDepositAmount !== undefined ? deepCopyJob.amisDepositAmount : (deepCopyJob.thuCuoc || 0));
               setAmisDate(deepCopyJob.ngayThuCuoc || new Date().toISOString().split('T')[0]);
               setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
+              setAmisAccount(deepCopyJob.amisDepositAccount || 'Công ty');
           } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
               setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, mode === 'deposit_refund_thu' ? 'NTTK' : 'UNC')); 
               setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
+              setAmisAccount(deepCopyJob.amisDepositRefundAccount || 'Công ty');
               
               if (mergedJobs.length > 0) {
                   const allJobs = [deepCopyJob, ...mergedJobs];
@@ -614,7 +621,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
           id: `rcpt-${Date.now()}`,
           type: mode === 'other' ? otherSubMode : (mode === 'deposit' ? 'deposit' : (mode === 'extension' ? 'extension' : 'local')),
           date: newReceipt.date || '', docNo: newReceipt.docNo || '', desc: newReceipt.desc || '', amount: newReceipt.amount || 0,
-          extensionId: mode === 'extension' ? newReceipt.extensionId : undefined
+          extensionId: mode === 'extension' ? newReceipt.extensionId : undefined,
+          account: newReceipt.account
       };
       setAdditionalReceipts(prev => [...prev, receipt]);
       setIsAddingReceipt(false);
@@ -622,6 +630,69 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // -- VALIDATION > 5 MILLION (CA NHAN) --
+    // Compute total maps per Day for Cá nhân for the active Customer
+    const custId = mode === 'deposit' ? formData.maKhCuocId : (mode === 'extension' ? newExtension.customerId : formData.customerId);
+    
+    let isExceeding = false;
+    
+    if (custId && allJobs && (mode === 'local' || mode === 'extension')) {
+      const dailyTotals: Record<string, number> = {};
+      
+      const formJobIds = new Set([formData.id, ...addedJobs.map(j => j.id)]);
+
+      allJobs.forEach(j => {
+          if (formJobIds.has(j.id)) return;
+          
+          if (j.customerId === custId) {
+             if (j.amisLcAccount === 'Cá nhân' && j.localChargeDate) {
+                 dailyTotals[j.localChargeDate] = (dailyTotals[j.localChargeDate] || 0) + Number(j.amisLcAmount || 0);
+             }
+             (j.extensions || []).forEach(ext => {
+                 if (ext.amisAccount === 'Cá nhân' && ext.amisDate) {
+                     dailyTotals[ext.amisDate] = (dailyTotals[ext.amisDate] || 0) + Number(ext.amisAmount || 0);
+                 }
+             });
+             (j.additionalReceipts || []).forEach(r => {
+                 if (r.account === 'Cá nhân' && r.date && (r.type === 'local' || r.type === 'extension')) {
+                     dailyTotals[r.date] = (dailyTotals[r.date] || 0) + Number(r.amount || 0);
+                 }
+             });
+          }
+      });
+      
+      if (mode === 'extension') {
+          if (newExtension.amisAccount === 'Cá nhân' && newExtension.amisDate) {
+              dailyTotals[newExtension.amisDate] = (dailyTotals[newExtension.amisDate] || 0) + Number(newExtension.amisAmount || 0);
+          }
+      } else if (mode === 'local') {
+          if (amisAccount === 'Cá nhân' && amisDate) {
+              dailyTotals[amisDate] = (dailyTotals[amisDate] || 0) + Number(amisAmount || 0);
+          }
+      }
+      
+      additionalReceipts.forEach(r => {
+          if (r.account === 'Cá nhân' && r.date && (r.type === 'local' || r.type === 'extension')) {
+              dailyTotals[r.date] = (dailyTotals[r.date] || 0) + Number(r.amount || 0);
+          }
+      });
+
+      for (const date in dailyTotals) {
+          if (dailyTotals[date] > 5000000) {
+              isExceeding = true;
+              break;
+          }
+      }
+    }
+
+    if (isExceeding) {
+        if (!window.confirm("Lưu ý: Xuất hoá đơn tách ngày cho các hoá đơn thanh toán từ tài khoản cá nhân (tổng thu trong ngày > 5 triệu).\n\nBạn có muốn tiếp tục lưu?")) {
+            return;
+        }
+    }
+    // -- END VALIDATION --
+
     const removedJobs = initialAddedJobs.filter(initial => !addedJobs.some(current => current.id === initial.id));
     const mergedList = [formData, ...addedJobs]; 
 
@@ -640,6 +711,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         amisDocNo: currentDocNo,
                         amisDesc: newExtension.amisDesc,
                         amisAmount: isMain && ext.id === (job.extensions?.find(e => selectedMergedExtIds.has(e.id))?.id) ? newExtension.amisAmount : undefined,
+                        amisAccount: newExtension.amisAccount,
                         customerId: isMain ? newExtension.customerId : ext.customerId,
                         
                         // UPDATE INVOICE HERE
@@ -673,11 +745,13 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 updates.amisDepositDocNo = amisDocNo;
                 updates.amisDepositDesc = amisDesc;
                 updates.amisDepositAmount = isMainJob ? amisAmount : undefined;
+                updates.amisDepositAccount = amisAccount;
                 updates.ngayThuCuoc = amisDate;
             } else {
                 updates.amisLcDocNo = amisDocNo;
                 updates.amisLcDesc = amisDesc;
                 updates.amisLcAmount = isMainJob ? amisAmount : undefined;
+                updates.amisLcAccount = amisAccount;
                 updates.localChargeDate = amisDate;
                 
                 if (isMainJob) {
@@ -709,6 +783,7 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 amisDepositRefundDesc: amisDesc, 
                 amisDepositRefundDate: amisDate, 
                 amisDepositRefundAmount: isMainJob ? amisAmount : undefined,
+                amisDepositRefundAccount: amisAccount,
                 ngayThuHoan: amisDate 
             });
         });
@@ -920,7 +995,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                         <div><Label>Ngày Chứng Từ</Label><DateInput value={mode === 'extension' ? newExtension.amisDate : amisDate} onChange={handleMainDateChange} /></div>
                         <div><Label>Số Chứng Từ (AMIS)</Label><input type="text" value={mode === 'extension' ? newExtension.amisDocNo : amisDocNo} onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDocNo: e.target.value})); else setAmisDocNo(e.target.value); }} className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 ${isRedTheme ? 'text-red-800 focus:ring-red-500' : 'text-blue-800 focus:ring-blue-500'}`} /></div>
                     </div>
-                    <div><Label>Tổng tiền thu</Label><div className="relative"><input type="text" required value={currentMainAmount ? new Intl.NumberFormat('en-US').format(currentMainAmount) : ''} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleAmountChange(val); }} className={`w-full pl-4 pr-14 py-2.5 bg-white border border-slate-300 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 text-right ${isRedTheme ? 'text-red-700 focus:ring-red-500' : 'text-blue-700 focus:ring-blue-500'}`} placeholder="0" /><span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">VND</span></div></div>
+                    <div className={`grid gap-5 ${mode === 'local' || mode === 'extension' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        <div><Label>Tổng tiền thu</Label><div className="relative"><input type="text" required value={currentMainAmount ? new Intl.NumberFormat('en-US').format(currentMainAmount) : ''} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleAmountChange(val); }} className={`w-full pl-4 pr-14 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 text-right ${isRedTheme ? 'text-red-700 focus:ring-red-500' : 'text-blue-700 focus:ring-blue-500'}`} placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">VND</span></div></div>
+                        {(mode === 'local' || mode === 'extension') && (
+                            <div><Label>Tài Khoản</Label><select value={mode === 'extension' ? newExtension.amisAccount : amisAccount} onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisAccount: e.target.value})); else setAmisAccount(e.target.value); }} className={`w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 ${isRedTheme ? 'text-red-800 focus:ring-red-500' : 'text-blue-800 focus:ring-blue-500'}`}><option value="Công ty">Công ty</option><option value="Cá nhân">Cá nhân</option></select></div>
+                        )}
+                    </div>
                     <div><Label>Diễn giải</Label><textarea value={mode === 'extension' ? newExtension.amisDesc : amisDesc} onChange={(e) => { if(mode === 'extension') setNewExtension(prev => ({...prev, amisDesc: e.target.value})); else setAmisDesc(e.target.value); }} rows={2} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
                 </div>
             </div>
@@ -930,12 +1010,12 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 <div className="flex justify-between items-center mb-4"><h3 className="text-sm font-bold text-emerald-800 flex items-center uppercase"><History className="w-4 h-4 mr-2" /> Các lần thu thêm (Additional)</h3>{!isAddingReceipt && <button type="button" onClick={handleAddNewReceipt} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 font-bold flex items-center shadow-sm"><Plus className="w-3 h-3 mr-1" /> Thêm phiếu</button>}</div>
                 <div className="space-y-3">
                     {relevantAdditionalReceipts.map((rcpt, idx) => (
-                        <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm relative"><div className="absolute top-3 right-3 flex items-center gap-2"><span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded">Phiếu #{idx + 2}</span><button type="button" onClick={() => setAdditionalReceipts(prev => prev.filter(r => r.id !== rcpt.id))} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button></div><div className="grid grid-cols-2 gap-4 mb-2"><div><span className="block text-[10px] text-slate-400 font-bold uppercase">Ngày CT</span><span className="text-sm font-medium text-slate-700">{formatDateVN(rcpt.date)}</span></div><div><span className="block text-[10px] text-slate-400 font-bold uppercase">Số CT</span><span className="text-sm font-bold text-slate-800">{rcpt.docNo}</span></div></div><div className="mb-2"><span className="block text-[10px] text-slate-400 font-bold uppercase">Số tiền</span><span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('en-US').format(rcpt.amount)} VND</span></div><div><span className="block text-[10px] text-slate-400 font-bold uppercase">Diễn giải</span><p className="text-xs text-slate-600 truncate">{rcpt.desc}</p></div></div>
+                        <div key={rcpt.id} className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm relative"><div className="absolute top-3 right-3 flex items-center gap-2"><span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded">Phiếu #{idx + 2}</span><button type="button" onClick={() => setAdditionalReceipts(prev => prev.filter(r => r.id !== rcpt.id))} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button></div><div className={`grid gap-4 mb-2 ${mode === 'local' || mode === 'extension' ? 'grid-cols-3' : 'grid-cols-2'}`}><div><span className="block text-[10px] text-slate-400 font-bold uppercase">Ngày CT</span><span className="text-sm font-medium text-slate-700">{formatDateVN(rcpt.date)}</span></div><div><span className="block text-[10px] text-slate-400 font-bold uppercase">Số CT</span><span className="text-sm font-bold text-slate-800">{rcpt.docNo}</span></div>{(mode === 'local' || mode === 'extension') && <div><span className="block text-[10px] text-slate-400 font-bold uppercase">Tài khoản</span><span className="text-sm font-medium text-slate-700">{rcpt.account || 'Công ty'}</span></div>}</div><div className="mb-2"><span className="block text-[10px] text-slate-400 font-bold uppercase">Số tiền</span><span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('en-US').format(rcpt.amount)} VND</span></div><div><span className="block text-[10px] text-slate-400 font-bold uppercase">Diễn giải</span><p className="text-xs text-slate-600 truncate">{rcpt.desc}</p></div></div>
                     ))}
                     {relevantAdditionalReceipts.length === 0 && !isAddingReceipt && <div className="text-center py-4 text-slate-400 text-xs italic border-2 border-dashed border-emerald-100 rounded-xl">Chưa có phiếu thu thêm nào</div>}
                 </div>
                 {isAddingReceipt && (
-                    <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg"><div className="grid grid-cols-2 gap-3 mb-3"><div><Label>Ngày</Label><DateInput value={newReceipt.date || ''} onChange={(val) => setNewReceipt(prev => ({...prev, date: val}))} /></div><div><Label>Số chứng từ</Label><input type="text" value={newReceipt.docNo} onChange={e => setNewReceipt(prev => ({...prev, docNo: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div></div><div className="mb-3"><Label>Số tiền</Label><input type="text" value={newReceipt.amount ? new Intl.NumberFormat('en-US').format(newReceipt.amount) : ''} onChange={e => { const val = Number(e.target.value.replace(/,/g, '')); if(!isNaN(val)) setNewReceipt(prev => ({...prev, amount: val})); }} className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-right text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none" /></div><div className="mb-3"><Label>Diễn giải</Label><input type="text" value={newReceipt.desc} onChange={e => setNewReceipt(prev => ({...prev, desc: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" /></div><div className="flex justify-end gap-2"><button type="button" onClick={() => setIsAddingReceipt(false)} className="text-xs px-3 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Hủy</button><button type="button" onClick={handleSaveNewReceipt} className="text-xs px-3 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Lưu phiếu</button></div></div>
+                    <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 mt-4 animate-in zoom-in-95 shadow-lg"><div className="grid grid-cols-2 gap-3 mb-3"><div><Label>Ngày</Label><DateInput value={newReceipt.date || ''} onChange={(val) => setNewReceipt(prev => ({...prev, date: val}))} /></div><div><Label>Số chứng từ</Label><input type="text" value={newReceipt.docNo} onChange={e => setNewReceipt(prev => ({...prev, docNo: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" /></div></div><div className={`grid gap-3 mb-3 ${mode === 'local' || mode === 'extension' ? 'grid-cols-2' : 'grid-cols-1'}`}><div><Label>Số tiền</Label><input type="text" value={newReceipt.amount ? new Intl.NumberFormat('en-US').format(newReceipt.amount) : ''} onChange={e => { const val = Number(e.target.value.replace(/,/g, '')); if(!isNaN(val)) setNewReceipt(prev => ({...prev, amount: val})); }} className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-right text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>{(mode === 'local' || mode === 'extension') && <div><Label>Tài Khoản</Label><select value={newReceipt.account || 'Công ty'} onChange={e => setNewReceipt(prev => ({...prev, account: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"><option value="Công ty">Công ty</option><option value="Cá nhân">Cá nhân</option></select></div>}</div><div className="mb-3"><Label>Diễn giải</Label><input type="text" value={newReceipt.desc} onChange={e => setNewReceipt(prev => ({...prev, desc: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" /></div><div className="flex justify-end gap-2"><button type="button" onClick={() => setIsAddingReceipt(false)} className="text-xs px-3 py-2 bg-slate-100 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Hủy</button><button type="button" onClick={handleSaveNewReceipt} className="text-xs px-3 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Lưu phiếu</button></div></div>
                 )}
                 <div className="mt-4 pt-3 border-t border-emerald-200/60"><div className="flex justify-between items-center text-sm mb-1"><span className="text-emerald-900 font-medium">Tổng thực thu (Lần 1 + Thêm):</span><span className="text-emerald-700 font-bold">{new Intl.NumberFormat('en-US').format(totalCollected)} VND</span></div>{mode !== 'other' && (<div className="flex justify-between items-center text-sm"><span className="text-slate-500 font-medium">Còn lại phải thu:</span><span className={`font-bold ${remaining > 0 ? 'text-red-500' : 'text-slate-400'}`}>{new Intl.NumberFormat('en-US').format(remaining)} VND</span></div>)}</div>
             </div>

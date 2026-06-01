@@ -18,6 +18,7 @@ export interface ExtensionData {
   amisDocNo?: string;
   amisDesc?: string;
   amisAmount?: number; // Actual collected amount for the main slip
+  amisAccount?: string; // New: Công ty / Cá nhân
 }
 
 // ============================================================
@@ -134,6 +135,7 @@ export interface AdditionalReceipt {
   extensionId?: string; // If type is extension
   tkNo?: string;
   tkCo?: string;
+  account?: string;
 }
 
 // ============================================================
@@ -179,6 +181,7 @@ export interface JobData {
   amisPaymentDocNo?: string;
   amisPaymentDesc?: string;
   amisPaymentDate?: string;
+  amisPaymentAccount?: string;
 
   // AMIS Fields for Deposit Out (Chi Cược Hãng tàu - Booking)
   amisDepositOutDocNo?: string;
@@ -203,6 +206,7 @@ export interface JobData {
   amisLcDocNo?: string;
   amisLcDesc?: string;
   amisLcAmount?: number; // Actual collected amount for the main slip (Partial Payment 1)
+  amisLcAccount?: string;
 
   // Payment In (Deposit - Thu)
   maKhCuocId: string;
@@ -216,12 +220,14 @@ export interface JobData {
   amisDepositDocNo?: string;
   amisDepositDesc?: string;
   amisDepositAmount?: number; // Actual collected amount for the main slip
+  amisDepositAccount?: string;
 
   // NEW: AMIS Fields for Deposit Refund (Hoàn Cược - Chi cho khách)
   amisDepositRefundDocNo?: string;
   amisDepositRefundDesc?: string;
   amisDepositRefundDate?: string;
   amisDepositRefundAmount?: number;
+  amisDepositRefundAccount?: string;
 
   // NEW: CVHC File Info
   cvhcUrl?: string;

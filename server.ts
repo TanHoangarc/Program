@@ -131,7 +131,7 @@ async function startServer() {
             if (chunkRefs.length > 0) {
                 const chunkDocs = await Promise.all(chunkRefs.map(ref => transaction.get(ref)));
                 for (const chunkDoc of chunkDocs) {
-                    jsonStr += chunkDoc.data()?.data || "";
+                    jsonStr += (chunkDoc as any).data()?.data || "";
                 }
             }
             
