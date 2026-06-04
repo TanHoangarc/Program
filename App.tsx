@@ -1719,7 +1719,7 @@ const App: React.FC = () => {
             )}
 
             {currentPage === 'debit-note' && (
-                <AutoDebitNote jobs={jobs} />
+                <AutoDebitNote jobs={jobs} onEditJob={handleEditJob} />
             )}
 
             {currentPage === 'salary' && (

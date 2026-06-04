@@ -2,7 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Copy, Edit2, Check, X, Trash2 } from 'lucide-react';
 import { JobData } from '../types';
 
-export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
+interface AutoDebitNoteProps {
+  jobs: JobData[];
+  onEditJob?: (job: JobData) => void;
+}
+
+export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
   const [job, setJob] = useState("");
   const [cont20, setCont20] = useState<number | "">("");
   const [cont40, setCont40] = useState<number | "">("");
@@ -142,6 +147,33 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
         const baseRows =  result;
         return baseRows.filter(r => !deletedRowIds.has(r.id));
   }, [jobCode, cont20, cont40, vat, transit, job, priceOverrides, deletedRowIds]);
+
+  const matchedJob = useMemo(() => {
+        if (!job || !jobs) return null;
+        return jobs.find(j => j.jobCode === job || j.jobCode === jobCode);
+  }, [job, jobCode, jobs]);
+
+  const showUpdateButton = useMemo(() => {
+        if (!matchedJob) return false;
+        return !matchedJob.localChargeTotal || matchedJob.localChargeTotal === 0;
+  }, [matchedJob]);
+
+  const handleUpdateJobAmount = () => {
+        if (!matchedJob || !onEditJob) return;
+        const grandTotal = rows.reduce((sum, r) => sum + r.total, 0);
+        const rate = Number(vat);
+        const net = grandTotal / (1 + rate / 100);
+        const vatAmount = grandTotal - net;
+        
+        const updated: JobData = {
+            ...matchedJob,
+            localChargeTotal: grandTotal,
+            localChargeNet: Math.round(net),
+            localChargeVat: Math.round(vatAmount)
+        };
+        onEditJob(updated);
+        alert(`Đã cập nhật tổng tiền thu ${grandTotal.toLocaleString('vi-VN')} VND vào phần Amount của Job ${matchedJob.jobCode} thành công!`);
+  };
 
   const handleCopyColumn = (field: string) => {
       if (rows.length === 0) return;
@@ -405,7 +437,22 @@ export const AutoDebitNote = ({ jobs }: { jobs: JobData[] }) => {
                     </table>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-gray-200">
+                    <div>
+                        {showUpdateButton ? (
+                            <button
+                                onClick={handleUpdateJobAmount}
+                                className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+                            >
+                                <Check className="w-4 h-4" />
+                                Cập nhật Tổng cộng vào Amount của Job
+                            </button>
+                        ) : matchedJob ? (
+                            <span className="text-xs text-slate-500 font-medium italic">
+                                Sẵn có: Job {matchedJob.jobCode} đã có giá trị Amount ({matchedJob.localChargeTotal?.toLocaleString('vi-VN')} VND)
+                            </span>
+                        ) : null}
+                    </div>
                     <div className="text-red-600 font-bold text-lg bg-red-50 px-4 py-2 rounded-lg border border-red-100 inline-block">
                         Tổng cộng: {rows.reduce((sum, r) => sum + r.total, 0).toLocaleString('vi-VN')}
                     </div>
