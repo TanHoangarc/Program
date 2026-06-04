@@ -9,6 +9,10 @@ import { useNotification } from '../contexts/NotificationContext';
 import { calculateBookingSummary, getPaginationRange, formatDateVN, calculatePaymentStatus } from '../utils';
 import { MONTHS, YEARS } from '../constants';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import axios from 'axios';
+
+const BACKEND_URL = "https://api.kimberry.id.vn";
 
 interface JobEntryProps {
   jobs: JobData[];
@@ -304,6 +308,91 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     XLSX.writeFile(wb, `Logistics_Job_Data.xlsx`);
   };
 
+  const handleExportCongTrinh = async () => {
+    if (filteredJobs.length === 0) {
+        alert("Không có dữ liệu Job đã lọc để xuất công trình.", "Thông báo");
+        return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    let templateBuffer: ArrayBuffer | null = null;
+    
+    try {
+        const templateFileName = "Cong_Trinh.xlsx";
+        const staticUrl = `${BACKEND_URL}/uploads/Invoice/${templateFileName}?v=${Date.now()}`;
+        const response = await axios.get(staticUrl, { responseType: 'arraybuffer' });
+        templateBuffer = response.data;
+    } catch (err) {
+        console.warn("Could not load Cong_Trinh.xlsx template from server", err);
+    }
+
+    if (templateBuffer) {
+        await workbook.xlsx.load(templateBuffer);
+    } else {
+        workbook.addWorksheet("Cong Trinh");
+    }
+
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) return;
+
+    const START_ROW = 8;
+    const styleRow = templateBuffer ? worksheet.getRow(START_ROW) : null;
+    
+    const currentYear = new Date().getFullYear();
+
+    filteredJobs.forEach((job, index) => {
+        if (!job.jobCode) return;
+        const currentRowIndex = START_ROW + index;
+        const excelRow = worksheet.getRow(currentRowIndex);
+        
+        if (styleRow && currentRowIndex > START_ROW) {
+             for(let i = 1; i <= styleRow.cellCount; i++) {
+                 const sourceCell = styleRow.getCell(i);
+                 const targetCell = excelRow.getCell(i);
+                 targetCell.style = sourceCell.style;
+                 if (sourceCell.border) targetCell.border = sourceCell.border;
+                 if (sourceCell.fill) targetCell.fill = sourceCell.fill;
+                 if (sourceCell.font) targetCell.font = sourceCell.font;
+                 if (sourceCell.alignment) targetCell.alignment = sourceCell.alignment;
+             }
+             excelRow.height = styleRow.height;
+        }
+
+        const yy = (job.year || currentYear).toString().slice(-2);
+        const mm = String(job.month || "").padStart(2, "0");
+
+        const projectCode = `K${yy}${mm}${job.jobCode}`;
+        excelRow.getCell(1).value = projectCode;
+        excelRow.getCell(2).value = job.jobCode;
+        excelRow.commit();
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = "Cong_Trinh.xlsx";
+    
+    try {
+        const formData = new FormData();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        formData.append("file", blob, fileName);
+        formData.append("targetDir", "E:\\ServerData");
+        const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+        if (response.data?.success) {
+            alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
+        } else {
+            throw new Error(response.data?.message || "Server did not confirm save.");
+        }
+    } catch (err) {
+        console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = fileName;
+        anchor.click();
+        window.URL.revokeObjectURL(url);
+    }
+  };
+
   const filteredJobs = useMemo(() => {
     let matches = jobs.filter(job => {
       const jCode = String(job.jobCode || '');
@@ -367,10 +456,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
            <button onClick={handleImportClick} className="px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm">
               <Upload className="w-4 h-4 mr-2" /> Import Excel
            </button>
-           <button onClick={handleExportExcel} className="px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm">
+           <button onClick={handleExportExcel} className="px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm font-semibold text-gray-700 hover:text-green-600">
               <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" /> Xuất Excel
            </button>
-           <button onClick={handleAddNew} className="px-4 py-2 bg-blue-900 text-white rounded-md text-sm font-medium hover:bg-blue-800 flex items-center shadow-sm">
+           <button onClick={handleExportCongTrinh} className="px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm font-semibold text-gray-700 hover:text-blue-600">
+              <FileSpreadsheet className="w-4 h-4 mr-2 text-blue-600" /> Xuất công trình
+           </button>
+           <button onClick={handleAddNew} className="px-4 py-2 bg-blue-900 text-white rounded-md text-sm font-medium hover:bg-blue-800 flex items-center shadow-sm font-semibold">
               <Plus className="w-4 h-4 mr-2" /> Thêm Job
            </button>
          </div>
