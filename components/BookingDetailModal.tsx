@@ -30,11 +30,12 @@ const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
   />
 );
 
-const DateInput = ({ value, name, onChange, className }:{
+const DateInput = ({ value, name, onChange, className, disabled }:{
   value: string;
   name?: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   className?: string;
+  disabled?: boolean;
 }) => {
   const [displayValue, setDisplayValue] = useState('');
 
@@ -65,8 +66,9 @@ const DateInput = ({ value, name, onChange, className }:{
         onChange={(e) => setDisplayValue(e.target.value)}
         onBlur={handleBlur}
         placeholder="dd/mm/yyyy"
+        disabled={disabled}
         className="w-full px-2 bg-white border border-slate-200 rounded text-xs text-slate-800 
-        focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 pr-8 h-full"
+        focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 pr-8 h-full disabled:bg-slate-50 disabled:text-slate-400"
       />
       <div className="absolute right-0 top-0 h-full w-8 flex items-center justify-center pointer-events-none">
         <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -75,7 +77,8 @@ const DateInput = ({ value, name, onChange, className }:{
           type="date"
           value={value || ''}
           onChange={(e) => triggerChange(e.target.value)}
-          className="absolute inset-0 opacity-0 cursor-pointer z-10"
+          disabled={disabled}
+          className="absolute inset-0 opacity-0 cursor-pointer z-10 disabled:cursor-default"
         />
     </div>
   );
@@ -86,9 +89,10 @@ const MoneyInput: React.FC<{
   name?: string;
   onChange: (name: string, val: number) => void;
   readOnly?: boolean;
+  disabled?: boolean;
   className?: string;
   placeholder?: string;
-}> = ({ value, name, onChange, readOnly, className, placeholder }) => {
+}> = ({ value, name, onChange, readOnly, disabled, className, placeholder }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/[,.]/g, '');
     const num = Number(raw);
@@ -103,8 +107,9 @@ const MoneyInput: React.FC<{
       value={value === 0 && !readOnly ? '' : new Intl.NumberFormat('en-US').format(value || 0)}
       onChange={handleChange}
       readOnly={readOnly}
+      disabled={disabled}
       placeholder={placeholder || "0"}
-      className={`w-full px-2 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-right font-semibold h-8 ${readOnly ? 'bg-slate-50 text-slate-500' : 'bg-white text-blue-700'} ${className || ''}`}
+      className={`w-full px-2 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-right font-semibold h-8 ${readOnly || disabled ? 'bg-slate-50 text-slate-500' : 'bg-white text-blue-700'} ${className || ''}`}
     />
   );
 };
