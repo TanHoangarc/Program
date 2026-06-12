@@ -84,6 +84,7 @@ export interface BookingExtensionCost {
   total: number;
   hasInvoice?: boolean;
   jobCode?: string; // ADDED
+  locked?: boolean; // ADDED
   
   // Payment Info (Chi)
   amisDocNo?: string; 

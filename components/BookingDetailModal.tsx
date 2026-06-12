@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2, Layers } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2, Layers, Lock, Unlock } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
@@ -1125,10 +1125,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                         {extensionCosts.map(ext => (
                             <div key={ext.id} className="bg-orange-50/30 p-2 rounded border border-orange-100 group relative mb-2">
                                 <div className="grid grid-cols-12 gap-2 items-center">
-                                    <div className="col-span-2"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white w-full" /></div>
-                                    <div className="col-span-2"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7 w-full" /></div>
+                                    <div className="col-span-2"><Input value={ext.invoice} onChange={(e) => handleUpdateExtensionCost(ext.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs bg-white w-full" disabled={ext.locked} /></div>
+                                    <div className="col-span-2"><DateInput value={ext.date} onChange={(e) => handleUpdateExtensionCost(ext.id, "date", e.target.value)} className="h-7 w-full" disabled={ext.locked} /></div>
                                     <div className="col-span-2 relative group/net">
-                                        <MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} placeholder="Net" className="h-7 bg-white text-xs w-full pr-6" />
+                                        <MoneyInput value={ext.net} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "net", v)} placeholder="Net" className="h-7 bg-white text-xs w-full pr-6" disabled={ext.locked} />
                                         <div className="absolute right-1 top-1">
                                             <button onClick={() => { navigator.clipboard.writeText(String(ext.net)); setCopiedId('net-'+ext.id); setTimeout(() => setCopiedId(null), 1000); }} className="p-0.5 hover:bg-slate-100 rounded text-slate-400 opacity-0 group-hover/net:opacity-100 transition-opacity bg-white" title="Copy Net">
                                                 {copiedId === 'net-'+ext.id ? <Check className="w-3 h-3 text-green-500"/> : <Copy className="w-3 h-3"/>}
@@ -1136,7 +1136,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                         </div>
                                     </div>
                                     <div className="col-span-2 relative group/vat">
-                                        <MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} placeholder="VAT" className="h-7 bg-white text-xs w-full pr-6" />
+                                        <MoneyInput value={ext.vat} onChange={(n, v) => handleUpdateExtensionCost(ext.id, "vat", v)} placeholder="VAT" className="h-7 bg-white text-xs w-full pr-6" disabled={ext.locked} />
                                         <div className="absolute right-1 top-1">
                                             <button onClick={() => { navigator.clipboard.writeText(String(ext.vat)); setCopiedId('vat-'+ext.id); setTimeout(() => setCopiedId(null), 1000); }} className="p-0.5 hover:bg-slate-100 rounded text-slate-400 opacity-0 group-hover/vat:opacity-100 transition-opacity bg-white" title="Copy VAT">
                                                 {copiedId === 'vat-'+ext.id ? <Check className="w-3 h-3 text-green-500"/> : <Copy className="w-3 h-3"/>}
@@ -1149,12 +1149,31 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                                             value={ext.jobCode || ''} 
                                             onChange={(e) => handleUpdateExtensionCost(ext.id, "jobCode", e.target.value)} 
                                             className="h-7 w-full text-[11px] border border-orange-200 rounded px-1 focus:ring-1 focus:ring-orange-500 bg-white outline-none"
+                                            disabled={ext.locked}
                                         >
                                             <option value="">Chọn Job</option>
                                             {validExtJobs.map(j => <option key={j.jobCode} value={j.jobCode}>{j.jobCode}</option>)}
                                         </select>
                                     </div>
-                                    <button onClick={() => handleRemoveExtensionCost(ext.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100 z-10"><Trash2 className="w-3 h-3"/></button>
+                                    
+                                    <div className="absolute -right-2 -top-2 flex gap-1 opacity-0 group-hover:opacity-100 z-10 transition-opacity">
+                                        <button 
+                                            onClick={() => handleUpdateExtensionCost(ext.id, "locked", !ext.locked)} 
+                                            className={`bg-white border rounded-full p-1 shadow transition-colors ${ext.locked ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-amber-500'}`}
+                                            title={ext.locked ? "Mở khóa" : "Khóa"}
+                                        >
+                                            {ext.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                                        </button>
+                                        {!ext.locked && (
+                                            <button 
+                                                onClick={() => handleRemoveExtensionCost(ext.id)} 
+                                                className="bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow transition-colors"
+                                                title="Xóa"
+                                            >
+                                                <Trash2 className="w-3 h-3"/>
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 
                                 {/* ATTACHMENT ROW FOR EXTENSION */}
