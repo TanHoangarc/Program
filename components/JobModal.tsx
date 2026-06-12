@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor, FileCheck, Upload, Loader2 } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor, FileCheck, Upload, Loader2, Lock, Unlock } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
@@ -1230,15 +1230,38 @@ export const JobModal: React.FC<JobModalProps> = ({
                                     value={ext.customerId} 
                                     onChange={(val) => handleExtensionChange(ext.id, 'customerId', val)} 
                                     customers={customers} 
-                                    readOnly={isViewMode} 
+                                    readOnly={isViewMode || ext.locked} 
                                     placeholder="Mã KH" 
                                     className="h-8 text-xs" 
-                                    onAddClick={() => handleOpenQuickAdd('EXTENSION', ext.id)}
+                                    onAddClick={() => !ext.locked && handleOpenQuickAdd('EXTENSION', ext.id)}
                                 />
                             </div>
-                            <div className="col-span-3"><Label>Invoice</Label><Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode} className="h-8 text-xs" /></div>
-                            <div className="col-span-3"><Label>Amount</Label><input type="text" value={new Intl.NumberFormat('en-US').format(ext.total)} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val); }} readOnly={isViewMode} className="w-full px-2 py-1 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-orange-500 text-right font-bold text-orange-700 h-8" placeholder="0" /></div>
-                            <div className="col-span-1 flex justify-center mt-5">{!isViewMode && <button type="button" onClick={() => removeExtension(ext.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</div>
+                            <div className="col-span-3"><Label>Invoice</Label><Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode || ext.locked} className="h-8 text-xs" /></div>
+                            <div className="col-span-3"><Label>Amount</Label><input type="text" value={ext.total === 0 && (!isViewMode && !ext.locked) ? '' : new Intl.NumberFormat('en-US').format(ext.total)} onChange={(e) => { const val = Number(e.target.value.replace(/,/g, '')); if (!isNaN(val)) handleExtensionChange(ext.id, 'total', val); }} readOnly={isViewMode || ext.locked} className={`w-full px-2 py-1 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-orange-500 text-right font-bold text-orange-700 h-8 ${ext.locked ? 'bg-slate-100 opacity-70' : ''}`} placeholder="0" /></div>
+                            <div className="col-span-1 flex flex-col justify-center gap-1 mt-5">
+                                {!isViewMode && (
+                                    <>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => handleExtensionChange(ext.id, 'locked', !ext.locked)} 
+                                            className={`text-slate-400 hover:text-amber-500 flex justify-center ${ext.locked ? 'text-amber-500' : ''}`}
+                                            title={ext.locked ? "Mở khóa" : "Khóa"}
+                                        >
+                                            {ext.locked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                                        </button>
+                                        {!ext.locked && (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => removeExtension(ext.id)} 
+                                                className="text-slate-400 hover:text-red-500 flex justify-center"
+                                                title="Xóa"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         </div>
                     ))}
                     {(!formData.extensions || formData.extensions.length === 0) && <div className="text-xs text-slate-400 italic text-center py-2">Chưa có phát sinh</div>}

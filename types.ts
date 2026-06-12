@@ -13,6 +13,7 @@ export interface ExtensionData {
   net: number;
   vat: number;
   total: number; // Auto-calc
+  locked?: boolean;
 
   // AMIS Fields
   amisDocNo?: string;

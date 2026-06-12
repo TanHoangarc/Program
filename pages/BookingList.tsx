@@ -450,7 +450,9 @@ export const BookingList: React.FC<BookingListProps> = ({
                 const hasBookingExt = booking.costDetails.extensionCosts && booking.costDetails.extensionCosts.length > 0;
                 const hasJobExt = booking.jobs.some(j => j.extensions && j.extensions.length > 0);
                 const hasExtension = hasBookingExt || hasJobExt;
-                const allExtLocked = hasBookingExt && booking.costDetails.extensionCosts!.every(e => e.locked) && !hasJobExt;
+                const allExtLocked = hasExtension && 
+                    (!hasBookingExt || booking.costDetails.extensionCosts!.every(e => e.locked)) && 
+                    (!hasJobExt || booking.jobs.every(j => !j.extensions || j.extensions.every(e => e.locked)));
 
                 return (
                   <tr 
