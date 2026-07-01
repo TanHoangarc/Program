@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { JobEntry } from './pages/JobEntry';
 import { Reports } from './pages/Reports';
 import { BookingList } from './pages/BookingList';
+import { DemurrageList } from './pages/DemurrageList';
 import { AmisExport } from './pages/AmisExport';
 import * as XLSX from 'xlsx';
 import { DataManagement } from './pages/DataManagement';
@@ -1607,6 +1608,13 @@ const App: React.FC = () => {
                     onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
                     onAddCustomer={(c) => setCustomers([...customers, c])}
                     customReceipts={customReceipts}
+                />
+            )}
+            
+            {currentPage === 'demurrage' && (
+                <DemurrageList 
+                    jobs={jobs} 
+                    onEditJob={handleEditJob}
                 />
             )}
             

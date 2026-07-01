@@ -181,7 +181,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
   }, [booking, job, type, allJobs]);
 
   // Generate default description
-  const generateDescription = (prefix: string, bookingLabel: string = "BL") => {
+  const generateDescription = (prefix: string, bookingLabel: string = "BL", activeExtensions?: any[]) => {
       let jobCodes = '';
       let bkNumber = '';
 
@@ -190,13 +190,28 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
           // Filter: For Extension payment, only list jobs that have Extension Revenue
           if (type === 'extension') {
-              targetJobs = targetJobs.filter(j => {
-                  const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
-                  return extTotal > 0;
-              });
+              if (activeExtensions && activeExtensions.length > 0) {
+                  const assignedJobCodes = activeExtensions.map(e => e.jobCode).filter(Boolean);
+                  if (assignedJobCodes.length > 0) {
+                      jobCodes = Array.from(new Set(assignedJobCodes)).join('+');
+                  } else {
+                      targetJobs = targetJobs.filter(j => {
+                          const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
+                          return extTotal > 0;
+                      });
+                      jobCodes = targetJobs.map(j => j.jobCode).filter(Boolean).join('+');
+                  }
+              } else {
+                  targetJobs = targetJobs.filter(j => {
+                      const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
+                      return extTotal > 0;
+                  });
+                  jobCodes = targetJobs.map(j => j.jobCode).filter(Boolean).join('+');
+              }
+          } else {
+              jobCodes = targetJobs.map(j => j.jobCode).filter(Boolean).join('+');
           }
 
-          jobCodes = targetJobs.map(j => j.jobCode).filter(Boolean).join('+');
           bkNumber = booking.bookingId;
       } else if (job) {
           bkNumber = job.booking;
@@ -205,13 +220,27 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               
               // Filter siblings for Extension as well
               if (type === 'extension') {
-                  siblings = siblings.filter(j => {
-                      const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
-                      return extTotal > 0;
-                  });
+                  if (activeExtensions && activeExtensions.length > 0) {
+                      const assignedJobCodes = activeExtensions.map(e => e.jobCode).filter(Boolean);
+                      if (assignedJobCodes.length > 0) {
+                          jobCodes = Array.from(new Set(assignedJobCodes)).join('+');
+                      } else {
+                          siblings = siblings.filter(j => {
+                              const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
+                              return extTotal > 0;
+                          });
+                          jobCodes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean).join('+') : job.jobCode;
+                      }
+                  } else {
+                      siblings = siblings.filter(j => {
+                          const extTotal = (j.extensions || []).reduce((sum, e) => sum + e.total, 0);
+                          return extTotal > 0;
+                      });
+                      jobCodes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean).join('+') : job.jobCode;
+                  }
+              } else {
+                  jobCodes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean).join('+') : job.jobCode;
               }
-
-              jobCodes = siblings.length > 0 ? siblings.map(j => j.jobCode).filter(Boolean).join('+') : job.jobCode;
           } else {
               jobCodes = job.jobCode;
           }
@@ -220,7 +249,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           return `${prefix} ${bkNumber || jobCodes}`;
       }
 
-      return `${prefix} ${jobCodes} ${bookingLabel} ${bkNumber} (kimberry)`;
+      return `${prefix} ${jobCodes ? jobCodes + ' ' : ''}${bookingLabel} ${bkNumber} (kimberry)`.trim();
   };
 
   useEffect(() => {
@@ -370,7 +399,6 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               // CREATE MODE
               initialData.docNo = generateNextDocNo(jobsForCalc, 'UNC', 5, extraDocNos);
               initialData.receiverName = job?.line || booking?.line || '';
-              initialData.paymentContent = generateDescription("Chi tiền gia hạn lô");
               
               // Default select all unpaid extensions
               const unpaid = allExtensions.filter(e => !e.amisDocNo);
@@ -383,6 +411,8 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               if (unpaid.length > 0 && unpaid[0].date) {
                   initialData.date = unpaid[0].date;
               }
+
+              initialData.paymentContent = generateDescription("Chi tiền gia hạn lô", "BL", unpaid);
           }
       }
       else if (type === 'refund') {
@@ -444,8 +474,13 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           return sum;
       }, 0);
       
+      const activeExtensions = allExtensions.filter(e => newSet.has(e.id));
+      
       setFormData(prev => {
           const newData = { ...prev, amount: total };
+          if (!initialDocNo && type === 'extension') {
+              newData.paymentContent = generateDescription("Chi tiền gia hạn lô", "BL", activeExtensions);
+          }
           if (isChecked) {
               const ext = allExtensions.find(e => e.id === extId);
               if (ext && ext.date) {

@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit';
+  currentPage: 'entry' | 'reports' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -289,6 +289,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <>
               <MenuItem active={currentPage === 'entry'} onClick={(e) => handleNavigate(e, 'entry')} icon={FileInput} label="Nhập Job" statusColor="bg-teal-400" />
               <MenuItem active={currentPage === 'booking'} onClick={(e) => handleNavigate(e, 'booking')} icon={Container} label="Booking" statusColor="bg-blue-400" />
+              <MenuItem active={currentPage === 'demurrage'} onClick={(e) => handleNavigate(e, 'demurrage')} icon={Database} label="Demurrage" statusColor="bg-orange-400" />
             </>
           )}
 

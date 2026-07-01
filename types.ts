@@ -118,6 +118,7 @@ export interface BookingCostDetails {
   extensionCosts: BookingExtensionCost[];
   deposits: BookingDeposit[];
   manualDemurragePaid?: number;
+  demurrageNote?: string;
   mscRefundToMB?: number;
   mscNote?: string;
 }

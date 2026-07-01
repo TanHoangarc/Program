@@ -751,7 +751,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                                 supplierCode: j.line, 
                                 supplierName: supplierName, 
                                 itemName: 'Phí lưu bãi', 
-                                lcc: 'DEM', 
+                                lcc: 'Demurrage (DEM)', 
                                 netAmount: eNet, 
                                 vatAmount: eVat, 
                                 amount: ext.total, 
