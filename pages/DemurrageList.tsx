@@ -3,6 +3,7 @@ import { JobData, BookingSummary, BookingCostDetails } from '../types';
 import { calculateBookingSummary, getPaginationRange } from '../utils';
 import { Search, Filter, Save, Check, Database, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTHS, YEARS } from '../constants';
+import { BookingDetailModal } from '../components/BookingDetailModal';
 
 interface DemurrageListProps {
   jobs: JobData[];
@@ -15,6 +16,8 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob })
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
+  
+  const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
   
   // States for tracking unsaved edits
   const [edits, setEdits] = useState<Record<string, { manualDemurragePaid?: number, demurrageNote?: string }>>({});
@@ -101,6 +104,20 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob })
     setTimeout(() => {
       setSavedIds(prev => ({ ...prev, [booking.bookingId]: false }));
     }, 2000);
+  };
+
+  const handleSaveDetails = (updatedDetails: BookingCostDetails, shouldClose: boolean = true) => {
+    if (!selectedBooking) return;
+    selectedBooking.jobs.forEach(job => {
+        const updatedJob = { ...job, bookingCostDetails: updatedDetails };
+        onEditJob(updatedJob);
+    });
+    
+    setSelectedBooking(prev => prev ? { ...prev, costDetails: updatedDetails } : null);
+    
+    if (shouldClose) {
+        setSelectedBooking(null);
+    }
   };
 
   const calculateRowData = (booking: BookingSummary) => {
@@ -246,7 +263,10 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob })
                       <td className="px-4 py-3 text-center text-slate-600">
                         {booking.month}/{booking.year}
                       </td>
-                      <td className="px-4 py-3 font-bold text-slate-800">
+                      <td 
+                        className="px-4 py-3 font-bold text-blue-600 hover:underline cursor-pointer"
+                        onClick={() => setSelectedBooking(booking)}
+                      >
                         {booking.bookingId}
                       </td>
                       <td className="px-4 py-3 bg-orange-50/30">
@@ -361,6 +381,14 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob })
             </button>
           </div>
         </div>
+      )}
+
+      {selectedBooking && (
+        <BookingDetailModal 
+            booking={selectedBooking} 
+            onClose={() => setSelectedBooking(null)} 
+            onSave={handleSaveDetails} 
+        />
       )}
     </div>
   );
