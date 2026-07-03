@@ -8,9 +8,10 @@ import { BookingDetailModal } from '../components/BookingDetailModal';
 interface DemurrageListProps {
   jobs: JobData[];
   onEditJob: (job: JobData) => void;
+  onSendPending?: () => void;
 }
 
-export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob }) => {
+export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob, onSendPending }) => {
   const [filterMonth, setFilterMonth] = useState<string>('');
   const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
   const [searchTerm, setSearchTerm] = useState('');
@@ -99,6 +100,10 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob })
     booking.jobs.forEach(job => {
       onEditJob({ ...job, bookingCostDetails: updatedDetails });
     });
+    
+    if (onSendPending) {
+        onSendPending();
+    }
 
     setSavedIds(prev => ({ ...prev, [booking.bookingId]: true }));
     setTimeout(() => {
@@ -114,6 +119,10 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob })
     });
     
     setSelectedBooking(prev => prev ? { ...prev, costDetails: updatedDetails } : null);
+    
+    if (onSendPending) {
+        onSendPending();
+    }
     
     if (shouldClose) {
         setSelectedBooking(null);

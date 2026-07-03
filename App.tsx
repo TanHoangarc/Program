@@ -1582,6 +1582,7 @@ const App: React.FC = () => {
                 initialJobId={targetJobId}
                 onClearTargetJob={() => setTargetJobId(null)}
                 customReceipts={customReceipts}
+                onSendPending={sendPendingToServer}
               />
             )}
 
@@ -1608,6 +1609,7 @@ const App: React.FC = () => {
                     onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
                     onAddCustomer={(c) => setCustomers([...customers, c])}
                     customReceipts={customReceipts}
+                    onSendPending={sendPendingToServer}
                 />
             )}
             
@@ -1615,6 +1617,7 @@ const App: React.FC = () => {
                 <DemurrageList 
                     jobs={jobs} 
                     onEditJob={handleEditJob}
+                    onSendPending={sendPendingToServer}
                 />
             )}
             

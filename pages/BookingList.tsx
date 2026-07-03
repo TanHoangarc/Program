@@ -20,11 +20,13 @@ interface BookingListProps {
   onAddCustomer: (c: Customer) => void;
   onAddLine: (l: string) => void;
   customReceipts: any[];
+  onSendPending?: () => void;
 }
 
 export const BookingList: React.FC<BookingListProps> = ({ 
     jobs, onEditJob, initialBookingId, onClearTargetBooking, 
-    customers, lines, onAddCustomer, onAddLine, customReceipts
+    customers, lines, onAddCustomer, onAddLine, customReceipts,
+    onSendPending
 }) => {
   const { alert, confirm } = useNotification();
   const [selectedBooking, setSelectedBooking] = useState<BookingSummary | null>(null);
@@ -152,6 +154,10 @@ export const BookingList: React.FC<BookingListProps> = ({
     
     // Update local state to reflect changes even if modal stays open
     setSelectedBooking(prev => prev ? { ...prev, costDetails: updatedDetails } : null);
+    
+    if (onSendPending) {
+        onSendPending();
+    }
     
     if (shouldClose) {
        setSelectedBooking(null);
