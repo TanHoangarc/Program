@@ -385,6 +385,15 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         .map((ext) => ext.invoice)
         .filter(Boolean)
         .join(", ");
+        
+      const custName = (job.customerName || "").toUpperCase();
+      const isLongHoang =
+        custName.includes("LONG HOANG") ||
+        custName.includes("LONGHOANG") ||
+        custName.includes("LHK");
+        
+      const finalSell = isLongHoang ? (job.sell || 0) + extTotal : job.sell;
+
       return {
         Năm: job.year,
         Tháng: job.month,
@@ -396,7 +405,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         HBL: job.hbl,
         Transit: job.transit,
         Cost: job.cost,
-        Sell: job.sell,
+        Sell: finalSell,
         Profit: job.profit,
         "Cont 20": job.cont20,
         "Cont 40": job.cont40,
@@ -497,6 +506,17 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       });
 
       const newRows = filteredJobs.map((job) => {
+        const extTotal = (job.extensions || []).reduce(
+          (sum, ext) => sum + ext.total,
+          0,
+        );
+        const custName = (job.customerName || "").toUpperCase();
+        const isLongHoang =
+          custName.includes("LONG HOANG") ||
+          custName.includes("LONGHOANG") ||
+          custName.includes("LHK");
+        const finalSell = isLongHoang ? (job.sell || 0) + extTotal : (job.sell || 0);
+
         return [
           `Tháng ${job.month}`,
           job.jobCode || "",
@@ -505,7 +525,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           job.line || "",
           job.cont20 || 0,
           job.cont40 || 0,
-          job.sell || 0,
+          finalSell,
         ];
       });
 
