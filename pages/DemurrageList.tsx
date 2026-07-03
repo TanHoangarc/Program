@@ -8,10 +8,9 @@ import { BookingDetailModal } from '../components/BookingDetailModal';
 interface DemurrageListProps {
   jobs: JobData[];
   onEditJob: (job: JobData) => void;
-  onSendPending?: () => void;
 }
 
-export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob, onSendPending }) => {
+export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob }) => {
   const [filterMonth, setFilterMonth] = useState<string>('');
   const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
   const [searchTerm, setSearchTerm] = useState('');
@@ -100,10 +99,6 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob, o
     booking.jobs.forEach(job => {
       onEditJob({ ...job, bookingCostDetails: updatedDetails });
     });
-    
-    if (onSendPending) {
-        onSendPending();
-    }
 
     setSavedIds(prev => ({ ...prev, [booking.bookingId]: true }));
     setTimeout(() => {
@@ -120,10 +115,6 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob, o
     
     setSelectedBooking(prev => prev ? { ...prev, costDetails: updatedDetails } : null);
     
-    if (onSendPending) {
-        onSendPending();
-    }
-    
     if (shouldClose) {
         setSelectedBooking(null);
     }
@@ -132,19 +123,22 @@ export const DemurrageList: React.FC<DemurrageListProps> = ({ jobs, onEditJob, o
   const calculateRowData = (booking: BookingSummary) => {
     const editData = edits[booking.bookingId] || {};
     
+    // Hoá đơn gia hạn (Total)
+    const extensionInvoiceTotal = (booking.costDetails?.extensionCosts || []).reduce((sum, e) => sum + (e.total || 0), 0);
+    
+    const isMSC = ['MSC', 'MSCU'].includes(booking.line.toUpperCase());
+    const autoPaid = isMSC ? (extensionInvoiceTotal > 0 ? extensionInvoiceTotal : 0) : 0;
+    
     // Chi gia hạn (nhập thủ công)
     const manualPaid = editData.manualDemurragePaid !== undefined 
       ? editData.manualDemurragePaid 
-      : (booking.costDetails?.manualDemurragePaid || 0);
+      : (booking.costDetails?.manualDemurragePaid !== undefined ? booking.costDetails.manualDemurragePaid : autoPaid);
       
     // Ghi chú (nhập thủ công)
     const note = editData.demurrageNote !== undefined 
       ? editData.demurrageNote 
       : (booking.costDetails?.demurrageNote || '');
 
-    // Hoá đơn gia hạn (Total)
-    const extensionInvoiceTotal = (booking.costDetails?.extensionCosts || []).reduce((sum, e) => sum + (e.total || 0), 0);
-    
     // Khoản dư = Chi gia hạn - Hoá đơn gia hạn
     const diffPaidAndInvoice = manualPaid - extensionInvoiceTotal;
     

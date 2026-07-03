@@ -67,7 +67,6 @@ interface JobEntryProps {
   initialJobId?: string | null;
   onClearTargetJob?: () => void;
   customReceipts?: any[];
-  onSendPending?: () => void;
 }
 
 export const JobEntry: React.FC<JobEntryProps> = ({
@@ -82,7 +81,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   initialJobId,
   onClearTargetJob,
   customReceipts = [],
-  onSendPending,
 }) => {
   const { alert, confirm } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -290,9 +288,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       setEditingJob((prev) =>
         prev ? { ...prev, bookingCostDetails: updatedDetails } : null,
       );
-    }
-    if (onSendPending) {
-        onSendPending();
     }
     setViewingBooking(null);
   };
