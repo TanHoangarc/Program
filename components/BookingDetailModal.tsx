@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposit } from '../types';
-import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2, Layers, Lock, Unlock } from 'lucide-react';
+import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2, Layers, Lock, Unlock, Target } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
 import { GoogleGenAI } from "@google/genai";
@@ -209,6 +209,8 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
     hasInvoice: booking.costDetails.localCharge.hasInvoice ?? true
   });
 
+  const [selectedViewLCId, setSelectedViewLCId] = useState<string | null>(null);
+
   const [additionalLocalCharges, setAdditionalLocalCharges] = useState<BookingExtensionCost[]>(
     booking.costDetails.additionalLocalCharges || []
   );
@@ -257,8 +259,21 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   const systemTotalVatEst = booking.jobs.reduce((s, j) => s + (j.cost * 0.05263), 0);
 
   // 2. Determine Targets from Form State
-  const formNet = localCharge.hasInvoice ? (localCharge.net || 0) : (localCharge.total || 0);
-  const formVat = localCharge.hasInvoice ? (localCharge.vat || 0) : 0;
+  const totalAdditionalLocalChargeNet = additionalLocalCharges.reduce((s, i) => s + (i.net || 0), 0);
+  const totalAdditionalLocalChargeVat = additionalLocalCharges.reduce((s, i) => s + (i.vat || 0), 0);
+  const totalAdditionalLocalChargeTotalAmount = additionalLocalCharges.reduce((s, i) => s + (i.net || 0) + (i.vat || 0), 0);
+
+  const formNet = selectedViewLCId === 'MAIN' 
+      ? (localCharge.hasInvoice ? (localCharge.net || 0) : (localCharge.total || 0))
+      : selectedViewLCId
+          ? (additionalLocalCharges.find(x => x.id === selectedViewLCId)?.net || 0)
+          : (localCharge.hasInvoice ? (localCharge.net || 0) : (localCharge.total || 0)) + totalAdditionalLocalChargeNet;
+          
+  const formVat = selectedViewLCId === 'MAIN'
+      ? (localCharge.hasInvoice ? (localCharge.vat || 0) : 0)
+      : selectedViewLCId
+          ? (additionalLocalCharges.find(x => x.id === selectedViewLCId)?.vat || 0)
+          : (localCharge.hasInvoice ? (localCharge.vat || 0) : 0) + totalAdditionalLocalChargeVat;
 
   // Use Form values if present (user entered data), else fallback to System Sums
   // This ensures that when user types in Invoice Net/VAT, the table updates to match exactly.
@@ -311,8 +326,6 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
   // -----------------------------
   const totalExtensionRevenue = booking.jobs.reduce((sum, job) => sum + (job.extensions || []).reduce((s, x) => s + x.total, 0), 0);
   const totalLocalChargeRevenue = booking.jobs.reduce((s, j) => s + j.localChargeTotal, 0);
-  const totalAdditionalLocalChargeNet = additionalLocalCharges.reduce((s, i) => s + (i.net || 0), 0);
-  const totalAdditionalLocalChargeTotalAmount = additionalLocalCharges.reduce((s, i) => s + (i.net || 0) + (i.vat || 0), 0);
 
   const totalExtensionCost = extensionCosts.reduce((s, i) => s + (i.total || 0), 0);
   const totalExtensionNetCost = extensionCosts.reduce((s, i) => s + (i.net || 0), 0);
@@ -1056,8 +1069,18 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
                     />
                     
                     {/* MAIN LOCAL CHARGE ROW */}
-                    <div className="grid grid-cols-12 gap-3 mb-2">
-                        <div className="col-span-3"><Label>Số HĐ</Label><Input value={localCharge.invoice} onChange={(e) => handleLocalChargeChange("invoice", e.target.value)} placeholder={!localCharge.hasInvoice ? "Tham chiếu" : ""} /></div>
+                    <div className={`grid grid-cols-12 gap-3 mb-2 p-2 rounded border relative group transition-colors ${selectedViewLCId === 'MAIN' ? 'bg-blue-50 border-blue-200' : 'border-transparent'}`}>
+                        <button 
+                            onClick={() => setSelectedViewLCId(selectedViewLCId === 'MAIN' ? null : 'MAIN')}
+                            className={`absolute -left-2 -top-2 bg-white border rounded-full p-1 shadow z-10 transition-colors ${selectedViewLCId === 'MAIN' ? 'text-blue-600 border-blue-200' : 'text-slate-300 hover:text-blue-500 opacity-0 group-hover:opacity-100'}`}
+                            title="Tính Cost (Adj) theo dòng này"
+                        >
+                            <Target className="w-3 h-3" />
+                        </button>
+                        <div className="col-span-3">
+                            <Label>Số HĐ</Label>
+                            <Input value={localCharge.invoice} onChange={(e) => handleLocalChargeChange("invoice", e.target.value)} placeholder={!localCharge.hasInvoice ? "Tham chiếu" : ""} />
+                        </div>
                         <div className="col-span-3"><Label>Ngày</Label><DateInput value={localCharge.date} onChange={(e) => handleLocalChargeChange("date", e.target.value)} /></div>
                         {localCharge.hasInvoice ? (
                             <>
@@ -1082,11 +1105,20 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
                     {/* ADDITIONAL LOCAL CHARGES */}
                     {additionalLocalCharges.map(item => (
-                        <div key={item.id} className="grid grid-cols-12 gap-3 mt-3 items-center bg-slate-50 p-2 rounded border border-slate-100 group relative">
-                            <div className="col-span-3"><Input value={item.invoice} onChange={(e) => handleUpdateAdditionalLC(item.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs" /></div>
+                        <div key={item.id} className={`grid grid-cols-12 gap-3 mt-3 items-center p-2 rounded border group relative transition-colors ${selectedViewLCId === item.id ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`}>
+                            <button 
+                                onClick={() => setSelectedViewLCId(selectedViewLCId === item.id ? null : item.id)}
+                                className={`absolute -left-2 -top-2 bg-white border rounded-full p-1 shadow z-10 transition-colors ${selectedViewLCId === item.id ? 'text-blue-600 border-blue-200 opacity-100' : 'text-slate-300 hover:text-blue-500 opacity-0 group-hover:opacity-100'}`}
+                                title="Tính Cost (Adj) theo dòng này"
+                            >
+                                <Target className="w-3 h-3" />
+                            </button>
+                            <div className="col-span-3">
+                                <Input value={item.invoice} onChange={(e) => handleUpdateAdditionalLC(item.id, "invoice", e.target.value)} placeholder="Số HĐ" className="h-7 text-xs" />
+                            </div>
                             <div className="col-span-3"><DateInput value={item.date} onChange={(e) => handleUpdateAdditionalLC(item.id, "date", e.target.value)} className="h-7" /></div>
                             <div className="col-span-3"><MoneyInput value={item.net} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "net", v)} className="h-7" /></div>
-                            <div className="col-span-2"><MoneyInput value={item.vat} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "vat", v)} className="h-7" /></div>
+                            <div className="col-span-3"><MoneyInput value={item.vat} onChange={(n, v) => handleUpdateAdditionalLC(item.id, "vat", v)} className="h-7" /></div>
                             <button onClick={() => handleRemoveAdditionalLC(item.id)} className="absolute -right-2 -top-2 bg-white border rounded-full p-1 text-slate-300 hover:text-red-500 shadow opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3"/></button>
                             
                             {/* ATTACHMENT ROW FOR ADDITIONAL LC */}
