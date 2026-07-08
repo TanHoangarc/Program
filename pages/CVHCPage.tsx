@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles, X, RotateCcw } from 'lucide-react';
+import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles, X, RotateCcw, FileText, Mail, Copy, Check } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { JobModal } from '../components/JobModal';
@@ -44,6 +44,15 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   const [pageCount, setPageCount] = useState<number>(1); // For combined mode
   const [isScanning, setIsScanning] = useState(false); // For AI Scan
   const [iframePreviewUrl, setIframePreviewUrl] = useState<string | null>(null); // Embedded preview modal
+  const [copiedState, setCopiedState] = useState<{ [key: string]: boolean }>({});
+
+  const handleCopyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedState(prev => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setCopiedState(prev => ({ ...prev, [key]: false }));
+    }, 1500);
+  };
 
   // Modal State
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
@@ -621,10 +630,10 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs sticky top-0 z-10 shadow-sm">
                       <tr>
                           <th className="px-4 py-3 w-16 text-center">Trang</th>
-                          <th className="px-4 py-3 w-64">Số BL (Job Code)</th>
+                          <th className="px-4 py-3 w-[360px]">Số BL (Job Code)</th>
                           <th className="px-4 py-3">Khách hàng (Cược)</th>
-                          <th className="px-4 py-3 w-48 text-right">Số tiền cược</th>
-                          <th className="px-4 py-3 w-48">Số tài khoản</th>
+                          <th className="px-4 py-3 w-52 text-right">Số tiền cược</th>
+                          <th className="px-4 py-3 w-52">Số tài khoản</th>
                           <th className="px-4 py-3 w-16 text-center">Xem</th>
                           <th className="px-4 py-3 w-28 text-center">Chi hoàn</th>
                       </tr>
@@ -637,7 +646,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                   {`Trang ${idx + 1}`}
                               </td>
                               <td className="px-4 py-3">
-                                  <div className="relative flex items-center gap-2">
+                                  <div className="relative flex items-center gap-1.5">
                                       <div className="relative flex-1">
                                           <input 
                                               type="text" 
@@ -648,6 +657,26 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                           />
                                           {row.jobId && <CheckCircle className="w-4 h-4 text-green-600 absolute right-3 top-2.5" />}
                                       </div>
+                                      {row.jobCode && (
+                                          <>
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => handleCopyText(`PAYMENT HOAN CUOC BL ${row.jobCode} MST 0316113070`, `${row.id}-desc`)}
+                                                  className="p-2 bg-slate-50 border border-slate-200 text-slate-500 rounded-lg hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all shrink-0"
+                                                  title="Copy nội dung chuyển khoản"
+                                              >
+                                                  {copiedState[`${row.id}-desc`] ? <Check className="w-4 h-4 text-green-500" /> : <FileText className="w-4 h-4" />}
+                                              </button>
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => handleCopyText("doc_hph@kimberryline.com", `${row.id}-email`)}
+                                                  className="p-2 bg-slate-50 border border-slate-200 text-slate-500 rounded-lg hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all shrink-0"
+                                                  title="Copy Email: doc_hph@kimberryline.com"
+                                              >
+                                                  {copiedState[`${row.id}-email`] ? <Check className="w-4 h-4 text-green-500" /> : <Mail className="w-4 h-4" />}
+                                              </button>
+                                          </>
+                                      )}
                                       {row.jobId && (
                                           <button 
                                               onClick={() => onRowActionClick(row, 'edit')}
@@ -669,25 +698,49 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                   />
                               </td>
                               <td className="px-4 py-3">
-                                  <input 
-                                      type="text" 
-                                      value={row.amount > 0 ? new Intl.NumberFormat('en-US').format(row.amount) : ''}
-                                      onChange={(e) => {
-                                          const val = Number(e.target.value.replace(/,/g, ''));
-                                          if(!isNaN(val)) handleRowChange(row.id, 'amount', val);
-                                      }}
-                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-right font-bold text-slate-700"
-                                      placeholder="0"
-                                  />
+                                  <div className="relative flex items-center">
+                                      <input 
+                                          type="text" 
+                                          value={row.amount > 0 ? new Intl.NumberFormat('en-US').format(row.amount) : ''}
+                                          onChange={(e) => {
+                                              const val = Number(e.target.value.replace(/,/g, ''));
+                                              if(!isNaN(val)) handleRowChange(row.id, 'amount', val);
+                                          }}
+                                          className="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-right font-bold text-slate-700"
+                                          placeholder="0"
+                                      />
+                                      {row.amount > 0 && (
+                                          <button
+                                              type="button"
+                                              onClick={() => handleCopyText(row.amount.toString(), `${row.id}-amount`)}
+                                              className="absolute right-2 p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
+                                              title="Copy số tiền cược"
+                                          >
+                                              {copiedState[`${row.id}-amount`] ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                          </button>
+                                      )}
+                                  </div>
                               </td>
                               <td className="px-4 py-3">
-                                  <input 
-                                      type="text" 
-                                      value={row.accountNumber || ''}
-                                      onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
-                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
-                                      placeholder="STK Ngân hàng"
-                                  />
+                                  <div className="relative flex items-center">
+                                      <input 
+                                          type="text" 
+                                          value={row.accountNumber || ''}
+                                          onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
+                                          className="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold"
+                                          placeholder="STK Ngân hàng"
+                                      />
+                                      {row.accountNumber && (
+                                          <button
+                                              type="button"
+                                              onClick={() => handleCopyText(row.accountNumber || '', `${row.id}-account`)}
+                                              className="absolute right-2 p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
+                                              title="Copy số tài khoản"
+                                          >
+                                              {copiedState[`${row.id}-account`] ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                          </button>
+                                      )}
+                                  </div>
                               </td>
                               <td className="px-4 py-3 text-center">
                                   {row.previewUrl ? (
