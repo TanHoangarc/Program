@@ -188,7 +188,8 @@ async function startServer() {
             jobs: "id",
             customers: "id",
             lines: "id",
-            users: "username"
+            users: "username",
+            authorizations: "id"
         };
 
         Object.entries(configs).forEach(([key, idField]) => {
@@ -426,17 +427,6 @@ async function startServer() {
                 if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
                 if (safeData.authorizations) {
                     dbState.authorizations = mergeLists(dbState.authorizations || [], safeData.authorizations);
-                }
-
-                // Write backup files to E:\ServerData\GUQ
-                if (dbState.authorizations && Array.isArray(dbState.authorizations)) {
-                    const fileContent = JSON.stringify(dbState.authorizations, null, 2);
-                    try {
-                        fs.writeFileSync(path.join(GUQ_DIR, "authorizations.json"), fileContent, "utf8");
-                        fs.writeFileSync(path.join(GUQ_DIR, "GUQ.json"), fileContent, "utf8");
-                    } catch (writeErr) {
-                        console.error("Failed to write authorizations backup file:", writeErr);
-                    }
                 }
 
             } else if (isDocs) {
