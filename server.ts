@@ -72,7 +72,6 @@ async function startServer() {
     const UNC_DIR = path.join(ROOT_DIR, "UNC");
     const CVHC_ROOT = path.join(ROOT_DIR, "CVHC");
     const SIGN_DIR = path.join(ROOT_DIR, "Sign");
-    const GUQ_DIR = path.join(ROOT_DIR, "GUQ");
 
     // ======================================================
     // INIT DIRECTORIES & FILES
@@ -83,8 +82,7 @@ async function startServer() {
         INV_DIR,
         UNC_DIR,
         CVHC_ROOT,
-        SIGN_DIR,
-        GUQ_DIR
+        SIGN_DIR
     ].forEach(d => {
         if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
     });
@@ -97,17 +95,14 @@ async function startServer() {
     let dbLock = Promise.resolve();
 
     async function loadFullDatabase() {
-        const defaults = {
+        return await loadFromFirestore('mainDatabase', {
             jobs: [], customers: [], lines: [], deletedJobIds: [],
             paymentRequests: [], deletedPaymentIds: [], nfc: [], 
             pending: [], staff: [], longHoangOrders: [],
             headerMessages: [], headerNotifications: [], headerUpdates: [],
             customReceipts: [], salaries: [], yearlyConfigs: {},
-            lockedIds: [], processedRequestIds: [], authorizations: [],
-            deletedAuthIds: []
-        };
-        const loaded = await loadFromFirestore('mainDatabase', defaults);
-        return { ...defaults, ...loaded };
+            lockedIds: [], processedRequestIds: []
+        });
     }
 
     async function saveFullDatabase(data: any) {
@@ -140,17 +135,14 @@ async function startServer() {
                 }
             }
             
-            const defaults = {
+            const dbState = JSON.parse(jsonStr || "null") || {
                 jobs: [], customers: [], lines: [], deletedJobIds: [],
                 paymentRequests: [], deletedPaymentIds: [], nfc: [], 
                 pending: [], staff: [], longHoangOrders: [],
                 headerMessages: [], headerNotifications: [], headerUpdates: [],
                 customReceipts: [], salaries: [], yearlyConfigs: {},
-                lockedIds: [], processedRequestIds: [], authorizations: [],
-                deletedAuthIds: []
+                lockedIds: [], processedRequestIds: []
             };
-            const parsed = JSON.parse(jsonStr || "null") || {};
-            const dbState = { ...defaults, ...parsed };
             
             const result = await action(dbState);
             
@@ -190,8 +182,7 @@ async function startServer() {
             jobs: "id",
             customers: "id",
             lines: "id",
-            users: "username",
-            authorizations: "id"
+            users: "username"
         };
 
         Object.entries(configs).forEach(([key, idField]) => {
@@ -379,7 +370,7 @@ async function startServer() {
     });
 
     app.post("/api/data/save", async (req, res) => {
-        const { role, clientId, ...data } = req.body; 
+        const { role, ...data } = req.body; 
         const safeData = sanitizePayload(data);
         const userRole = (role || '').toLowerCase();
         const isAdmin = userRole === 'admin';
@@ -427,18 +418,6 @@ async function startServer() {
                 if (safeData.salaries) dbState.salaries = mergeLists(dbState.salaries || [], safeData.salaries);
                 if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs; 
                 if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
-                if (safeData.deletedAuthIds && Array.isArray(safeData.deletedAuthIds)) {
-                    if (!dbState.deletedAuthIds) dbState.deletedAuthIds = [];
-                    safeData.deletedAuthIds.forEach((id: string) => {
-                        if (!dbState.deletedAuthIds.includes(id)) dbState.deletedAuthIds.push(id);
-                    });
-                }
-                if (safeData.authorizations) {
-                    dbState.authorizations = mergeLists(dbState.authorizations || [], safeData.authorizations);
-                }
-                if (dbState.deletedAuthIds && dbState.authorizations) {
-                    dbState.authorizations = dbState.authorizations.filter((a: any) => !dbState.deletedAuthIds.includes(a.id));
-                }
 
             } else if (isDocs) {
                 if (safeData.paymentRequests) {
@@ -458,7 +437,7 @@ async function startServer() {
             }
         });
 
-        broadcast("data-updated", { time: Date.now(), source: role, clientId: clientId || '', type: isAdmin ? 'FULL_SYNC' : 'DOCS_SYNC' });
+        broadcast("data-updated", { time: Date.now(), source: role, type: isAdmin ? 'FULL_SYNC' : 'DOCS_SYNC' });
         res.json({ success: true, saved: isAdmin ? "full_merged_admin" : "payment_and_lh", requireReload });
     });
 
