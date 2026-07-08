@@ -108,6 +108,7 @@ const App: React.FC = () => {
   });
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [clientId] = useState(() => Math.random().toString(36).substring(2, 15));
 
   const [targetBookingId, setTargetBookingId] = useState<string | null>(null);
   const [targetJobId, setTargetJobId] = useState<string | null>(null);
@@ -218,6 +219,15 @@ const App: React.FC = () => {
       }
   });
 
+  const [deletedAuthIds, setDeletedAuthIds] = useState<Set<string>>(() => {
+      try {
+          const saved = localStorage.getItem('kb_deleted_auth_ids');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch {
+          return new Set();
+      }
+  });
+
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
       try {
@@ -240,6 +250,10 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('kb_deleted_payment_ids', JSON.stringify(Array.from(deletedPaymentIds)));
   }, [deletedPaymentIds]);
+
+  useEffect(() => {
+      localStorage.setItem('kb_deleted_auth_ids', JSON.stringify(Array.from(deletedAuthIds)));
+  }, [deletedAuthIds]);
 
   useEffect(() => {
       localStorage.setItem('kb_modified_job_ids', JSON.stringify(Array.from(modifiedJobIds)));
@@ -1187,7 +1201,25 @@ const App: React.FC = () => {
         }
 
         if (data.authorizations && Array.isArray(data.authorizations)) {
-            setAuthorizations(data.authorizations);
+            if (data.authorizations.length === 0) {
+                const saved = localStorage.getItem('kb_authorizations_v1');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            setAuthorizations(parsed);
+                        } else {
+                            setAuthorizations([]);
+                        }
+                    } catch {
+                        setAuthorizations([]);
+                    }
+                } else {
+                    setAuthorizations([]);
+                }
+            } else {
+                setAuthorizations(data.authorizations);
+            }
         }
 
         if (data.salaries && Array.isArray(data.salaries)) {
@@ -1301,6 +1333,7 @@ const App: React.FC = () => {
     try {
       const data: any = {
         role: currentUser.role, // VITAL: Pass Role for Server Filtering
+        clientId: clientId,
         timestamp: new Date().toISOString(),
         version: "2.4",
       };
@@ -1314,6 +1347,7 @@ const App: React.FC = () => {
           data.processedRequestIds = Array.from(localDeletedIds);
           data.deletedJobIds = Array.from(deletedJobIds);
           data.deletedPaymentIds = Array.from(deletedPaymentIds);
+          data.deletedAuthIds = Array.from(deletedAuthIds);
           data.customReceipts = customReceipts;
           data.salaries = salaries;
           data.yearlyConfigs = yearlyConfigs;
@@ -1351,6 +1385,7 @@ const App: React.FC = () => {
           // Clear deleted IDs once server has processed them
           if (deletedJobIds.size > 0) setDeletedJobIds(new Set());
           if (deletedPaymentIds.size > 0) setDeletedPaymentIds(new Set());
+          if (deletedAuthIds.size > 0) setDeletedAuthIds(new Set());
       }
 
     } catch (err) {
@@ -1383,7 +1418,7 @@ const App: React.FC = () => {
     }, delay); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, authorizations, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, authorizations, deletedAuthIds, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1423,7 +1458,7 @@ const App: React.FC = () => {
       }
       
       // Also re-fetch data if it was a sync from another user
-      if ((data.type === 'FULL_SYNC' || data.type === 'DOCS_SYNC') && data.source !== currentUser?.role) {
+      if ((data.type === 'FULL_SYNC' || data.type === 'DOCS_SYNC') && data.clientId !== clientId) {
           fetch(`${BACKEND_URL}/data`)
             .then(res => res.json())
             .then(serverData => {
@@ -1434,6 +1469,7 @@ const App: React.FC = () => {
                     if (serverData.lines) setLines(serverData.lines);
                     if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
                     if (serverData.salaries) setSalaries(serverData.salaries);
+                    if (serverData.authorizations) setAuthorizations(serverData.authorizations);
                     if (serverData.yearlyConfigs) {
                         setYearlyConfigs(serverData.yearlyConfigs);
                         const popupConfig = serverData.yearlyConfigs.find((c: any) => c.year === 9999);
@@ -1486,7 +1522,7 @@ const App: React.FC = () => {
     return () => {
       eventSource.close();
     };
-  }, [isAuthenticated, isServerAvailable, currentUser]);
+  }, [isAuthenticated, isServerAvailable, currentUser, clientId]);
 
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
@@ -1719,7 +1755,14 @@ const App: React.FC = () => {
                 customers={customers}
                 onAddAuthorization={(auth) => setAuthorizations(prev => [...prev, auth])}
                 onUpdateAuthorization={(auth) => setAuthorizations(prev => prev.map(a => a.id === auth.id ? auth : a))}
-                onDeleteAuthorization={(id) => setAuthorizations(prev => prev.filter(a => a.id !== id))}
+                onDeleteAuthorization={(id) => {
+                  setAuthorizations(prev => prev.filter(a => a.id !== id));
+                  setDeletedAuthIds(prev => {
+                      const next = new Set(prev);
+                      next.add(id);
+                      return next;
+                  });
+                }}
                 onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
               />
             )}
