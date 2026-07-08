@@ -72,6 +72,7 @@ async function startServer() {
     const UNC_DIR = path.join(ROOT_DIR, "UNC");
     const CVHC_ROOT = path.join(ROOT_DIR, "CVHC");
     const SIGN_DIR = path.join(ROOT_DIR, "Sign");
+    const GUQ_DIR = path.join(ROOT_DIR, "GUQ");
 
     // ======================================================
     // INIT DIRECTORIES & FILES
@@ -82,7 +83,8 @@ async function startServer() {
         INV_DIR,
         UNC_DIR,
         CVHC_ROOT,
-        SIGN_DIR
+        SIGN_DIR,
+        GUQ_DIR
     ].forEach(d => {
         if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
     });
@@ -101,7 +103,7 @@ async function startServer() {
             pending: [], staff: [], longHoangOrders: [],
             headerMessages: [], headerNotifications: [], headerUpdates: [],
             customReceipts: [], salaries: [], yearlyConfigs: {},
-            lockedIds: [], processedRequestIds: []
+            lockedIds: [], processedRequestIds: [], authorizations: []
         });
     }
 
@@ -141,8 +143,12 @@ async function startServer() {
                 pending: [], staff: [], longHoangOrders: [],
                 headerMessages: [], headerNotifications: [], headerUpdates: [],
                 customReceipts: [], salaries: [], yearlyConfigs: {},
-                lockedIds: [], processedRequestIds: []
+                lockedIds: [], processedRequestIds: [], authorizations: []
             };
+
+            if (!dbState.authorizations) {
+                dbState.authorizations = [];
+            }
             
             const result = await action(dbState);
             
@@ -418,6 +424,20 @@ async function startServer() {
                 if (safeData.salaries) dbState.salaries = mergeLists(dbState.salaries || [], safeData.salaries);
                 if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs; 
                 if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
+                if (safeData.authorizations) {
+                    dbState.authorizations = mergeLists(dbState.authorizations || [], safeData.authorizations);
+                }
+
+                // Write backup files to E:\ServerData\GUQ
+                if (dbState.authorizations && Array.isArray(dbState.authorizations)) {
+                    const fileContent = JSON.stringify(dbState.authorizations, null, 2);
+                    try {
+                        fs.writeFileSync(path.join(GUQ_DIR, "authorizations.json"), fileContent, "utf8");
+                        fs.writeFileSync(path.join(GUQ_DIR, "GUQ.json"), fileContent, "utf8");
+                    } catch (writeErr) {
+                        console.error("Failed to write authorizations backup file:", writeErr);
+                    }
+                }
 
             } else if (isDocs) {
                 if (safeData.paymentRequests) {
