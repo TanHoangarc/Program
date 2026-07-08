@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor, FileCheck, Upload, Loader2, Lock, Unlock } from 'lucide-react';
+import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor, FileCheck, Upload, Loader2, Lock, Unlock, UserCheck, Sparkles } from 'lucide-react';
 import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
@@ -58,7 +58,8 @@ const CustomerInput = ({
   onAddClick,
   cvhcUrl,
   onUploadClick,
-  isUploading
+  isUploading,
+  onCopyMainCustomer
 }: { 
   value: string; 
   onChange: (val: string) => void; 
@@ -72,6 +73,7 @@ const CustomerInput = ({
   cvhcUrl?: string;
   onUploadClick?: () => void;
   isUploading?: boolean;
+  onCopyMainCustomer?: () => void;
 }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [internalValue, setInternalValue] = useState('');
@@ -150,6 +152,16 @@ const CustomerInput = ({
                 title="Thêm khách hàng mới"
             >
                 <Plus className={iconSize} />
+            </button>
+        )}
+        {!readOnly && onCopyMainCustomer && (
+            <button 
+                type="button" 
+                onClick={onCopyMainCustomer}
+                className={`${btnSize} ${btnCommon} bg-emerald-50 border-emerald-100 text-emerald-600 hover:bg-emerald-100`}
+                title="Lấy từ Khách hàng (Mã KH)"
+            >
+                <UserCheck className={iconSize} />
             </button>
         )}
         {cvhcUrl ? (
@@ -336,7 +348,8 @@ const MoneyInput: React.FC<{
   readOnly?: boolean;
   className?: string;
   rightElement?: React.ReactNode;
-}> = ({ value, name, onChange, label, readOnly, className, rightElement }) => {
+  labelSuffix?: React.ReactNode;
+}> = ({ value, name, onChange, label, readOnly, className, rightElement, labelSuffix }) => {
   const [displayVal, setDisplayVal] = useState('');
 
   useEffect(() => {
@@ -353,7 +366,10 @@ const MoneyInput: React.FC<{
 
   return (
     <div className="w-full">
-      <Label>{label}</Label>
+      <div className="flex justify-between items-center mb-1">
+        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</label>
+        {labelSuffix}
+      </div>
       <div className="flex items-center gap-1">
         <input
             type="text"
@@ -421,6 +437,13 @@ export const JobModal: React.FC<JobModalProps> = ({
   const [isUploadingCVHC, setIsUploadingCVHC] = useState(false);
 
   const jobInputRef = useRef<HTMLInputElement>(null);
+
+  const suggestedDepositAmount = useMemo(() => {
+    if (formData.transit === 'HCM' || formData.transit === 'HPH') {
+      return (formData.cont20 || 0) * 1000000 + (formData.cont40 || 0) * 2000000;
+    }
+    return 0;
+  }, [formData.transit, formData.cont20, formData.cont40]);
 
   useEffect(() => {
     if (isOpen && !initialData && !isViewMode) {
@@ -1147,6 +1170,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                                         cvhcUrl={formData.cvhcUrl && !formData.cvhcUrl.includes('/files/inv/') ? formData.cvhcUrl : undefined}
                                         onUploadClick={handleUploadCVHCClick}
                                         isUploading={isUploadingCVHC}
+                                        onCopyMainCustomer={formData.customerId ? () => setFormData(prev => ({ ...prev, maKhCuocId: prev.customerId })) : undefined}
                                     />
                                 </div>
                                 <div>
@@ -1159,29 +1183,23 @@ export const JobModal: React.FC<JobModalProps> = ({
                                         className="text-orange-700" 
                                         rightElement={
                                             <div className="flex gap-1">
+                                                {!isViewMode && suggestedDepositAmount > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData(prev => ({ ...prev, thuCuoc: suggestedDepositAmount }))}
+                                                        className="h-9 w-9 flex items-center justify-center bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100 transition-all shrink-0"
+                                                        title={`Áp dụng tiền cược đề xuất cho ${formData.transit}: ${new Intl.NumberFormat('en-US').format(suggestedDepositAmount)}đ`}
+                                                    >
+                                                        <Sparkles className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                                 <button 
                                                     type="button"
                                                     onClick={() => handleCopyText(formData.thuCuoc.toString(), 'deposit-amt')}
-                                                    className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                                                    className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all shrink-0"
                                                     title="Copy số tiền"
                                                 >
                                                     {copiedField === 'deposit-amt' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                                                </button>
-                                                <button 
-                                                    type="button"
-                                                    onClick={() => handleCopyText(`PAYMENT HOAN CUOC BL ${formData.jobCode || ''} MST 0316113070`, 'deposit-txt')}
-                                                    className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                                                    title="Copy nội dung chuyển khoản"
-                                                >
-                                                    {copiedField === 'deposit-txt' ? <Check className="w-4 h-4 text-green-500" /> : <FileText className="w-4 h-4" />}
-                                                </button>
-                                                <button 
-                                                    type="button"
-                                                    onClick={() => handleCopyText("doc_hph@kimberryline.com", 'email-txt')}
-                                                    className="h-9 w-9 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                                                    title="Copy Email: doc_hph@kimberryline.com"
-                                                >
-                                                    {copiedField === 'email-txt' ? <Check className="w-4 h-4 text-green-500" /> : <Mail className="w-4 h-4" />}
                                                 </button>
                                             </div>
                                         }
@@ -1201,7 +1219,34 @@ export const JobModal: React.FC<JobModalProps> = ({
                                                 <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded uppercase">Cược Lần {index + 2}</span>
                                             </div>
                                             <div className="col-span-4">
-                                                <MoneyInput label="Tiền Cược" value={dep.amount} onChange={(n, v) => handleJobDepositChange(dep.id, 'amount', v)} className="h-8 text-orange-700" />
+                                                <MoneyInput 
+                                                    label="Tiền Cược" 
+                                                    value={dep.amount} 
+                                                    onChange={(n, v) => handleJobDepositChange(dep.id, 'amount', v)} 
+                                                    className="h-8 text-orange-700 font-bold" 
+                                                    rightElement={
+                                                        <div className="flex gap-1">
+                                                            {!isViewMode && suggestedDepositAmount > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleJobDepositChange(dep.id, 'amount', suggestedDepositAmount)}
+                                                                    className="h-8 w-8 flex items-center justify-center bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100 transition-all shrink-0"
+                                                                    title={`Áp dụng tiền cược đề xuất cho ${formData.transit}: ${new Intl.NumberFormat('en-US').format(suggestedDepositAmount)}đ`}
+                                                                >
+                                                                    <Sparkles className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleCopyText(dep.amount.toString(), `deposit-amt-${dep.id}`)}
+                                                                className="h-8 w-8 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all shrink-0"
+                                                                title="Copy số tiền"
+                                                            >
+                                                                {copiedField === `deposit-amt-${dep.id}` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                                            </button>
+                                                        </div>
+                                                    }
+                                                />
                                             </div>
                                             <div className="col-span-4"><Label>Ngày Cược</Label><DateInput name="dateIn" value={dep.dateIn} onChange={(e) => handleJobDepositChange(dep.id, 'dateIn', e.target.value)} readOnly={isViewMode} /></div>
                                             <div className="col-span-4"><Label>Ngày Hoàn</Label><DateInput name="dateOut" value={dep.dateOut} onChange={(e) => handleJobDepositChange(dep.id, 'dateOut', e.target.value)} readOnly={isViewMode} /></div>
