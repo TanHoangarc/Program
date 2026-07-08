@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  currentPage: 'entry' | 'reports' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit';
+  currentPage: 'entry' | 'reports' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'data-authorizations' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit';
   onNavigate: (page: any) => void;
   currentUser: { username: string, role: string } | null;
   onLogout: () => void;
@@ -208,6 +208,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <>
                       <SubMenuItem active={currentPage === 'data-lines'} onClick={(e) => handleNavigate(e, 'data-lines')} icon={Ship} label="Hãng Tàu" />
                       <SubMenuItem active={currentPage === 'data-customers'} onClick={(e) => handleNavigate(e, 'data-customers')} icon={UserCircle} label="Khách Hàng" />
+                      <SubMenuItem active={currentPage === 'data-authorizations'} onClick={(e) => handleNavigate(e, 'data-authorizations')} icon={FileCheck} label="Ủy Quyền" />
                   </>
               );
               break;
@@ -331,7 +332,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {canViewData && (
             <MenuItem 
-                active={['data-lines', 'data-customers'].includes(currentPage)}
+                active={['data-lines', 'data-customers', 'data-authorizations'].includes(currentPage)}
                 onClick={(e) => handleGroupClick(e, 'data')}
                 icon={Database}
                 label="Danh Mục"

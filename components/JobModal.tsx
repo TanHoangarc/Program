@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, Plus, Trash2, Check, Minus, ExternalLink, Edit2, Calendar, Copy, LayoutGrid, DollarSign, FileText, AlertTriangle, Mail, Receipt, Anchor, FileCheck, Upload, Loader2, Lock, Unlock, UserCheck, Sparkles } from 'lucide-react';
-import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine } from '../types';
+import { JobData, INITIAL_JOB, Customer, ExtensionData, ShippingLine, AuthorizationData } from '../types';
 import { MONTHS, TRANSIT_PORTS, BANKS, YEARS } from '../constants';
 import { formatDateVN, parseDateVN, calculatePaymentStatus } from '../utils';
 import { CustomerModal } from './CustomerModal';
@@ -25,6 +25,7 @@ interface JobModalProps {
   onAddCustomer: (customer: Customer) => void;
   customReceipts?: any[];
   onViewReceipt?: (job: JobData, mode: 'local' | 'deposit' | 'extension' | 'deposit_refund' | 'refund_overpayment', targetId?: string) => void;
+  authorizations?: AuthorizationData[];
 }
 
 // Compact Styled Components
@@ -387,7 +388,8 @@ const MoneyInput: React.FC<{
 
 export const JobModal: React.FC<JobModalProps> = ({ 
   isOpen, onClose, onSave, initialData, customers, lines, onAddLine, onViewBookingDetails,
-  isViewMode = false, onSwitchToEdit, existingJobs, onAddCustomer, customReceipts = [], onViewReceipt
+  isViewMode = false, onSwitchToEdit, existingJobs, onAddCustomer, customReceipts = [], onViewReceipt,
+  authorizations
 }) => {
   const [formData, setFormData] = useState<JobData>(() => {
     if (initialData) {
@@ -423,6 +425,96 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
     return '';
   });
+
+  const authorizationsState = useMemo<AuthorizationData[]>(() => {
+    if (authorizations && authorizations.length > 0) {
+      return authorizations;
+    }
+    try {
+      const saved = localStorage.getItem('kb_authorizations_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  }, [authorizations, isOpen]);
+
+  const authorizationLabelInfo = useMemo(() => {
+    if (!formData.customerId) return null;
+    const currentCust = (customers || []).find(c => c.id === formData.customerId || c.code === formData.customerId);
+    if (!currentCust) return null;
+
+    // 1. Check if current customer is a PRINCIPAL (has authorized someone else)
+    const authAsPrincipal = (authorizationsState || []).find(a => 
+      a.principalId === currentCust.id || 
+      a.principalId === currentCust.code ||
+      String(a.principalId).toLowerCase() === String(currentCust.code).toLowerCase() ||
+      String(a.principalId).toLowerCase() === String(currentCust.id).toLowerCase()
+    );
+
+    if (authAsPrincipal) {
+      const agentCust = (customers || []).find(c => 
+        c.id === authAsPrincipal.agentId || 
+        c.code === authAsPrincipal.agentId ||
+        String(c.code).toLowerCase() === String(authAsPrincipal.agentId).toLowerCase() ||
+        String(c.id).toLowerCase() === String(authAsPrincipal.agentId).toLowerCase()
+      );
+      return {
+        type: 'principal',
+        label: `Ủy quyền: ${agentCust ? agentCust.code : authAsPrincipal.agentId}`,
+        targetId: agentCust ? agentCust.id : authAsPrincipal.agentId,
+        targetCode: agentCust ? agentCust.code : authAsPrincipal.agentId,
+        targetName: agentCust ? agentCust.name : '',
+        tooltip: 'Chuyển sang bên được ủy quyền'
+      };
+    }
+
+    // 2. Check if current customer is an AGENT (has been authorized by some principal)
+    const authAsAgent = (authorizationsState || []).find(a => 
+      a.agentId === currentCust.id || 
+      a.agentId === currentCust.code ||
+      String(a.agentId).toLowerCase() === String(currentCust.code).toLowerCase() ||
+      String(a.agentId).toLowerCase() === String(currentCust.id).toLowerCase()
+    );
+
+    if (authAsAgent) {
+      const principalCust = (customers || []).find(c => 
+        c.id === authAsAgent.principalId || 
+        c.code === authAsAgent.principalId ||
+        String(c.code).toLowerCase() === String(authAsAgent.principalId).toLowerCase() ||
+        String(c.id).toLowerCase() === String(authAsAgent.principalId).toLowerCase()
+      );
+      return {
+        type: 'agent',
+        label: `Bên ủy quyền: ${principalCust ? principalCust.code : authAsAgent.principalId}`,
+        targetId: principalCust ? principalCust.id : authAsAgent.principalId,
+        targetCode: principalCust ? principalCust.code : authAsAgent.principalId,
+        targetName: principalCust ? principalCust.name : '',
+        tooltip: 'Chuyển lại bên ủy quyền gốc'
+      };
+    }
+
+    return null;
+  }, [formData.customerId, customers, authorizationsState]);
+
+  const handleAssignAuthorizedCustomer = (targetId: string, targetCode: string, targetName: string) => {
+    if (isViewMode) return;
+    const match = (customers || []).find(c => c.id === targetId || c.code === targetId || c.code === targetCode);
+    if (match) {
+      setCustCodeInput(match.code);
+      setFormData(prev => ({
+        ...prev,
+        customerId: match.id,
+        customerName: match.name
+      }));
+    } else {
+      setCustCodeInput(targetCode || targetId);
+      setFormData(prev => ({
+        ...prev,
+        customerId: targetId,
+        customerName: targetName || ''
+      }));
+    }
+  };
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isAddingLine, setIsAddingLine] = useState(false);
   const [newLine, setNewLine] = useState('');
@@ -1045,7 +1137,29 @@ export const JobModal: React.FC<JobModalProps> = ({
                         </div>
                     </div>
                     <div className="md:col-span-4">
-                        <Label>Khách hàng (Mã KH)</Label>
+                        <div className="flex justify-between items-center">
+                            <Label>Khách hàng (Mã KH)</Label>
+                            {authorizationLabelInfo && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleAssignAuthorizedCustomer(
+                                        authorizationLabelInfo.targetId,
+                                        authorizationLabelInfo.targetCode,
+                                        authorizationLabelInfo.targetName
+                                    )}
+                                    disabled={isViewMode}
+                                    className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border transition-all cursor-pointer flex items-center gap-1 mb-1 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                        authorizationLabelInfo.type === 'principal' 
+                                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border-emerald-200' 
+                                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 border-blue-200'
+                                    }`}
+                                    title={authorizationLabelInfo.tooltip}
+                                >
+                                    <UserCheck className={`w-2.5 h-2.5 shrink-0 ${authorizationLabelInfo.type === 'principal' ? 'text-emerald-600' : 'text-blue-600'}`} />
+                                    <span>{authorizationLabelInfo.label}</span>
+                                </button>
+                            )}
+                        </div>
                         <CustomerInput 
                             value={custCodeInput} 
                             onChange={handleCustomerInputChange} 
