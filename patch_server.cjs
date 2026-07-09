@@ -99,7 +99,8 @@ content = content.replace(endpointSaveRegex,
                 if (safeData.lockedIds) dbState.lockedIds = safeData.lockedIds;
                 if (safeData.processedRequestIds) dbState.processedRequestIds = safeData.processedRequestIds;
                 if (safeData.salaries) dbState.salaries = mergeLists(dbState.salaries || [], safeData.salaries);
-                if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs; 
+                if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs;
+                if (safeData.authorizations) dbState.authorizations = mergeLists(dbState.authorizations || [], safeData.authorizations); 
                 if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
 
             } else if (isDocs) {
@@ -201,6 +202,7 @@ content = content.replace(/    app\.post\("\/api\/approve", async \(req, res\) =
             dbState.lines = mergeLists(dbState.lines || [], fullData.lines || []);
             
             if (fullData.yearlyConfigs) dbState.yearlyConfigs = fullData.yearlyConfigs;
+            if (fullData.authorizations) dbState.authorizations = mergeLists(dbState.authorizations || [], fullData.authorizations);
             if (fullData.paymentRequests) {
                 dbState.paymentRequests = mergeLists(dbState.paymentRequests || [], fullData.paymentRequests);
                 if (dbState.deletedPaymentIds) {
