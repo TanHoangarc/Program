@@ -451,20 +451,6 @@ export interface SecurityItem {
 }
 
 // ============================================================
-// AUTHORIZATION (ỦY QUYỀN)
-// ============================================================
-export interface AuthorizationData {
-  id: string;
-  principalId: string; // Bên ủy quyền (Customer ID)
-  agentId: string;     // Bên được ủy quyền (Customer ID)
-  expiryDate: string;  // Thời hạn hiệu lực (YYYY-MM-DD)
-  attachmentUrl?: string; // File đính kèm URL
-  attachmentName?: string; // Tên file đính kèm
-  year: number;        // Năm của hiệu lực để phục vụ lọc
-  createdAt?: string;
-}
-
-// ============================================================
 // INITIAL JOB (DEFAULT OBJECT)
 // ============================================================
 

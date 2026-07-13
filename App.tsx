@@ -19,7 +19,6 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
-import { AuthorizationsPage } from './pages/AuthorizationsPage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -29,7 +28,7 @@ import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from '
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
 
-import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, AuthorizationData, INITIAL_JOB, HeaderMessage, HeaderNotification } from './types';
+import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
@@ -92,7 +91,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'data-authorizations' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit'>(() => {
       try {
           const savedUserStr = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUserStr) {
@@ -662,16 +661,6 @@ const App: React.FC = () => {
       }
   });
 
-  // --- AUTHORIZATIONS STATE ---
-  const [authorizations, setAuthorizations] = useState<AuthorizationData[]>(() => {
-      try {
-          const saved = localStorage.getItem('kb_authorizations_v1');
-          return saved ? JSON.parse(saved) : [];
-      } catch {
-          return [];
-      }
-  });
-
   const [systemPopupContent, setSystemPopupContent] = useState<string>('');
   const [showSystemPopup, setShowSystemPopup] = useState<boolean>(false);
   const [hasShownPopup, setHasShownPopup] = useState<boolean>(false);
@@ -1186,10 +1175,6 @@ const App: React.FC = () => {
             setCustomReceipts(data.customReceipts);
         }
 
-        if (data.authorizations && Array.isArray(data.authorizations)) {
-            setAuthorizations(data.authorizations);
-        }
-
         if (data.salaries && Array.isArray(data.salaries)) {
             setSalaries(data.salaries);
         }
@@ -1318,7 +1303,6 @@ const App: React.FC = () => {
           data.salaries = salaries;
           data.yearlyConfigs = yearlyConfigs;
           data.paymentRequests = paymentRequests;
-          data.authorizations = authorizations;
       } else if (currentUser.role === 'Docs') {
           // Docs only updates these
           data.paymentRequests = paymentRequests;
@@ -1383,7 +1367,7 @@ const App: React.FC = () => {
     }, delay); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, authorizations, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1394,7 +1378,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_salaries', JSON.stringify(salaries)); }, [salaries]);
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
-  useEffect(() => { localStorage.setItem('kb_authorizations_v1', JSON.stringify(authorizations)); }, [authorizations]);
 
   // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
   useEffect(() => {
@@ -1710,17 +1693,6 @@ const App: React.FC = () => {
                 onAdd={(c) => setCustomers([...customers, c])} 
                 onEdit={handleUpdateCustomer}
                 onDelete={(id) => setCustomers(prev => prev.filter(cust => cust.id !== id))}
-              />
-            )}
-
-            {currentPage === 'data-authorizations' && (
-              <AuthorizationsPage
-                authorizations={authorizations}
-                customers={customers}
-                onAddAuthorization={(auth) => setAuthorizations(prev => [...prev, auth])}
-                onUpdateAuthorization={(auth) => setAuthorizations(prev => prev.map(a => a.id === auth.id ? auth : a))}
-                onDeleteAuthorization={(id) => setAuthorizations(prev => prev.filter(a => a.id !== id))}
-                onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
               />
             )}
 
