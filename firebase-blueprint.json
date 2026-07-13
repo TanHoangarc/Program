@@ -1,124 +1,46 @@
 {
   "entities": {
-    "Job": {
-      "title": "Job",
-      "description": "Logistics job entry details",
+    "Authorization": {
+      "title": "Authorization",
+      "description": "Văn bản ủy quyền (Power of Attorney) giữa các khách hàng",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "month": { "type": "string" },
-        "year": { "type": "number" },
-        "jobCode": { "type": "string" },
-        "booking": { "type": "string" },
-        "consol": { "type": "string" },
-        "line": { "type": "string" },
-        "customerId": { "type": "string" },
-        "customerName": { "type": "string" },
-        "hbl": { "type": "string" },
-        "transit": { "type": "string" },
-        "cost": { "type": "number" },
-        "sell": { "type": "number" },
-        "profit": { "type": "number" },
-        "cont20": { "type": "number" },
-        "cont40": { "type": "number" },
-        "chiPayment": { "type": "number" },
-        "chiCuoc": { "type": "number" },
-        "ngayChiCuoc": { "type": "string" },
-        "ngayChiHoan": { "type": "string" },
-        "localChargeInvoice": { "type": "string" },
-        "localChargeDate": { "type": "string" },
-        "localChargeNet": { "type": "number" },
-        "localChargeVat": { "type": "number" },
-        "localChargeTotal": { "type": "number" },
-        "bank": { "type": "string" },
-        "maKhCuocId": { "type": "string" },
-        "thuCuoc": { "type": "number" },
-        "ngayThuCuoc": { "type": "string" },
-        "ngayThuHoan": { "type": "string" },
-        "amisLcDocNo": { "type": "string" },
-        "amisLcDesc": { "type": "string" },
-        "amisLcAmount": { "type": "number" },
-        "cvhcUrl": { "type": "string" },
-        "cvhcFileName": { "type": "string" }
+        "principalId": {
+          "type": "string",
+          "description": "Bên ủy quyền (Customer ID)"
+        },
+        "agentId": {
+          "type": "string",
+          "description": "Bên được ủy quyền (Customer ID)"
+        },
+        "expiryDate": {
+          "type": "string",
+          "description": "Thời hạn hiệu lực (YYYY-MM-DD)"
+        },
+        "attachmentUrl": {
+          "type": "string",
+          "description": "URL file đính kèm"
+        },
+        "attachmentName": {
+          "type": "string",
+          "description": "Tên file đính kèm"
+        },
+        "year": {
+          "type": "integer",
+          "description": "Năm hiệu lực để lọc"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Thời gian tạo"
+        }
       },
-      "required": ["id", "jobCode", "customerId"]
-    },
-    "Customer": {
-      "title": "Customer",
-      "description": "Customer information",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "code": { "type": "string" },
-        "name": { "type": "string" },
-        "mst": { "type": "string" }
-      },
-      "required": ["id", "code", "name"]
-    },
-    "ShippingLine": {
-      "title": "Shipping Line",
-      "description": "Shipping line information",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "code": { "type": "string" },
-        "name": { "type": "string" },
-        "mst": { "type": "string" },
-        "itemName": { "type": "string" }
-      },
-      "required": ["id", "code", "name"]
-    },
-    "PaymentRequest": {
-      "title": "Payment Request",
-      "description": "Request for payment",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "lineCode": { "type": "string" },
-        "booking": { "type": "string" },
-        "amount": { "type": "number" },
-        "type": { "type": "string" },
-        "status": { "type": "string" },
-        "invoiceUrl": { "type": "string" },
-        "uncUrl": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "completedAt": { "type": "string" }
-      },
-      "required": ["id", "lineCode", "booking", "amount", "status"]
-    },
-    "User": {
-      "title": "User",
-      "description": "Application user",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string" },
-        "username": { "type": "string" },
-        "role": { "type": "string", "enum": ["Admin", "Docs", "Cus", "sales"] },
-        "email": { "type": "string" }
-      },
-      "required": ["userId", "role"]
+      "required": ["principalId", "agentId", "expiryDate", "year"]
     }
   },
   "firestore": {
-    "jobs": {
-      "schema": "Job",
-      "description": "Collection of logistics jobs"
-    },
-    "customers": {
-      "schema": "Customer",
-      "description": "Collection of customers"
-    },
-    "lines": {
-      "schema": "ShippingLine",
-      "description": "Collection of shipping lines"
-    },
-    "paymentRequests": {
-      "schema": "PaymentRequest",
-      "description": "Collection of payment requests"
-    },
-    "users": {
-      "schema": "User",
-      "description": "Collection of user profiles"
+    "authorizations/{authorizationId}": {
+      "schema": "Authorization",
+      "description": "Danh sách các ủy quyền"
     }
   }
 }

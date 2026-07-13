@@ -10,8 +10,51 @@ import { useNotification } from '../contexts/NotificationContext';
 import { CustomerModal } from '../components/CustomerModal';
 import { YEARS } from '../constants';
 import axios from 'axios';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query } from 'firebase/firestore';
+import firebaseConfig from '../firebase-applet-config.json';
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
+
+// Wipe out kb_authorizations_v1 from localStorage immediately upon import
+try {
+  localStorage.removeItem('kb_authorizations_v1');
+} catch (e) {
+  console.error("Error clearing kb_authorizations_v1 from localStorage:", e);
+}
+
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+  };
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {},
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 interface AuthorizationsPageProps {
   authorizations: AuthorizationData[];
@@ -34,6 +77,11 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState<string>('All');
   
+  // Firestore state
+  const [authorizationsList, setAuthorizationsList] = useState<AuthorizationData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
   // Modal state
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [editingAuth, setEditingAuth] = useState<AuthorizationData | null>(null);
@@ -69,6 +117,38 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
   const sortedCustomers = useMemo(() => {
     return [...customers].sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
   }, [customers]);
+
+  // Load authorizations from Firestore in real-time
+  useEffect(() => {
+    try {
+      localStorage.removeItem('kb_authorizations_v1');
+    } catch (e) {}
+
+    const q = query(collection(db, 'authorizations'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: AuthorizationData[] = [];
+      snapshot.forEach((doc) => {
+        const item = doc.data();
+        list.push({
+          id: doc.id,
+          principalId: item.principalId || '',
+          agentId: item.agentId || '',
+          expiryDate: item.expiryDate || '',
+          attachmentUrl: item.attachmentUrl || undefined,
+          attachmentName: item.attachmentName || undefined,
+          year: Number(item.year) || (item.expiryDate ? Number(item.expiryDate) : new Date().getFullYear()),
+          createdAt: item.createdAt || new Date().toISOString()
+        });
+      });
+      setAuthorizationsList(list);
+      setIsLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'authorizations');
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Click outside listener to dismiss auto-suggest dropdowns
   useEffect(() => {
@@ -137,7 +217,7 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
 
   // Filter authorizations
   const filteredAuths = useMemo(() => {
-    return authorizations
+    return authorizationsList
       .filter(auth => {
         // Search matching
         const principal = customers.find(c => c.id === auth.principalId || c.code === auth.principalId);
@@ -164,7 +244,7 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
         const yearB = b.year || (b.expiryDate ? Number(b.expiryDate) : 0);
         return yearB - yearA;
       });
-  }, [authorizations, customers, searchTerm, selectedYear]);
+  }, [authorizationsList, customers, searchTerm, selectedYear]);
 
   // Paginated authorizations
   const totalPages = Math.ceil(filteredAuths.length / ITEMS_PER_PAGE);
@@ -209,8 +289,14 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
   // Delete handler
   const handleDelete = async (id: string) => {
     if (await confirm("Bạn có chắc chắn muốn xóa ủy quyền này?", "Xác nhận xóa")) {
-      onDeleteAuthorization(id);
-      alert("Đã xóa ủy quyền thành công", "Thành công");
+      try {
+        await deleteDoc(doc(db, 'authorizations', id));
+        alert("Đã xóa ủy quyền thành công", "Thành công");
+      } catch (err) {
+        console.error("Error deleting authorization:", err);
+        handleFirestoreError(err, OperationType.DELETE, `authorizations/${id}`);
+        alert("Có lỗi xảy ra khi xóa ủy quyền!", "Lỗi");
+      }
     }
   };
 
@@ -269,7 +355,7 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
   };
 
   // Save Authorization
-  const handleSaveAuth = (e: React.FormEvent) => {
+  const handleSaveAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const finalPrincipal = formPrincipalId.trim() || principalSearch.trim();
@@ -285,8 +371,9 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
       return;
     }
 
+    const authId = editingAuth ? editingAuth.id : Date.now().toString();
     const authData: AuthorizationData = {
-      id: editingAuth ? editingAuth.id : Date.now().toString(),
+      id: authId,
       principalId: finalPrincipal,
       agentId: finalAgent,
       expiryDate: String(formYear),
@@ -296,14 +383,32 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
       createdAt: editingAuth?.createdAt || new Date().toISOString()
     };
 
-    if (editingAuth) {
-      onUpdateAuthorization(authData);
-      alert("Cập nhật ủy quyền thành công!", "Thành công");
-    } else {
-      onAddAuthorization(authData);
-      alert("Thêm mới ủy quyền thành công!", "Thành công");
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'authorizations', authId);
+      await setDoc(docRef, {
+        principalId: authData.principalId,
+        agentId: authData.agentId,
+        expiryDate: authData.expiryDate,
+        attachmentUrl: authData.attachmentUrl || null,
+        attachmentName: authData.attachmentName || null,
+        year: authData.year,
+        createdAt: authData.createdAt
+      }, { merge: true });
+
+      if (editingAuth) {
+        alert("Cập nhật ủy quyền thành công!", "Thành công");
+      } else {
+        alert("Thêm mới ủy quyền thành công!", "Thành công");
+      }
+      setIsAuthModalOpen(false);
+    } catch (err) {
+      console.error("Error saving authorization:", err);
+      handleFirestoreError(err, OperationType.WRITE, `authorizations/${authId}`);
+      alert("Có lỗi xảy ra khi lưu ủy quyền!", "Lỗi");
+    } finally {
+      setIsSaving(false);
     }
-    setIsAuthModalOpen(false);
   };
 
   // Auto-Suggest selection helper
@@ -396,7 +501,14 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {paginatedAuths.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium bg-white">
+                    <Loader2 className="w-10 h-10 mx-auto text-indigo-600 mb-2 animate-spin" />
+                    Đang tải dữ liệu ủy quyền từ Firebase...
+                  </td>
+                </tr>
+              ) : paginatedAuths.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium bg-white">
                     <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
@@ -784,11 +896,20 @@ export const AuthorizationsPage: React.FC<AuthorizationsPageProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploading}
+                  disabled={isUploading || isSaving}
                   className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-2 rounded-xl text-sm font-bold flex items-center hover:shadow-lg hover:brightness-110 transition-all disabled:opacity-75"
                 >
-                  <Save className="w-4 h-4 mr-2" />
-                  <span>Lưu Ủy Quyền</span>
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <span>Đang lưu...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      <span>Lưu Ủy Quyền</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
