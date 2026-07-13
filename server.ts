@@ -101,7 +101,7 @@ async function startServer() {
             pending: [], staff: [], longHoangOrders: [],
             headerMessages: [], headerNotifications: [], headerUpdates: [],
             customReceipts: [], salaries: [], yearlyConfigs: {},
-            lockedIds: [], processedRequestIds: [], authorizations: []
+            lockedIds: [], processedRequestIds: []
         });
     }
 
@@ -141,7 +141,7 @@ async function startServer() {
                 pending: [], staff: [], longHoangOrders: [],
                 headerMessages: [], headerNotifications: [], headerUpdates: [],
                 customReceipts: [], salaries: [], yearlyConfigs: {},
-                lockedIds: [], processedRequestIds: [], authorizations: []
+                lockedIds: [], processedRequestIds: []
             };
             
             const result = await action(dbState);
@@ -417,7 +417,6 @@ async function startServer() {
                 if (safeData.processedRequestIds) dbState.processedRequestIds = safeData.processedRequestIds;
                 if (safeData.salaries) dbState.salaries = mergeLists(dbState.salaries || [], safeData.salaries);
                 if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs; 
-                if (safeData.authorizations) dbState.authorizations = mergeLists(dbState.authorizations || [], safeData.authorizations);
                 if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
 
             } else if (isDocs) {

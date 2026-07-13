@@ -597,7 +597,6 @@ app.post("/data/save", async (req, res) => {
         if (safeData.processedRequestIds) memoryData.processedRequestIds = safeData.processedRequestIds;
         if (safeData.salaries) memoryData.salaries = mergeLists(memoryData.salaries || [], safeData.salaries);
         if (safeData.yearlyConfigs) memoryData.yearlyConfigs = safeData.yearlyConfigs; 
-        if (safeData.authorizations) memoryData.authorizations = mergeLists(memoryData.authorizations || [], safeData.authorizations);
         if (safeData.longHoangOrders) memoryData.longHoangOrders = mergeLists(memoryData.longHoangOrders || [], safeData.longHoangOrders);
 
         // 4. Trigger Async Disk Write
@@ -749,7 +748,6 @@ app.post("/approve", async (req, res) => {
     memoryData.customers = mergeLists(memoryData.customers || [], fullData.customers || []);
     memoryData.lines = mergeLists(memoryData.lines || [], fullData.lines || []);
     if (fullData.yearlyConfigs) memoryData.yearlyConfigs = fullData.yearlyConfigs; // Merge yearly configs
-    if (fullData.authorizations) memoryData.authorizations = mergeLists(memoryData.authorizations || [], fullData.authorizations);
     
     if (fullData.paymentRequests) {
         memoryPayments = mergeLists(memoryPayments, fullData.paymentRequests);
