@@ -64,9 +64,9 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
     const q = searchText.toLowerCase().trim();
     if (!q) return eligibleCustomers;
     return eligibleCustomers.filter(c => 
-      (c.code || '').toLowerCase().includes(q) || 
-      (c.name || '').toLowerCase().includes(q) ||
-      (c.mst || '').toLowerCase().includes(q)
+      String(c.code || '').toLowerCase().includes(q) || 
+      String(c.name || '').toLowerCase().includes(q) ||
+      String(c.mst || '').toLowerCase().includes(q)
     );
   }, [eligibleCustomers, searchText]);
 
