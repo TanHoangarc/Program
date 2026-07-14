@@ -89,6 +89,20 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   const [isExportPromptOpen, setIsExportPromptOpen] = useState(false);
   const [exportStartVoucher, setExportStartVoucher] = useState('');
+  const [isAutoSavePath, setIsAutoSavePath] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('amis_auto_save_path_cache');
+      return cached !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('amis_auto_save_path_cache', isAutoSavePath.toString());
+    } catch {}
+  }, [isAutoSavePath]);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
@@ -1297,18 +1311,46 @@ export const AmisExport: React.FC<AmisExportProps> = ({
     const buffer = await workbook.xlsx.writeBuffer();
     const fileNameMap: Record<string, string> = { thu: "Phieuthu.xlsx", chi: "Phieuchi.xlsx", ban: "Banhang.xlsx", mua: "Muahang.xlsx" };
     const fileName = fileNameMap[mode] || `Export_${mode}.xlsx`;
-    try {
-        const formData = new FormData();
-        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
-        const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-        if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
-        else throw new Error(response.data?.message || "Server did not confirm save.");
-    } catch (err) {
-        console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
-        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        const url = window.URL.createObjectURL(blob);
-        const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+    if (isAutoSavePath) {
+        try {
+            const formData = new FormData();
+            formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
+            const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+            if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
+            else throw new Error(response.data?.message || "Server did not confirm save.");
+        } catch (err) {
+            console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
+            const url = window.URL.createObjectURL(blob);
+            const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+        }
+    } else {
+        try {
+            if ((window as any).showSaveFilePicker) {
+                const handle = await (window as any).showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{
+                        description: 'Excel Files',
+                        accept: {
+                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+                        }
+                    }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                alert(`Đã xuất và lưu file "${fileName}" thành công!`, "Thành công");
+            } else {
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+            }
+        } catch (e: any) {
+            if (e.name !== 'AbortError') {
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+            }
+        }
     }
     const idsToLock = Array.from(selectedIds);
     if (idsToLock.length > 0) onToggleLock(idsToLock);
@@ -1368,18 +1410,46 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
     const buffer = await workbook.xlsx.writeBuffer();
     const fileName = "Cong_Trinh.xlsx";
-    try {
-        const formData = new FormData();
-        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
-        const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-        if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
-        else throw new Error(response.data?.message || "Server did not confirm save.");
-    } catch (err) {
-        console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
-        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        const url = window.URL.createObjectURL(blob);
-        const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+    if (isAutoSavePath) {
+        try {
+            const formData = new FormData();
+            formData.append("file", blob, fileName); formData.append("targetDir", "E:\\ServerData");
+            const response = await axios.post(`${BACKEND_URL}/save-excel`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+            if (response.data?.success) alert(`Đã xuất và lưu file "${fileName}" vào E:\\ServerData thành công!`, "Thành công");
+            else throw new Error(response.data?.message || "Server did not confirm save.");
+        } catch (err) {
+            console.warn("Không thể lưu trực tiếp vào Server. Đang tải xuống máy...", err);
+            const url = window.URL.createObjectURL(blob);
+            const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+        }
+    } else {
+        try {
+            if ((window as any).showSaveFilePicker) {
+                const handle = await (window as any).showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{
+                        description: 'Excel Files',
+                        accept: {
+                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+                        }
+                    }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                alert(`Đã xuất và lưu file "${fileName}" thành công!`, "Thành công");
+            } else {
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+            }
+        } catch (e: any) {
+            if (e.name !== 'AbortError') {
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click(); window.URL.revokeObjectURL(url);
+            }
+        }
     }
     
     // Không tự động khóa dòng khi xuất công trình
@@ -1620,6 +1690,18 @@ export const AmisExport: React.FC<AmisExportProps> = ({
                 className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
                 autoFocus
               />
+              <div className="flex items-center space-x-2.5 mt-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <input
+                  type="checkbox"
+                  id="autoSavePath"
+                  checked={isAutoSavePath}
+                  onChange={(e) => setIsAutoSavePath(e.target.checked)}
+                  className="w-4.5 h-4.5 rounded text-green-600 focus:ring-green-500 border-slate-300 cursor-pointer"
+                />
+                <label htmlFor="autoSavePath" className="text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                  Auto save path (Tự động lưu vào thư mục máy chủ)
+                </label>
+              </div>
             </div>
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end space-x-3">
               <button
