@@ -42,6 +42,9 @@ export interface Customer {
   code: string;
   name: string;
   mst: string;
+  isAuthorized?: boolean;
+  authorizedCode?: string;
+  validityYear?: number;
 }
 
 // ============================================================

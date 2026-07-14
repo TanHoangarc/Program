@@ -249,6 +249,13 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">{labelCode}</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Tên Công Ty</th>
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Mã Số Thuế</th>
+                {mode === 'customers' && (
+                  <>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Ủy Quyền</th>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Mã KH Được UQ</th>
+                    <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Hiệu Lực</th>
+                  </>
+                )}
                 {mode === 'lines' && <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider">Mặt Hàng (Mặc định)</th>}
                 <th className="px-6 py-4 font-bold uppercase text-[10px] tracking-wider text-center">Thao tác</th>
               </tr>
@@ -260,6 +267,23 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
                     <td className="px-6 py-4 font-bold text-blue-700">{item.code}</td>
                     <td className="px-6 py-4 text-slate-700 font-medium">{item.name}</td>
                     <td className="px-6 py-4 text-slate-500 font-mono text-xs">{item.mst}</td>
+                    {mode === 'customers' && (
+                      <>
+                        <td className="px-6 py-4 text-xs font-medium">
+                          {(item as Customer).isAuthorized ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                              Có UQ
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-400 border border-slate-100">
+                              Không
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 font-bold text-indigo-700">{(item as Customer).authorizedCode || '-'}</td>
+                        <td className="px-6 py-4 font-medium text-slate-600">{(item as Customer).validityYear || '-'}</td>
+                      </>
+                    )}
                     {mode === 'lines' && (
                        <td className="px-6 py-4 text-slate-500 text-xs italic">
                          {(item as ShippingLine).itemName || '-'}
@@ -284,7 +308,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={mode === 'lines' ? 5 : 4} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu</td></tr>
+                <tr><td colSpan={mode === 'lines' ? 5 : (mode === 'customers' ? 7 : 4)} className="px-6 py-12 text-center text-slate-400 font-light">Không tìm thấy dữ liệu</td></tr>
               )}
             </tbody>
           </table>
@@ -344,6 +368,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ mode, data, onAd
               onClose={() => setIsModalOpen(false)}
               onSave={handleSaveCustomer}
               initialData={editingItem as Customer}
+              customers={data as Customer[]}
           />
       )}
 

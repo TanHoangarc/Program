@@ -597,6 +597,16 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
   };
 
+  const handleSwitchCustomer = (newCustomer: Customer) => {
+    if (isViewMode) return;
+    setCustCodeInput(newCustomer.code);
+    setFormData(prev => ({
+      ...prev,
+      customerId: newCustomer.id,
+      customerName: newCustomer.name
+    }));
+  };
+
   const handleExtensionChange = (id: string, field: keyof ExtensionData, value: any) => {
     if (isViewMode) return;
     setFormData(prev => {
@@ -1045,7 +1055,54 @@ export const JobModal: React.FC<JobModalProps> = ({
                         </div>
                     </div>
                     <div className="md:col-span-4">
-                        <Label>Khách hàng (Mã KH)</Label>
+                        <div className="flex flex-wrap items-center justify-between mb-1 gap-1">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider ml-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                                Khách hàng (Mã KH)
+                            </label>
+                            {/* Two-way authorization labels */}
+                            {(() => {
+                              const selectedCust = (customers || []).find(c => c?.id === formData.customerId);
+                              if (!selectedCust) return null;
+
+                              const authTargetCustomer = selectedCust.isAuthorized && selectedCust.authorizedCode
+                                ? (customers || []).find(c => c.code === selectedCust.authorizedCode)
+                                : null;
+
+                              const authorizedByCusts = selectedCust.code
+                                ? (customers || []).filter(c => c.isAuthorized && c.authorizedCode === selectedCust.code)
+                                : [];
+
+                              if (!authTargetCustomer && authorizedByCusts.length === 0) return null;
+
+                              return (
+                                <div className="flex flex-wrap gap-1">
+                                  {authTargetCustomer && (
+                                    <button
+                                      type="button"
+                                      onClick={() => !isViewMode && handleSwitchCustomer(authTargetCustomer)}
+                                      disabled={isViewMode}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-150 text-indigo-700 text-[10px] font-bold hover:bg-indigo-100/80 disabled:hover:bg-indigo-50 transition-colors cursor-pointer select-none"
+                                      title={isViewMode ? "Mã KH được ủy quyền" : "Click để đổi sang Mã KH Ủy Quyền"}
+                                    >
+                                      <span>UQ: <strong>{authTargetCustomer.code}</strong></span>
+                                    </button>
+                                  )}
+                                  {authorizedByCusts.map(c => (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => !isViewMode && handleSwitchCustomer(c)}
+                                      disabled={isViewMode}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded bg-teal-50 border border-teal-150 text-teal-700 text-[10px] font-bold hover:bg-teal-100/80 disabled:hover:bg-teal-50 transition-colors cursor-pointer select-none"
+                                      title={isViewMode ? "Mã KH ủy quyền cho mã này" : `Click để đổi sang Mã KH: ${c.code}`}
+                                    >
+                                      <span>KH: <strong>{c.code}</strong></span>
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                        </div>
                         <CustomerInput 
                             value={custCodeInput} 
                             onChange={handleCustomerInputChange} 
