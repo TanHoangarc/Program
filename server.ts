@@ -8,6 +8,7 @@ import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { fileURLToPath } from 'url';
 import admin from 'firebase-admin';
+import { GoogleGenAI, Type } from "@google/genai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,21 @@ async function loadFromFirestore(docId: string, defaultData: any) {
         return defaultData;
     }
 }
+
+const getGeminiClient = () => {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error("Missing GEMINI_API_KEY or API_KEY environment variable on server");
+    }
+    return new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+            headers: {
+                'User-Agent': 'aistudio-build',
+            }
+        }
+    });
+};
 
 async function startServer() {
     const app = express();
@@ -755,6 +771,74 @@ async function startServer() {
             const data: any = await response.json();
             res.json(contents ? data : { text: data.candidates?.[0]?.content?.parts?.[0]?.text || "" });
         } catch (err: any) { res.status(500).json({ error: err.message }); }
+    });
+
+    app.post("/api/cvhc/scan-page", async (req, res) => {
+        try {
+            const { base64Data, mimeType } = req.body;
+            if (!base64Data) {
+                return res.status(400).json({ success: false, error: "Missing base64Data" });
+            }
+
+            const ai = getGeminiClient();
+            
+            // Use gemini-3.5-flash which is ideal for basic text extraction
+            const result = await ai.models.generateContent({
+                model: "gemini-3.5-flash",
+                contents: {
+                    parts: [
+                        { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
+                        { text: "Extract the Bill of Lading Number (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản). If multiple, take the most prominent one. If not found, return empty strings." }
+                    ]
+                },
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            jobCode: {
+                                type: Type.STRING,
+                                description: "The Bill of Lading Number, B/L No, or Job No extracted from the document."
+                            },
+                            accountNumber: {
+                                type: Type.STRING,
+                                description: "The Beneficiary Account Number or Số tài khoản extracted from the document."
+                            }
+                        },
+                        required: ["jobCode", "accountNumber"]
+                    }
+                }
+            });
+
+            const jsonText = result.text || "{}";
+            const data = JSON.parse(jsonText.trim());
+
+            res.json({ success: true, data });
+        } catch (err: any) {
+            console.error("Error during CVHC scanning on server:", err);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    app.get("/api/cvhc/draft", async (req, res) => {
+        try {
+            const draft = await loadFromFirestore('cvhc_draft', { rows: null, pageCount: 1, isGlobalLocked: false });
+            res.json({ success: true, draft });
+        } catch (err: any) {
+            console.error("Error loading CVHC draft:", err);
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    app.post("/api/cvhc/draft", async (req, res) => {
+        try {
+            const { rows, pageCount, isGlobalLocked } = req.body;
+            await saveToFirestore('cvhc_draft', { rows, pageCount, isGlobalLocked, updatedAt: Date.now() });
+            res.json({ success: true });
+        } catch (err: any) {
+            console.error("Error saving CVHC draft:", err);
+            res.status(500).json({ success: false, error: err.message });
+        }
     });
 
     // Static files

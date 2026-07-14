@@ -1,5 +1,6 @@
 {
   "name": "LogisticsManager",
   "description": "A comprehensive logistics job entry and reporting system tracking costs, profits, and container details.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
