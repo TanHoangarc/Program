@@ -36,11 +36,33 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 }) => {
   const { alert, confirm } = useNotification();
   
-  const [rows, setRows] = useState<CVHCRow[]>([{ id: '1', jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
-  const [pageCount, setPageCount] = useState<number>(1);
-  const [isGlobalLocked, setIsGlobalLocked] = useState<boolean>(false);
-  const [isLoadingDraft, setIsLoadingDraft] = useState<boolean>(true);
-  const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
+  // Load rows from localStorage cache on mount
+  const [rows, setRows] = useState<CVHCRow[]>(() => {
+    try {
+      const cached = localStorage.getItem('cvhc_rows_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(r => ({ ...r, isLocked: !!r.isLocked }));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load CVHC rows cache:", e);
+    }
+    return [{ id: '1', jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '', isLocked: false }];
+  });
+
+  // Load pageCount from localStorage cache on mount
+  const [pageCount, setPageCount] = useState<number>(() => {
+    try {
+      const cached = localStorage.getItem('cvhc_page_count_cache');
+      if (cached) {
+        const parsed = parseInt(cached, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+    } catch {}
+    return 1;
+  });
 
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -48,76 +70,41 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   const [isScanning, setIsScanning] = useState(false); // For AI Scan
   const [iframePreviewUrl, setIframePreviewUrl] = useState<string | null>(null); // Embedded preview modal
   const [copiedState, setCopiedState] = useState<{ [key: string]: boolean }>({});
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('cvhc_is_locked_cache');
+      return cached === 'true';
+    } catch {
+      return false;
+    }
+  });
 
-  // Fetch draft from Firebase on mount
+  // Persist rows and pageCount to localStorage whenever they change
   useEffect(() => {
-    const loadDraft = async () => {
-      try {
-        const res = await axios.get(`${BACKEND_URL}/api/cvhc/draft`);
-        if (res.data && res.data.success && res.data.draft) {
-          const { rows: savedRows, pageCount: savedPageCount, isGlobalLocked: savedLocked } = res.data.draft;
-          if (Array.isArray(savedRows) && savedRows.length > 0) {
-            setRows(savedRows);
-          }
-          if (savedPageCount && savedPageCount > 0) {
-            setPageCount(savedPageCount);
-          }
-          if (typeof savedLocked === 'boolean') {
-            setIsGlobalLocked(savedLocked);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load CVHC draft from Firebase:", err);
-      } finally {
-        setIsLoadingDraft(false);
-      }
-    };
-    loadDraft();
-  }, []);
+    try {
+      localStorage.setItem('cvhc_rows_cache', JSON.stringify(rows));
+    } catch (e) {
+      console.error("Failed to save CVHC rows cache:", e);
+    }
+  }, [rows]);
 
-  // Save draft to Firebase when state changes (debounced)
   useEffect(() => {
-    if (isLoadingDraft) return;
+    try {
+      localStorage.setItem('cvhc_page_count_cache', pageCount.toString());
+    } catch {}
+  }, [pageCount]);
 
-    setIsSavingDraft(true);
-    const delayDebounceFn = setTimeout(async () => {
-      try {
-        await axios.post(`${BACKEND_URL}/api/cvhc/draft`, {
-          rows,
-          pageCount,
-          isGlobalLocked
-        });
-      } catch (err) {
-        console.error("Failed to save CVHC draft to Firebase:", err);
-      } finally {
-        setIsSavingDraft(false);
-      }
-    }, 1000);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [rows, pageCount, isGlobalLocked, isLoadingDraft]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('cvhc_is_locked_cache', isLocked.toString());
+    } catch {}
+  }, [isLocked]);
 
   const handleCopyText = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
     setCopiedState(prev => ({ ...prev, [key]: true }));
     setTimeout(() => {
       setCopiedState(prev => ({ ...prev, [key]: false }));
-    }, 1500);
-  };
-
-  const handleCopyColumn = (field: 'jobCode' | 'accountNumber') => {
-    const values = rows
-      .map(r => r[field]?.trim())
-      .filter(Boolean);
-    if (values.length === 0) {
-      alert("Không có dữ liệu trong cột để copy.", "Thông báo");
-      return;
-    }
-    const textToCopy = values.join('\n');
-    navigator.clipboard.writeText(textToCopy);
-    setCopiedState(prev => ({ ...prev, [`col-${field}`]: true }));
-    setTimeout(() => {
-      setCopiedState(prev => ({ ...prev, [`col-${field}`]: false }));
     }, 1500);
   };
 
@@ -211,12 +198,14 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   const findCustomer = (id: string) => customers.find(c => c.id === id);
 
   const resetForm = () => {
-    setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
+    setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '', isLocked: false }]);
     setFile(null);
     setUploadProgress('');
-    setPageCount(1);
-    setIsGlobalLocked(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    try {
+      localStorage.removeItem('cvhc_rows_cache');
+      localStorage.removeItem('cvhc_page_count_cache');
+    } catch {}
   };
 
   const handleJobCodeChange = (id: string, code: string) => {
@@ -257,7 +246,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   };
 
   const addRow = () => {
-    setRows(prev => [...prev, { id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
+    setRows(prev => [...prev, { id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '', isLocked: false }]);
   };
 
   const removeRow = (id: string) => {
@@ -265,7 +254,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       setRows(prev => prev.filter(r => r.id !== id));
     } else {
       // If only 1 row, just clear it
-      setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '' }]);
+      setRows([{ id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '', isLocked: false }]);
     }
   };
 
@@ -282,7 +271,8 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                       customerName: '', 
                       customerId: '', 
                       amount: 0, 
-                      accountNumber: ''
+                      accountNumber: '',
+                      isLocked: false
                   });
               }
           } else if (count < prev.length) {
@@ -338,7 +328,8 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                           customerId: '',
                           amount: 0,
                           accountNumber: '',
-                          previewUrl: newPreviewUrls[i]
+                          previewUrl: newPreviewUrls[i],
+                          isLocked: false
                       });
                   }
                   setRows(newRows);
@@ -367,7 +358,8 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   customerId: '', 
                   amount: 0, 
                   accountNumber: '', 
-                  previewUrl: newPreviewUrl
+                  previewUrl: newPreviewUrl,
+                  isLocked: false
               }]);
           }
       }
@@ -376,9 +368,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 
   // --- AI SCAN LOGIC ---
   const handleAutoScan = async () => {
+      if (isLocked) {
+          alert("Bảng dữ liệu đang bị khóa. Vui lòng mở khóa để quét tự điền.", "Thông báo");
+          return;
+      }
       const rowsToScan = rows.filter(r => r.previewUrl && !r.jobCode.trim());
       if (rowsToScan.length === 0) {
-          alert("Không có trang nào có Số BL trống và có file đính kèm để quét.", "Thông báo");
+          alert("Không có trang nào có số BL trống và có file đính kèm để quét.", "Thông báo");
           return;
       }
 
@@ -656,31 +652,14 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   return (
     <div className="p-8 w-full h-full flex flex-col">
       {/* Header */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center space-x-3 text-slate-800">
+      <div className="mb-8">
+        <div className="flex items-center space-x-3 text-slate-800 mb-2">
            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
              <FileCheck className="w-6 h-6" />
            </div>
-           <div>
-             <h1 className="text-3xl font-bold flex flex-wrap items-center gap-3">
-               <span>Nộp CVHC (Công Văn Hoàn Cược)</span>
-               {isLoadingDraft ? (
-                 <span className="text-xs font-normal text-slate-400 flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-full">
-                   <Loader2 className="w-3 h-3 animate-spin" /> Đang tải nháp...
-                 </span>
-               ) : isSavingDraft ? (
-                 <span className="text-xs font-normal text-indigo-500 flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded-full animate-pulse">
-                   <Loader2 className="w-3 h-3 animate-spin" /> Đang lưu nháp lên Firebase...
-                 </span>
-               ) : (
-                 <span className="text-xs font-normal text-emerald-500 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full">
-                   <CheckCircle className="w-3 h-3" /> Đã đồng bộ nháp Firebase
-                 </span>
-               )}
-             </h1>
-             <p className="text-slate-500">Cập nhật chứng từ hoàn cược cho các lô hàng</p>
-           </div>
+           <h1 className="text-3xl font-bold">Nộp CVHC (Công Văn Hoàn Cược)</h1>
         </div>
+        <p className="text-slate-500 ml-11">Cập nhật chứng từ hoàn cược cho các lô hàng</p>
       </div>
 
       {/* Main Content Area */}
@@ -735,23 +714,37 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                       type="number" 
                       min="1" 
                       value={pageCount} 
+                      disabled={isLocked}
                       onChange={(e) => handlePageCountChange(Number(e.target.value))}
-                      className="w-24 px-3 py-2 border border-blue-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-24 px-3 py-2 border border-blue-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                   <span className="text-xs text-slate-500 italic">
                       (Tự động cập nhật khi chọn file PDF)
                   </span>
               </div>
               
-              {/* AI SCAN BUTTON */}
-              <button 
-                  onClick={handleAutoScan}
-                  disabled={isScanning || !file}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
-              >
-                  {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  AI Tự Điền (Quét Bill & STK)
-              </button>
+              <div className="flex items-center space-x-3">
+                  {/* GLOBAL LOCK BUTTON */}
+                  <button 
+                      type="button"
+                      onClick={() => setIsLocked(!isLocked)}
+                      className={`px-4 py-2 border rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 ${isLocked ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+                      title={isLocked ? "Mở khóa tất cả các dòng" : "Khóa tất cả các dòng tránh bị thay đổi"}
+                  >
+                      {isLocked ? <Lock className="w-4 h-4 text-amber-600 animate-pulse" /> : <Unlock className="w-4 h-4 text-slate-500" />}
+                      {isLocked ? "Đang Khóa" : "Mở Khóa"}
+                  </button>
+
+                  {/* AI SCAN BUTTON */}
+                  <button 
+                      onClick={handleAutoScan}
+                      disabled={isScanning || !file || isLocked}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                      {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      AI Tự Điền (Quét Bill & STK)
+                  </button>
+              </div>
           </div>
 
           {/* Data Entry Table */}
@@ -760,27 +753,22 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs sticky top-0 z-10 shadow-sm">
                       <tr>
                           <th className="px-4 py-3 w-16 text-center">Trang</th>
-                          <th className="px-4 py-3 w-16 text-center">
-                              <button
-                                  type="button"
-                                  onClick={() => setIsGlobalLocked(prev => !prev)}
-                                  className={`p-1.5 rounded-lg transition-colors border mx-auto flex items-center justify-center ${isGlobalLocked ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200' : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-600'}`}
-                                  title={isGlobalLocked ? "Mở khóa toàn bộ dòng" : "Khóa toàn bộ dòng tránh bị ghi đè/mất thông tin"}
-                              >
-                                  {isGlobalLocked ? <Lock className="w-4 h-4 text-amber-600" /> : <Unlock className="w-4 h-4" />}
-                              </button>
-                          </th>
                           <th className="px-4 py-3 w-[360px]">
                               <div className="flex items-center justify-between">
                                   <span>Số BL (Job Code)</span>
                                   {rows.some(r => r.jobCode) && (
                                       <button
                                           type="button"
-                                          onClick={() => handleCopyColumn('jobCode')}
-                                          className="p-1 text-slate-400 hover:text-indigo-600 rounded bg-slate-100/50 hover:bg-slate-100 transition-all ml-2"
-                                          title="Copy toàn bộ Số BL trong cột"
+                                          onClick={() => {
+                                              const allCodes = rows.map(r => r.jobCode.trim()).filter(Boolean).join('\n');
+                                              if (allCodes) {
+                                                  handleCopyText(allCodes, 'col-jobCode');
+                                              }
+                                          }}
+                                          className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 rounded transition-all shrink-0"
+                                          title="Copy toàn bộ cột Số BL (Job Code) (mỗi dòng một hàng)"
                                       >
-                                          {copiedState['col-jobCode'] ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                          {copiedState['col-jobCode'] ? <Check className="w-3.5 h-3.5 text-green-500 animate-in fade-in" /> : <Copy className="w-3.5 h-3.5" />}
                                       </button>
                                   )}
                               </div>
@@ -793,11 +781,16 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                   {rows.some(r => r.accountNumber) && (
                                       <button
                                           type="button"
-                                          onClick={() => handleCopyColumn('accountNumber')}
-                                          className="p-1 text-slate-400 hover:text-indigo-600 rounded bg-slate-100/50 hover:bg-slate-100 transition-all ml-2"
-                                          title="Copy toàn bộ Số tài khoản trong cột"
+                                          onClick={() => {
+                                              const allAccounts = rows.map(r => r.accountNumber?.trim()).filter(Boolean).join('\n');
+                                              if (allAccounts) {
+                                                  handleCopyText(allAccounts, 'col-account');
+                                              }
+                                          }}
+                                          className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 rounded transition-all shrink-0"
+                                          title="Copy toàn bộ cột Số tài khoản (mỗi dòng một hàng)"
                                       >
-                                          {copiedState['col-accountNumber'] ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                          {copiedState['col-account'] ? <Check className="w-3.5 h-3.5 text-green-500 animate-in fade-in" /> : <Copy className="w-3.5 h-3.5" />}
                                       </button>
                                   )}
                               </div>
@@ -813,22 +806,15 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                               <td className="px-4 py-3 text-center font-bold text-slate-500">
                                   {`Trang ${idx + 1}`}
                               </td>
-                              <td className="px-4 py-3 text-center">
-                                  {isGlobalLocked ? (
-                                      <Lock className="w-4 h-4 text-amber-600 mx-auto" />
-                                  ) : (
-                                      <Unlock className="w-4 h-4 text-slate-300 mx-auto" />
-                                  )}
-                              </td>
                               <td className="px-4 py-3">
                                   <div className="relative flex items-center gap-1.5">
                                       <div className="relative flex-1">
                                           <input 
                                               type="text" 
                                               value={row.jobCode}
-                                              disabled={isGlobalLocked}
+                                              disabled={isLocked}
                                               onChange={(e) => handleJobCodeChange(row.id, e.target.value)}
-                                              placeholder={isGlobalLocked ? "Đã khóa" : "Nhập số Job..."}
+                                              placeholder={isLocked ? "Đã khóa" : "Nhập số Job..."}
                                               className={`w-full px-3 py-2 border rounded-lg font-bold outline-none focus:ring-2 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed ${row.jobId ? 'border-green-300 focus:ring-green-500 bg-green-50 text-green-800' : 'border-slate-300 focus:ring-indigo-500'}`}
                                           />
                                           {row.jobId && <CheckCircle className="w-4 h-4 text-green-600 absolute right-3 top-2.5" />}
@@ -856,7 +842,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       {row.jobId && (
                                           <button 
                                               onClick={() => onRowActionClick(row, 'edit')}
-                                              disabled={isGlobalLocked}
+                                              disabled={isLocked}
                                               className={`p-2 rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${expandedRowId === row.id && expandedAction === 'edit' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 border-transparent hover:border-blue-200'}`}
                                               title="Xem/Sửa Job"
                                           >
@@ -869,7 +855,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                   <input 
                                       type="text" 
                                       value={row.customerName}
-                                      disabled={isGlobalLocked}
+                                      disabled={isLocked}
                                       onChange={(e) => handleRowChange(row.id, 'customerName', e.target.value)}
                                       className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-transparent disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                                       placeholder="Tên khách hàng"
@@ -880,7 +866,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       <input 
                                           type="text" 
                                           value={row.amount > 0 ? new Intl.NumberFormat('en-US').format(row.amount) : ''}
-                                          disabled={isGlobalLocked}
+                                          disabled={isLocked}
                                           onChange={(e) => {
                                               const val = Number(e.target.value.replace(/,/g, ''));
                                               if(!isNaN(val)) handleRowChange(row.id, 'amount', val);
@@ -905,7 +891,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       <input 
                                           type="text" 
                                           value={row.accountNumber || ''}
-                                          disabled={isGlobalLocked}
+                                          disabled={isLocked}
                                           onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
                                           className="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                                           placeholder="STK Ngân hàng"
@@ -950,7 +936,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                           <button 
                                             type="button"
                                             onClick={() => onRowActionClick(row, 'refund')}
-                                            disabled={isGlobalLocked}
+                                            disabled={isLocked}
                                             className={`inline-flex items-center justify-center p-1.5 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${expandedRowId === row.id && expandedAction === 'refund' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-orange-50 hover:bg-orange-100 text-orange-600 hover:text-orange-700 border-orange-200/50'}`}
                                             title="Chi hoàn cược cho Job này"
                                           >
@@ -964,7 +950,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                           </tr>
                           {expandedRowId === row.id && (
                               <tr className="bg-slate-50/80 border-b border-slate-200 shadow-inner">
-                                  <td colSpan={8} className="p-4">
+                                  <td colSpan={7} className="p-4">
                                       <div className="flex flex-col gap-2">
                                           <div className="text-sm font-bold text-slate-700 mb-1">
                                               {expandedAction === 'edit' ? 'Chọn Job để Xem/Sửa:' : 'Chọn Job để Chi hoàn cược:'}

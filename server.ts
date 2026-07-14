@@ -820,27 +820,6 @@ async function startServer() {
         }
     });
 
-    app.get("/api/cvhc/draft", async (req, res) => {
-        try {
-            const draft = await loadFromFirestore('cvhc_draft', { rows: null, pageCount: 1, isGlobalLocked: false });
-            res.json({ success: true, draft });
-        } catch (err: any) {
-            console.error("Error loading CVHC draft:", err);
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    app.post("/api/cvhc/draft", async (req, res) => {
-        try {
-            const { rows, pageCount, isGlobalLocked } = req.body;
-            await saveToFirestore('cvhc_draft', { rows, pageCount, isGlobalLocked, updatedAt: Date.now() });
-            res.json({ success: true });
-        } catch (err: any) {
-            console.error("Error saving CVHC draft:", err);
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
     // Static files
     app.use("/api/files/invoice", express.static(INVOICE_ROOT));
     app.use("/api/files/inv", express.static(INV_DIR));
