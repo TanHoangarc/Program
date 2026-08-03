@@ -782,60 +782,37 @@ async function startServer() {
 
             const ai = getGeminiClient();
             
-            const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
-            let lastError: any = null;
-            let jsonText: string | null = null;
-
-            for (const modelName of modelsToTry) {
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    try {
-                        const result = await ai.models.generateContent({
-                            model: modelName,
-                            contents: {
-                                parts: [
-                                    { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
-                                    { text: "Extract all Bill of Lading Numbers (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản) from this document page. If multiple B/L / Job numbers are present on this page, list them separated by '+' (e.g. JOB1+JOB2). If not found, return empty strings." }
-                                ]
+            // Use gemini-3.5-flash which is ideal for basic text extraction
+            const result = await ai.models.generateContent({
+                model: "gemini-3.5-flash",
+                contents: {
+                    parts: [
+                        { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
+                        { text: "Extract the Bill of Lading Number (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản). If multiple, take the most prominent one. If not found, return empty strings." }
+                    ]
+                },
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            jobCode: {
+                                type: Type.STRING,
+                                description: "The Bill of Lading Number, B/L No, or Job No extracted from the document."
                             },
-                            config: {
-                                responseMimeType: "application/json",
-                                responseSchema: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        jobCode: {
-                                            type: Type.STRING,
-                                            description: "The Bill of Lading Number, B/L No, or Job No extracted from the document."
-                                        },
-                                        accountNumber: {
-                                            type: Type.STRING,
-                                            description: "The Beneficiary Account Number or Số tài khoản extracted from the document."
-                                        }
-                                    },
-                                    required: ["jobCode", "accountNumber"]
-                                }
+                            accountNumber: {
+                                type: Type.STRING,
+                                description: "The Beneficiary Account Number or Số tài khoản extracted from the document."
                             }
-                        });
-                        jsonText = result.text || "{}";
-                        break;
-                    } catch (err: any) {
-                        lastError = err;
-                        const isRateLimit = err.status === 429 || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("429") || err.message?.includes("quota");
-                        if (isRateLimit && attempt < 2) {
-                            console.warn(`Rate limit hit on model ${modelName} (attempt ${attempt + 1}), waiting before retry...`);
-                            await new Promise(r => setTimeout(r, 2500 * (attempt + 1)));
-                        } else {
-                            break; // try next model
-                        }
+                        },
+                        required: ["jobCode", "accountNumber"]
                     }
                 }
-                if (jsonText !== null) break;
-            }
+            });
 
-            if (jsonText === null) {
-                throw lastError || new Error("Failed to scan page with Gemini API");
-            }
-
+            const jsonText = result.text || "{}";
             const data = JSON.parse(jsonText.trim());
+
             res.json({ success: true, data });
         } catch (err: any) {
             console.error("Error during CVHC scanning on server:", err);

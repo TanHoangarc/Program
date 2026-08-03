@@ -182,8 +182,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           updatedRow.customerName = custName;
           updatedRow.customerId = custId;
         }
-        const matchedJobs = rowIds.map(id => id === updatedJob.id ? updatedJob : jobs.find(j => j.id === id)).filter((j): j is JobData => !!j);
-        updatedRow.amount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
         return updatedRow;
       }
       return row;
@@ -192,17 +190,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 
   // Helper to format currency
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
-
-  // Helper to parse job codes separated by space, comma, plus, slash, or newline
-  const parseJobCodes = (str: string) => {
-    if (!str) return [];
-    return str.split(/[\s,+/]+/).map(s => s.trim()).filter(Boolean);
-  };
-
-  const formatJobCodesForTransfer = (str: string) => {
-    const codes = parseJobCodes(str);
-    return codes.length > 0 ? codes.join('+') : '';
-  };
 
   // Helper to find job by code
   const findJob = (code: string) => jobs.find(j => j.jobCode.toLowerCase().trim() === code.toLowerCase().trim());
@@ -224,7 +211,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   const handleJobCodeChange = (id: string, code: string) => {
     setRows(prev => prev.map(row => {
       if (row.id === id) {
-        const codes = parseJobCodes(code);
+        const codes = code.split(',').map(s => s.trim()).filter(Boolean);
         const matchedJobs = codes.map(c => findJob(c)).filter((j): j is JobData => !!j);
 
         if (matchedJobs.length > 0) {
@@ -252,82 +239,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       }
       return row;
     }));
-  };
-
-  const handlePasteJobCode = (startId: string, pastedText: string) => {
-    const lines = pastedText.split(/\r?\n/);
-    if (lines.length <= 1) {
-      return false; // Let default single-row paste behavior handle it
-    }
-
-    setRows(prev => {
-      const startIndex = prev.findIndex(r => r.id === startId);
-      if (startIndex === -1) return prev;
-
-      const updatedRows = [...prev];
-      for (let i = 0; i < lines.length; i++) {
-        const targetIdx = startIndex + i;
-        if (targetIdx >= updatedRows.length) break;
-
-        const code = lines[i].trim();
-        const codes = parseJobCodes(code);
-        const matchedJobs = codes.map(c => findJob(c)).filter((j): j is JobData => !!j);
-
-        if (matchedJobs.length > 0) {
-          const firstJob = matchedJobs[0];
-          const custId = firstJob.maKhCuocId || firstJob.customerId;
-          const custName = findCustomer(custId)?.name || firstJob.customerName;
-          const totalAmount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-          const jobIds = matchedJobs.map(j => j.id).join(',');
-
-          updatedRows[targetIdx] = {
-            ...updatedRows[targetIdx],
-            jobCode: code,
-            jobId: jobIds,
-            amount: totalAmount,
-            customerId: custId,
-            customerName: custName
-          };
-        } else {
-          updatedRows[targetIdx] = {
-            ...updatedRows[targetIdx],
-            jobCode: code,
-            jobId: undefined,
-            amount: 0,
-            customerName: '',
-            customerId: '',
-            previewUrl: updatedRows[targetIdx].previewUrl
-          };
-        }
-      }
-      return updatedRows;
-    });
-    return true;
-  };
-
-  const handlePasteAccountNumber = (startId: string, pastedText: string) => {
-    const lines = pastedText.split(/\r?\n/);
-    if (lines.length <= 1) {
-      return false; // Let default single-row paste behavior handle it
-    }
-
-    setRows(prev => {
-      const startIndex = prev.findIndex(r => r.id === startId);
-      if (startIndex === -1) return prev;
-
-      const updatedRows = [...prev];
-      for (let i = 0; i < lines.length; i++) {
-        const targetIdx = startIndex + i;
-        if (targetIdx >= updatedRows.length) break;
-
-        updatedRows[targetIdx] = {
-          ...updatedRows[targetIdx],
-          accountNumber: lines[i].trim()
-        };
-      }
-      return updatedRows;
-    });
-    return true;
   };
 
   const handleRowChange = (id: string, field: keyof CVHCRow, value: any) => {
@@ -494,49 +405,11 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               reader.readAsDataURL(blob);
               const base64Data = await base64Promise;
 
-              // 3. Call server-side scan API with retries
-              let scanRes;
-              let attempt = 0;
-              while (attempt < 3) {
-                  attempt++;
-                  try {
-                      try {
-                          scanRes = await axios.post('/api/cvhc/scan-page', {
-                              base64Data,
-                              mimeType
-                          });
-                      } catch (err: any) {
-                          if (err.response?.status === 404 && BACKEND_URL) {
-                              scanRes = await axios.post(`${BACKEND_URL}/api/cvhc/scan-page`, {
-                                  base64Data,
-                                  mimeType
-                              });
-                          } else {
-                              throw err;
-                          }
-                      }
-                      if (scanRes.data && scanRes.data.success) {
-                          break;
-                      }
-                      const errDetail = scanRes.data?.error || "";
-                      if ((errDetail.includes("429") || errDetail.includes("RESOURCE_EXHAUSTED") || errDetail.includes("quota")) && attempt < 3) {
-                          await new Promise(r => setTimeout(r, 3000));
-                          continue;
-                      }
-                  } catch (err: any) {
-                      const errMsg = err.response?.data?.error || err.message || "";
-                      if ((errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("quota") || err.response?.status === 500) && attempt < 3) {
-                          await new Promise(r => setTimeout(r, 3000));
-                          continue;
-                      }
-                      throw err;
-                  }
-              }
-
-              // Pacing delay to stay within rate limits (e.g. 1.2s per request)
-              if (i < rows.length - 1) {
-                  await new Promise(r => setTimeout(r, 1200));
-              }
+              // 3. Call server-side scan API
+              const scanRes = await axios.post(`${BACKEND_URL}/api/cvhc/scan-page`, {
+                  base64Data,
+                  mimeType
+              });
 
               if (scanRes.data && scanRes.data.success && scanRes.data.data) {
                   const data = scanRes.data.data;
@@ -545,7 +418,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   if (data.jobCode || data.accountNumber) {
                       // If jobCode found, verify against database using existing handleJobCodeChange logic
                       if (data.jobCode) {
-                          const codes = parseJobCodes(data.jobCode);
+                          const codes = data.jobCode.split(',').map((s: string) => s.trim()).filter(Boolean);
                           const matchedJobs = codes.map((c: string) => findJob(c)).filter((j): j is JobData => !!j);
                           
                           setRows(currentRows => currentRows.map(r => {
@@ -761,14 +634,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       
       // Auto refresh the row data based on new job info
       setRows(prev => prev.map(row => {
-          const rowIds = row.jobId ? row.jobId.split(',').map(id => id.trim()).filter(Boolean) : [];
-          if (rowIds.includes(updatedJob.id)) {
+          if (row.jobId === updatedJob.id) {
               const custId = updatedJob.maKhCuocId || updatedJob.customerId;
               const custName = findCustomer(custId)?.name || updatedJob.customerName;
-              const matchedJobs = rowIds.map(id => id === updatedJob.id ? updatedJob : jobs.find(j => j.id === id)).filter((j): j is JobData => !!j);
               return {
                   ...row,
-                  amount: matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0),
+                  jobCode: updatedJob.jobCode,
+                  amount: updatedJob.thuCuoc,
                   customerId: custId,
                   customerName: custName
               };
@@ -885,34 +757,19 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                               <div className="flex items-center justify-between">
                                   <span>Số BL (Job Code)</span>
                                   {rows.some(r => r.jobCode) && (
-                                      <div className="flex items-center space-x-1">
-                                          <button
-                                              type="button"
-                                              onClick={() => {
-                                                  const allCodes = rows.map(r => r.jobCode.trim()).filter(Boolean).join('\n');
-                                                  if (allCodes) {
-                                                      handleCopyText(allCodes, 'col-jobCode');
-                                                  }
-                                              }}
-                                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 rounded transition-all shrink-0"
-                                              title="Copy toàn bộ cột Số BL (Job Code) (mỗi dòng một hàng)"
-                                          >
-                                              {copiedState['col-jobCode'] ? <Check className="w-3.5 h-3.5 text-green-500 animate-in fade-in" /> : <Copy className="w-3.5 h-3.5" />}
-                                          </button>
-                                          <button
-                                              type="button"
-                                              onClick={() => {
-                                                  const allDescs = rows.map(r => r.jobCode.trim() ? `PAYMENT HOAN CUOC BL ${formatJobCodesForTransfer(r.jobCode)} MST 0316113070` : '').filter(Boolean).join('\n');
-                                                  if (allDescs) {
-                                                      handleCopyText(allDescs, 'col-transfer');
-                                                  }
-                                              }}
-                                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-200/60 rounded transition-all shrink-0"
-                                              title="Copy toàn bộ Nội dung chuyển khoản (mỗi dòng một hàng)"
-                                          >
-                                              {copiedState['col-transfer'] ? <Check className="w-3.5 h-3.5 text-green-500 animate-in fade-in" /> : <FileText className="w-3.5 h-3.5" />}
-                                          </button>
-                                      </div>
+                                      <button
+                                          type="button"
+                                          onClick={() => {
+                                              const allCodes = rows.map(r => r.jobCode.trim()).filter(Boolean).join('\n');
+                                              if (allCodes) {
+                                                  handleCopyText(allCodes, 'col-jobCode');
+                                              }
+                                          }}
+                                          className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 rounded transition-all shrink-0"
+                                          title="Copy toàn bộ cột Số BL (Job Code) (mỗi dòng một hàng)"
+                                      >
+                                          {copiedState['col-jobCode'] ? <Check className="w-3.5 h-3.5 text-green-500 animate-in fade-in" /> : <Copy className="w-3.5 h-3.5" />}
+                                      </button>
                                   )}
                               </div>
                           </th>
@@ -957,12 +814,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                               value={row.jobCode}
                                               disabled={isLocked}
                                               onChange={(e) => handleJobCodeChange(row.id, e.target.value)}
-                                              onPaste={(e) => {
-                                                  const pastedText = e.clipboardData.getData('text');
-                                                  if (handlePasteJobCode(row.id, pastedText)) {
-                                                      e.preventDefault();
-                                                  }
-                                              }}
                                               placeholder={isLocked ? "Đã khóa" : "Nhập số Job..."}
                                               className={`w-full px-3 py-2 border rounded-lg font-bold outline-none focus:ring-2 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed ${row.jobId ? 'border-green-300 focus:ring-green-500 bg-green-50 text-green-800' : 'border-slate-300 focus:ring-indigo-500'}`}
                                           />
@@ -972,7 +823,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                           <>
                                               <button 
                                                   type="button"
-                                                  onClick={() => handleCopyText(`PAYMENT HOAN CUOC BL ${formatJobCodesForTransfer(row.jobCode)} MST 0316113070`, `${row.id}-desc`)}
+                                                  onClick={() => handleCopyText(`PAYMENT HOAN CUOC BL ${row.jobCode} MST 0316113070`, `${row.id}-desc`)}
                                                   className="p-2 bg-slate-50 border border-slate-200 text-slate-500 rounded-lg hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all shrink-0"
                                                   title="Copy nội dung chuyển khoản"
                                               >
@@ -1042,12 +893,6 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                           value={row.accountNumber || ''}
                                           disabled={isLocked}
                                           onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
-                                          onPaste={(e) => {
-                                              const pastedText = e.clipboardData.getData('text');
-                                              if (handlePasteAccountNumber(row.id, pastedText)) {
-                                                  e.preventDefault();
-                                              }
-                                          }}
                                           className="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                                           placeholder="STK Ngân hàng"
                                       />
