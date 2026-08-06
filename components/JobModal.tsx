@@ -59,7 +59,8 @@ const CustomerInput = ({
   cvhcUrl,
   onUploadClick,
   isUploading,
-  onCopyMainCustomer
+  onCopyMainCustomer,
+  quickSelectCustomers
 }: { 
   value: string; 
   onChange: (val: string) => void; 
@@ -74,6 +75,7 @@ const CustomerInput = ({
   onUploadClick?: () => void;
   isUploading?: boolean;
   onCopyMainCustomer?: () => void;
+  quickSelectCustomers?: Customer[];
 }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [internalValue, setInternalValue] = useState('');
@@ -186,19 +188,38 @@ const CustomerInput = ({
         )}
       </div>
       
-      {!readOnly && showSuggestions && internalValue && filtered.length > 0 && (
-        <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto mt-1 left-0 py-1">
-          {filtered.map(c => (
-            <li 
-              key={c.id} 
-              onMouseDown={() => handleSelect(c)}
-              className="px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0"
-            >
-              <div className="font-bold text-blue-700">{c.code}</div>
-              <div className="text-[10px] text-slate-500 truncate">{c.name}</div>
-            </li>
-          ))}
-        </ul>
+      {!readOnly && showSuggestions && (
+        <>
+          {internalValue && filtered.length > 0 && (
+            <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto mt-1 left-0 py-1">
+              {filtered.map(c => (
+                <li 
+                  key={c.id} 
+                  onMouseDown={() => handleSelect(c)}
+                  className="px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0"
+                >
+                  <div className="font-bold text-blue-700">{c.code}</div>
+                  <div className="text-[10px] text-slate-500 truncate">{c.name}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!internalValue && quickSelectCustomers && quickSelectCustomers.length > 0 && (
+            <ul className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto mt-1 left-0 py-1">
+               <div className="px-2 py-1 text-[9px] font-bold text-slate-400 uppercase bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10 border-b border-slate-100">KH Cược Từng Dùng</div>
+               {quickSelectCustomers.map(c => (
+                  <li 
+                    key={`quick-${c.id}`} 
+                    onMouseDown={() => handleSelect(c)}
+                    className="px-3 py-1.5 text-xs cursor-pointer hover:bg-emerald-50 border-b border-slate-50 last:border-0"
+                  >
+                    <div className="font-bold text-emerald-700">{c.code}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{c.name}</div>
+                  </li>
+               ))}
+            </ul>
+          )}
+        </>
       )}
       
       {displayName && (
@@ -444,6 +465,26 @@ export const JobModal: React.FC<JobModalProps> = ({
     }
     return 0;
   }, [formData.transit, formData.cont20, formData.cont40]);
+
+  const recentDepositCustomers = useMemo(() => {
+    if (!formData.customerId || !existingJobs) return [];
+    
+    // Find all jobs for the current customer
+    const jobsForCustomer = existingJobs.filter(j => j.customerId === formData.customerId);
+    
+    // Extract unique maKhCuocId
+    const uniqueIds = new Set<string>();
+    jobsForCustomer.forEach(j => {
+      if (j.maKhCuocId) {
+        uniqueIds.add(j.maKhCuocId);
+      }
+    });
+    
+    // Map to Customer objects
+    return Array.from(uniqueIds)
+      .map(id => (customers || []).find(c => c.id === id))
+      .filter((c): c is Customer => c !== undefined);
+  }, [formData.customerId, existingJobs, customers]);
 
   useEffect(() => {
     if (isOpen && !initialData && !isViewMode) {
@@ -1228,6 +1269,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                                         onUploadClick={handleUploadCVHCClick}
                                         isUploading={isUploadingCVHC}
                                         onCopyMainCustomer={formData.customerId ? () => setFormData(prev => ({ ...prev, maKhCuocId: prev.customerId })) : undefined}
+                                        quickSelectCustomers={recentDepositCustomers}
                                     />
                                 </div>
                                 <div>
