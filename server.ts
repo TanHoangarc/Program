@@ -782,7 +782,7 @@ async function startServer() {
             }
 
             const ai = getGeminiClient(customApiKey);
-            const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+            const modelsToTry = ["gemini-3.7-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"];
             let lastError: any = null;
             let resultData = null;
 
@@ -793,7 +793,7 @@ async function startServer() {
                         contents: {
                             parts: [
                                 { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
-                                { text: "You are an AI assistant for a logistics shipping company. Analyze this shipping document / Công văn hoàn cược (CVHC). Extract:\n1. jobCode: The Bill of Lading Number / B/L No / Booking No / Mã Vận Đơn (e.g. KMLSHA071601, SITG..., ONEY..., COSU...). If multiple jobs, separate by comma. If not found, return empty string.\n2. accountNumber: The Beneficiary Bank Account Number (Số tài khoản thụ hưởng hoàn cược). Digits only (remove spaces/dots/hyphens). If not found, return empty string." }
+                                { text: "Extract the Bill of Lading Number (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản). If multiple, take the most prominent one. If not found, return empty strings." }
                             ]
                         },
                         config: {
@@ -815,10 +815,7 @@ async function startServer() {
                         }
                     });
 
-                    let jsonText = result.text || "{}";
-                    const cleanText = jsonText.replace(/\s*\n\s*/g, ' ').replace(/```json/g, '').replace(/```/g, '');
-                    const match = cleanText.match(/\{.*\}/);
-                    if (match) { jsonText = match[0]; }
+                    const jsonText = result.text || "{}";
                     resultData = JSON.parse(jsonText.trim());
                     break; // Success!
                 } catch (err: any) {
@@ -828,7 +825,7 @@ async function startServer() {
                         break;
                     }
                     console.warn(`CVHC scan failed with model ${model}:`, err.message);
-                    // Do not break here, try next model if available
+                    // Continue to try the next model
                 }
             }
 
