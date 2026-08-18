@@ -50,8 +50,8 @@ async function loadFromFirestore(docId: string, defaultData: any) {
     }
 }
 
-const getGeminiClient = () => {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+const getGeminiClient = (customKey?: string) => {
+    const apiKey = customKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
     if (!apiKey) {
         throw new Error("Missing GEMINI_API_KEY or API_KEY environment variable on server");
     }
@@ -773,52 +773,84 @@ async function startServer() {
         } catch (err: any) { res.status(500).json({ error: err.message }); }
     });
 
-    app.post("/api/cvhc/scan-page", async (req, res) => {
+    const handleCVHCScan = async (req: express.Request, res: express.Response) => {
         try {
             const { base64Data, mimeType } = req.body;
+            const customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body.apiKey;
             if (!base64Data) {
                 return res.status(400).json({ success: false, error: "Missing base64Data" });
             }
 
-            const ai = getGeminiClient();
-            
-            // Use gemini-3.5-flash which is ideal for basic text extraction
-            const result = await ai.models.generateContent({
-                model: "gemini-3.5-flash",
-                contents: {
-                    parts: [
-                        { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
-                        { text: "Extract the Bill of Lading Number (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản). If multiple, take the most prominent one. If not found, return empty strings." }
-                    ]
-                },
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            jobCode: {
-                                type: Type.STRING,
-                                description: "The Bill of Lading Number, B/L No, or Job No extracted from the document."
-                            },
-                            accountNumber: {
-                                type: Type.STRING,
-                                description: "The Beneficiary Account Number or Số tài khoản extracted from the document."
-                            }
+            const ai = getGeminiClient(customApiKey);
+            const modelsToTry = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-3.7-flash"];
+            let lastError: any = null;
+            let resultData = null;
+
+            for (const model of modelsToTry) {
+                try {
+                    const result = await ai.models.generateContent({
+                        model,
+                        contents: {
+                            parts: [
+                                { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
+                                { text: "Extract the Bill of Lading Number (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản). If multiple, take the most prominent one. If not found, return empty strings." }
+                            ]
                         },
-                        required: ["jobCode", "accountNumber"]
+                        config: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    jobCode: {
+                                        type: Type.STRING,
+                                        description: "The Bill of Lading Number, B/L No, or Job No extracted from the document."
+                                    },
+                                    accountNumber: {
+                                        type: Type.STRING,
+                                        description: "The Beneficiary Account Number or Số tài khoản extracted from the document."
+                                    }
+                                },
+                                required: ["jobCode", "accountNumber"]
+                            }
+                        }
+                    });
+
+                    const jsonText = result.text || "{}";
+                    resultData = JSON.parse(jsonText.trim());
+                    break; // Success!
+                } catch (err: any) {
+                    lastError = err;
+                    // If error is quota/billing related, all models under this API key are affected; break immediately
+                    if (err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("429") || err.message?.includes("prepayment") || err.message?.includes("quota")) {
+                        break;
+                    }
+                    console.warn(`CVHC scan failed with model ${model}:`, err.message);
+                    if (!err.message?.includes("not found")) {
+                        break;
                     }
                 }
-            });
+            }
 
-            const jsonText = result.text || "{}";
-            const data = JSON.parse(jsonText.trim());
-
-            res.json({ success: true, data });
+            if (resultData) {
+                return res.json({ success: true, data: resultData });
+            } else {
+                const isQuotaError = lastError?.message?.includes("RESOURCE_EXHAUSTED") || lastError?.message?.includes("prepayment") || lastError?.message?.includes("429");
+                const statusCode = isQuotaError ? 429 : 500;
+                return res.status(statusCode).json({
+                    success: false,
+                    error: isQuotaError 
+                        ? "Hạn mức Gemini API (Credits/Quota) đã hết hoặc bị giới hạn. Vui lòng kiểm tra lại cấu hình tài khoản AI hoặc cung cấp API Key riêng."
+                        : (lastError?.message || "Không thể phân tích tài liệu bằng AI.")
+                });
+            }
         } catch (err: any) {
             console.error("Error during CVHC scanning on server:", err);
             res.status(500).json({ success: false, error: err.message });
         }
-    });
+    };
+
+    app.post("/api/cvhc/scan-page", handleCVHCScan);
+    app.post("/cvhc/scan-page", handleCVHCScan);
 
     // Static files
     app.use("/api/files/invoice", express.static(INVOICE_ROOT));

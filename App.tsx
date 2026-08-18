@@ -19,6 +19,7 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
+import { ApiKeysPage } from './pages/ApiKeysPage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
 import SyncBookingModal from './components/SyncBookingModal';
@@ -91,7 +92,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'api-keys'>(() => {
       try {
           const savedUserStr = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUserStr) {
@@ -1723,6 +1724,7 @@ const App: React.FC = () => {
                     lines={lines}
                     onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
                     onAddCustomer={(c) => setCustomers([...customers, c])}
+                    onNavigate={setCurrentPage}
                 />
             )}
 
@@ -1748,6 +1750,10 @@ const App: React.FC = () => {
 
             {currentPage === 'tool-ai' && (
               <ToolAI />
+            )}
+
+            {currentPage === 'api-keys' && (
+              <ApiKeysPage onNavigate={setCurrentPage} />
             )}
 
             {currentPage === 'nfc' && currentUser && (

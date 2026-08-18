@@ -1138,7 +1138,7 @@ const ExtractStampTool = ({ setStamps }: { setStamps: any }) => {
     const [colorMode, setColorMode] = useState<'original'|'red'|'blue'>('original');
     const [saturation, setSaturation] = useState(1);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-    const [customApiKey, setCustomApiKey] = useState('');
+    const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
 
     useEffect(() => { setSelection(null); setBaseImage(null); setResultImage(null); setErrorMsg(null); }, [page, file]);
 
@@ -1575,7 +1575,7 @@ export const SmartEditTool = () => {
         brightness: number, blur: number, contrast: number
     }[]>([]);
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-    const [customApiKey, setCustomApiKey] = useState('');
+    const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     // --- INTERACTION MODE STATE ---

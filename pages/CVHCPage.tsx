@@ -1,12 +1,20 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles, X, RotateCcw, FileText, Mail, Copy, Check, Lock, Unlock } from 'lucide-react';
+import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles, X, RotateCcw, FileText, Mail, Copy, Check, Lock, Unlock, Key, Settings, ExternalLink, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
+import * as pdfjsMod from 'pdfjs-dist';
 import { JobModal } from '../components/JobModal';
 import { QuickReceiveModal, ReceiveMode } from '../components/QuickReceiveModal';
 import { useNotification } from '../contexts/NotificationContext';
+import { getStoredApiKeys, maskApiKey, testGeminiApiKey, subscribeApiKeyChanges, setActiveApiKey, getActiveApiKey } from '../utils/apiKeyManager';
+import { ApiKeyItem } from '../types';
+
+const pdfjsLib = (pdfjsMod as any).default || pdfjsMod;
+if (pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.530/build/pdf.worker.min.mjs';
+}
 
 interface CVHCPageProps {
   jobs: JobData[];
@@ -15,6 +23,7 @@ interface CVHCPageProps {
   onUpdateJob: (job: JobData) => void;
   onAddLine?: (line: string) => void;
   onAddCustomer?: (customer: Customer) => void;
+  onNavigate?: (page: string) => void;
 }
 
 interface CVHCRow {
@@ -31,10 +40,99 @@ interface CVHCRow {
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
 
+// Local PDF text extraction helper
+const extractTextFromBlob = async (blob: Blob): Promise<string> => {
+    try {
+        const arrayBuffer = await blob.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+        const pdf = await loadingTask.promise;
+        let fullText = '';
+        for (let p = 1; p <= pdf.numPages; p++) {
+            const page = await pdf.getPage(p);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(' ');
+            fullText += ' ' + pageText;
+        }
+        return fullText.trim();
+    } catch (e) {
+        return '';
+    }
+};
+
+// Match extracted text against database jobs and regex patterns
+const parseDocumentText = (text: string, existingJobs: JobData[]): { jobCode: string; accountNumber: string } => {
+    let jobCode = '';
+    let accountNumber = '';
+
+    if (!text || text.length < 3) return { jobCode, accountNumber };
+
+    // 1. Check against known Jobs in database (exact matching)
+    for (const j of existingJobs) {
+        if (j.jobCode && j.jobCode.trim().length >= 4) {
+            const cleanCode = j.jobCode.trim();
+            const regex = new RegExp(`\\b${cleanCode.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+            if (regex.test(text) || text.toUpperCase().includes(cleanCode.toUpperCase())) {
+                jobCode = cleanCode;
+                break;
+            }
+        }
+    }
+
+    // 2. Regex search for B/L / Booking / Job patterns
+    if (!jobCode) {
+        const blPatterns = [
+            /(?:B\/L|BL|Bill\s*of\s*Lading|MBL|HBL|Booking|Số\s*Vận\s*Đơn|Vận\s*đơn|Bill\s*No)[#:\s.-]*([A-Z0-9\/-]{6,25})/i,
+            /(?:Số\s*BL|Mã\s*BL|Số\s*Job)[#:\s.-]*([A-Z0-9\/-]{6,25})/i
+        ];
+        for (const pattern of blPatterns) {
+            const match = text.match(pattern);
+            if (match && match[1]) {
+                jobCode = match[1].trim();
+                break;
+            }
+        }
+    }
+
+    // 3. Search for Account Number (STK / Bank Account)
+    const stkPatterns = [
+        /(?:Số\s*tài\s*khoản|Số\s*TK|STK|Tài\s*khoản\s*thụ\s*hưởng|TK\s*thụ\s*hưởng|Account\s*Number|Account\s*No|A\/C\s*No|A\/C)[#:\s.-]*([0-9\s]{6,25})/i,
+        /(?:Tại\s*ngân\s*hàng|Ngân\s*hàng|Bank)[^0-9\n]{0,25}([0-9]{8,20})/i
+    ];
+    for (const pattern of stkPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+            const cleanAcc = match[1].replace(/\s+/g, '').trim();
+            if (cleanAcc.length >= 6 && /^\d+$/.test(cleanAcc)) {
+                accountNumber = cleanAcc;
+                break;
+            }
+        }
+    }
+
+    return { jobCode, accountNumber };
+};
+
 export const CVHCPage: React.FC<CVHCPageProps> = ({ 
-  jobs, customers, lines, onUpdateJob, onAddLine, onAddCustomer 
+  jobs, customers, lines, onUpdateJob, onAddLine, onAddCustomer, onNavigate 
 }) => {
   const { alert, confirm } = useNotification();
+  
+  // Custom API Key state & List
+  const [customApiKey, setCustomApiKey] = useState<string>(() => getActiveApiKey());
+  const [savedKeys, setSavedKeys] = useState<ApiKeyItem[]>(() => getStoredApiKeys());
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState('');
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Sync API Keys across components
+  useEffect(() => {
+    const unsub = subscribeApiKeyChanges(() => {
+      setCustomApiKey(getActiveApiKey());
+      setSavedKeys(getStoredApiKeys());
+    });
+    return unsub;
+  }, []);
   
   // Load rows from localStorage cache on mount
   const [rows, setRows] = useState<CVHCRow[]>(() => {
@@ -366,7 +464,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
     }
   };
 
-  // --- AI SCAN LOGIC ---
+  // --- AI & LOCAL HYBRID SCAN LOGIC ---
   const handleAutoScan = async () => {
       if (isLocked) {
           alert("Bảng dữ liệu đang bị khóa. Vui lòng mở khóa để quét tự điền.", "Thông báo");
@@ -380,6 +478,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
 
       setIsScanning(true);
       let successCount = 0;
+      let quotaExhausted = false;
 
       for (let i = 0; i < rows.length; i++) {
           const row = rows[i];
@@ -391,91 +490,138 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               const blob = await response.blob();
               const mimeType = blob.type || "application/pdf";
               
-              // 2. Convert to Base64
-              const reader = new FileReader();
-              const base64Promise = new Promise<string>((resolve, reject) => {
-                  reader.onloadend = () => {
-                      const base64String = reader.result as string;
-                      // Remove data URL prefix (e.g. "data:application/pdf;base64,")
-                      const base64Data = base64String.split(',')[1]; 
-                      resolve(base64Data);
-                  };
-                  reader.onerror = reject;
-              });
-              reader.readAsDataURL(blob);
-              const base64Data = await base64Promise;
+              let extractedData: { jobCode: string; accountNumber: string } | null = null;
 
-              // 3. Call server-side scan API
-              const scanRes = await axios.post(`${BACKEND_URL}/api/cvhc/scan-page`, {
-                  base64Data,
-                  mimeType
-              });
-
-              if (scanRes.data && scanRes.data.success && scanRes.data.data) {
-                  const data = scanRes.data.data;
-
-                  // 4. Update Row
-                  if (data.jobCode || data.accountNumber) {
-                      // If jobCode found, verify against database using existing handleJobCodeChange logic
-                      if (data.jobCode) {
-                          const codes = data.jobCode.split(',').map((s: string) => s.trim()).filter(Boolean);
-                          const matchedJobs = codes.map((c: string) => findJob(c)).filter((j): j is JobData => !!j);
-                          
-                          setRows(currentRows => currentRows.map(r => {
-                              if (r.id === row.id) {
-                                  if (matchedJobs.length > 0) {
-                                      const firstJob = matchedJobs[0];
-                                      const custId = firstJob.maKhCuocId || firstJob.customerId;
-                                      const custName = findCustomer(custId)?.name || firstJob.customerName;
-                                      const totalAmount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-                                      const jobIds = matchedJobs.map(j => j.id).join(',');
-
-                                      return {
-                                          ...r,
-                                          jobCode: data.jobCode,
-                                          jobId: jobIds,
-                                          amount: totalAmount,
-                                          customerId: custId,
-                                          customerName: custName,
-                                          accountNumber: data.accountNumber || r.accountNumber
-                                      };
-                                  } else {
-                                      return {
-                                          ...r,
-                                          jobCode: data.jobCode,
-                                          accountNumber: data.accountNumber || r.accountNumber
-                                      };
-                                  }
-                              }
-                              return r;
-                          }));
-                      } else {
-                          // Only update account number
-                          setRows(currentRows => currentRows.map(r => 
-                              r.id === row.id ? { ...r, accountNumber: data.accountNumber } : r
-                          ));
+              // 2. FAST LOCAL EXTRACTION FIRST (100% Free, zero credit consumption)
+              if (mimeType.includes("pdf")) {
+                  try {
+                      const localText = await extractTextFromBlob(blob);
+                      if (localText && localText.trim().length > 10) {
+                          const parsed = parseDocumentText(localText, jobs);
+                          if (parsed.jobCode || parsed.accountNumber) {
+                              extractedData = parsed;
+                          }
                       }
-                      successCount++;
+                  } catch (err) {
+                      console.warn("Local PDF text extraction skipped:", err);
                   }
-              } else {
-                  console.error(`AI Scan API error at page ${i+1}:`, scanRes.data?.error || "Unknown error");
+              }
+
+              // 3. IF LOCAL EXTRACTION DIDN'T FIND ALL DATA, FALL BACK TO SERVER-SIDE GEMINI API
+              if ((!extractedData || !extractedData.jobCode) && !quotaExhausted) {
+                  const reader = new FileReader();
+                  const base64Promise = new Promise<string>((resolve, reject) => {
+                      reader.onloadend = () => {
+                          const base64String = reader.result as string;
+                          const base64Data = base64String.split(',')[1]; 
+                          resolve(base64Data);
+                      };
+                      reader.onerror = reject;
+                  });
+                  reader.readAsDataURL(blob);
+                  const base64Data = await base64Promise;
+
+                  const storedApiKey = customApiKey || localStorage.getItem("gemini_api_key") || undefined;
+                  
+                  try {
+                      const scanRes = await axios.post(`/api/cvhc/scan-page`, {
+                          base64Data,
+                          mimeType,
+                          apiKey: storedApiKey
+                      }, {
+                          headers: storedApiKey ? { 'x-gemini-api-key': storedApiKey } : undefined
+                      });
+
+                      if (scanRes.data && scanRes.data.success && scanRes.data.data) {
+                          const aiData = scanRes.data.data;
+                          extractedData = {
+                              jobCode: aiData.jobCode || extractedData?.jobCode || '',
+                              accountNumber: aiData.accountNumber || extractedData?.accountNumber || ''
+                          };
+                      }
+                  } catch (apiErr: any) {
+                      const errMsg = apiErr.response?.data?.error || apiErr.message || "";
+                      const isQuotaError = apiErr.response?.status === 429 || 
+                                           errMsg.includes("RESOURCE_EXHAUSTED") || 
+                                           errMsg.includes("prepayment") || 
+                                           errMsg.includes("Credits") || 
+                                           errMsg.includes("Quota") || 
+                                           errMsg.includes("Hạn mức");
+
+                      if (isQuotaError) {
+                          quotaExhausted = true;
+                          console.warn("Gemini API Quota exhausted on page", i + 1);
+                      } else {
+                          console.error(`AI Scan API error at page ${i+1}:`, errMsg);
+                      }
+                  }
+              }
+
+              // 4. Update Row if data was found (either locally or via AI)
+              if (extractedData && (extractedData.jobCode || extractedData.accountNumber)) {
+                  const data = extractedData;
+                  if (data.jobCode) {
+                      const codes = data.jobCode.split(',').map((s: string) => s.trim()).filter(Boolean);
+                      const matchedJobs = codes.map((c: string) => findJob(c)).filter((j): j is JobData => !!j);
+                      
+                      setRows(currentRows => currentRows.map(r => {
+                          if (r.id === row.id) {
+                              if (matchedJobs.length > 0) {
+                                  const firstJob = matchedJobs[0];
+                                  const custId = firstJob.maKhCuocId || firstJob.customerId;
+                                  const custName = findCustomer(custId)?.name || firstJob.customerName;
+                                  const totalAmount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+                                  const jobIds = matchedJobs.map(j => j.id).join(',');
+
+                                  return {
+                                      ...r,
+                                      jobCode: data.jobCode,
+                                      jobId: jobIds,
+                                      amount: totalAmount,
+                                      customerId: custId,
+                                      customerName: custName,
+                                      accountNumber: data.accountNumber || r.accountNumber
+                                  };
+                              } else {
+                                  return {
+                                      ...r,
+                                      jobCode: data.jobCode,
+                                      accountNumber: data.accountNumber || r.accountNumber
+                                  };
+                              }
+                          }
+                          return r;
+                      }));
+                  } else if (data.accountNumber) {
+                      // Only update account number
+                      setRows(currentRows => currentRows.map(r => 
+                          r.id === row.id ? { ...r, accountNumber: data.accountNumber } : r
+                      ));
+                  }
+                  successCount++;
               }
 
           } catch (e: any) {
-              console.error(`AI Scan Error at page ${i+1}:`, e);
-              const errMsg = e.response?.data?.error || e.message || "";
-              if (errMsg.includes("Missing GEMINI_API_KEY") || errMsg.includes("API_KEY_INVALID") || errMsg.includes("Key")) {
-                  alert(`Lỗi máy chủ: Cấu hình API Key của hệ thống chưa chính xác. Chi tiết: ${errMsg}`, "Lỗi cấu hình");
-                  break; // stop scanning if configuration is wrong
-              }
+              console.error(`Scan Error at page ${i+1}:`, e);
           }
       }
 
       setIsScanning(false);
-      if (successCount > 0) {
-          alert(`Đã quét xong! Cập nhật dữ liệu cho ${successCount} dòng.`, "Thành công");
+
+      if (quotaExhausted) {
+          if (successCount > 0) {
+              alert(`Hệ thống đã nhận diện tự động được ${successCount} dòng (bằng bộ đọc dữ liệu nội bộ). Tuy nhiên, hạn mức Gemini AI mặc định đã hết. Bạn có thể nhấn biểu tượng Chìa khóa (API Key) để nhập Gemini API Key cá nhân nhằm tiếp tục quét bằng AI đối với các trang dạng ảnh.`, "Đã quét một phần");
+          } else {
+              alert("Hạn mức Gemini API (Credits/Quota) mặc định đã hết. Vui lòng bấm vào nút 'Cấu hình API Key' để nhập Gemini API Key cá nhân (miễn phí tại Google AI Studio) hoặc chọn file PDF có lớp chữ để quét tự động.", "Hạn mức AI");
+              setTempApiKey(customApiKey);
+              setIsApiKeyModalOpen(true);
+          }
       } else {
-          alert("Quét xong nhưng không tìm thấy thông tin phù hợp.", "Thông báo");
+          if (successCount > 0) {
+              alert(`Đã hoàn tất quét tự điền! Cập nhật dữ liệu cho ${successCount} dòng.`, "Thành công");
+          } else {
+              alert("Không trích xuất được thông tin Bill/STK từ các trang này. Bạn có thể tự nhập tay hoặc kiểm tra lại file đính kèm.", "Thông báo");
+          }
       }
   };
 
@@ -733,6 +879,19 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   >
                       {isLocked ? <Lock className="w-4 h-4 text-amber-600 animate-pulse" /> : <Unlock className="w-4 h-4 text-slate-500" />}
                       {isLocked ? "Đang Khóa" : "Mở Khóa"}
+                  </button>
+
+                  {/* API KEY CONFIG BUTTON */}
+                  <button 
+                      type="button"
+                      onClick={() => {
+                          setTempApiKey(customApiKey);
+                          setIsApiKeyModalOpen(true);
+                      }}
+                      className={`p-2 border rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-1 ${customApiKey ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}
+                      title={customApiKey ? "API Key Gemini tùy chỉnh đã được cấu hình" : "Cấu hình Gemini API Key"}
+                  >
+                      <Key className="w-4 h-4 text-indigo-600" />
                   </button>
 
                   {/* AI SCAN BUTTON */}
@@ -1084,6 +1243,208 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                           className="w-full h-full border-0 rounded-lg"
                           title="Document Page Preview"
                       />
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Gemini API Key Configuration Modal */}
+      {isApiKeyModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-slate-200">
+                  <div className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex justify-between items-center">
+                      <div className="flex items-center space-x-2.5">
+                          <Key className="w-5 h-5" />
+                          <span className="font-bold text-lg">Cấu hình Gemini API Key</span>
+                      </div>
+                      <button 
+                          onClick={() => setIsApiKeyModalOpen(false)}
+                          className="p-1 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition-colors"
+                      >
+                          <X className="w-5 h-5" />
+                      </button>
+                  </div>
+
+                  <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                      <p className="text-sm text-slate-600 leading-relaxed">
+                          Chọn hoặc nhập <strong>Google Gemini API Key</strong> cá nhân của bạn để sử dụng tính năng quét AI trích xuất Số Bill (Job Code) và Số Tài Khoản từ tài liệu ảnh hoặc PDF scan.
+                      </p>
+
+                      {/* QUICK SELECTION FROM SAVED KEYS */}
+                      {savedKeys.length > 0 && (
+                          <div className="space-y-2 p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                              <div className="flex items-center justify-between">
+                                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                      <Key className="w-3.5 h-3.5 text-amber-500" />
+                                      Chọn nhanh từ Key đã lưu ({savedKeys.length}):
+                                  </label>
+                                  {onNavigate && (
+                                      <button
+                                          type="button"
+                                          onClick={() => {
+                                              setIsApiKeyModalOpen(false);
+                                              onNavigate('api-keys');
+                                          }}
+                                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1"
+                                      >
+                                          Quản lý tất cả keys <ExternalLink className="w-3 h-3" />
+                                      </button>
+                                  )}
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                  {savedKeys.map((k) => {
+                                      const isSelected = tempApiKey.trim() === k.key.trim();
+                                      return (
+                                          <button
+                                              key={k.id}
+                                              type="button"
+                                              onClick={() => {
+                                                  setTempApiKey(k.key);
+                                                  setTestResult(null);
+                                              }}
+                                              className={`p-2 rounded-xl text-left border transition-all flex flex-col justify-between ${
+                                                  isSelected 
+                                                      ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-500/20 text-indigo-900 shadow-sm' 
+                                                      : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700'
+                                              }`}
+                                          >
+                                              <div className="flex items-center justify-between w-full">
+                                                  <span className="font-bold text-xs truncate">{k.name}</span>
+                                                  {isSelected && <CheckCircle className="w-3.5 h-3.5 text-indigo-600 shrink-0 ml-1" />}
+                                              </div>
+                                              <span className="text-[10px] font-mono text-slate-400 mt-1">
+                                                  {maskApiKey(k.key)}
+                                              </span>
+                                          </button>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                              <span>Gemini API Key đang áp dụng</span>
+                              <button
+                                  type="button"
+                                  onClick={async () => {
+                                      try {
+                                          const text = await navigator.clipboard.readText();
+                                          if (text) {
+                                              setTempApiKey(text.trim());
+                                              setTestResult(null);
+                                          }
+                                      } catch {}
+                                  }}
+                                  className="text-[11px] text-indigo-600 hover:underline flex items-center gap-1 font-normal"
+                              >
+                                  <Copy className="w-3 h-3" /> Dán từ Clipboard
+                              </button>
+                          </label>
+                          <div className="relative flex items-center gap-2">
+                              <input 
+                                  type="password"
+                                  value={tempApiKey}
+                                  onChange={(e) => {
+                                      setTempApiKey(e.target.value);
+                                      setTestResult(null);
+                                  }}
+                                  placeholder="AIzaSy..."
+                                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                              />
+                              <button
+                                  type="button"
+                                  disabled={!tempApiKey.trim() || isTestingKey}
+                                  onClick={async () => {
+                                      setIsTestingKey(true);
+                                      const res = await testGeminiApiKey(tempApiKey);
+                                      setTestResult(res);
+                                      setIsTestingKey(false);
+                                  }}
+                                  className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all disabled:opacity-40 shrink-0 flex items-center gap-1.5"
+                                  title="Kiểm tra xem API Key này có hoạt động tốt không"
+                              >
+                                  {isTestingKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                  Test
+                              </button>
+                          </div>
+                      </div>
+
+                      {testResult && (
+                          <div className={`p-3 rounded-xl text-xs font-medium border flex items-center gap-2 animate-in fade-in duration-200 ${
+                              testResult.success 
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                                  : 'bg-red-50 text-red-800 border-red-200'
+                          }`}>
+                              {testResult.success ? (
+                                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                              ) : (
+                                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                              )}
+                              <span>{testResult.message}</span>
+                          </div>
+                      )}
+
+                      <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-xs text-blue-800 space-y-1">
+                          <div className="font-bold flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                              Lưu ý & Hướng dẫn:
+                          </div>
+                          <div>• Lấy API Key hoàn toàn miễn phí tại <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline font-bold text-blue-600 hover:text-blue-800">Google AI Studio</a>.</div>
+                          <div>• Để lưu và quản lý nhiều keys, hãy vào menu <strong>Cài đặt ➔ Quản lý Key API</strong> ở thanh trên.</div>
+                      </div>
+                  </div>
+
+                  <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end space-x-3">
+                      {customApiKey && (
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setActiveApiKey('');
+                                  setCustomApiKey('');
+                                  setTempApiKey('');
+                                  setTestResult(null);
+                                  setIsApiKeyModalOpen(false);
+                                  alert("Đã xóa API Key tùy chỉnh.", "Thông báo");
+                              }}
+                              className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-bold transition-colors mr-auto"
+                          >
+                              Xóa Key
+                          </button>
+                      )}
+                      <button 
+                          type="button"
+                          onClick={() => {
+                              setIsApiKeyModalOpen(false);
+                              setTestResult(null);
+                          }}
+                          className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                          Hủy
+                      </button>
+                      <button 
+                          type="button"
+                          onClick={() => {
+                              const trimmed = tempApiKey.trim();
+                              if (trimmed) {
+                                  setActiveApiKey(trimmed);
+                                  setCustomApiKey(trimmed);
+                                  setIsApiKeyModalOpen(false);
+                                  setTestResult(null);
+                                  alert("Đã lưu & kích hoạt Gemini API Key thành công!", "Thành công");
+                              } else {
+                                  setActiveApiKey('');
+                                  setCustomApiKey('');
+                                  setIsApiKeyModalOpen(false);
+                                  setTestResult(null);
+                              }
+                          }}
+                          className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-indigo-500/20 transition-all flex items-center gap-1.5"
+                      >
+                          <Check className="w-4 h-4" />
+                          Lưu & Áp Dụng
+                      </button>
                   </div>
               </div>
           </div>
