@@ -506,25 +506,9 @@ export const INITIAL_JOB: JobData = {
 };
 
 // ============================================================
-// API KEY MANAGEMENT
-// ============================================================
-export interface ApiKeyItem {
-  id: string;
-  name: string;
-  key: string;
-  provider: 'gemini' | 'openai' | 'anthropic' | 'other';
-  notes?: string;
-  isActive?: boolean;
-  createdAt: string;
-  lastUsed?: string;
-}
-
-// ============================================================
 // MISC TYPES (STUBS)
 // ============================================================
 export type DebitNoteData = any;
 export type EmailMessage = any;
 export type EmailConfig = any;
 export type PhieuInvOrder = any;
-export type AuthorizationData = any;
-export type LongHoangOrder = any;

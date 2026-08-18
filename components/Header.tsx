@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw, Wallet, Info, FileUp, Key } from 'lucide-react';
+import { Bell, Settings, User, LogOut, Menu, MessageSquare, Clock, FileSpreadsheet, Briefcase, Coins, TrendingUp, RefreshCw, Wallet, Info, FileUp } from 'lucide-react';
 import { UserAccount, HeaderMessage, HeaderNotification, PaymentRequest } from '../types';
 import { MONTHS, YEARS } from '../constants';
 
@@ -298,12 +298,6 @@ export const Header: React.FC<HeaderProps> = ({
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cài đặt hệ thống</h3>
                     </div>
                     <button 
-                      onClick={() => { onNavigate?.('api-keys'); setActiveDropdown(null); }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors font-medium text-amber-700"
-                    >
-                      <Key className="w-4 h-4 text-amber-500" /> Quản lý Key API
-                    </button>
-                    <button 
                       onClick={() => { onExport?.(); setActiveDropdown(null); }}
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                     >
@@ -407,11 +401,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <button className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2">
                   <User className="w-4 h-4" /> Hồ sơ cá nhân
                 </button>
-                <button 
-                  onClick={() => { onNavigate?.('api-keys'); setActiveDropdown(null); }}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
-                >
-                  <Key className="w-4 h-4 text-amber-500" /> Quản lý Key API
+                <button className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2">
+                  <Settings className="w-4 h-4" /> Cài đặt
                 </button>
                 <div className="h-[1px] bg-slate-50 my-1"></div>
                 <button 
