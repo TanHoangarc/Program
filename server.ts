@@ -776,13 +776,16 @@ async function startServer() {
     const handleCVHCScan = async (req: express.Request, res: express.Response) => {
         try {
             const { base64Data, mimeType } = req.body;
-            const customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body.apiKey;
+            let customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body.apiKey;
+            if (customApiKey === "null" || customApiKey === "undefined" || customApiKey === "") {
+                customApiKey = undefined;
+            }
             if (!base64Data) {
                 return res.status(400).json({ success: false, error: "Missing base64Data" });
             }
 
             const ai = getGeminiClient(customApiKey);
-            const modelsToTry = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-3.7-flash"];
+            const modelsToTry = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-1.5-pro", "gemini-1.5-flash"];
             let lastError: any = null;
             let resultData = null;
 
@@ -793,7 +796,7 @@ async function startServer() {
                         contents: {
                             parts: [
                                 { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
-                                { text: "Extract the Bill of Lading Number (B/L No, Job No) and the Beneficiary Account Number (Số tài khoản). If multiple, take the most prominent one. If not found, return empty strings." }
+                                { text: "Hãy đọc tài liệu (hoặc hóa đơn/chứng từ/vận đơn) đính kèm và trích xuất 2 thông tin quan trọng sau:\n1. Số Vận Đơn (Bill of Lading Number, B/L No, Job No, Mã Job, Số BL).\n2. Số Tài Khoản Ngân Hàng thụ hưởng (Account Number, Số tài khoản, STK, A/C No).\n\nLưu ý: \n- Nếu có nhiều số, hãy lấy số có vẻ chính xác nhất cho nghiệp vụ.\n- Cố gắng tìm kỹ các thông tin này ở các góc, bảng, hoặc phần thanh toán.\n- Trả về JSON đúng chuẩn. Nếu không tìm thấy, hãy để chuỗi rỗng \"\" thay vì null." }
                             ]
                         },
                         config: {
@@ -803,11 +806,11 @@ async function startServer() {
                                 properties: {
                                     jobCode: {
                                         type: Type.STRING,
-                                        description: "The Bill of Lading Number, B/L No, or Job No extracted from the document."
+                                        description: "The Bill of Lading Number, B/L No, Job No, Số BL, Mã Job, Số Vận Đơn extracted from the document."
                                     },
                                     accountNumber: {
                                         type: Type.STRING,
-                                        description: "The Beneficiary Account Number or Số tài khoản extracted from the document."
+                                        description: "The Beneficiary Account Number, Số tài khoản, STK, Account No, or A/C No extracted from the document."
                                     }
                                 },
                                 required: ["jobCode", "accountNumber"]
@@ -815,8 +818,24 @@ async function startServer() {
                         }
                     });
 
-                    const jsonText = result.text || "{}";
-                    resultData = JSON.parse(jsonText.trim());
+                    let jsonText = "";
+                    try {
+                        jsonText = result.text || "{}";
+                    } catch (textErr: any) {
+                        console.error("Failed to get result.text (safety block?):", textErr);
+                        jsonText = "{}";
+                    }
+                    jsonText = jsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    resultData = JSON.parse(jsonText);
+                    console.log(`CVHC AI Scan Success with model ${model}. Data:`, resultData);
+                    
+                    if (!resultData.jobCode && !resultData.accountNumber) {
+                        if (model === modelsToTry[modelsToTry.length - 1]) {
+                            break; // Last model, accept the empty result
+                        }
+                        throw new Error("Model returned empty results for both fields. Forcing retry with next model.");
+                    }
+                    
                     break; // Success!
                 } catch (err: any) {
                     lastError = err;
@@ -825,9 +844,7 @@ async function startServer() {
                         break;
                     }
                     console.warn(`CVHC scan failed with model ${model}:`, err.message);
-                    if (!err.message?.includes("not found")) {
-                        break;
-                    }
+                    // Continue to try the next model
                 }
             }
 

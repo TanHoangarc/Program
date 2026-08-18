@@ -479,6 +479,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       setIsScanning(true);
       let successCount = 0;
       let quotaExhausted = false;
+      let lastApiError = "";
 
       for (let i = 0; i < rows.length; i++) {
           const row = rows[i];
@@ -546,12 +547,16 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                            errMsg.includes("prepayment") || 
                                            errMsg.includes("Credits") || 
                                            errMsg.includes("Quota") || 
-                                           errMsg.includes("Hạn mức");
+                                           errMsg.includes("Hạn mức") ||
+                                           apiErr.response?.status === 403 ||
+                                           errMsg.includes("API key not valid") ||
+                                           errMsg.includes("Missing GEMINI_API_KEY");
 
                       if (isQuotaError) {
                           quotaExhausted = true;
                           console.warn("Gemini API Quota exhausted on page", i + 1);
                       } else {
+                          lastApiError = typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg);
                           console.error(`AI Scan API error at page ${i+1}:`, errMsg);
                       }
                   }
@@ -620,7 +625,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           if (successCount > 0) {
               alert(`Đã hoàn tất quét tự điền! Cập nhật dữ liệu cho ${successCount} dòng.`, "Thành công");
           } else {
-              alert("Không trích xuất được thông tin Bill/STK từ các trang này. Bạn có thể tự nhập tay hoặc kiểm tra lại file đính kèm.", "Thông báo");
+              if (quotaExhausted) {
+                  alert("Tính năng quét tự động (AI) đã hết hạn mức sử dụng (Quota) hoặc API Key không hợp lệ. Vui lòng kiểm tra cấu hình API Key trong mục Cài đặt.", "Lỗi API / Quota");
+              } else if (lastApiError) {
+                  alert(`Lỗi hệ thống khi quét AI: ${lastApiError}. Vui lòng kiểm tra lại kết nối mạng hoặc API Key.`, "Lỗi API");
+              } else {
+                  alert("Không trích xuất được thông tin Bill/STK từ các trang này. Bạn có thể tự nhập tay hoặc kiểm tra lại file đính kèm.", "Thông báo");
+              }
           }
       }
   };
