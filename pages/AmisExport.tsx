@@ -1006,36 +1006,84 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   const handleDelete = async (row: any) => {
       if (!await confirm("Bạn có chắc muốn xóa chứng từ này khỏi danh sách AMIS? (Dữ liệu gốc vẫn giữ, chỉ xóa số chứng từ)")) return;
+      
+      // 1. Handle Thu Khác (Custom Receipts)
       if (row.type === 'external' && onUpdateCustomReceipts) {
-          const newR = customReceipts.filter(r => r.id !== row.id);
-          onUpdateCustomReceipts(newR);
+          if (row.rowId && row.rowId.startsWith('custom-add-')) {
+              const parentId = row.jobId;
+              const newR = customReceipts.map(r => {
+                  if (r.id === parentId) {
+                      return {
+                          ...r,
+                          additionalReceipts: (r.additionalReceipts || []).filter(ar => `custom-add-${ar.id}` !== row.rowId && ar.docNo !== row.docNo)
+                      };
+                  }
+                  return r;
+              });
+              onUpdateCustomReceipts(newR);
+          } else {
+              const targetId = row.id || row.jobId;
+              const newR = customReceipts.filter(r => r.id !== targetId && r.docNo !== row.docNo);
+              onUpdateCustomReceipts(newR);
+          }
           return;
       }
 
       if (!onUpdateJob) return;
 
-      // Handle grouped vouchers (clearing for all jobs sharing the same DocNo)
-      if (row.type === 'deposit_thu' && !row.rowId.includes('add')) {
-          jobs.filter(j => j.amisDepositDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositDocNo: '', amisDepositDesc: '', amisDepositAmount: 0 }));
+      // 2. Handle Grouped / Single Receipts in Jobs
+      if (row.type === 'deposit_thu' && (!row.rowId || !row.rowId.includes('add'))) {
+          jobs.filter(j => j.amisDepositDocNo === row.docNo).forEach(j => onUpdateJob({ 
+              ...j, 
+              amisDepositDocNo: '', 
+              amisDepositDesc: '', 
+              amisDepositAmount: 0,
+              amisDepositAccount: undefined,
+              ngayThuCuoc: ''
+          }));
           return;
       }
-      if (row.type === 'lc_thu' && !row.rowId.includes('add')) {
-          jobs.filter(j => j.amisLcDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisLcDocNo: '', amisLcDesc: '', amisLcAmount: 0 }));
+      if (row.type === 'lc_thu' && (!row.rowId || !row.rowId.includes('add'))) {
+          jobs.filter(j => j.amisLcDocNo === row.docNo).forEach(j => onUpdateJob({ 
+              ...j, 
+              amisLcDocNo: '', 
+              amisLcDesc: '', 
+              amisLcAmount: 0,
+              amisLcAccount: undefined,
+              localChargeDate: ''
+          }));
           return;
       }
-      if (row.type === 'ext_thu' && !row.rowId.includes('add')) {
+      if (row.type === 'ext_thu' && (!row.rowId || !row.rowId.includes('add'))) {
           jobs.filter(j => (j.extensions || []).some(e => e.amisDocNo === row.docNo)).forEach(j => {
-              const updatedExtensions = (j.extensions || []).map(e => e.amisDocNo === row.docNo ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0 } : e);
+              const updatedExtensions = (j.extensions || []).map(e => e.amisDocNo === row.docNo ? { 
+                  ...e, 
+                  amisDocNo: '', 
+                  amisDesc: '', 
+                  amisAmount: 0,
+                  amisAccount: undefined,
+                  amisDate: ''
+              } : e);
               onUpdateJob({ ...j, extensions: updatedExtensions });
           });
           return;
       }
       if (row.type === 'payment_chi') {
-          jobs.filter(j => j.amisPaymentDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisPaymentDocNo: '', amisPaymentDesc: '', amisPaymentDate: '' }));
+          jobs.filter(j => j.amisPaymentDocNo === row.docNo).forEach(j => onUpdateJob({ 
+              ...j, 
+              amisPaymentDocNo: '', 
+              amisPaymentDesc: '', 
+              amisPaymentDate: '' 
+          }));
           return;
       }
       if (row.type === 'payment_deposit') {
-          jobs.filter(j => j.amisDepositOutDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositOutDocNo: '', amisDepositOutDesc: '', amisDepositOutDate: '' }));
+          jobs.filter(j => j.amisDepositOutDocNo === row.docNo).forEach(j => onUpdateJob({ 
+              ...j, 
+              amisDepositOutDocNo: '', 
+              amisDepositOutDesc: '', 
+              amisDepositOutDate: '' 
+          }));
           return;
       }
       if (row.type === 'payment_ext') {
@@ -1043,36 +1091,49 @@ export const AmisExport: React.FC<AmisExportProps> = ({
               const updatedJob = { ...j };
               if (updatedJob.bookingCostDetails) {
                   updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
-                      ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo, amisDesc: e.amisDocNo === row.docNo ? '' : e.amisDesc, amisDate: e.amisDocNo === row.docNo ? '' : e.amisDate
+                      ...e, 
+                      amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo, 
+                      amisDesc: e.amisDocNo === row.docNo ? '' : e.amisDesc, 
+                      amisDate: e.amisDocNo === row.docNo ? '' : e.amisDate
                   }));
               }
               if (updatedJob.amisExtensionPaymentDocNo === row.docNo) {
-                  updatedJob.amisExtensionPaymentDocNo = ''; updatedJob.amisExtensionPaymentDesc = ''; updatedJob.amisExtensionPaymentDate = ''; updatedJob.amisExtensionPaymentAmount = 0;
+                  updatedJob.amisExtensionPaymentDocNo = ''; 
+                  updatedJob.amisExtensionPaymentDesc = ''; 
+                  updatedJob.amisExtensionPaymentDate = ''; 
+                  updatedJob.amisExtensionPaymentAmount = 0;
               }
               onUpdateJob(updatedJob);
           });
           return;
       }
       if (row.type === 'payment_refund' || row.type === 'refund_thu') {
-          jobs.filter(j => j.amisDepositRefundDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', ngayThuHoan: '' }));
+          jobs.filter(j => j.amisDepositRefundDocNo === row.docNo).forEach(j => onUpdateJob({ 
+              ...j, 
+              amisDepositRefundDocNo: '', 
+              amisDepositRefundDesc: '', 
+              amisDepositRefundDate: '', 
+              amisDepositRefundAmount: 0,
+              ngayThuHoan: '' 
+          }));
           return;
       }
 
-      // Fallback for single job types or additional receipts
-      const job = jobs.find(j => j.id === row.jobId);
-      if (job) {
+      // 3. Fallback for additional receipts or specific job targets
+      const targetJobs = jobs.filter(j => j.id === row.jobId || (row.docNo && (j.additionalReceipts || []).some(r => r.docNo === row.docNo)));
+      targetJobs.forEach(job => {
           const updatedJob = { ...job };
-          if (row.type === 'deposit_thu' && row.rowId.includes('add')) {
-              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId);
-          } else if (row.type === 'lc_thu' && row.rowId.includes('add')) {
-              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId);
-          } else if (row.type === 'ext_thu' && row.rowId.includes('add')) {
-              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId);
+          if (row.type === 'deposit_thu' && (row.rowId?.includes('add') || !row.rowId)) {
+              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId && r.docNo !== row.docNo);
+          } else if (row.type === 'lc_thu' && (row.rowId?.includes('add') || !row.rowId)) {
+              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId && r.docNo !== row.docNo);
+          } else if (row.type === 'ext_thu' && (row.rowId?.includes('add') || !row.rowId)) {
+              updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId && r.docNo !== row.docNo);
           } else if (row.type === 'refund_overpayment') {
-              updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo);
+              updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo && (!row.id || r.id !== row.id));
           }
           onUpdateJob(updatedJob);
-      }
+      });
   };
 
   const handleSavePayment = (data: any) => {
