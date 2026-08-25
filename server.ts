@@ -404,9 +404,9 @@ async function startServer() {
                     const enrichedJobs = preserveAmisData(dbState.jobs || [], safeData.jobs);
                     dbState.jobs = mergeLists(dbState.jobs || [], enrichedJobs);
                 }
-                if (safeData.customers && Array.isArray(safeData.customers)) dbState.customers = safeData.customers;
-                if (safeData.lines && Array.isArray(safeData.lines)) dbState.lines = safeData.lines;
-                if (safeData.customReceipts && Array.isArray(safeData.customReceipts)) dbState.customReceipts = safeData.customReceipts;
+                if (safeData.customers) dbState.customers = mergeLists(dbState.customers || [], safeData.customers);
+                if (safeData.lines) dbState.lines = mergeLists(dbState.lines || [], safeData.lines);
+                if (safeData.customReceipts) dbState.customReceipts = mergeLists(dbState.customReceipts || [], safeData.customReceipts);
                 
                 if (safeData.deletedJobIds && Array.isArray(safeData.deletedJobIds)) {
                     if (!dbState.deletedJobIds) dbState.deletedJobIds = [];
@@ -431,7 +431,7 @@ async function startServer() {
 
                 if (safeData.lockedIds) dbState.lockedIds = safeData.lockedIds;
                 if (safeData.processedRequestIds) dbState.processedRequestIds = safeData.processedRequestIds;
-                if (safeData.salaries && Array.isArray(safeData.salaries)) dbState.salaries = safeData.salaries;
+                if (safeData.salaries) dbState.salaries = mergeLists(dbState.salaries || [], safeData.salaries);
                 if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs; 
                 if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
 
