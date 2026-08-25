@@ -21,11 +21,12 @@ interface AmisExportProps {
   onAddLine?: (line: string) => void;
   onAddCustomer?: (customer: Customer) => void;
   mode: 'thu' | 'chi' | 'ban' | 'mua';
-  onUpdateJob?: (job: JobData) => void;
+  onUpdateJob?: (job: JobData | JobData[]) => void;
   lockedIds: Set<string>;
   onToggleLock: (docNo: string | string[]) => void;
   customReceipts?: any[];
   onUpdateCustomReceipts?: (receipts: any[]) => void;
+  onDeleteCustomReceipt?: (id: string | number) => void;
 }
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
@@ -43,7 +44,7 @@ const GLOBAL_TEMPLATE_CACHE: Record<string, { buffer: ArrayBuffer, name: string 
 
 export const AmisExport: React.FC<AmisExportProps> = ({ 
     jobs, customers, lines = [], onAddLine, onAddCustomer,
-    mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts 
+    mode, onUpdateJob, lockedIds, onToggleLock, customReceipts = [], onUpdateCustomReceipts, onDeleteCustomReceipt 
 }) => {
   const { alert, confirm } = useNotification();
   const [filterMonth, setFilterMonth] = useState('');
@@ -1006,55 +1007,95 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
   const handleDelete = async (row: any) => {
       if (!await confirm("Bạn có chắc muốn xóa chứng từ này khỏi danh sách AMIS? (Dữ liệu gốc vẫn giữ, chỉ xóa số chứng từ)")) return;
-      if (row.type === 'external' && onUpdateCustomReceipts) {
-          const newR = customReceipts.filter(r => r.id !== row.id);
-          onUpdateCustomReceipts(newR);
+      if (row.type === 'external') {
+          if (row.rowId && row.rowId.includes('add')) {
+              const parentId = String(row.jobId || row.id || '');
+              const newR = customReceipts.map(r => {
+                  if (String(r.id) === parentId) {
+                      return {
+                          ...r,
+                          additionalReceipts: (r.additionalReceipts || []).filter((ar: any) => `custom-add-${ar.id}` !== row.rowId)
+                      };
+                  }
+                  return r;
+              });
+              if (onUpdateCustomReceipts) onUpdateCustomReceipts(newR);
+          } else {
+              const targetId = String(row.jobId || row.id || '');
+              if (onDeleteCustomReceipt) {
+                  onDeleteCustomReceipt(targetId);
+              }
+              if (onUpdateCustomReceipts) {
+                  const newR = customReceipts.filter(r => String(r.id) !== targetId);
+                  onUpdateCustomReceipts(newR);
+              }
+          }
           return;
       }
 
       if (!onUpdateJob) return;
 
       // Handle grouped vouchers (clearing for all jobs sharing the same DocNo)
-      if (row.type === 'deposit_thu' && !row.rowId.includes('add')) {
-          jobs.filter(j => j.amisDepositDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositDocNo: '', amisDepositDesc: '', amisDepositAmount: 0 }));
+      if (row.type === 'deposit_thu' && !row.rowId?.includes('add')) {
+          const matchingJobs = jobs.filter(j => j.amisDepositDocNo === row.docNo || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => ({ ...j, amisDepositDocNo: '', amisDepositDesc: '', amisDepositAmount: 0, amisDepositAccount: '' }));
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
-      if (row.type === 'lc_thu' && !row.rowId.includes('add')) {
-          jobs.filter(j => j.amisLcDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisLcDocNo: '', amisLcDesc: '', amisLcAmount: 0 }));
+      if (row.type === 'lc_thu' && !row.rowId?.includes('add')) {
+          const matchingJobs = jobs.filter(j => j.amisLcDocNo === row.docNo || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => ({ ...j, amisLcDocNo: '', amisLcDesc: '', amisLcAmount: 0, amisLcAccount: '' }));
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
-      if (row.type === 'ext_thu' && !row.rowId.includes('add')) {
-          jobs.filter(j => (j.extensions || []).some(e => e.amisDocNo === row.docNo)).forEach(j => {
-              const updatedExtensions = (j.extensions || []).map(e => e.amisDocNo === row.docNo ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0 } : e);
-              onUpdateJob({ ...j, extensions: updatedExtensions });
+      if (row.type === 'ext_thu' && !row.rowId?.includes('add')) {
+          const matchingJobs = jobs.filter(j => (j.extensions || []).some(e => e.amisDocNo === row.docNo) || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => {
+              const updatedExtensions = (j.extensions || []).map(e => (e.amisDocNo === row.docNo || (row.extId && e.id === row.extId)) ? { ...e, amisDocNo: '', amisDesc: '', amisAmount: 0, amisAccount: '' } : e);
+              return { ...j, extensions: updatedExtensions };
           });
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
       if (row.type === 'payment_chi') {
-          jobs.filter(j => j.amisPaymentDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisPaymentDocNo: '', amisPaymentDesc: '', amisPaymentDate: '' }));
+          const matchingJobs = jobs.filter(j => j.amisPaymentDocNo === row.docNo || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => ({ ...j, amisPaymentDocNo: '', amisPaymentDesc: '', amisPaymentDate: '', amisPaymentAmount: 0 }));
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
       if (row.type === 'payment_deposit') {
-          jobs.filter(j => j.amisDepositOutDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositOutDocNo: '', amisDepositOutDesc: '', amisDepositOutDate: '' }));
+          const matchingJobs = jobs.filter(j => j.amisDepositOutDocNo === row.docNo || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => ({ ...j, amisDepositOutDocNo: '', amisDepositOutDesc: '', amisDepositOutDate: '', amisDepositOutAmount: 0 }));
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
       if (row.type === 'payment_ext') {
-          jobs.filter(j => j.amisExtensionPaymentDocNo === row.docNo || (j.bookingCostDetails?.extensionCosts || []).some(e => e.amisDocNo === row.docNo)).forEach(j => {
+          const matchingJobs = jobs.filter(j => j.amisExtensionPaymentDocNo === row.docNo || (j.bookingCostDetails?.extensionCosts || []).some(e => e.amisDocNo === row.docNo) || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => {
               const updatedJob = { ...j };
-              if (updatedJob.bookingCostDetails) {
+              if (updatedJob.bookingCostDetails?.extensionCosts) {
                   updatedJob.bookingCostDetails.extensionCosts = updatedJob.bookingCostDetails.extensionCosts.map(e => ({
-                      ...e, amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo, amisDesc: e.amisDocNo === row.docNo ? '' : e.amisDesc, amisDate: e.amisDocNo === row.docNo ? '' : e.amisDate
+                      ...e,
+                      amisDocNo: e.amisDocNo === row.docNo ? '' : e.amisDocNo,
+                      amisDesc: e.amisDocNo === row.docNo ? '' : e.amisDesc,
+                      amisDate: e.amisDocNo === row.docNo ? '' : e.amisDate
                   }));
               }
               if (updatedJob.amisExtensionPaymentDocNo === row.docNo) {
-                  updatedJob.amisExtensionPaymentDocNo = ''; updatedJob.amisExtensionPaymentDesc = ''; updatedJob.amisExtensionPaymentDate = ''; updatedJob.amisExtensionPaymentAmount = 0;
+                  updatedJob.amisExtensionPaymentDocNo = '';
+                  updatedJob.amisExtensionPaymentDesc = '';
+                  updatedJob.amisExtensionPaymentDate = '';
+                  updatedJob.amisExtensionPaymentAmount = 0;
               }
-              onUpdateJob(updatedJob);
+              return updatedJob;
           });
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
       if (row.type === 'payment_refund' || row.type === 'refund_thu') {
-          jobs.filter(j => j.amisDepositRefundDocNo === row.docNo).forEach(j => onUpdateJob({ ...j, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', ngayThuHoan: '' }));
+          const matchingJobs = jobs.filter(j => j.amisDepositRefundDocNo === row.docNo || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => ({ ...j, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', amisDepositRefundAmount: 0, ngayThuHoan: '' }));
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
 
@@ -1062,14 +1103,14 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       const job = jobs.find(j => j.id === row.jobId);
       if (job) {
           const updatedJob = { ...job };
-          if (row.type === 'deposit_thu' && row.rowId.includes('add')) {
+          if (row.type === 'deposit_thu' && row.rowId?.includes('add')) {
               updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `dep-add-${r.id}` !== row.rowId);
-          } else if (row.type === 'lc_thu' && row.rowId.includes('add')) {
+          } else if (row.type === 'lc_thu' && row.rowId?.includes('add')) {
               updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `lc-add-${r.id}` !== row.rowId);
-          } else if (row.type === 'ext_thu' && row.rowId.includes('add')) {
+          } else if (row.type === 'ext_thu' && row.rowId?.includes('add')) {
               updatedJob.additionalReceipts = (updatedJob.additionalReceipts || []).filter(r => `ext-add-${r.id}` !== row.rowId);
           } else if (row.type === 'refund_overpayment') {
-              updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo);
+              updatedJob.refunds = (updatedJob.refunds || []).filter(r => r.docNo !== row.docNo && (!row.refundId || r.id !== row.refundId));
           }
           onUpdateJob(updatedJob);
       }

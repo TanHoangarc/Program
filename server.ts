@@ -116,7 +116,7 @@ async function startServer() {
             paymentRequests: [], deletedPaymentIds: [], nfc: [], 
             pending: [], staff: [], longHoangOrders: [],
             headerMessages: [], headerNotifications: [], headerUpdates: [],
-            customReceipts: [], salaries: [], yearlyConfigs: {},
+            customReceipts: [], deletedCustomReceiptIds: [], salaries: [], yearlyConfigs: {},
             lockedIds: [], processedRequestIds: []
         });
     }
@@ -156,7 +156,7 @@ async function startServer() {
                 paymentRequests: [], deletedPaymentIds: [], nfc: [], 
                 pending: [], staff: [], longHoangOrders: [],
                 headerMessages: [], headerNotifications: [], headerUpdates: [],
-                customReceipts: [], salaries: [], yearlyConfigs: {},
+                customReceipts: [], deletedCustomReceiptIds: [], salaries: [], yearlyConfigs: {},
                 lockedIds: [], processedRequestIds: []
             };
             
@@ -360,6 +360,26 @@ async function startServer() {
 
     app.get("/api/data", async (req, res) => {
         const data = await loadFullDatabase();
+        if (data) {
+            if (data.deletedCustomReceiptIds && Array.isArray(data.deletedCustomReceiptIds)) {
+                const deletedSet = new Set(data.deletedCustomReceiptIds.map((id: any) => String(id).trim()));
+                if (data.customReceipts && Array.isArray(data.customReceipts)) {
+                    data.customReceipts = data.customReceipts.filter((r: any) => !deletedSet.has(String(r.id).trim()));
+                }
+            }
+            if (data.deletedJobIds && Array.isArray(data.deletedJobIds)) {
+                const deletedJobSet = new Set(data.deletedJobIds.map((id: any) => String(id).trim()));
+                if (data.jobs && Array.isArray(data.jobs)) {
+                    data.jobs = data.jobs.filter((j: any) => !deletedJobSet.has(String(j.id).trim()));
+                }
+            }
+            if (data.deletedPaymentIds && Array.isArray(data.deletedPaymentIds)) {
+                const deletedPaymentSet = new Set(data.deletedPaymentIds.map((id: any) => String(id).trim()));
+                if (data.paymentRequests && Array.isArray(data.paymentRequests)) {
+                    data.paymentRequests = data.paymentRequests.filter((p: any) => !deletedPaymentSet.has(String(p.id).trim()));
+                }
+            }
+        }
         res.json(data);
     });
 
@@ -399,6 +419,30 @@ async function startServer() {
         let requireReload = false;
 
         await withDBLock(async (dbState) => {
+            if (safeData.deletedJobIds && Array.isArray(safeData.deletedJobIds)) {
+                if (!dbState.deletedJobIds) dbState.deletedJobIds = [];
+                safeData.deletedJobIds.forEach((id: any) => {
+                    const idStr = String(id).trim();
+                    if (!dbState.deletedJobIds.some((x: any) => String(x).trim() === idStr)) dbState.deletedJobIds.push(idStr);
+                });
+            }
+
+            if (safeData.deletedCustomReceiptIds && Array.isArray(safeData.deletedCustomReceiptIds)) {
+                if (!dbState.deletedCustomReceiptIds) dbState.deletedCustomReceiptIds = [];
+                safeData.deletedCustomReceiptIds.forEach((id: any) => {
+                    const idStr = String(id).trim();
+                    if (!dbState.deletedCustomReceiptIds.some((x: any) => String(x).trim() === idStr)) dbState.deletedCustomReceiptIds.push(idStr);
+                });
+            }
+
+            if (safeData.deletedPaymentIds && Array.isArray(safeData.deletedPaymentIds)) {
+                if (!dbState.deletedPaymentIds) dbState.deletedPaymentIds = [];
+                safeData.deletedPaymentIds.forEach((id: any) => {
+                    const idStr = String(id).trim();
+                    if (!dbState.deletedPaymentIds.some((x: any) => String(x).trim() === idStr)) dbState.deletedPaymentIds.push(idStr);
+                });
+            }
+
             if (isAdmin) {
                 if (safeData.jobs) {
                     const enrichedJobs = preserveAmisData(dbState.jobs || [], safeData.jobs);
@@ -406,26 +450,27 @@ async function startServer() {
                 }
                 if (safeData.customers) dbState.customers = mergeLists(dbState.customers || [], safeData.customers);
                 if (safeData.lines) dbState.lines = mergeLists(dbState.lines || [], safeData.lines);
-                if (safeData.customReceipts) dbState.customReceipts = mergeLists(dbState.customReceipts || [], safeData.customReceipts);
                 
-                if (safeData.deletedJobIds && Array.isArray(safeData.deletedJobIds)) {
-                    if (!dbState.deletedJobIds) dbState.deletedJobIds = [];
-                    safeData.deletedJobIds.forEach((id: string) => {
-                        if (!dbState.deletedJobIds.includes(id)) dbState.deletedJobIds.push(id);
-                    });
-                    dbState.jobs = (dbState.jobs || []).filter((j: any) => !dbState.deletedJobIds.includes(j.id));
+                if (safeData.customReceipts) {
+                    const delCustSet = new Set((dbState.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()));
+                    dbState.customReceipts = (safeData.customReceipts || []).filter((r: any) => !delCustSet.has(String(r.id).trim()));
+                }
+                
+                if (dbState.deletedJobIds) {
+                    const delJobSet = new Set((dbState.deletedJobIds || []).map((x: any) => String(x).trim()));
+                    dbState.jobs = (dbState.jobs || []).filter((j: any) => !delJobSet.has(String(j.id).trim()));
+                }
+
+                if (dbState.deletedCustomReceiptIds) {
+                    const delCustSet = new Set((dbState.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()));
+                    dbState.customReceipts = (dbState.customReceipts || []).filter((r: any) => !delCustSet.has(String(r.id).trim()));
                 }
 
                 if (safeData.paymentRequests) {
-                    if (Array.isArray(safeData.deletedPaymentIds)) {
-                        if (!dbState.deletedPaymentIds) dbState.deletedPaymentIds = [];
-                        safeData.deletedPaymentIds.forEach((id: string) => {
-                            if (!dbState.deletedPaymentIds.includes(id)) dbState.deletedPaymentIds.push(id);
-                        });
-                    }
                     dbState.paymentRequests = mergePaymentRequests(dbState.paymentRequests || [], safeData.paymentRequests);
                     if (dbState.deletedPaymentIds) {
-                        dbState.paymentRequests = (dbState.paymentRequests || []).filter((p:any) => !dbState.deletedPaymentIds.includes(p.id));
+                        const delPaySet = new Set((dbState.deletedPaymentIds || []).map((x: any) => String(x).trim()));
+                        dbState.paymentRequests = (dbState.paymentRequests || []).filter((p: any) => !delPaySet.has(String(p.id).trim()));
                     }
                 }
 
@@ -434,7 +479,6 @@ async function startServer() {
                 if (safeData.salaries) dbState.salaries = mergeLists(dbState.salaries || [], safeData.salaries);
                 if (safeData.yearlyConfigs) dbState.yearlyConfigs = safeData.yearlyConfigs; 
                 if (safeData.longHoangOrders) dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
-
             } else if (isDocs) {
                 if (safeData.paymentRequests) {
                     const validRequests = safeData.paymentRequests.filter((req: any) => {

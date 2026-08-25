@@ -218,6 +218,15 @@ const App: React.FC = () => {
       }
   });
 
+  const [deletedCustomReceiptIds, setDeletedCustomReceiptIds] = useState<Set<string>>(() => {
+      try {
+          const saved = localStorage.getItem('kb_deleted_custom_receipts');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch {
+          return new Set();
+      }
+  });
+
   // --- LOCKED IDs STATE (Global Sync) ---
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => {
       try {
@@ -240,6 +249,10 @@ const App: React.FC = () => {
   useEffect(() => {
       localStorage.setItem('kb_deleted_payment_ids', JSON.stringify(Array.from(deletedPaymentIds)));
   }, [deletedPaymentIds]);
+
+  useEffect(() => {
+      localStorage.setItem('kb_deleted_custom_receipts', JSON.stringify(Array.from(deletedCustomReceiptIds).map(String)));
+  }, [deletedCustomReceiptIds]);
 
   useEffect(() => {
       localStorage.setItem('kb_modified_job_ids', JSON.stringify(Array.from(modifiedJobIds)));
@@ -656,7 +669,13 @@ const App: React.FC = () => {
   const [customReceipts, setCustomReceipts] = useState<any[]>(() => {
       try {
           const saved = localStorage.getItem('amis_custom_receipts');
-          return saved ? JSON.parse(saved) : [];
+          let list = saved ? JSON.parse(saved) : [];
+          const savedDel = localStorage.getItem('kb_deleted_custom_receipts');
+          if (savedDel) {
+              const delSet = new Set(JSON.parse(savedDel).map((x: any) => String(x).trim()));
+              list = list.filter((r: any) => !delSet.has(String(r.id).trim()));
+          }
+          return list;
       } catch {
           return [];
       }
@@ -736,22 +755,41 @@ const App: React.FC = () => {
       }
   };
 
-  const handleEditJob = (job: JobData) => {
-      setJobs(prev => prev.map(x => x.id === job.id ? job : x));
-      setModifiedJobIds(prev => new Set(prev).add(job.id));
+  const handleEditJob = (jobOrJobs: JobData | JobData[]) => {
+      const updatedList = Array.isArray(jobOrJobs) ? jobOrJobs : [jobOrJobs];
+      const updatedMap = new Map(updatedList.map(j => [j.id, j]));
+      setJobs(prev => prev.map(x => updatedMap.has(x.id) ? updatedMap.get(x.id)! : x));
+      setModifiedJobIds(prev => {
+          const next = new Set(prev);
+          updatedList.forEach(j => next.add(j.id));
+          return next;
+      });
 
       if (currentUser) {
-        addHeaderUpdate(currentUser.username, job.line, job.booking, 'Updated', job.jobCode);
+        updatedList.forEach(job => {
+            addHeaderUpdate(currentUser.username, job.line, job.booking, 'Updated', job.jobCode);
+        });
       }
   };
 
   const handleDeleteJob = (id: string) => {
-      setJobs(prev => prev.filter(x => x.id !== id));
-      setDeletedJobIds(prev => new Set(prev).add(id));
+      const idStr = String(id).trim();
+      setJobs(prev => prev.filter(x => String(x.id).trim() !== idStr));
+      setDeletedJobIds(prev => new Set(prev).add(idStr));
       setModifiedJobIds(prev => {
           const newSet = new Set(prev);
-          newSet.delete(id);
+          newSet.delete(idStr);
           return newSet;
+      });
+  };
+
+  const handleDeleteCustomReceipt = (id: string | number) => {
+      const idStr = String(id).trim();
+      setCustomReceipts(prev => prev.filter(r => String(r.id).trim() !== idStr));
+      setDeletedCustomReceiptIds(prev => {
+          const next = new Set(prev);
+          next.add(idStr);
+          return next;
       });
   };
 
@@ -868,16 +906,17 @@ const App: React.FC = () => {
       }
   };
   const handleBankTCBDelete = (id: string) => {
-      const job = jobs.find(j => j.id === id);
+      const targetId = String(id).trim();
+      const job = jobs.find(j => String(j.id).trim() === targetId);
       if (job) {
           if (job.jobCode.startsWith('TCB-')) {
-              handleDeleteJob(id);
+              handleDeleteJob(targetId);
           } else {
               handleEditJob({ ...job, bank: '' });
           }
       } else {
           // If not a job, delete from custom receipts
-          setCustomReceipts(prev => prev.filter(r => r.id !== id));
+          handleDeleteCustomReceipt(targetId);
       }
   };
 
@@ -899,10 +938,10 @@ const App: React.FC = () => {
       setCustomReceipts(prev => [...prev, newReceipt]);
   };
   const handleBankMBEdit = (item: any) => {
-      setCustomReceipts(prev => prev.map(r => r.id === item.id ? { ...r, ...item } : r));
+      setCustomReceipts(prev => prev.map(r => String(r.id).trim() === String(item.id).trim() ? { ...r, ...item } : r));
   };
   const handleBankMBDelete = (id: string) => {
-      setCustomReceipts(prev => prev.filter(r => r.id !== id));
+      handleDeleteCustomReceipt(id);
   };
 
   // --- DATA SYNC FUNCTIONS ---
@@ -1172,8 +1211,26 @@ const App: React.FC = () => {
             });
         }
         
+        if (data.deletedCustomReceiptIds && Array.isArray(data.deletedCustomReceiptIds)) {
+            setDeletedCustomReceiptIds(prev => {
+                const next = new Set(prev);
+                data.deletedCustomReceiptIds.forEach((id: any) => next.add(String(id).trim()));
+                return next;
+            });
+        }
+
         if (data.customReceipts && Array.isArray(data.customReceipts)) {
-            setCustomReceipts(data.customReceipts);
+            let localSavedDeleted: string[] = [];
+            try {
+                const s = localStorage.getItem('kb_deleted_custom_receipts');
+                if (s) localSavedDeleted = JSON.parse(s).map((x: any) => String(x).trim());
+            } catch {}
+            const allDeletedIds = new Set<string>([
+                ...(data.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()),
+                ...Array.from(deletedCustomReceiptIds).map((x: any) => String(x).trim()),
+                ...localSavedDeleted
+            ]);
+            setCustomReceipts(data.customReceipts.filter((r: any) => !allDeletedIds.has(String(r.id).trim())));
         }
 
         if (data.salaries && Array.isArray(data.salaries)) {
@@ -1301,6 +1358,7 @@ const App: React.FC = () => {
           data.deletedJobIds = Array.from(deletedJobIds);
           data.deletedPaymentIds = Array.from(deletedPaymentIds);
           data.customReceipts = customReceipts;
+          data.deletedCustomReceiptIds = Array.from(deletedCustomReceiptIds);
           data.salaries = salaries;
           data.yearlyConfigs = yearlyConfigs;
           data.paymentRequests = paymentRequests;
@@ -1368,7 +1426,7 @@ const App: React.FC = () => {
     }, delay); 
 
     return () => clearTimeout(timeoutId);
-  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
+  }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, deletedCustomReceiptIds, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1416,7 +1474,19 @@ const App: React.FC = () => {
                     if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
                     if (serverData.customers) setCustomers(serverData.customers);
                     if (serverData.lines) setLines(serverData.lines);
-                    if (serverData.customReceipts) setCustomReceipts(serverData.customReceipts);
+                    if (serverData.customReceipts) {
+                        let localSavedDeleted: string[] = [];
+                        try {
+                            const s = localStorage.getItem('kb_deleted_custom_receipts');
+                            if (s) localSavedDeleted = JSON.parse(s).map((x: any) => String(x).trim());
+                        } catch {}
+                        const allDeletedIds = new Set<string>([
+                            ...(serverData.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()),
+                            ...Array.from(deletedCustomReceiptIds).map((x: any) => String(x).trim()),
+                            ...localSavedDeleted
+                        ]);
+                        setCustomReceipts(serverData.customReceipts.filter((r: any) => !allDeletedIds.has(String(r.id).trim())));
+                    }
                     if (serverData.salaries) setSalaries(serverData.salaries);
                     if (serverData.yearlyConfigs) {
                         setYearlyConfigs(serverData.yearlyConfigs);
@@ -1630,7 +1700,7 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={setCustomReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts} onDeleteCustomReceipt={handleDeleteCustomReceipt}
                     onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
@@ -1644,7 +1714,7 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock}
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={setCustomReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts} onDeleteCustomReceipt={handleDeleteCustomReceipt}
                     onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
@@ -1658,7 +1728,7 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={setCustomReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts} onDeleteCustomReceipt={handleDeleteCustomReceipt}
                     onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
@@ -1672,7 +1742,7 @@ const App: React.FC = () => {
                     lockedIds={lockedIds} 
                     onToggleLock={handleToggleLock} 
                     customReceipts={customReceipts}
-                    onUpdateCustomReceipts={setCustomReceipts}
+                    onUpdateCustomReceipts={setCustomReceipts} onDeleteCustomReceipt={handleDeleteCustomReceipt}
                     onAddCustomer={(c) => setCustomers(prev => [...prev, c])}
                 />
             )}
