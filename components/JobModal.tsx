@@ -677,6 +677,14 @@ export const JobModal: React.FC<JobModalProps> = ({
     }));
   };
 
+  const handleCopyCustomerToAllExtensions = () => {
+    if (!formData.customerId || isViewMode) return;
+    setFormData(prev => ({
+      ...prev,
+      extensions: (prev.extensions || []).map(ext => ext.locked ? ext : { ...ext, customerId: prev.customerId })
+    }));
+  };
+
   const removeExtension = (id: string) => {
     if (isViewMode) return;
     setFormData(prev => ({
@@ -1363,7 +1371,21 @@ export const JobModal: React.FC<JobModalProps> = ({
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
                     <h3 className="text-xs font-bold text-slate-700 uppercase flex items-center"><FileText className="w-3.5 h-3.5 mr-1.5 text-orange-500" /> Gia Hạn</h3>
-                    {!isViewMode && <button type="button" onClick={addExtension} className="text-[10px] flex items-center bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-200 hover:bg-orange-100"><Plus className="w-3 h-3 mr-1" /> Thêm</button>}
+                    {!isViewMode && (
+                      <div className="flex items-center gap-2">
+                        {formData.customerId && (formData.extensions || []).length > 0 && (
+                          <button 
+                            type="button" 
+                            onClick={handleCopyCustomerToAllExtensions} 
+                            className="text-[10px] flex items-center bg-emerald-50 text-emerald-700 px-2 py-1 rounded border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                            title="Gán Khách hàng (Mã KH) cho tất cả dòng gia hạn"
+                          >
+                            <UserCheck className="w-3 h-3 mr-1" /> Lấy Mã KH cho tất cả
+                          </button>
+                        )}
+                        <button type="button" onClick={addExtension} className="text-[10px] flex items-center bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-200 hover:bg-orange-100"><Plus className="w-3 h-3 mr-1" /> Thêm</button>
+                      </div>
+                    )}
                 </div>
                 <div className="space-y-2">
                     {(formData.extensions || []).map((ext) => (
@@ -1378,6 +1400,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                                     placeholder="Mã KH" 
                                     className="h-8 text-xs" 
                                     onAddClick={() => !ext.locked && handleOpenQuickAdd('EXTENSION', ext.id)}
+                                    onCopyMainCustomer={!ext.locked && formData.customerId ? () => handleExtensionChange(ext.id, 'customerId', formData.customerId) : undefined}
                                 />
                             </div>
                             <div className="col-span-3"><Label>Invoice</Label><Input value={ext.invoice} onChange={(e) => handleExtensionChange(ext.id, 'invoice', e.target.value)} readOnly={isViewMode || ext.locked} className="h-8 text-xs" /></div>

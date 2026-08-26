@@ -9,7 +9,7 @@ import ExcelJS from 'exceljs';
 import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search, Check, FileCheck, FileText, FileSpreadsheet
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search, Check, FileCheck, FileText, FileSpreadsheet, Pencil
 } from 'lucide-react';
 import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
@@ -167,6 +167,17 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       month: '1', booking: '', line: '', consol: '', transit: 'HCM', jobRows: []
   });
   
+  // --- EDIT REQUEST MODAL STATE ---
+  const [editingRequest, setEditingRequest] = useState<PaymentRequest | null>(null);
+  const [editLine, setEditLine] = useState("");
+  const [editPod, setEditPod] = useState<'HCM' | 'HPH'>("HCM");
+  const [editBooking, setEditBooking] = useState("");
+  const [editAmount, setEditAmount] = useState<number>(0);
+  const [editType, setEditType] = useState<'Local Charge' | 'Deposit' | 'Demurrage'>('Local Charge');
+  const [editInvoiceFile, setEditInvoiceFile] = useState<File | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
   // --- QUICK ADD CUSTOMER IN CONVERT MODAL ---
   const [quickAddRowId, setQuickAddRowId] = useState<string | null>(null);
 
@@ -223,6 +234,26 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     }
   };
 
+  // Helper for immediate server backup & SSE broadcast
+  const syncPaymentDataImmediately = async (updatedList: PaymentRequest[], deletedId?: string) => {
+    try {
+      const payload: any = {
+        role: currentUser?.role || 'Docs',
+        paymentRequests: updatedList
+      };
+      if (deletedId) {
+        payload.deletedPaymentIds = [deletedId];
+      }
+      await fetch(`${BACKEND_URL}/data/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      console.warn("Immediate payment sync failed", err);
+    }
+  };
+
   // ============================================================
   // CREATE PAYMENT REQUEST
   // ============================================================
@@ -249,7 +280,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       id: Date.now().toString(),
       lineCode: line,
       pod: line === "MSC" ? pod : undefined,
-      booking,
+      booking: booking.trim().toUpperCase(),
       amount,
       type, // Selected Type
       createdAt: new Date().toISOString(),
@@ -274,28 +305,81 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     setIsUploading(false);
+
+    // Instant server sync so Admin sees it immediately without reload
+    await syncPaymentDataImmediately(updatedRequests);
+  };
+
+  // ============================================================
+  // EDIT PAYMENT REQUEST
+  // ============================================================
+  const handleOpenEdit = (req: PaymentRequest) => {
+    setEditingRequest(req);
+    setEditLine(req.lineCode || "");
+    setEditPod(req.pod === "HPH" ? "HPH" : "HCM");
+    setEditBooking(req.booking || "");
+    setEditAmount(req.amount || 0);
+    setEditType((req.type as any) || "Local Charge");
+    setEditInvoiceFile(null);
+    if (editFileInputRef.current) editFileInputRef.current.value = "";
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRequest) return;
+    if (!editLine || !editBooking || !editAmount) {
+      alert("Vui lòng nhập đầy đủ Mã Line, Booking và Số tiền!", "Thông báo");
+      return;
+    }
+
+    setIsSavingEdit(true);
+
+    let uploaded = null;
+    if (editInvoiceFile) {
+      uploaded = await uploadToServer(editInvoiceFile, "INVOICE", editBooking);
+      if (!uploaded) {
+        setIsSavingEdit(false);
+        return;
+      }
+    }
+
+    const updatedReq: PaymentRequest = {
+      ...editingRequest,
+      lineCode: editLine,
+      pod: editLine === "MSC" ? editPod : undefined,
+      booking: editBooking.trim().toUpperCase(),
+      amount: editAmount,
+      type: editType,
+      ...(uploaded ? {
+        invoiceFileName: uploaded.fileName,
+        invoicePath: uploaded.serverPath,
+        invoiceUrl: `${BACKEND_URL}${uploaded.url}`,
+        invoiceBlobUrl: editInvoiceFile ? URL.createObjectURL(editInvoiceFile) : editingRequest.invoiceBlobUrl
+      } : {})
+    };
+
+    const updated = requests.map(r => r.id === editingRequest.id ? updatedReq : r);
+    onUpdateRequests(updated);
+
+    // Instant server sync
+    await syncPaymentDataImmediately(updated);
+
+    setIsSavingEdit(false);
+    setEditingRequest(null);
+    alert("Đã cập nhật yêu cầu thanh toán thành công!", "Thành công");
   };
 
   // ============================================================
   // TOGGLE ORDER STATUS
   // ============================================================
-  const toggleOrderCreated = (id: string) => {
+  const toggleOrderCreated = async (id: string) => {
       const updated = requests.map(r => 
           r.id === id ? { ...r, isOrderCreated: !r.isOrderCreated } : r
       );
       onUpdateRequests(updated);
       
-      // Auto sync update for Admin
-      if (currentUser?.role === 'Admin' && onSendPending) {
-          const payload = {
-              user: currentUser.username,
-              timestamp: new Date().toISOString(),
-              autoApprove: true,
-              paymentRequests: updated,
-              jobs: [], customers: [], lines: []
-          };
-          onSendPending(payload).catch(err => console.error("Toggle Order Status sync failed", err));
-      }
+      // Instant server sync
+      await syncPaymentDataImmediately(updated);
   };
 
   // ============================================================
@@ -307,17 +391,8 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const updatedRequests = requests.filter(r => r.id !== id);
     onUpdateRequests(updatedRequests);
     
-    // Auto sync deletion for Admin
-    if (currentUser?.role === 'Admin' && onSendPending) {
-        const payload = {
-            user: currentUser.username,
-            timestamp: new Date().toISOString(),
-            autoApprove: true,
-            paymentRequests: updatedRequests,
-            jobs: [], customers: [], lines: []
-        };
-        onSendPending(payload).catch(err => console.error("Delete sync failed", err));
-    }
+    // Instant server sync with deleted ID
+    await syncPaymentDataImmediately(updatedRequests, id);
   };
 
   // ============================================================
@@ -1040,6 +1115,14 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                   <td className="px-6 py-4 text-center">
                     <div className="flex justify-center space-x-2">
                       <button
+                        onClick={() => handleOpenEdit(req)}
+                        className="bg-blue-50 text-blue-600 p-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
+                        title="Sửa yêu cầu"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+
+                      <button
                         onClick={() => initiateComplete(req.id)}
                         className="bg-emerald-100 text-emerald-700 p-2 rounded-lg hover:bg-emerald-200 transition-colors"
                         title="Hoàn tất & Up UNC"
@@ -1049,7 +1132,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
                       <button
                         onClick={() => handleDelete(req.id)}
-                        className="bg-red-50 text-red-600 p-2 rounded-lg border hover:bg-red-100 transition-colors"
+                        className="bg-red-50 text-red-600 p-2 rounded-lg border border-red-200 hover:bg-red-100 transition-colors"
                         title="Xóa yêu cầu"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1131,23 +1214,27 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                         <Upload className="w-4 h-4" />
                       </button>
 
-                      {/* Convert to Job Button */}
-                      <button
-                        onClick={() => handleOpenConvert(req)}
-                        className="text-orange-600 p-2 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors"
-                        title="Nhập vào Job"
-                      >
-                        <FileInput className="w-4 h-4" />
-                      </button>
+                      {/* Convert to Job Button (Admin Only) */}
+                      {currentUser?.role === 'Admin' && (
+                        <button
+                          onClick={() => handleOpenConvert(req)}
+                          className="text-orange-600 p-2 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors"
+                          title="Nhập vào Job"
+                        >
+                          <FileInput className="w-4 h-4" />
+                        </button>
+                      )}
 
-                      {/* Sync Button */}
-                      <button
-                        onClick={() => handleSyncPayment(req)}
-                        className="text-teal-600 p-2 bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100 transition-colors"
-                        title="Đồng bộ vào Booking (Cũ)"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
+                      {/* Sync Button (Admin Only) */}
+                      {currentUser?.role === 'Admin' && (
+                        <button
+                          onClick={() => handleSyncPayment(req)}
+                          className="text-teal-600 p-2 bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100 transition-colors"
+                          title="Đồng bộ vào Booking (Cũ)"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      )}
 
                       <button
                         onClick={() => openFile(req, "invoice")}
@@ -1546,6 +1633,186 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           onClose={() => setQuickAddRowId(null)} 
           onSave={handleSaveQuickCustomer} 
       />
+
+      {/* Edit Request Modal */}
+      {editingRequest && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white flex justify-between items-center">
+              <h3 className="font-bold flex items-center gap-2 text-base">
+                <Pencil className="w-5 h-5" /> Sửa yêu cầu thanh toán
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setEditingRequest(null)} 
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+              {/* Type selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Loại chi</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Local Charge', 'Deposit', 'Demurrage'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setEditType(t)}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
+                        editType === t
+                          ? t === 'Local Charge' ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : t === 'Deposit' ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                            : 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                          : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Line code & POD */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mã Line</label>
+                  <select
+                    value={editLine}
+                    onChange={e => setEditLine(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="">-- Chọn Line --</option>
+                    {lines.map(l => (
+                      <option key={l.id} value={l.code}>{l.code}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {editLine === "MSC" ? (
+                  <div>
+                    <label className="block text-xs font-bold text-blue-600 mb-1.5">POD (MSC)</label>
+                    <div className="flex bg-slate-50 rounded-xl border border-slate-200 p-1 h-[42px] items-center">
+                      <button
+                        type="button"
+                        onClick={() => setEditPod("HCM")}
+                        className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${
+                          editPod === "HCM" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-white"
+                        }`}
+                      >
+                        HCM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditPod("HPH")}
+                        className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${
+                          editPod === "HPH" ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-white"
+                        }`}
+                      >
+                        HPH
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Trạng thái</label>
+                    <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 h-[42px] flex items-center">
+                      Chờ thanh toán
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Booking */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Số Booking / BL</label>
+                <input
+                  type="text"
+                  value={editBooking}
+                  onChange={e => setEditBooking(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none uppercase font-mono"
+                  placeholder="Nhập Booking..."
+                />
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Số tiền (VNĐ)</label>
+                <input
+                  type="text"
+                  value={editAmount ? new Intl.NumberFormat().format(editAmount) : ""}
+                  onChange={e => {
+                    const val = e.target.value.replace(/[,.]/g, "");
+                    const v = Number(val);
+                    if (!isNaN(v)) setEditAmount(v);
+                  }}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-bold text-red-600 text-right focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                  placeholder="0"
+                />
+              </div>
+
+              {/* Invoice File */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">File Hóa Đơn (Tùy chọn)</label>
+                <input
+                  type="file"
+                  ref={editFileInputRef}
+                  className="hidden"
+                  onChange={e => {
+                    if (e.target.files && e.target.files[0]) {
+                      setEditInvoiceFile(e.target.files[0]);
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => editFileInputRef.current?.click()}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {editInvoiceFile ? "Đổi file khác" : "Thay thế file"}
+                  </button>
+                  <span className="text-xs text-slate-500 truncate flex-1 font-mono">
+                    {editInvoiceFile ? editInvoiceFile.name : (editingRequest.invoiceFileName || 'Chưa có file')}
+                  </span>
+                  {editingRequest.invoiceFileName && !editInvoiceFile && (
+                    <button
+                      type="button"
+                      onClick={() => openFile(editingRequest, "invoice")}
+                      className="px-2.5 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
+                    >
+                      Xem file cũ
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingRequest(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-sm transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2 shadow-md hover:shadow-lg active:scale-95 duration-100"
+                >
+                  {isSavingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Lưu thay đổi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
 
     </div>
   );

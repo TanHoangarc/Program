@@ -241,37 +241,18 @@ async function startServer() {
                 if (!currentItem) {
                     dataMap.set(incomingItem.id, incomingItem);
                 } else {
-                    const merged = { ...currentItem };
+                    const merged = { ...currentItem, ...incomingItem };
                     
-                    if (incomingItem.status === 'completed' || currentItem.status === 'completed') {
-                        merged.status = 'completed';
-                    } else {
-                        merged.status = incomingItem.status || currentItem.status || 'pending';
+                    if (incomingItem.isOrderCreated !== undefined) {
+                        merged.isOrderCreated = incomingItem.isOrderCreated;
                     }
-                    
-                    if (incomingItem.uncUrl) merged.uncUrl = incomingItem.uncUrl;
-                    if (incomingItem.uncFileName) merged.uncFileName = incomingItem.uncFileName;
-                    if (incomingItem.uncPath) merged.uncPath = incomingItem.uncPath;
-                    if (incomingItem.uncBlobUrl) merged.uncBlobUrl = incomingItem.uncBlobUrl;
-                    if (incomingItem.completedAt) merged.completedAt = incomingItem.completedAt;
-
-                    if (incomingItem.invoiceUrl) merged.invoiceUrl = incomingItem.invoiceUrl;
-                    if (incomingItem.invoiceFileName) merged.invoiceFileName = incomingItem.invoiceFileName;
-                    if (incomingItem.invoicePath) merged.invoicePath = incomingItem.invoicePath;
-                    if (incomingItem.invoiceBlobUrl) merged.invoiceBlobUrl = incomingItem.invoiceBlobUrl;
-
-                    if (incomingItem.isOrderCreated || currentItem.isOrderCreated) {
-                        merged.isOrderCreated = true;
-                    } else {
-                        merged.isOrderCreated = false;
+                    if (incomingItem.status) {
+                        merged.status = incomingItem.status;
                     }
-
-                    merged.lineCode = incomingItem.lineCode || currentItem.lineCode;
-                    merged.pod = incomingItem.pod || currentItem.pod;
-                    merged.booking = incomingItem.booking || currentItem.booking;
-                    merged.amount = incomingItem.amount || currentItem.amount;
-                    merged.type = incomingItem.type || currentItem.type;
-                    merged.createdAt = incomingItem.createdAt || currentItem.createdAt;
+                    if (!incomingItem.uncUrl && currentItem.uncUrl) merged.uncUrl = currentItem.uncUrl;
+                    if (!incomingItem.uncFileName && currentItem.uncFileName) merged.uncFileName = currentItem.uncFileName;
+                    if (!incomingItem.invoiceUrl && currentItem.invoiceUrl) merged.invoiceUrl = currentItem.invoiceUrl;
+                    if (!incomingItem.invoiceFileName && currentItem.invoiceFileName) merged.invoiceFileName = currentItem.invoiceFileName;
 
                     dataMap.set(incomingItem.id, merged);
                 }
@@ -490,6 +471,10 @@ async function startServer() {
                         return true;
                     });
                     dbState.paymentRequests = mergePaymentRequests(dbState.paymentRequests || [], validRequests);
+                    if (dbState.deletedPaymentIds) {
+                        const delPaySet = new Set((dbState.deletedPaymentIds || []).map((x: any) => String(x).trim()));
+                        dbState.paymentRequests = (dbState.paymentRequests || []).filter((p: any) => !delPaySet.has(String(p.id).trim()));
+                    }
                 }
                 if (safeData.longHoangOrders) {
                     dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);

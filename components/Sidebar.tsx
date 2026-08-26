@@ -74,17 +74,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const role = currentUser?.role || 'Guest';
   const isAdmin = role === 'Admin';
   const isDocs = role === 'Docs';
-  const isCus = role === 'Cus';
 
-  // Permission Logic
+  // Permission Logic: Admin has full access, Docs only has Payment and Lookup
   const canViewOverview = isAdmin; 
   const canViewOperations = isAdmin; 
   const canViewDataPayment = isAdmin || isDocs; 
   const canViewAccounting = isAdmin; 
   const canViewData = isAdmin; 
   const canViewSystem = isAdmin; 
-  const canViewToolAI = isAdmin || isCus; 
+  const canViewToolAI = isAdmin; 
   const canViewNfc = isAdmin; 
+  const canViewApiKeys = isAdmin; 
   
   const canSendPending = false;
 
@@ -344,7 +344,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <MenuItem active={currentPage === 'tool-ai'} onClick={(e) => handleNavigate(e, 'tool-ai')} icon={Cpu} label="Tool AI" />
           )}
 
-          <MenuItem active={currentPage === 'api-keys'} onClick={(e) => handleNavigate(e, 'api-keys')} icon={Key} label="Key API" />
+          {canViewApiKeys && (
+            <MenuItem active={currentPage === 'api-keys'} onClick={(e) => handleNavigate(e, 'api-keys')} icon={Key} label="Key API" />
+          )}
 
           {canViewNfc && (
             <MenuItem active={currentPage === 'nfc'} onClick={(e) => handleNavigate(e, 'nfc')} icon={IdCard} label="NFC Cards" />
