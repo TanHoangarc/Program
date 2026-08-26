@@ -9,7 +9,8 @@ import ExcelJS from 'exceljs';
 import { ShippingLine, PaymentRequest, JobData, BookingExtensionCost, Customer, INITIAL_JOB } from '../types';
 import { 
   CreditCard, Upload, Plus, CheckCircle, Trash2, 
-  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search, Check, FileCheck, FileText, FileSpreadsheet, Pencil
+  Eye, Download, AlertCircle, X, HardDrive, Loader2, Copy, Send, RefreshCw, Banknote, Anchor, Container, FileInput, Save, Search, Check, FileCheck, FileText, FileSpreadsheet, Pencil,
+  Calendar, ChevronLeft, ChevronRight, Filter
 } from 'lucide-react';
 import axios from 'axios';
 import { MONTHS, TRANSIT_PORTS } from '../constants';
@@ -177,6 +178,19 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const [editInvoiceFile, setEditInvoiceFile] = useState<File | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper for today's date YYYY-MM-DD
+  const getTodayDateStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // --- COMPLETED LIST FILTER STATES (Default: Today) ---
+  const [completedFilterDate, setCompletedFilterDate] = useState<string>(getTodayDateStr());
+  const [completedSearchTerm, setCompletedSearchTerm] = useState<string>("");
 
   // --- QUICK ADD CUSTOMER IN CONVERT MODAL ---
   const [quickAddRowId, setQuickAddRowId] = useState<string | null>(null);
@@ -796,12 +810,62 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // UI HELPERS
   // ============================================================
 
+  const getPaymentDateStr = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (e) {}
+    return dateStr.slice(0, 10);
+  };
+
+  const changeCompletedFilterDay = (delta: number) => {
+    const base = completedFilterDate ? new Date(completedFilterDate) : new Date();
+    base.setDate(base.getDate() + delta);
+    const year = base.getFullYear();
+    const month = String(base.getMonth() + 1).padStart(2, '0');
+    const day = String(base.getDate()).padStart(2, '0');
+    setCompletedFilterDate(`${year}-${month}-${day}`);
+  };
+
   const pendingList = requests.filter(r => r.status === "pending");
   
-  // SORT COMPLETED LIST BY DATE DESCENDING
-  const completedList = requests
-    .filter(r => r.status === "completed")
-    .sort((a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime());
+  // ALL COMPLETED LIST (Sorted descending)
+  const allCompletedList = useMemo(() => {
+    return requests
+      .filter(r => r.status === "completed")
+      .sort((a, b) => new Date(b.completedAt || b.createdAt || 0).getTime() - new Date(a.completedAt || a.createdAt || 0).getTime());
+  }, [requests]);
+
+  // FILTERED COMPLETED LIST (Filtered by date and search)
+  const completedList = useMemo(() => {
+    return allCompletedList.filter(req => {
+      // Date Filter
+      if (completedFilterDate) {
+        const pDate = getPaymentDateStr(req.completedAt || req.createdAt);
+        if (pDate !== completedFilterDate) return false;
+      }
+      // Search Filter
+      if (completedSearchTerm.trim()) {
+        const term = completedSearchTerm.trim().toLowerCase();
+        const matchBooking = req.booking?.toLowerCase().includes(term);
+        const matchLine = req.lineCode?.toLowerCase().includes(term);
+        const matchType = req.type?.toLowerCase().includes(term);
+        const matchUnc = req.uncFileName?.toLowerCase().includes(term);
+        if (!matchBooking && !matchLine && !matchType && !matchUnc) return false;
+      }
+      return true;
+    });
+  }, [allCompletedList, completedFilterDate, completedSearchTerm]);
+
+  const completedTotalAmount = useMemo(() => {
+    return completedList.reduce((sum, r) => sum + (r.amount || 0), 0);
+  }, [completedList]);
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat("vi-VN", {
@@ -1150,13 +1214,94 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         {/* COMPLETED LIST */}
         <div className="glass-panel rounded-2xl overflow-hidden border">
 
-          <div className="bg-emerald-50 px-6 py-4 flex justify-between items-center">
-            <h3 className="font-bold uppercase text-emerald-800 flex items-center">
-              <CheckCircle className="w-4 h-4 mr-2" /> Danh sách đã thanh toán
-            </h3>
-            <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-bold">
-              {completedList.length}
-            </span>
+          <div className="bg-emerald-50 px-6 py-4 flex flex-wrap justify-between items-center gap-3">
+            <div className="flex items-center space-x-3 flex-wrap gap-y-2">
+              <h3 className="font-bold uppercase text-emerald-800 flex items-center">
+                <CheckCircle className="w-4 h-4 mr-2 text-emerald-600" /> Danh sách đã thanh toán
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-xs font-bold border border-emerald-200">
+                  {completedList.length} / {allCompletedList.length} phiếu
+                </span>
+                {completedTotalAmount > 0 && (
+                  <span className="bg-emerald-600 text-white px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm">
+                    Tổng: {formatCurrency(completedTotalAmount)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* DATE FILTER & SEARCH CONTROLS */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Prev Day */}
+              <button
+                type="button"
+                onClick={() => changeCompletedFilterDay(-1)}
+                className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 shadow-sm transition-colors"
+                title="Ngày trước"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {/* Date Input */}
+              <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-2.5 py-1 shadow-sm">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <input
+                  type="date"
+                  value={completedFilterDate}
+                  onChange={e => setCompletedFilterDate(e.target.value)}
+                  className="outline-none text-xs font-bold text-slate-700 bg-transparent cursor-pointer"
+                />
+              </div>
+
+              {/* Next Day */}
+              <button
+                type="button"
+                onClick={() => changeCompletedFilterDay(1)}
+                className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 shadow-sm transition-colors"
+                title="Ngày sau"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              {/* Today Button */}
+              <button
+                type="button"
+                onClick={() => setCompletedFilterDate(getTodayDateStr())}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                  completedFilterDate === getTodayDateStr()
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Hôm nay
+              </button>
+
+              {/* All Dates Button */}
+              <button
+                type="button"
+                onClick={() => setCompletedFilterDate("")}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                  !completedFilterDate
+                    ? "bg-slate-800 text-white border-slate-800"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Tất cả
+              </button>
+
+              {/* Search Box */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={completedSearchTerm}
+                  onChange={e => setCompletedSearchTerm(e.target.value)}
+                  placeholder="Tìm Booking / Line..."
+                  className="pl-8 pr-3 py-1 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 w-36 md:w-44 shadow-sm"
+                />
+              </div>
+            </div>
           </div>
 
           <table className="w-full text-sm">
@@ -1173,98 +1318,128 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             </thead>
 
             <tbody className="divide-y">
+              {completedList.length > 0 ? (
+                completedList.map(req => (
+                  <tr key={req.id} className="hover:bg-white/40">
 
-              {completedList.map(req => (
-                <tr key={req.id} className="hover:bg-white/40">
+                    <td className="px-6 py-4">{getLineDisplay(req)}</td>
+                    <td className="px-6 py-4">{req.booking}</td>
+                    <td className="px-6 py-4 text-slate-600 font-medium">
+                        {req.completedAt ? formatDateVN(req.completedAt.split('T')[0]) : '-'}
+                    </td>
+                    <td className="px-6 py-4 text-right">{formatCurrency(req.amount)}</td>
+                    
+                    <td className="px-6 py-4 text-center">
+                        {getTypeBadge(req.type)}
+                    </td>
 
-                  <td className="px-6 py-4">{getLineDisplay(req)}</td>
-                  <td className="px-6 py-4">{req.booking}</td>
-                  <td className="px-6 py-4 text-slate-600 font-medium">
-                      {req.completedAt ? formatDateVN(req.completedAt.split('T')[0]) : '-'}
-                  </td>
-                  <td className="px-6 py-4 text-right">{formatCurrency(req.amount)}</td>
-                  
-                  <td className="px-6 py-4 text-center">
-                      {getTypeBadge(req.type)}
-                  </td>
-
-                  <td className="px-6 py-4 text-center">
-                    <div
-                      onClick={() => openFile(req, "unc")}
-                      className="cursor-pointer bg-slate-50 border px-2 py-1 rounded flex items-center justify-center hover:bg-slate-100 transition-colors"
-                    >
-                      <HardDrive className="w-3.5 h-3.5 text-purple-600 mr-1" />
-                      <span className="text-xs font-mono">Xem UNC</span>
-                    </div>
-
-                    <div className="text-[9px] text-slate-400 mt-1 max-w-[150px] mx-auto truncate">
-                      {req.uncFileName}
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex justify-center space-x-2">
-                      
-                      {/* Re-upload UNC Button */}
-                      <button
-                        onClick={() => initiateComplete(req.id)}
-                        className="text-emerald-600 p-2 bg-emerald-50 border border-emerald-100 rounded-lg hover:bg-emerald-100 transition-colors"
-                        title="Up lại UNC"
+                    <td className="px-6 py-4 text-center">
+                      <div
+                        onClick={() => openFile(req, "unc")}
+                        className="cursor-pointer bg-slate-50 border px-2 py-1 rounded flex items-center justify-center hover:bg-slate-100 transition-colors"
                       >
-                        <Upload className="w-4 h-4" />
-                      </button>
+                        <HardDrive className="w-3.5 h-3.5 text-purple-600 mr-1" />
+                        <span className="text-xs font-mono">Xem UNC</span>
+                      </div>
 
-                      {/* Convert to Job Button (Admin Only) */}
-                      {currentUser?.role === 'Admin' && (
+                      <div className="text-[9px] text-slate-400 mt-1 max-w-[150px] mx-auto truncate">
+                        {req.uncFileName}
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex justify-center space-x-2">
+                        
+                        {/* Re-upload UNC Button */}
                         <button
-                          onClick={() => handleOpenConvert(req)}
-                          className="text-orange-600 p-2 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors"
-                          title="Nhập vào Job"
+                          onClick={() => initiateComplete(req.id)}
+                          className="text-emerald-600 p-2 bg-emerald-50 border border-emerald-100 rounded-lg hover:bg-emerald-100 transition-colors"
+                          title="Up lại UNC"
                         >
-                          <FileInput className="w-4 h-4" />
+                          <Upload className="w-4 h-4" />
+                        </button>
+
+                        {/* Convert to Job Button (Admin Only) */}
+                        {currentUser?.role === 'Admin' && (
+                          <button
+                            onClick={() => handleOpenConvert(req)}
+                            className="text-orange-600 p-2 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors"
+                            title="Nhập vào Job"
+                          >
+                            <FileInput className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {/* Sync Button (Admin Only) */}
+                        {currentUser?.role === 'Admin' && (
+                          <button
+                            onClick={() => handleSyncPayment(req)}
+                            className="text-teal-600 p-2 bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100 transition-colors"
+                            title="Đồng bộ vào Booking (Cũ)"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => openFile(req, "invoice")}
+                          className="text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Xem Hóa Đơn"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => downloadUNC(req)}
+                          className="text-purple-700 p-2 bg-purple-50 rounded-lg border hover:bg-purple-100 transition-colors"
+                          title="Tải về UNC"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => handleDelete(req.id)}
+                          className="text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
+                      </div>
+                    </td>
+
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-400">
+                        <Calendar className="w-6 h-6" />
+                      </div>
+                      <p className="font-semibold text-slate-700 text-sm">
+                        {completedFilterDate 
+                          ? `Không có thanh toán nào trong ngày ${formatDateVN(completedFilterDate)}`
+                          : "Không có dữ liệu thanh toán phù hợp"}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {completedSearchTerm 
+                          ? "Hãy thử tìm kiếm với từ khóa khác" 
+                          : "Chọn ngày khác hoặc bấm 'Tất cả' để xem toàn bộ lịch sử thanh toán"}
+                      </p>
+                      {completedFilterDate && (
+                        <button
+                          type="button"
+                          onClick={() => setCompletedFilterDate("")}
+                          className="mt-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          Xem tất cả các ngày ({allCompletedList.length} phiếu)
                         </button>
                       )}
-
-                      {/* Sync Button (Admin Only) */}
-                      {currentUser?.role === 'Admin' && (
-                        <button
-                          onClick={() => handleSyncPayment(req)}
-                          className="text-teal-600 p-2 bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100 transition-colors"
-                          title="Đồng bộ vào Booking (Cũ)"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => openFile(req, "invoice")}
-                        className="text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Xem Hóa Đơn"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={() => downloadUNC(req)}
-                        className="text-purple-700 p-2 bg-purple-50 rounded-lg border hover:bg-purple-100 transition-colors"
-                        title="Tải về UNC"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={() => handleDelete(req.id)}
-                        className="text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Xóa"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-
                     </div>
                   </td>
-
                 </tr>
-              ))}
+              )}
 
             </tbody>
           </table>
