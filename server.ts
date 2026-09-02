@@ -425,16 +425,16 @@ async function startServer() {
             }
 
             if (isAdmin) {
-                if (safeData.jobs && Array.isArray(safeData.jobs)) {
-                    const delJobSet = new Set((dbState.deletedJobIds || []).map((x: any) => String(x).trim()));
-                    dbState.jobs = safeData.jobs.filter((j: any) => j && j.id && !delJobSet.has(String(j.id).trim()));
+                if (safeData.jobs) {
+                    const enrichedJobs = preserveAmisData(dbState.jobs || [], safeData.jobs);
+                    dbState.jobs = mergeLists(dbState.jobs || [], enrichedJobs);
                 }
-                if (safeData.customers && Array.isArray(safeData.customers)) dbState.customers = safeData.customers;
-                if (safeData.lines && Array.isArray(safeData.lines)) dbState.lines = safeData.lines;
+                if (safeData.customers) dbState.customers = mergeLists(dbState.customers || [], safeData.customers);
+                if (safeData.lines) dbState.lines = mergeLists(dbState.lines || [], safeData.lines);
                 
-                if (safeData.customReceipts && Array.isArray(safeData.customReceipts)) {
+                if (safeData.customReceipts) {
                     const delCustSet = new Set((dbState.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()));
-                    dbState.customReceipts = safeData.customReceipts.filter((r: any) => r && r.id && !delCustSet.has(String(r.id).trim()));
+                    dbState.customReceipts = (safeData.customReceipts || []).filter((r: any) => !delCustSet.has(String(r.id).trim()));
                 }
                 
                 if (dbState.deletedJobIds) {
