@@ -778,6 +778,12 @@ const App: React.FC = () => {
       const idStr = String(id).trim();
       setJobs(prev => prev.filter(x => String(x.id).trim() !== idStr));
       setDeletedJobIds(prev => new Set(prev).add(idStr));
+      try {
+          const s = localStorage.getItem('kb_deleted_job_ids');
+          const arr = s ? JSON.parse(s) : [];
+          if (!arr.includes(idStr)) arr.push(idStr);
+          localStorage.setItem('kb_deleted_job_ids', JSON.stringify(arr));
+      } catch {}
       setModifiedJobIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(idStr);
@@ -793,6 +799,12 @@ const App: React.FC = () => {
           next.add(idStr);
           return next;
       });
+      try {
+          const s = localStorage.getItem('kb_deleted_custom_receipts');
+          const arr = s ? JSON.parse(s) : [];
+          if (!arr.includes(idStr)) arr.push(idStr);
+          localStorage.setItem('kb_deleted_custom_receipts', JSON.stringify(arr));
+      } catch {}
   };
 
   // --- PAYMENT HANDLERS WITH TRACKING ---
@@ -1196,7 +1208,46 @@ const App: React.FC = () => {
             }
         }
 
-        if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) setJobs(sanitizeData(data.jobs));
+        if (data.deletedJobIds && Array.isArray(data.deletedJobIds)) {
+            setDeletedJobIds(prev => {
+                const next = new Set(prev);
+                data.deletedJobIds.forEach((id: any) => next.add(String(id).trim()));
+                return next;
+            });
+            try {
+                const currentLocal = JSON.parse(localStorage.getItem('kb_deleted_job_ids') || '[]');
+                const mergedLocal = Array.from(new Set([...currentLocal, ...data.deletedJobIds.map((x: any) => String(x).trim())]));
+                localStorage.setItem('kb_deleted_job_ids', JSON.stringify(mergedLocal));
+            } catch {}
+        }
+
+        if (data.deletedPaymentIds && Array.isArray(data.deletedPaymentIds)) {
+            setDeletedPaymentIds(prev => {
+                const next = new Set(prev);
+                data.deletedPaymentIds.forEach((id: any) => next.add(String(id).trim()));
+                return next;
+            });
+            try {
+                const currentLocal = JSON.parse(localStorage.getItem('kb_deleted_payment_ids') || '[]');
+                const mergedLocal = Array.from(new Set([...currentLocal, ...data.deletedPaymentIds.map((x: any) => String(x).trim())]));
+                localStorage.setItem('kb_deleted_payment_ids', JSON.stringify(mergedLocal));
+            } catch {}
+        }
+
+        if (data.jobs && Array.isArray(data.jobs)) {
+            let localDeletedJobArr: string[] = [];
+            try {
+                const s = localStorage.getItem('kb_deleted_job_ids');
+                if (s) localDeletedJobArr = JSON.parse(s).map((x: any) => String(x).trim());
+            } catch {}
+            const allDeletedJobSet = new Set<string>([
+                ...(data.deletedJobIds || []).map((x: any) => String(x).trim()),
+                ...Array.from(deletedJobIds).map((x: any) => String(x).trim()),
+                ...localDeletedJobArr
+            ]);
+            setJobs(sanitizeData(data.jobs.filter((j: any) => !allDeletedJobSet.has(String(j.id).trim()))));
+        }
+
         if (data.paymentRequests && Array.isArray(data.paymentRequests)) setPaymentRequests(data.paymentRequests);
         if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
         if (data.lines && Array.isArray(data.lines)) setLines(data.lines);
@@ -1219,6 +1270,11 @@ const App: React.FC = () => {
                 data.deletedCustomReceiptIds.forEach((id: any) => next.add(String(id).trim()));
                 return next;
             });
+            try {
+                const currentLocal = JSON.parse(localStorage.getItem('kb_deleted_custom_receipts') || '[]');
+                const mergedLocal = Array.from(new Set([...currentLocal, ...data.deletedCustomReceiptIds.map((x: any) => String(x).trim())]));
+                localStorage.setItem('kb_deleted_custom_receipts', JSON.stringify(mergedLocal));
+            } catch {}
         }
 
         if (data.customReceipts && Array.isArray(data.customReceipts)) {
@@ -1392,9 +1448,6 @@ const App: React.FC = () => {
           }, 1000);
       } else {
           console.log("AUTO BACKUP SUCCESS");
-          // Clear deleted IDs once server has processed them
-          if (deletedJobIds.size > 0) setDeletedJobIds(new Set());
-          if (deletedPaymentIds.size > 0) setDeletedPaymentIds(new Set());
       }
 
     } catch (err) {
@@ -1474,7 +1527,31 @@ const App: React.FC = () => {
             if (!serverData) return;
             if (data.type === 'FULL_SYNC' || !data.type || currentUser?.role === 'Admin') {
                 // Full sync: refresh everything Admin manages
-                if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
+                if (serverData.deletedJobIds && Array.isArray(serverData.deletedJobIds)) {
+                    setDeletedJobIds(prev => {
+                        const next = new Set(prev);
+                        serverData.deletedJobIds.forEach((id: any) => next.add(String(id).trim()));
+                        return next;
+                    });
+                    try {
+                        const currentLocal = JSON.parse(localStorage.getItem('kb_deleted_job_ids') || '[]');
+                        const mergedLocal = Array.from(new Set([...currentLocal, ...serverData.deletedJobIds.map((x: any) => String(x).trim())]));
+                        localStorage.setItem('kb_deleted_job_ids', JSON.stringify(mergedLocal));
+                    } catch {}
+                }
+                if (serverData.jobs && Array.isArray(serverData.jobs)) {
+                    let localDeletedJobArr: string[] = [];
+                    try {
+                        const s = localStorage.getItem('kb_deleted_job_ids');
+                        if (s) localDeletedJobArr = JSON.parse(s).map((x: any) => String(x).trim());
+                    } catch {}
+                    const allDeletedJobSet = new Set<string>([
+                        ...(serverData.deletedJobIds || []).map((x: any) => String(x).trim()),
+                        ...Array.from(deletedJobIds).map((x: any) => String(x).trim()),
+                        ...localDeletedJobArr
+                    ]);
+                    setJobs(sanitizeData(serverData.jobs.filter((j: any) => !allDeletedJobSet.has(String(j.id).trim()))));
+                }
                 if (serverData.customers) setCustomers(serverData.customers);
                 if (serverData.lines) setLines(serverData.lines);
                 if (serverData.customReceipts) {
@@ -1496,13 +1573,11 @@ const App: React.FC = () => {
                         serverData.deletedCustomReceiptIds.forEach((id: any) => next.add(String(id).trim()));
                         return next;
                     });
-                }
-                if (serverData.deletedJobIds && Array.isArray(serverData.deletedJobIds)) {
-                    setDeletedJobIds(prev => {
-                        const next = new Set(prev);
-                        serverData.deletedJobIds.forEach((id: any) => next.add(String(id).trim()));
-                        return next;
-                    });
+                    try {
+                        const currentLocal = JSON.parse(localStorage.getItem('kb_deleted_custom_receipts') || '[]');
+                        const mergedLocal = Array.from(new Set([...currentLocal, ...serverData.deletedCustomReceiptIds.map((x: any) => String(x).trim())]));
+                        localStorage.setItem('kb_deleted_custom_receipts', JSON.stringify(mergedLocal));
+                    } catch {}
                 }
                 if (serverData.lockedIds && Array.isArray(serverData.lockedIds)) {
                     setLockedIds(new Set(serverData.lockedIds));
