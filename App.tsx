@@ -33,8 +33,6 @@ import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRec
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
-const CLIENT_SESSION_ID = 'client_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
-
 const DEFAULT_USERS: UserAccount[] = [
   { username: 'KimberryAdmin', pass: 'Jwckim@123#', role: 'Admin' },
   { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' },
@@ -1346,7 +1344,6 @@ const App: React.FC = () => {
     try {
       const data: any = {
         role: currentUser.role, // VITAL: Pass Role for Server Filtering
-        senderClientId: CLIENT_SESSION_ID,
         timestamp: new Date().toISOString(),
         version: "2.4",
       };
@@ -1388,6 +1385,8 @@ const App: React.FC = () => {
           console.warn("⚠️ Data conflict detected (Stale/Deleted data). Forcing reload from server...");
           // Wait slightly to let server finish current writes, then fetch
           setTimeout(() => {
+              // Re-fetch logic (copying fetchServerData logic here or calling it if extracted)
+              // Since fetchServerData is defined inside useEffect, we trigger a page reload or state reset
               window.location.reload(); 
           }, 1000);
       } else {
@@ -1458,69 +1457,51 @@ const App: React.FC = () => {
       const data = JSON.parse(event.data);
       console.log("Realtime Update Received:", data);
       
+      // If someone else updated the data, we might want to re-fetch
+      // But autoBackup already handles local changes.
+      // For Admin, we should re-fetch pending requests immediately
       if (currentUser?.role === 'Admin') {
         fetchPendingRequests();
       }
       
-      // If the update originated from THIS exact tab/client, ignore echo
-      if (data.senderClientId && data.senderClientId === CLIENT_SESSION_ID) {
-        return;
-      }
-      
-      // Re-fetch data whenever any other tab/machine saves
-      fetch(`${BACKEND_URL}/data`)
-        .then(res => res.json())
-        .then(serverData => {
-            if (!serverData) return;
-            if (data.type === 'FULL_SYNC' || !data.type || currentUser?.role === 'Admin') {
-                // Full sync: refresh everything Admin manages
-                if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
-                if (serverData.customers) setCustomers(serverData.customers);
-                if (serverData.lines) setLines(serverData.lines);
-                if (serverData.customReceipts) {
-                    let localSavedDeleted: string[] = [];
-                    try {
-                        const s = localStorage.getItem('kb_deleted_custom_receipts');
-                        if (s) localSavedDeleted = JSON.parse(s).map((x: any) => String(x).trim());
-                    } catch {}
-                    const allDeletedIds = new Set<string>([
-                        ...(serverData.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()),
-                        ...Array.from(deletedCustomReceiptIds).map((x: any) => String(x).trim()),
-                        ...localSavedDeleted
-                    ]);
-                    setCustomReceipts(serverData.customReceipts.filter((r: any) => !allDeletedIds.has(String(r.id).trim())));
-                }
-                if (serverData.deletedCustomReceiptIds && Array.isArray(serverData.deletedCustomReceiptIds)) {
-                    setDeletedCustomReceiptIds(prev => {
-                        const next = new Set(prev);
-                        serverData.deletedCustomReceiptIds.forEach((id: any) => next.add(String(id).trim()));
-                        return next;
-                    });
-                }
-                if (serverData.deletedJobIds && Array.isArray(serverData.deletedJobIds)) {
-                    setDeletedJobIds(prev => {
-                        const next = new Set(prev);
-                        serverData.deletedJobIds.forEach((id: any) => next.add(String(id).trim()));
-                        return next;
-                    });
-                }
-                if (serverData.lockedIds && Array.isArray(serverData.lockedIds)) {
-                    setLockedIds(new Set(serverData.lockedIds));
-                }
-                if (serverData.salaries) setSalaries(serverData.salaries);
-                if (serverData.yearlyConfigs) {
-                    setYearlyConfigs(serverData.yearlyConfigs);
-                    const popupConfig = serverData.yearlyConfigs.find((c: any) => c.year === 9999);
-                    if (popupConfig && popupConfig.note !== undefined) {
-                        setSystemPopupContent(popupConfig.note);
+      // Also re-fetch data if it was a sync from another user
+      if ((data.type === 'FULL_SYNC' || data.type === 'DOCS_SYNC') && data.source !== currentUser?.role) {
+          fetch(`${BACKEND_URL}/data`)
+            .then(res => res.json())
+            .then(serverData => {
+                if (data.type === 'FULL_SYNC') {
+                    // Full sync: refresh everything Admin manages
+                    if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
+                    if (serverData.customers) setCustomers(serverData.customers);
+                    if (serverData.lines) setLines(serverData.lines);
+                    if (serverData.customReceipts) {
+                        let localSavedDeleted: string[] = [];
+                        try {
+                            const s = localStorage.getItem('kb_deleted_custom_receipts');
+                            if (s) localSavedDeleted = JSON.parse(s).map((x: any) => String(x).trim());
+                        } catch {}
+                        const allDeletedIds = new Set<string>([
+                            ...(serverData.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()),
+                            ...Array.from(deletedCustomReceiptIds).map((x: any) => String(x).trim()),
+                            ...localSavedDeleted
+                        ]);
+                        setCustomReceipts(serverData.customReceipts.filter((r: any) => !allDeletedIds.has(String(r.id).trim())));
+                    }
+                    if (serverData.salaries) setSalaries(serverData.salaries);
+                    if (serverData.yearlyConfigs) {
+                        setYearlyConfigs(serverData.yearlyConfigs);
+                        const popupConfig = serverData.yearlyConfigs.find((c: any) => c.year === 9999);
+                        if (popupConfig && popupConfig.note !== undefined) {
+                            setSystemPopupContent(popupConfig.note);
+                        }
                     }
                 }
-            }
-            
-            // Both DOCS_SYNC and FULL_SYNC can affect these
-            if (serverData.paymentRequests) setPaymentRequests(serverData.paymentRequests);
-        })
-        .catch(err => console.warn("Failed to re-fetch after sync", err));
+                
+                // Both DOCS_SYNC and FULL_SYNC can affect these
+                if (serverData.paymentRequests) setPaymentRequests(serverData.paymentRequests);
+            })
+            .catch(err => console.warn("Failed to re-fetch after sync", err));
+      }
     });
 
     eventSource.addEventListener('header-updated', (event: any) => {

@@ -387,7 +387,7 @@ async function startServer() {
     });
 
     app.post("/api/data/save", async (req, res) => {
-        const { role, senderClientId, ...data } = req.body; 
+        const { role, ...data } = req.body; 
         const safeData = sanitizePayload(data);
         const userRole = (role || '').toLowerCase();
         const isAdmin = userRole === 'admin';
@@ -482,7 +482,7 @@ async function startServer() {
             }
         });
 
-        broadcast("data-updated", { time: Date.now(), source: role, senderClientId, type: isAdmin ? 'FULL_SYNC' : 'DOCS_SYNC' });
+        broadcast("data-updated", { time: Date.now(), source: role, type: isAdmin ? 'FULL_SYNC' : 'DOCS_SYNC' });
         res.json({ success: true, saved: isAdmin ? "full_merged_admin" : "payment_and_lh", requireReload });
     });
 
