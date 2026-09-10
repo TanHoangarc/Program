@@ -208,19 +208,27 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const uploadToServer = async (
     file: File,
     type: "INVOICE" | "UNC",
-    bookingFromReq: string
+    bookingFromReq: string,
+    paymentType?: string
   ) => {
     const formData = new FormData();
     const ext = file.name.split(".").pop() || "pdf";
 
     const safeBooking =
-      String(bookingFromReq || "").replace(/[^a-zA-Z0-9]/g, "") || "UNKNOWN";
+      String(bookingFromReq || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase() || "UNKNOWN";
 
-    // NEW FILE NAMING
-    const fileName =
-      type === "UNC"
-        ? `UNC BL ${safeBooking}.${ext}`
-        : `INV_${safeBooking}_${Date.now()}.${ext}`;
+    // NEW FILE NAMING:
+    // Normal: INV_COAU6463658760.pdf
+    // Demurrage: INV_COAU6463658760_DEM.pdf
+    let fileName = "";
+    if (type === "UNC") {
+      fileName = `UNC BL ${safeBooking}.${ext}`;
+    } else {
+      const isDemurrage = (paymentType || "").toLowerCase().includes("demur");
+      fileName = isDemurrage
+        ? `INV_${safeBooking}_DEM.${ext}`
+        : `INV_${safeBooking}.${ext}`;
+    }
 
     formData.append("fileName", fileName);
     formData.append("file", file);
@@ -228,7 +236,13 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const endpoint = type === "INVOICE" ? "/upload-invoice" : "/upload-unc";
 
     try {
-      const res = await axios.post(`${BACKEND_URL}${endpoint}`, formData);
+      let res = await axios.post(`${BACKEND_URL}${endpoint}`, formData).catch(() => null);
+      if (!res || !res.data?.success) {
+        res = await axios.post(`${BACKEND_URL}/api${endpoint}`, formData).catch(() => null);
+      }
+      if (!res || !res.data?.success) {
+        throw new Error("Upload failed on all endpoints");
+      }
       const data = res.data;
 
       // FIX: Ensure URL is valid if backend forgets to send it
@@ -294,31 +308,59 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     let uploaded = null;
     if (invoiceFile) {
-      uploaded = await uploadToServer(invoiceFile, "INVOICE", booking);
+      uploaded = await uploadToServer(invoiceFile, "INVOICE", booking, type);
       if (!uploaded) {
         setIsUploading(false);
         return;
       }
     }
 
-    const newReq: PaymentRequest = {
-      id: Date.now().toString(),
-      lineCode: line,
-      pod: line === "MSC" ? pod : undefined,
-      booking: booking.trim().toUpperCase(),
-      amount,
-      type, // Selected Type
-      createdAt: new Date().toISOString(),
-      status: "pending",
-      isOrderCreated: false, // Default is NOT created
+    const cleanBooking = booking.trim().toUpperCase();
 
-      invoiceFileName: uploaded?.fileName ?? "",
-      invoicePath: uploaded?.serverPath ?? "",
-      invoiceUrl: uploaded ? `${BACKEND_URL}${uploaded.url}` : "",
-      invoiceBlobUrl: invoiceFile ? URL.createObjectURL(invoiceFile) : ""
-    };
+    // Check if duplicate pending request with same booking & type exists -> replace it
+    const existingIndex = requests.findIndex(
+      r => r.booking.trim().toUpperCase() === cleanBooking &&
+           r.type === type &&
+           r.status === "pending"
+    );
 
-    const updatedRequests = [newReq, ...requests];
+    let updatedRequests: PaymentRequest[];
+    if (existingIndex !== -1) {
+      const existing = requests[existingIndex];
+      const mergedReq: PaymentRequest = {
+        ...existing,
+        lineCode: line,
+        pod: line === "MSC" ? pod : undefined,
+        booking: cleanBooking,
+        amount,
+        type,
+        createdAt: new Date().toISOString(),
+        invoiceFileName: uploaded ? uploaded.fileName : (existing.invoiceFileName || ""),
+        invoicePath: uploaded ? (uploaded.serverPath || "") : (existing.invoicePath || ""),
+        invoiceUrl: uploaded ? `${BACKEND_URL}${uploaded.url}` : (existing.invoiceUrl || ""),
+        invoiceBlobUrl: invoiceFile ? URL.createObjectURL(invoiceFile) : (existing.invoiceBlobUrl || "")
+      };
+      updatedRequests = requests.map((r, idx) => idx === existingIndex ? mergedReq : r);
+    } else {
+      const newReq: PaymentRequest = {
+        id: Date.now().toString(),
+        lineCode: line,
+        pod: line === "MSC" ? pod : undefined,
+        booking: cleanBooking,
+        amount,
+        type, // Selected Type
+        createdAt: new Date().toISOString(),
+        status: "pending",
+        isOrderCreated: false, // Default is NOT created
+
+        invoiceFileName: uploaded?.fileName ?? "",
+        invoicePath: uploaded?.serverPath ?? "",
+        invoiceUrl: uploaded ? `${BACKEND_URL}${uploaded.url}` : "",
+        invoiceBlobUrl: invoiceFile ? URL.createObjectURL(invoiceFile) : ""
+      };
+      updatedRequests = [newReq, ...requests];
+    }
+
     onUpdateRequests(updatedRequests);
 
     // Reset Form
@@ -361,7 +403,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     let uploaded = null;
     if (editInvoiceFile) {
-      uploaded = await uploadToServer(editInvoiceFile, "INVOICE", editBooking);
+      uploaded = await uploadToServer(editInvoiceFile, "INVOICE", editBooking, editType);
       if (!uploaded) {
         setIsSavingEdit(false);
         return;

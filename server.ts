@@ -667,6 +667,27 @@ async function startServer() {
                 destination: (req, file, cb) => cb(null, dir),
                 filename: (req, file, cb) => {
                     const safe = (req.body.fileName || file.originalname).replace(/[/\\?%*:|"<>]/g, "-");
+                    // Overwrite/replace duplicate files cleanly
+                    try {
+                        const targetPath = path.join(dir, safe);
+                        if (fs.existsSync(targetPath)) {
+                            fs.unlinkSync(targetPath);
+                        }
+                        const dotIdx = safe.lastIndexOf(".");
+                        const baseName = dotIdx !== -1 ? safe.substring(0, dotIdx) : safe;
+                        if (baseName && fs.existsSync(dir)) {
+                            const files = fs.readdirSync(dir);
+                            for (const f of files) {
+                                if (f.startsWith(baseName + ".")) {
+                                    try {
+                                        fs.unlinkSync(path.join(dir, f));
+                                    } catch (e) {}
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Error replacing duplicate file:", e);
+                    }
                     cb(null, safe);
                 }
             }),
@@ -674,17 +695,17 @@ async function startServer() {
         }).single("file");
     }
 
-    app.post("/api/upload-invoice", createUpload(INV_DIR), (req, res) => {
+    app.post(["/api/upload-invoice", "/upload-invoice"], createUpload(INV_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, fileName: req.file.filename, url: `/files/inv/${req.file.filename}` });
     });
 
-    app.post("/api/upload-unc", createUpload(UNC_DIR), (req, res) => {
+    app.post(["/api/upload-unc", "/upload-unc"], createUpload(UNC_DIR), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, fileName: req.file.filename, url: `/files/unc/${req.file.filename}` });
     });
 
-    app.post("/api/upload-cvhc", createUpload(CVHC_ROOT), (req, res) => {
+    app.post(["/api/upload-cvhc", "/upload-cvhc"], createUpload(CVHC_ROOT), (req, res) => {
         if (!req.file) return res.status(400).json({ success: false });
         res.json({ success: true, fileName: req.file.filename, cvhcUrl: `/cvhc/${req.file.filename}` });
     });
@@ -944,12 +965,12 @@ async function startServer() {
     app.post("/cvhc/scan-page", handleCVHCScan);
 
     // Static files
-    app.use("/api/files/invoice", express.static(INVOICE_ROOT));
-    app.use("/api/files/inv", express.static(INV_DIR));
-    app.use("/api/files/unc", express.static(UNC_DIR));
-    app.use("/api/cvhc", express.static(CVHC_ROOT));
-    app.use("/api/sign", express.static(SIGN_DIR));
-    app.use("/api/uploads", express.static(ROOT_DIR));
+    app.use(["/api/files/invoice", "/files/invoice"], express.static(INVOICE_ROOT));
+    app.use(["/api/files/inv", "/files/inv"], express.static(INV_DIR));
+    app.use(["/api/files/unc", "/files/unc"], express.static(UNC_DIR));
+    app.use(["/api/cvhc", "/cvhc"], express.static(CVHC_ROOT));
+    app.use(["/api/sign", "/sign"], express.static(SIGN_DIR));
+    app.use(["/api/uploads", "/uploads"], express.static(ROOT_DIR));
 
     // Vite middleware for development
     if (process.env.NODE_ENV !== "production") {
