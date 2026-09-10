@@ -1438,109 +1438,223 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('kb_nfc_profiles', JSON.stringify(nfcProfiles)); }, [nfcProfiles]);
   useEffect(() => { localStorage.setItem('kb_yearly_configs', JSON.stringify(yearlyConfigs)); }, [yearlyConfigs]);
 
-  // AUTO POLLING FOR ADMIN: Check for new pending/auto-approve requests regardless of page
-  useEffect(() => {
-      if (currentUser?.role === 'Admin' && isServerAvailable) {
-          fetchPendingRequests(); // Initial fetch
-          const interval = setInterval(fetchPendingRequests, 15000); // Poll every 15s
-          return () => clearInterval(interval);
+  // FAST REALTIME PAYMENT SYNC:
+  // Fetches latest payment requests from server (checking lightweight endpoint first)
+  // and updates local state without triggering redundant re-renders or feedback loops.
+  const fetchLatestPaymentRequests = useCallback(async () => {
+    if (!isServerAvailable) return;
+    try {
+      // 1. Try lightweight endpoint first
+      let res = await fetch(`${BACKEND_URL}/payment-requests`).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch(`${BACKEND_URL}/api/payment-requests`).catch(() => null);
       }
-  }, [currentUser, isServerAvailable]); 
+      if (res && res.ok) {
+        const json = await res.json();
+        const incoming = json.paymentRequests;
+        if (Array.isArray(incoming)) {
+          setPaymentRequests(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(incoming)) return prev;
+            console.log("⚡ Real-time paymentRequests updated:", incoming.length);
+            return incoming;
+          });
+          return;
+        }
+      }
+
+      // 2. Fallback to /data
+      let dataRes = await fetch(`${BACKEND_URL}/data`).catch(() => null);
+      if (!dataRes || !dataRes.ok) {
+        dataRes = await fetch(`${BACKEND_URL}/api/data`).catch(() => null);
+      }
+      if (dataRes && dataRes.ok) {
+        const serverData = await dataRes.json();
+        if (Array.isArray(serverData.paymentRequests)) {
+          setPaymentRequests(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(serverData.paymentRequests)) return prev;
+            console.log("⚡ Real-time paymentRequests updated via /data:", serverData.paymentRequests.length);
+            return serverData.paymentRequests;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("fetchLatestPaymentRequests error", err);
+    }
+  }, [isServerAvailable]);
+
+  // AUTO POLLING & VISIBILITY:
+  // Ensures Admin sees payment requests created by Docs in real-time even if SSE is temporarily reconnecting
+  useEffect(() => {
+      if (!isServerAvailable || !currentUser) return;
+
+      if (currentUser.role === 'Admin') {
+          fetchPendingRequests();
+      }
+
+      // Poll interval: 3 seconds if on payment page, 10 seconds everywhere else for Admin
+      const pollTime = currentPage === 'payment' ? 3000 : (currentUser.role === 'Admin' ? 10000 : 30000);
+      const interval = setInterval(() => {
+          fetchLatestPaymentRequests();
+          if (currentUser.role === 'Admin') {
+              fetchPendingRequests();
+          }
+      }, pollTime);
+
+      // Instant refresh on tab/window visibility return (e.g. switching back to this tab)
+      const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') {
+              fetchLatestPaymentRequests();
+              if (currentUser.role === 'Admin') fetchPendingRequests();
+          }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+          clearInterval(interval);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+  }, [currentUser, isServerAvailable, currentPage, fetchLatestPaymentRequests]); 
 
   // --- REALTIME SSE LISTENER ---
   useEffect(() => {
     if (!isServerAvailable || !isAuthenticated) return;
 
-    const eventSource = new EventSource(`${BACKEND_URL}/events`);
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let isDisposed = false;
 
-    eventSource.addEventListener('data-updated', (event: any) => {
-      const data = JSON.parse(event.data);
-      console.log("Realtime Update Received:", data);
-      
-      // If someone else updated the data, we might want to re-fetch
-      // But autoBackup already handles local changes.
-      // For Admin, we should re-fetch pending requests immediately
-      if (currentUser?.role === 'Admin') {
-        fetchPendingRequests();
+    const setupSSE = () => {
+      if (isDisposed) return;
+      if (eventSource) {
+        try { eventSource.close(); } catch {}
       }
-      
-      // Also re-fetch data if it was a sync from another user
-      if ((data.type === 'FULL_SYNC' || data.type === 'DOCS_SYNC') && data.source !== currentUser?.role) {
-          fetch(`${BACKEND_URL}/data`)
-            .then(res => res.json())
-            .then(serverData => {
-                if (data.type === 'FULL_SYNC') {
-                    // Full sync: refresh everything Admin manages
-                    if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
-                    if (serverData.customers) setCustomers(serverData.customers);
-                    if (serverData.lines) setLines(serverData.lines);
-                    if (serverData.customReceipts) {
-                        let localSavedDeleted: string[] = [];
-                        try {
-                            const s = localStorage.getItem('kb_deleted_custom_receipts');
-                            if (s) localSavedDeleted = JSON.parse(s).map((x: any) => String(x).trim());
-                        } catch {}
-                        const allDeletedIds = new Set<string>([
-                            ...(serverData.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()),
-                            ...Array.from(deletedCustomReceiptIds).map((x: any) => String(x).trim()),
-                            ...localSavedDeleted
-                        ]);
-                        setCustomReceipts(serverData.customReceipts.filter((r: any) => !allDeletedIds.has(String(r.id).trim())));
-                    }
-                    if (serverData.salaries) setSalaries(serverData.salaries);
-                    if (serverData.yearlyConfigs) {
-                        setYearlyConfigs(serverData.yearlyConfigs);
-                        const popupConfig = serverData.yearlyConfigs.find((c: any) => c.year === 9999);
-                        if (popupConfig && popupConfig.note !== undefined) {
-                            setSystemPopupContent(popupConfig.note);
+
+      eventSource = new EventSource(`${BACKEND_URL}/events`);
+
+      eventSource.onopen = () => {
+        console.log("🟢 SSE Connected successfully");
+      };
+
+      // Dedicated instant event for payment requests created/updated
+      eventSource.addEventListener('payment-updated', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (Array.isArray(data.paymentRequests)) {
+            console.log("⚡ Realtime payment-updated received:", data.paymentRequests.length);
+            setPaymentRequests(prev => {
+              if (JSON.stringify(prev) === JSON.stringify(data.paymentRequests)) return prev;
+              return data.paymentRequests;
+            });
+          }
+        } catch (err) {
+          console.warn("Failed to parse payment-updated event", err);
+        }
+      });
+
+      eventSource.addEventListener('data-updated', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("Realtime Update Received:", data);
+          
+          if (currentUser?.role === 'Admin') {
+            fetchPendingRequests();
+          }
+
+          // Immediately update payment requests
+          fetchLatestPaymentRequests();
+          
+          const isDifferentUser = !data.source || String(data.source).toLowerCase() !== String(currentUser?.role || '').toLowerCase();
+          if ((data.type === 'FULL_SYNC' || data.type === 'DOCS_SYNC') && isDifferentUser) {
+              fetch(`${BACKEND_URL}/data`)
+                .then(res => res.json())
+                .then(serverData => {
+                    if (data.type === 'FULL_SYNC') {
+                        if (serverData.jobs) setJobs(sanitizeData(serverData.jobs));
+                        if (serverData.customers) setCustomers(serverData.customers);
+                        if (serverData.lines) setLines(serverData.lines);
+                        if (serverData.customReceipts) {
+                            let localSavedDeleted: string[] = [];
+                            try {
+                                const s = localStorage.getItem('kb_deleted_custom_receipts');
+                                if (s) localSavedDeleted = JSON.parse(s).map((x: any) => String(x).trim());
+                            } catch {}
+                            const allDeletedIds = new Set<string>([
+                                ...(serverData.deletedCustomReceiptIds || []).map((x: any) => String(x).trim()),
+                                ...Array.from(deletedCustomReceiptIds).map((x: any) => String(x).trim()),
+                                ...localSavedDeleted
+                            ]);
+                            setCustomReceipts(serverData.customReceipts.filter((r: any) => !allDeletedIds.has(String(r.id).trim())));
+                        }
+                        if (serverData.salaries) setSalaries(serverData.salaries);
+                        if (serverData.yearlyConfigs) {
+                            setYearlyConfigs(serverData.yearlyConfigs);
+                            const popupConfig = serverData.yearlyConfigs.find((c: any) => c.year === 9999);
+                            if (popupConfig && popupConfig.note !== undefined) {
+                                setSystemPopupContent(popupConfig.note);
+                            }
                         }
                     }
-                }
-                
-                // Both DOCS_SYNC and FULL_SYNC can affect these
-                if (serverData.paymentRequests) setPaymentRequests(serverData.paymentRequests);
-            })
-            .catch(err => console.warn("Failed to re-fetch after sync", err));
-      }
-    });
+                    
+                    if (serverData.paymentRequests) {
+                      setPaymentRequests(prev => {
+                        if (JSON.stringify(prev) === JSON.stringify(serverData.paymentRequests)) return prev;
+                        return serverData.paymentRequests;
+                      });
+                    }
+                })
+                .catch(err => console.warn("Failed to re-fetch after sync", err));
+          }
+        } catch (e) {
+          console.warn("Failed to handle data-updated event", e);
+        }
+      });
 
-    eventSource.addEventListener('header-updated', (event: any) => {
-      fetch(`${BACKEND_URL}/header-data`)
-        .then(res => res.json())
-        .then(headerData => {
-            const currentDataString = JSON.stringify({
-              messages: headerData.messages || [],
-              notifications: headerData.notifications || [],
-              updates: headerData.updates || []
-            });
-            lastSavedHeaderData.current = currentDataString;
+      eventSource.addEventListener('header-updated', (event: any) => {
+        fetch(`${BACKEND_URL}/header-data`)
+          .then(res => res.json())
+          .then(headerData => {
+              const currentDataString = JSON.stringify({
+                messages: headerData.messages || [],
+                notifications: headerData.notifications || [],
+                updates: headerData.updates || []
+              });
+              lastSavedHeaderData.current = currentDataString;
 
-            if (headerData.messages) setHeaderMessages(headerData.messages);
-            if (headerData.notifications) setHeaderNotifications(headerData.notifications);
-            if (headerData.updates) setHeaderUpdates(headerData.updates);
-        })
-        .catch(err => console.warn("Failed to re-fetch header data", err));
-    });
+              if (headerData.messages) setHeaderMessages(headerData.messages);
+              if (headerData.notifications) setHeaderNotifications(headerData.notifications);
+              if (headerData.updates) setHeaderUpdates(headerData.updates);
+          })
+          .catch(err => console.warn("Failed to re-fetch header data", err));
+      });
 
-    eventSource.addEventListener('lock', (event: any) => {
-      const data = JSON.parse(event.data);
-      // Handle remote lock
-    });
+      eventSource.addEventListener('lock', (event: any) => {
+        // Handle remote lock
+      });
 
-    eventSource.addEventListener('unlock', (event: any) => {
-      const data = JSON.parse(event.data);
-      // Handle remote unlock
-    });
+      eventSource.addEventListener('unlock', (event: any) => {
+        // Handle remote unlock
+      });
 
-    eventSource.onerror = () => {
-      console.warn("SSE Connection lost. Reconnecting...");
-      eventSource.close();
+      eventSource.onerror = (err) => {
+        console.warn("⚠️ SSE Connection interrupted. Auto-reconnecting in 3s...", err);
+        try { eventSource?.close(); } catch {}
+        if (!isDisposed && !reconnectTimeout) {
+          reconnectTimeout = setTimeout(() => {
+            reconnectTimeout = null;
+            setupSSE();
+          }, 3000);
+        }
+      };
     };
+
+    setupSSE();
 
     return () => {
-      eventSource.close();
+      isDisposed = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      try { eventSource?.close(); } catch {}
     };
-  }, [isAuthenticated, isServerAvailable, currentUser]);
+  }, [isAuthenticated, isServerAvailable, currentUser, fetchLatestPaymentRequests]);
 
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
@@ -1776,6 +1890,7 @@ const App: React.FC = () => {
                 lines={lines} 
                 requests={paymentRequests}
                 onUpdateRequests={handleUpdatePaymentRequests}
+                onRefreshRequests={fetchLatestPaymentRequests}
                 currentUser={currentUser}
                 onSendPending={sendPendingToServer} 
                 jobs={jobs} 

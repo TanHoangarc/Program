@@ -311,35 +311,67 @@ async function startServer() {
     }
     let clients: any[] = [];
 
-    app.get("/api/events", (req, res) => {
+    const handleEvents = (req: express.Request, res: express.Response) => {
         res.setHeader("Content-Type", "text/event-stream");
-        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
         res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
 
         const clientId = Date.now().toString();
         clients.push({ id: clientId, res });
 
         res.write(`event: connected\ndata: ${clientId}\n\n`);
 
+        // Periodic keep-alive comment every 15 seconds to prevent Cloudflare/proxy timeouts
+        const keepAliveTimer = setInterval(() => {
+            try {
+                res.write(": ping\n\n");
+            } catch (err) {
+                clearInterval(keepAliveTimer);
+            }
+        }, 15000);
+
         req.on("close", () => {
+            clearInterval(keepAliveTimer);
             clients = clients.filter(c => c.id !== clientId);
             Object.keys(editingMap).forEach(k => {
                 if (editingMap[k] === clientId) delete editingMap[k];
             });
         });
-    });
+    };
+
+    app.get(["/api/events", "/events"], handleEvents);
 
     function broadcast(event: string, data: any) {
+        const deadClientIds: string[] = [];
         clients.forEach(c => {
-            c.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+            try {
+                c.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+            } catch (err) {
+                deadClientIds.push(c.id);
+            }
         });
+        if (deadClientIds.length > 0) {
+            clients = clients.filter(c => !deadClientIds.includes(c.id));
+        }
     }
 
 
     // ======================================================
-    app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
+    app.get(["/api/health", "/health"], (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-    app.get("/api/data", async (req, res) => {
+    // Lightweight endpoint for fast real-time payment requests sync
+    app.get(["/api/payment-requests", "/payment-requests"], async (req, res) => {
+        const data = await loadFullDatabase();
+        let requests = data?.paymentRequests || [];
+        if (data?.deletedPaymentIds && Array.isArray(data.deletedPaymentIds)) {
+            const deletedSet = new Set(data.deletedPaymentIds.map((id: any) => String(id).trim()));
+            requests = requests.filter((p: any) => !deletedSet.has(String(p.id).trim()));
+        }
+        res.json({ success: true, paymentRequests: requests });
+    });
+
+    app.get(["/api/data", "/data"], async (req, res) => {
         const data = await loadFullDatabase();
         if (data) {
             if (data.deletedCustomReceiptIds && Array.isArray(data.deletedCustomReceiptIds)) {
@@ -386,7 +418,7 @@ async function startServer() {
         res.json({ success: true, count: result.length, data: result });
     });
 
-    app.post("/api/data/save", async (req, res) => {
+    app.post(["/api/data/save", "/data/save"], async (req, res) => {
         const { role, ...data } = req.body; 
         const safeData = sanitizePayload(data);
         const userRole = (role || '').toLowerCase();
@@ -398,6 +430,7 @@ async function startServer() {
         }
 
         let requireReload = false;
+        let latestPaymentRequests: any[] | null = null;
 
         await withDBLock(async (dbState) => {
             if (safeData.deletedJobIds && Array.isArray(safeData.deletedJobIds)) {
@@ -480,10 +513,22 @@ async function startServer() {
                     dbState.longHoangOrders = mergeLists(dbState.longHoangOrders || [], safeData.longHoangOrders);
                 }
             }
+
+            if (safeData.paymentRequests) {
+                latestPaymentRequests = dbState.paymentRequests || [];
+            }
         });
 
         broadcast("data-updated", { time: Date.now(), source: role, type: isAdmin ? 'FULL_SYNC' : 'DOCS_SYNC' });
-        res.json({ success: true, saved: isAdmin ? "full_merged_admin" : "payment_and_lh", requireReload });
+        if (latestPaymentRequests) {
+            broadcast("payment-updated", { time: Date.now(), source: role, paymentRequests: latestPaymentRequests });
+        }
+        res.json({ 
+            success: true, 
+            saved: isAdmin ? "full_merged_admin" : "payment_and_lh", 
+            requireReload, 
+            paymentRequests: latestPaymentRequests 
+        });
     });
 
     app.get("/api/header-data", async (req, res) => {

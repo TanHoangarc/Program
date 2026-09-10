@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { WebNfcProfile, SocialLink, Project, AuthUser } from '../types';
 import { BASE_URL_PREFIX } from '../constants';
+import { generateHtmlTemplate } from '../utils/nfcHtmlTemplate';
 import { 
   ExternalLink, Edit3, Trash2, Plus, Search, Settings, Download, X, 
   Link as LinkIcon, Image as ImageIcon, User, Phone, Copy, Save, 
@@ -71,102 +72,6 @@ const DEFAULT_ROLES_EN = [
   "Leader Team Sale 2 - Long Hoang Logistics Co.,ltd",
   "Leader Team Sale 3 - Long Hoang Logistics Co.,ltd"
 ];
-
-// Template for the generated HTML file
-const generateHtmlTemplate = (profile: WebNfcProfile) => {
-  const targetData = {
-    id: profile.id,
-    name: profile.name,
-    phoneContact: profile.phoneNumber || '',
-    zaloContact: profile.zaloNumber || '',
-    assets: {
-      avatar: profile.avatarUrl || 'https://i.ibb.co/4RKTydDT/Andy.jpg',
-      avatarQr: profile.avatarUrl || '', 
-      cover: profile.coverUrl || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80',
-      roleIcon: "https://i.ibb.co/VY0kfHdv/Logo-Nhon-My-700x700-2-150x150.png",
-      flagVi: "https://flagcdn.com/w40/vn.png",
-      flagEn: "https://flagcdn.com/w40/us.png",
-    },
-    qrImages: {
-      main: profile.mainQrUrl || profile.avatarUrl || '', 
-    },
-    socialLinks: profile.socialLinks.map(link => ({
-      id: link.id,
-      label: link.label,
-      iconUrl: link.iconUrl,
-      href: link.url,
-      qrImage: link.qrImageUrl
-    })),
-    projects: (profile.projects || []).map(p => ({
-      id: p.id,
-      title: p.name,
-      thumbnail: p.imageUrl,
-      description: p.description,
-      images: p.detailImageUrls
-    })),
-    content: {
-      vi: {
-        title: profile.headerTitleVi || profile.name,
-        subtitle: profile.title || '',
-        description: (profile.bio || '').split('\n'),
-        consultButton: "Đăng Ký Tư Vấn",
-        roles: profile.footerRoleVi ? [profile.footerRoleVi] : [],
-        saveContact: "Lưu Danh bạ",
-        share: "Chia sẻ",
-        scanQr: "Quét mã",
-        close: "Đóng",
-        projectsTitle: "Dự Án Tiêu Biểu",
-        backToProjects: "Quay lại danh sách",
-        consultationForm: { 
-            title: "Yêu Cầu Báo Giá", 
-            goodsType: "Loại Hàng hóa", 
-            pol: "Cảng đi (POL)", 
-            pod: "Cảng đến (POD)", 
-            volume: "Khối lượng (Volume)", 
-            submit: "Báo Giá Qua Zalo", 
-            alertCopied: "Nội dung đã được copy! Vui lòng dán vào cuộc trò chuyện Zalo." 
-        }
-      },
-      en: {
-        title: profile.headerTitleEn || profile.headerTitleVi || profile.name,
-        subtitle: profile.titleEn || profile.title || '',
-        description: (profile.bioEn || profile.bio || '').split('\n'),
-        consultButton: "Register for Consultation",
-        roles: profile.footerRoleEn ? [profile.footerRoleEn] : (profile.footerRoleVi ? [profile.footerRoleVi] : []),
-        saveContact: "Save Contact",
-        share: "Share",
-        scanQr: "Scan QR",
-        close: "Close",
-        projectsTitle: "Featured Projects",
-        backToProjects: "Back to Projects",
-        consultationForm: { 
-            title: "Request Quotation", 
-            goodsType: "Type of Goods", 
-            pol: "Port of Loading", 
-            pod: "Port of Discharge", 
-            volume: "Volume", 
-            submit: "Get Quote via Zalo", 
-            alertCopied: "Content copied! Please paste into Zalo chat." 
-        }
-      }
-    }
-  };
-
-  return `<!DOCTYPE html>
-<html lang="vi">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>NCV Card - ${profile.name}</title>
-    <!-- Placeholder for template structure -->
-    <script>window.PROFILE_DATA = ${JSON.stringify(targetData)};</script>
-  </head>
-  <body>
-    <!-- Template implementation would be here -->
-    <h1>${profile.name}</h1>
-  </body>
-</html>`;
-};
 
 type Tab = 'general' | 'images' | 'content_vn' | 'content_en' | 'social' | 'projects' | 'security';
 
@@ -398,14 +303,26 @@ export const NFCPage: React.FC<NFCPageProps> = ({ profiles, currentUser, onAdd, 
   };
 
   const downloadProject = (profileData: any) => {
+    const slug = profileData.slug || '';
     const tempProfile: WebNfcProfile = {
-        id: 'temp', visits: 0, interactions: 0, lastActive: '', status: 'active',
-        fullUrl: `${BASE_URL_PREFIX}${profileData.slug}`, ...profileData
+        id: profileData.id || 'temp', 
+        visits: profileData.visits || 0, 
+        interactions: profileData.interactions || 0, 
+        lastActive: profileData.lastActive || '', 
+        status: profileData.status || 'active',
+        fullUrl: profileData.fullUrl || (slug ? `${BASE_URL_PREFIX}${slug}` : ''), 
+        ...profileData
     };
     const htmlContent = generateHtmlTemplate(tempProfile);
-    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'index.html'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    const a = document.createElement('a'); 
+    a.href = url; 
+    a.download = 'index.html'; 
+    document.body.appendChild(a); 
+    a.click(); 
+    document.body.removeChild(a); 
+    URL.revokeObjectURL(url);
   };
 
   const copyJson = () => { navigator.clipboard.writeText(JSON.stringify(formData, null, 2)); alert("Profile JSON copied to clipboard!"); };

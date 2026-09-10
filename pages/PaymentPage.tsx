@@ -22,6 +22,7 @@ interface PaymentPageProps {
   lines: ShippingLine[];
   requests: PaymentRequest[];
   onUpdateRequests: (reqs: PaymentRequest[]) => void;
+  onRefreshRequests?: () => Promise<void> | void;
   currentUser: { username: string, role: string } | null;
   onSendPending?: (payload?: any) => Promise<void>; 
   jobs?: JobData[];
@@ -136,6 +137,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   lines,
   requests,
   onUpdateRequests,
+  onRefreshRequests,
   currentUser,
   onSendPending,
   jobs,
@@ -156,6 +158,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
 
   const [isUploading, setIsUploading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [uncFile, setUncFile] = useState<File | null>(null);
   
@@ -258,11 +261,19 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       if (deletedId) {
         payload.deletedPaymentIds = [deletedId];
       }
-      await fetch(`${BACKEND_URL}/data/save`, {
+      let res = await fetch(`${BACKEND_URL}/data/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
-      });
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        await fetch(`${BACKEND_URL}/api/data/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).catch(() => null);
+      }
     } catch (err) {
       console.warn("Immediate payment sync failed", err);
     }
@@ -454,7 +465,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     onUpdateRequests(updated);
     
-    // Auto sync completion for Admin
+    // Auto sync completion for Admin and instant broadcast
     if (currentUser?.role === 'Admin' && onSendPending) {
         const payload = {
             user: currentUser.username,
@@ -465,6 +476,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         };
         onSendPending(payload).catch(err => console.error("Complete sync failed", err));
     }
+    await syncPaymentDataImmediately(updated);
 
     setCompletingId(null);
     setIsUploading(false);
@@ -1080,10 +1092,29 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         <div className="glass-panel rounded-2xl overflow-hidden border">
 
           <div className="bg-orange-50 px-6 py-4 flex justify-between items-center">
-            <h3 className="font-bold uppercase text-orange-800 flex items-center">
-              <AlertCircle className="w-4 h-4 mr-2" /> Danh sách chờ thanh toán
-            </h3>
-            <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-xs font-bold">
+            <div className="flex items-center space-x-2">
+              <h3 className="font-bold uppercase text-orange-800 flex items-center">
+                <AlertCircle className="w-4 h-4 mr-2" /> Danh sách chờ thanh toán
+              </h3>
+              {onRefreshRequests && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsRefreshing(true);
+                    try {
+                      await onRefreshRequests();
+                    } finally {
+                      setTimeout(() => setIsRefreshing(false), 500);
+                    }
+                  }}
+                  title="Làm mới danh sách ngay lập tức"
+                  className="p-1 text-orange-600 hover:text-orange-900 hover:bg-orange-200/60 rounded-md transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-orange-800' : ''}`} />
+                </button>
+              )}
+            </div>
+            <span className="bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded text-xs font-bold border border-orange-200">
               {pendingList.length}
             </span>
           </div>
