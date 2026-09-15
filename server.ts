@@ -904,6 +904,45 @@ async function startServer() {
             let lastError: any = null;
             let resultData = null;
 
+            const cvhcReaderPrompt = `Bạn là một nhân viên chứng từ/kế toán logistics xuất nhập khẩu chuyên nghiệp, cẩn trọng và tỉ mỉ. Bạn đang đóng vai trò là: "1 NGƯỜI ĐỌC TỪNG TRANG FILE ĐÍNH KÈM VÀ GHI LẠI DỮ LIỆU CHÍNH XÁC VÀO CÁC DÒNG".
+
+Nhiệm vụ của bạn: Hãy quan sát và đọc kỹ toàn bộ trang tài liệu này (Công văn hoàn cược - CVHC, Giấy đề nghị thanh toán/hoàn tiền cược container, Biên bản bàn giao cont, Giấy báo thu hoặc Vận đơn B/L). Trích xuất thật chính xác các thông tin sau để điền vào dòng tương ứng:
+
+1. "jobCode" (Số BL / Số Job / Mã Vận Đơn):
+   - Tìm kiếm số B/L No, Bill of Lading, Booking No, MBL, HBL, Mã Job, Số vận đơn.
+   - Thường nằm ở tiêu đề công văn ("V/v: Hoàn trả tiền cược cont lô hàng theo B/L số..."), hoặc bảng kê cont/seal.
+   - Nếu trên trang này có nhiều số BL được kê khai, hãy lấy tất cả và ngăn cách nhau bằng dấu phẩy (Ví dụ: "SGN2405012, SGN2405013").
+
+2. "customerName" (Tên Khách Hàng / Đơn Vị Đề Nghị Hoàn Cược):
+   - Đọc tên công ty/doanh nghiệp làm công văn xin hoàn cược (Ví dụ: "CÔNG TY TNHH THƯƠNG MẠI XNK ĐẠI DƯƠNG", "CÔNG TY CP TIẾP VẬN VÀ TIẾP VẬN SAO BIỂN"...).
+   - Thường nằm ở góc trái trên cùng (Đơn vị gửi) hoặc phần mở đầu: "Kính gửi Hãng tàu... Tên công ty chúng tôi là...".
+
+3. "amount" (Số Tiền Cược / Tiền Đề Nghị Hoàn Trả):
+   - Số tiền đề nghị hoàn trả lại bằng số nguyên (VNĐ).
+   - Tìm ở các dòng: "Số tiền:", "Số tiền cược:", "Số tiền đề nghị hoàn cược:", "Bằng số:".
+   - Ví dụ: 2.000.000 đ -> 2000000; 5,000,000 VND -> 5000000. Bỏ dấu chấm, dấu phẩy, chữ đ/VND.
+   - Nếu trên văn bản không ghi số tiền hoặc không tìm thấy, trả về 0.
+
+4. "accountNumber" (Số Tài Khoản Ngân Hàng Thụ Hưởng):
+   - Dãy số tài khoản ngân hàng để chuyển trả tiền cược.
+   - Chỉ lấy các chữ số liên tục (Ví dụ: "0071001234567", "19034567890123"). Bỏ qua dấu cách, dấu gạch ngang.
+   - Tìm ở mục: "Số tài khoản:", "STK:", "A/C:", "Tài khoản thụ hưởng:".
+
+5. "bankName" (Tên Ngân Hàng Thụ Hưởng):
+   - Chỉ lấy tên thương hiệu ngân hàng chính ngắn gọn (Ví dụ: "Vietcombank", "Vietinbank", "Techcombank", "BIDV", "Agribank", "ACB", "MB Bank", "VPBank", "TPBank", "Sacombank", "VIB", "HDBank", "MSB", "OCB", "Eximbank", "SHB"...).
+   - TUYỆT ĐỐI KHÔNG ghi chi nhánh (như "CN Tân Bình", "Chi nhánh Ba Đình", "Hội sở", "PGD..."). Chỉ ghi đúng tên ngân hàng cho ngắn gọn.
+
+6. "accountHolder" (Tên Chủ Tài Khoản / Người Thụ Hưởng):
+   - Tên cá nhân hoặc công ty đứng tên tài khoản ngân hàng thụ hưởng.
+   - Chú ý quan sát kỹ nếu người thụ hưởng là cá nhân (ví dụ: "Nguyễn Văn A", "Trần Thị B"), hãy ghi rõ họ và tên đầy đủ của cá nhân đó.
+
+7. "notes" (Ghi Chú):
+   - Ghi chú vắn tắt nếu có thông tin đặc biệt.
+
+Yêu cầu chất lượng:
+- Đọc kỹ, chính xác từng ký tự như một người kiểm chứng thực tế, không bịa đặt hoặc suy đoán.
+- Trả về JSON đúng cấu trúc.`;
+
             for (const model of modelsToTry) {
                 try {
                     const result = await ai.models.generateContent({
@@ -911,7 +950,7 @@ async function startServer() {
                         contents: {
                             parts: [
                                 { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
-                                { text: "Hãy đọc tài liệu (hoặc hóa đơn/chứng từ/vận đơn) đính kèm và trích xuất 2 thông tin quan trọng sau:\n1. Số Vận Đơn (Bill of Lading Number, B/L No, Job No, Mã Job, Số BL).\n2. Số Tài Khoản Ngân Hàng thụ hưởng (Account Number, Số tài khoản, STK, A/C No).\n\nLưu ý: \n- Nếu có nhiều số, hãy lấy số có vẻ chính xác nhất cho nghiệp vụ.\n- Cố gắng tìm kỹ các thông tin này ở các góc, bảng, hoặc phần thanh toán.\n- Trả về JSON đúng chuẩn. Nếu không tìm thấy, hãy để chuỗi rỗng \"\" thay vì null." }
+                                { text: cvhcReaderPrompt }
                             ]
                         },
                         config: {
@@ -921,14 +960,34 @@ async function startServer() {
                                 properties: {
                                     jobCode: {
                                         type: Type.STRING,
-                                        description: "The Bill of Lading Number, B/L No, Job No, Số BL, Mã Job, Số Vận Đơn extracted from the document."
+                                        description: "Số Vận đơn, B/L No, Booking No, Mã Job. Nếu nhiều số thì cách nhau bằng dấu phẩy."
+                                    },
+                                    customerName: {
+                                        type: Type.STRING,
+                                        description: "Tên công ty hoặc khách hàng đề nghị hoàn cược."
+                                    },
+                                    amount: {
+                                        type: Type.NUMBER,
+                                        description: "Số tiền cược đề nghị hoàn trả (số nguyên VNĐ). Ví dụ: 2000000, 5000000; nếu không có thì trả về 0."
                                     },
                                     accountNumber: {
                                         type: Type.STRING,
-                                        description: "The Beneficiary Account Number, Số tài khoản, STK, Account No, or A/C No extracted from the document."
+                                        description: "Số tài khoản ngân hàng thụ hưởng (chỉ chứa các chữ số)."
+                                    },
+                                    bankName: {
+                                        type: Type.STRING,
+                                        description: "Tên ngân hàng thụ hưởng ngắn gọn, không ghi chi nhánh (Ví dụ: Vietcombank, Vietinbank, Techcombank, BIDV, Agribank, ACB, MB Bank...)."
+                                    },
+                                    accountHolder: {
+                                        type: Type.STRING,
+                                        description: "Tên chủ tài khoản hoặc người thụ hưởng. Nếu là cá nhân thì ghi rõ họ và tên (Ví dụ: NGUYỄN VĂN A)."
+                                    },
+                                    notes: {
+                                        type: Type.STRING,
+                                        description: "Ghi chú ngắn về nội dung trang."
                                     }
                                 },
-                                required: ["jobCode", "accountNumber"]
+                                required: ["jobCode", "customerName", "amount", "accountNumber"]
                             }
                         }
                     });
@@ -942,13 +1001,26 @@ async function startServer() {
                     }
                     jsonText = jsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
                     resultData = JSON.parse(jsonText);
-                    console.log(`CVHC AI Scan Success with model ${model}. Data:`, resultData);
                     
-                    if (!resultData.jobCode && !resultData.accountNumber) {
+                    if (resultData) {
+                        // Normalize amount if string
+                        if (typeof resultData.amount === 'string') {
+                            const num = parseInt(resultData.amount.replace(/[^0-9]/g, ''), 10);
+                            resultData.amount = isNaN(num) ? 0 : num;
+                        }
+                        // Clean account number
+                        if (typeof resultData.accountNumber === 'string') {
+                            resultData.accountNumber = resultData.accountNumber.replace(/[^0-9]/g, '');
+                        }
+                    }
+
+                    console.log(`CVHC Reader Success with model ${model}. Data:`, resultData);
+                    
+                    if (!resultData.jobCode && !resultData.accountNumber && !resultData.customerName && (!resultData.amount || resultData.amount === 0)) {
                         if (model === modelsToTry[modelsToTry.length - 1]) {
                             break; // Last model, accept the empty result
                         }
-                        throw new Error("Model returned empty results for both fields. Forcing retry with next model.");
+                        throw new Error("Model returned empty results for all fields. Forcing retry with next model.");
                     }
                     
                     break; // Success!

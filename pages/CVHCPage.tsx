@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { JobData, Customer, ShippingLine } from '../types';
-import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles, X, RotateCcw, FileText, Mail, Copy, Check, Lock, Unlock, Key, Settings, ExternalLink, RefreshCw } from 'lucide-react';
+import { FileCheck, Upload, Save, CheckCircle, AlertCircle, Loader2, Eye, Edit3, Banknote, Sparkles, X, RotateCcw, FileText, Mail, Copy, Check, Lock, Unlock, Key, Settings, ExternalLink, RefreshCw, StopCircle, BookOpen } from 'lucide-react';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsMod from 'pdfjs-dist';
@@ -32,10 +32,13 @@ interface CVHCRow {
   customerName: string;
   customerId: string;
   amount: number;
-  accountNumber?: string; // New field: Số tài khoản
+  accountNumber?: string; // Số tài khoản thụ hưởng
   jobId?: string; // Link to actual job if found (can be comma-separated list of IDs)
   previewUrl?: string; // Preview URL for PDF page
   isLocked?: boolean; // Lock status
+  bankName?: string;
+  accountHolder?: string;
+  scannedByAI?: boolean;
 }
 
 const BACKEND_URL = "https://api.kimberry.id.vn";
@@ -59,12 +62,127 @@ const extractTextFromBlob = async (blob: Blob): Promise<string> => {
     }
 };
 
+interface ParsedDocData {
+    jobCode: string;
+    accountNumber: string;
+    customerName?: string;
+    amount?: number;
+    bankName?: string;
+    accountHolder?: string;
+}
+
+// Rút gọn và chuẩn hóa tên ngân hàng (loại bỏ chi nhánh, phòng giao dịch để hiển thị ngắn gọn: Vietcombank, VietinBank...)
+export const cleanBankName = (bank?: string): string => {
+    if (!bank) return '';
+    let b = bank.trim();
+    if (!b) return '';
+
+    // Danh sách các ngân hàng phổ biến tại VN để nhận diện và hiển thị tên thương hiệu chuẩn, ngắn gọn
+    const knownBanks: Array<{ pattern: RegExp; shortName: string }> = [
+        { pattern: /\b(vietcombank|vcb)\b/i, shortName: 'Vietcombank' },
+        { pattern: /\b(vietinbank|incombank|ctg)\b/i, shortName: 'VietinBank' },
+        { pattern: /\b(techcombank|tcb)\b/i, shortName: 'Techcombank' },
+        { pattern: /\b(bidv)\b/i, shortName: 'BIDV' },
+        { pattern: /\b(agribank|vbard)\b/i, shortName: 'Agribank' },
+        { pattern: /\b(mb\s*bank|mbbank|ngân\s*hàng\s*quân\s*đội)\b/i, shortName: 'MB Bank' },
+        { pattern: /\b(acb|á\s*châu)\b/i, shortName: 'ACB' },
+        { pattern: /\b(vpbank|vpb)\b/i, shortName: 'VPBank' },
+        { pattern: /\b(tpbank|tpb|tiên\s*phong)\b/i, shortName: 'TPBank' },
+        { pattern: /\b(sacombank|stb)\b/i, shortName: 'Sacombank' },
+        { pattern: /\b(vib)\b/i, shortName: 'VIB' },
+        { pattern: /\b(hdbank|hdb)\b/i, shortName: 'HDBank' },
+        { pattern: /\b(msb|hàng\s*hải)\b/i, shortName: 'MSB' },
+        { pattern: /\b(ocb|phương\s*đông)\b/i, shortName: 'OCB' },
+        { pattern: /\b(eximbank|eib)\b/i, shortName: 'Eximbank' },
+        { pattern: /\b(shb)\b/i, shortName: 'SHB' },
+        { pattern: /\b(seabank)\b/i, shortName: 'SeABank' },
+        { pattern: /\b(lpbank|lienvietpostbank|bưu\s*điện\s*liên\s*việt)\b/i, shortName: 'LPBank' },
+        { pattern: /\b(shinhan(?:\s*bank)?)\b/i, shortName: 'Shinhan Bank' },
+        { pattern: /\b(woori(?:\s*bank)?)\b/i, shortName: 'Woori Bank' },
+        { pattern: /\b(hsbc)\b/i, shortName: 'HSBC' },
+        { pattern: /\b(standard\s*chartered)\b/i, shortName: 'Standard Chartered' },
+        { pattern: /\b(bac\s*a\s*bank|bắc\s*á)\b/i, shortName: 'Bac A Bank' },
+        { pattern: /\b(nam\s*a\s*bank|nam\s*á)\b/i, shortName: 'Nam A Bank' },
+        { pattern: /\b(pvcombank)\b/i, shortName: 'PVcomBank' },
+        { pattern: /\b(kienlongbank)\b/i, shortName: 'KienlongBank' },
+        { pattern: /\b(baoviet\s*bank)\b/i, shortName: 'BaoViet Bank' },
+        { pattern: /\b(saigonbank)\b/i, shortName: 'Saigonbank' },
+        { pattern: /\b(public\s*bank)\b/i, shortName: 'Public Bank' },
+        { pattern: /\b(cimb)\b/i, shortName: 'CIMB' },
+        { pattern: /\b(uob)\b/i, shortName: 'UOB' },
+        { pattern: /\b(citibank)\b/i, shortName: 'Citibank' },
+        { pattern: /\b(indovina)\b/i, shortName: 'Indovina' },
+    ];
+
+    for (const kb of knownBanks) {
+        if (kb.pattern.test(b)) {
+            return kb.shortName;
+        }
+    }
+
+    // Nếu không nằm trong danh sách trên, tự động cắt bỏ phần Chi nhánh / PGD / Hội sở
+    b = b.replace(/^(?:Ngân\s*hàng\s*(?:TMCP|NHTMCP)?|NH|Bank)\s+/i, '');
+    b = b.replace(/\s*[-–,./]?\s*(?:CN|Chi\s*nhánh|PGD|Phòng\s*giao\s*dịch|Hội\s*sở|Văn\s*phòng|Branch).*$/i, '');
+    return b.trim();
+};
+
+// Kiểm tra xem tên người thụ hưởng có phải là CÁ NHÂN hay không (loại bỏ tên công ty)
+export const isIndividualPerson = (name?: string, customerName?: string): boolean => {
+    if (!name) return false;
+    const clean = name.trim().toUpperCase();
+    if (!clean || clean.length < 2) return false;
+
+    // Các từ khóa doanh nghiệp / công ty
+    const companyKeywords = [
+        'CÔNG TY', 'CONG TY', 'CTY', 'TNHH', 'CỔ PHẦN', 'CO PHAN', 'CP', 
+        'DOANH NGHIỆP', 'DNTN', 'MTV', 'LOGISTICS', 'FORWARDING', 
+        'XNK', 'XUẤT NHẬP KHẨU', 'COMMERCE', 'TRADING', 'CORP', 'LTD', 
+        'INC', 'ENTERPRISE', 'CHI NHÁNH', 'CN', 'VPĐD', 'VĂN PHÒNG ĐẠI DIỆN', 
+        'TẬP ĐOÀN', 'CO.,', 'CO.LTD', 'JSC', 'CORPORATION'
+    ];
+    for (const kw of companyKeywords) {
+        if (clean.includes(kw)) return false;
+    }
+
+    // Nếu trùng hoặc chứa tên khách hàng (thường là tên công ty đề nghị)
+    if (customerName) {
+        const cleanCust = customerName.trim().toUpperCase();
+        if (cleanCust && (clean.includes(cleanCust) || cleanCust.includes(clean))) {
+            return false;
+        }
+    }
+
+    return true;
+};
+
+// Định dạng dòng hiển thị phụ bên dưới số tài khoản: "Tên ngân hàng - Người nhận là cá nhân"
+export const formatAccountSubtitle = (bankName?: string, accountHolder?: string, customerName?: string): string => {
+    const cleanBank = cleanBankName(bankName);
+    const cleanHolder = (accountHolder || '').trim();
+    const isPerson = cleanHolder && isIndividualPerson(cleanHolder, customerName);
+
+    if (cleanBank && isPerson) {
+        return `${cleanBank} - ${cleanHolder}`;
+    }
+    if (cleanBank) {
+        return cleanBank;
+    }
+    if (isPerson) {
+        return cleanHolder;
+    }
+    return '';
+};
+
 // Match extracted text against database jobs and regex patterns
-const parseDocumentText = (text: string, existingJobs: JobData[]): { jobCode: string; accountNumber: string } => {
+const parseDocumentText = (text: string, existingJobs: JobData[]): ParsedDocData => {
     let jobCode = '';
     let accountNumber = '';
+    let customerName = '';
+    let amount = 0;
+    let bankName = '';
+    let accountHolder = '';
 
-    if (!text || text.length < 3) return { jobCode, accountNumber };
+    if (!text || text.length < 3) return { jobCode, accountNumber, customerName, amount, bankName, accountHolder };
 
     // 1. Check against known Jobs in database (exact matching)
     for (const j of existingJobs) {
@@ -93,7 +211,35 @@ const parseDocumentText = (text: string, existingJobs: JobData[]): { jobCode: st
         }
     }
 
-    // 3. Search for Account Number (STK / Bank Account)
+    // 3. Search for Customer / Company name
+    const custPatterns = [
+        /(?:CÔNG\s*TY\s*(?:TNHH|CỔ\s*PHẦN|CP|MTV)?[^,\n:\.]{3,60})/i,
+        /(?:Đơn\s*vị\s*đề\s*nghị|Kính\s*gửi|Khách\s*hàng)[:\s]+([^,\n\.]{3,60})/i
+    ];
+    for (const pattern of custPatterns) {
+        const match = text.match(pattern);
+        if (match && match[0]) {
+            customerName = match[1] ? match[1].trim() : match[0].trim();
+            break;
+        }
+    }
+
+    // 4. Search for Deposit Amount (Số tiền cược)
+    const amtPatterns = [
+        /(?:Số\s*tiền\s*cược|Tiền\s*cược|Hoàn\s*cược|Số\s*tiền\s*đề\s*nghị|Số\s*tiền|Tổng\s*cộng)[^0-9\n]{0,25}([0-9]{1,3}(?:[.,][0-9]{3})+|[0-9]{6,9})/i
+    ];
+    for (const pattern of amtPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+            const cleanAmt = parseInt(match[1].replace(/[.,]/g, ''), 10);
+            if (!isNaN(cleanAmt) && cleanAmt > 0) {
+                amount = cleanAmt;
+                break;
+            }
+        }
+    }
+
+    // 5. Search for Account Number (STK / Bank Account)
     const stkPatterns = [
         /(?:Số\s*tài\s*khoản|Số\s*TK|STK|Tài\s*khoản\s*thụ\s*hưởng|TK\s*thụ\s*hưởng|Account\s*Number|Account\s*No|A\/C\s*No|A\/C)[#:\s.-]*([0-9\s]{6,25})/i,
         /(?:Tại\s*ngân\s*hàng|Ngân\s*hàng|Bank)[^0-9\n]{0,25}([0-9]{8,20})/i
@@ -109,7 +255,36 @@ const parseDocumentText = (text: string, existingJobs: JobData[]): { jobCode: st
         }
     }
 
-    return { jobCode, accountNumber };
+    // 6. Search for Bank Name
+    const bankPatterns = [
+        /(?:Tại\s*ngân\s*hàng|Ngân\s*hàng|Bank|NH)[:\s]+([^,\n]{3,50})/i,
+        /\b(Vietcombank|Techcombank|MB\s*Bank|BIDV|Agribank|ACB|VPBank|TPBank|Sacombank|VIB|HDBank|MSB|OCB|Eximbank|SHB|VietinBank|Shinhan|Woori|Standard\s*Chartered|HSBC)\b/i
+    ];
+    for (const pattern of bankPatterns) {
+        const match = text.match(pattern);
+        if (match && (match[1] || match[0])) {
+            const rawBank = (match[1] || match[0]).trim();
+            bankName = cleanBankName(rawBank);
+            if (bankName) break;
+        }
+    }
+
+    // 7. Search for Account Holder (Chủ tài khoản / Người thụ hưởng)
+    const holderPatterns = [
+        /(?:Chủ\s*tài\s*khoản|Tên\s*tài\s*khoản|Chủ\s*TK|Tên\s*người\s*thụ\s*hưởng|Người\s*thụ\s*hưởng)[:\s]+([^,\n]{2,45})/i
+    ];
+    for (const pattern of holderPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+            const h = match[1].trim();
+            if (h.length >= 2) {
+                accountHolder = h;
+                break;
+            }
+        }
+    }
+
+    return { jobCode, accountNumber, customerName, amount, bankName, accountHolder };
 };
 
 export const CVHCPage: React.FC<CVHCPageProps> = ({ 
@@ -166,8 +341,13 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [isScanning, setIsScanning] = useState(false); // For AI Scan
+  const [scanningCurrentIndex, setScanningCurrentIndex] = useState<number | null>(null); // Current page being read
+  const [scanProgressMessage, setScanProgressMessage] = useState<string>(''); // Live status text
+  const cancelScanRef = useRef<boolean>(false); // Cancel flag
   const [iframePreviewUrl, setIframePreviewUrl] = useState<string | null>(null); // Embedded preview modal
   const [copiedState, setCopiedState] = useState<{ [key: string]: boolean }>({});
+  const [editingSubtitleRowId, setEditingSubtitleRowId] = useState<string | null>(null);
+  const [subtitleInput, setSubtitleInput] = useState<string>('');
   const [isLocked, setIsLocked] = useState<boolean>(() => {
     try {
       const cached = localStorage.getItem('cvhc_is_locked_cache');
@@ -343,6 +523,29 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
     setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
+  const handleSaveSubtitle = (rowId: string, val: string) => {
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setRows(prev => prev.map(r => r.id === rowId ? { ...r, bankName: '', accountHolder: '' } : r));
+      setEditingSubtitleRowId(null);
+      return;
+    }
+    const parts = trimmed.split('-').map(s => s.trim());
+    const b = cleanBankName(parts[0] || '');
+    const h = parts.slice(1).join('-').trim() || '';
+    setRows(prev => prev.map(r => {
+      if (r.id === rowId) {
+        return {
+          ...r,
+          bankName: b,
+          accountHolder: h
+        };
+      }
+      return r;
+    }));
+    setEditingSubtitleRowId(null);
+  };
+
   const addRow = () => {
     setRows(prev => [...prev, { id: Date.now().toString(), jobCode: '', customerName: '', customerId: '', amount: 0, accountNumber: '', isLocked: false }]);
   };
@@ -464,26 +667,205 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
     }
   };
 
-  // --- AI & LOCAL HYBRID SCAN LOGIC ---
+  // Helper: Apply extracted data to row and link with jobs/customers database
+  const applyExtractedDataToRow = (
+      rowIndex: number, 
+      data: { 
+          jobCode?: string; 
+          customerName?: string; 
+          amount?: number | string; 
+          accountNumber?: string; 
+          bankName?: string; 
+          accountHolder?: string;
+          notes?: string;
+      }
+  ) => {
+      let finalJobCode = (data.jobCode || '').trim();
+      let finalCustomerName = (data.customerName || '').trim();
+      let finalAmount = typeof data.amount === 'string' ? (parseInt(data.amount.replace(/[^0-9]/g, ''), 10) || 0) : (Number(data.amount) || 0);
+      let finalAccountNumber = (data.accountNumber || '').replace(/[^0-9]/g, '').trim();
+      let finalJobId: string | undefined = undefined;
+      let finalCustomerId = '';
+
+      // 1. Check if jobCode matches any existing Job in system
+      if (finalJobCode) {
+          const codes = finalJobCode.split(',').map(s => s.trim()).filter(Boolean);
+          const matchedJobs = codes.map(c => findJob(c)).filter((j): j is JobData => !!j);
+
+          if (matchedJobs.length > 0) {
+              const firstJob = matchedJobs[0];
+              finalJobId = matchedJobs.map(j => j.id).join(',');
+              const dbCustId = firstJob.maKhCuocId || firstJob.customerId;
+              const dbCustName = findCustomer(dbCustId)?.name || firstJob.customerName;
+              
+              finalCustomerId = dbCustId || '';
+              if (dbCustName) {
+                  finalCustomerName = dbCustName;
+              }
+              const dbTotalAmount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+              if (dbTotalAmount > 0) {
+                  finalAmount = dbTotalAmount;
+              }
+          }
+      }
+
+      // 2. If no customerId from jobs, check if customerName matches any existing Customer
+      if (!finalCustomerId && finalCustomerName) {
+          const cleanName = finalCustomerName.toLowerCase().replace(/công ty|tnhh|cp|cổ phần|mtv/gi, '').trim();
+          const matchedCust = customers.find(c => {
+              const cClean = c.name.toLowerCase().replace(/công ty|tnhh|cp|cổ phần|mtv/gi, '').trim();
+              return (cleanName.length >= 3 && cClean.includes(cleanName)) || (cClean.length >= 3 && cleanName.includes(cClean));
+          });
+          if (matchedCust) {
+              finalCustomerId = matchedCust.id;
+              finalCustomerName = matchedCust.name;
+          }
+      }
+
+      setRows(currentRows => currentRows.map((r, rIdx) => {
+          if (rIdx === rowIndex) {
+              return {
+                  ...r,
+                  jobCode: finalJobCode || r.jobCode,
+                  jobId: finalJobId !== undefined ? finalJobId : r.jobId,
+                  customerName: finalCustomerName || r.customerName,
+                  customerId: finalCustomerId || r.customerId,
+                  amount: finalAmount > 0 ? finalAmount : r.amount,
+                  accountNumber: finalAccountNumber || r.accountNumber,
+                  bankName: data.bankName ? cleanBankName(data.bankName) : r.bankName,
+                  accountHolder: data.accountHolder || r.accountHolder,
+                  scannedByAI: true
+              };
+          }
+          return r;
+      }));
+
+      return {
+          jobCode: finalJobCode,
+          customerName: finalCustomerName,
+          amount: finalAmount,
+          accountNumber: finalAccountNumber
+      };
+  };
+
+  // Helper: Read a single page / row with AI
+  const scanSingleRow = async (index: number) => {
+      if (isLocked) {
+          alert("Bảng dữ liệu đang bị khóa. Vui lòng mở khóa để đọc tài liệu.", "Thông báo");
+          return;
+      }
+      const row = rows[index];
+      if (!row || !row.previewUrl) {
+          alert(`Trang ${index + 1} chưa có file đính kèm để đọc.`, "Thông báo");
+          return;
+      }
+
+      setScanningCurrentIndex(index);
+      setScanProgressMessage(`Đang đọc Trang ${index + 1}: Quan sát và trích xuất dữ liệu...`);
+
+      try {
+          const response = await fetch(row.previewUrl);
+          const blob = await response.blob();
+          const mimeType = blob.type || "application/pdf";
+          
+          let extractedData: any = null;
+
+          // 1. Try Gemini API
+          const reader = new FileReader();
+          const base64Promise = new Promise<string>((resolve, reject) => {
+              reader.onloadend = () => {
+                  const base64String = reader.result as string;
+                  const base64Data = base64String.split(',')[1]; 
+                  resolve(base64Data);
+              };
+              reader.onerror = reject;
+          });
+          reader.readAsDataURL(blob);
+          const base64Data = await base64Promise;
+
+          const storedApiKey = customApiKey || localStorage.getItem("gemini_api_key") || undefined;
+          
+          try {
+              const scanRes = await axios.post(`/api/cvhc/scan-page`, {
+                  base64Data,
+                  mimeType,
+                  apiKey: storedApiKey
+              }, {
+                  headers: storedApiKey ? { 'x-gemini-api-key': storedApiKey } : undefined
+              });
+
+              if (scanRes.data && scanRes.data.success && scanRes.data.data) {
+                  extractedData = scanRes.data.data;
+              }
+          } catch (apiErr: any) {
+              console.warn("AI scan failed for single row, trying local fallback:", apiErr);
+              if (mimeType.includes("pdf")) {
+                  const localText = await extractTextFromBlob(blob);
+                  if (localText && localText.trim().length > 10) {
+                      extractedData = parseDocumentText(localText, jobs);
+                  }
+              }
+          }
+
+          if (extractedData && (extractedData.jobCode || extractedData.accountNumber || extractedData.customerName || extractedData.amount)) {
+              const res = applyExtractedDataToRow(index, extractedData);
+              setScanProgressMessage(`Đã đọc xong Trang ${index + 1}: BL: ${res.jobCode || '---'} | KH: ${res.customerName || '---'} | Tiền: ${res.amount ? formatCurrency(res.amount) : '0 đ'}`);
+          } else {
+              alert(`Không đọc được thông tin từ Trang ${index + 1}. Vui lòng kiểm tra lại chất lượng tài liệu hoặc nhập tay.`, "Thông báo");
+          }
+      } catch (err: any) {
+          console.error("Error reading single row:", err);
+          alert(`Lỗi khi đọc Trang ${index + 1}: ${err.message}`, "Lỗi");
+      } finally {
+          setScanningCurrentIndex(null);
+          setScanProgressMessage('');
+      }
+  };
+
+  // --- AI WORKFLOW: 1 NGƯỜI ĐỌC TỪNG TRANG VÀ GHI LẠI DỮ LIỆU ---
   const handleAutoScan = async () => {
       if (isLocked) {
           alert("Bảng dữ liệu đang bị khóa. Vui lòng mở khóa để quét tự điền.", "Thông báo");
           return;
       }
-      const rowsToScan = rows.filter(r => r.previewUrl && !r.jobCode.trim());
-      if (rowsToScan.length === 0) {
-          alert("Không có trang nào có số BL trống và có file đính kèm để quét.", "Thông báo");
+      if (!file && !rows.some(r => r.previewUrl)) {
+          alert("Vui lòng chọn file đính kèm (PDF hoặc ảnh) trước khi yêu cầu AI đọc và ghi lại dữ liệu.", "Thông báo");
           return;
       }
 
+      const availableRows = rows.filter(r => r.previewUrl);
+      if (availableRows.length === 0) {
+          alert("Không có trang nào có file đính kèm để đọc. Vui lòng chọn lại file.", "Thông báo");
+          return;
+      }
+
+      // Check if some rows already have data
+      const rowsWithData = rows.filter(r => r.jobCode.trim() || r.amount > 0 || r.customerName.trim());
+      let scanAll = true;
+      if (rowsWithData.length > 0 && rowsWithData.length < rows.length) {
+          scanAll = await confirm(
+              `Bảng đang có ${rowsWithData.length}/${rows.length} dòng đã có dữ liệu.\n\nBạn có muốn AI đọc lại TOÀN BỘ ${rows.length} trang từ file đính kèm không?\n\n- Chọn 'Đồng ý' để đọc lại từ đầu tất cả các trang.\n- Chọn 'Hủy' để chỉ đọc những trang chưa có số BL.`,
+              "AI Đọc File & Ghi Lại"
+          );
+      }
+
       setIsScanning(true);
+      cancelScanRef.current = false;
       let successCount = 0;
       let quotaExhausted = false;
       let lastApiError = "";
 
       for (let i = 0; i < rows.length; i++) {
+          if (cancelScanRef.current) {
+              break;
+          }
+
           const row = rows[i];
-          if (!row.previewUrl || row.jobCode.trim()) continue;
+          if (!row.previewUrl) continue;
+          if (!scanAll && row.jobCode.trim()) continue;
+
+          setScanningCurrentIndex(i);
+          setScanProgressMessage(`Đang đọc Trang ${i + 1}/${rows.length}: Quan sát văn bản, B/L, công ty, số tiền cược và STK...`);
 
           try {
               // 1. Fetch Blob
@@ -491,25 +873,10 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
               const blob = await response.blob();
               const mimeType = blob.type || "application/pdf";
               
-              let extractedData: { jobCode: string; accountNumber: string } | null = null;
+              let extractedData: any = null;
 
-              // 2. FAST LOCAL EXTRACTION FIRST (100% Free, zero credit consumption)
-              if (mimeType.includes("pdf")) {
-                  try {
-                      const localText = await extractTextFromBlob(blob);
-                      if (localText && localText.trim().length > 10) {
-                          const parsed = parseDocumentText(localText, jobs);
-                          if (parsed.jobCode || parsed.accountNumber) {
-                              extractedData = parsed;
-                          }
-                      }
-                  } catch (err) {
-                      console.warn("Local PDF text extraction skipped:", err);
-                  }
-              }
-
-              // 3. IF LOCAL EXTRACTION DIDN'T FIND ALL DATA, FALL BACK TO SERVER-SIDE GEMINI API
-              if ((!extractedData || !extractedData.jobCode) && !quotaExhausted) {
+              // 2. PRIMARY: SERVER-SIDE GEMINI API ("1 người đọc file và ghi lại")
+              if (!quotaExhausted) {
                   const reader = new FileReader();
                   const base64Promise = new Promise<string>((resolve, reject) => {
                       reader.onloadend = () => {
@@ -534,11 +901,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                       });
 
                       if (scanRes.data && scanRes.data.success && scanRes.data.data) {
-                          const aiData = scanRes.data.data;
-                          extractedData = {
-                              jobCode: aiData.jobCode || extractedData?.jobCode || '',
-                              accountNumber: aiData.accountNumber || extractedData?.accountNumber || ''
-                          };
+                          extractedData = scanRes.data.data;
                       }
                   } catch (apiErr: any) {
                       const errMsg = apiErr.response?.data?.error || apiErr.message || "";
@@ -562,47 +925,27 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   }
               }
 
-              // 4. Update Row if data was found (either locally or via AI)
-              if (extractedData && (extractedData.jobCode || extractedData.accountNumber)) {
-                  const data = extractedData;
-                  if (data.jobCode) {
-                      const codes = data.jobCode.split(',').map((s: string) => s.trim()).filter(Boolean);
-                      const matchedJobs = codes.map((c: string) => findJob(c)).filter((j): j is JobData => !!j);
-                      
-                      setRows(currentRows => currentRows.map(r => {
-                          if (r.id === row.id) {
-                              if (matchedJobs.length > 0) {
-                                  const firstJob = matchedJobs[0];
-                                  const custId = firstJob.maKhCuocId || firstJob.customerId;
-                                  const custName = findCustomer(custId)?.name || firstJob.customerName;
-                                  const totalAmount = matchedJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
-                                  const jobIds = matchedJobs.map(j => j.id).join(',');
-
-                                  return {
-                                      ...r,
-                                      jobCode: data.jobCode,
-                                      jobId: jobIds,
-                                      amount: totalAmount,
-                                      customerId: custId,
-                                      customerName: custName,
-                                      accountNumber: data.accountNumber || r.accountNumber
-                                  };
-                              } else {
-                                  return {
-                                      ...r,
-                                      jobCode: data.jobCode,
-                                      accountNumber: data.accountNumber || r.accountNumber
-                                  };
+              // 3. FALLBACK: FAST LOCAL EXTRACTION (If AI failed or quota exhausted)
+              if (!extractedData || (!extractedData.jobCode && !extractedData.accountNumber && !extractedData.customerName)) {
+                  if (mimeType.includes("pdf")) {
+                      try {
+                          const localText = await extractTextFromBlob(blob);
+                          if (localText && localText.trim().length > 10) {
+                              const parsed = parseDocumentText(localText, jobs);
+                              if (parsed.jobCode || parsed.accountNumber || parsed.customerName || parsed.amount) {
+                                  extractedData = parsed;
                               }
                           }
-                          return r;
-                      }));
-                  } else if (data.accountNumber) {
-                      // Only update account number
-                      setRows(currentRows => currentRows.map(r => 
-                          r.id === row.id ? { ...r, accountNumber: data.accountNumber } : r
-                      ));
+                      } catch (err) {
+                          console.warn("Local PDF text extraction skipped:", err);
+                      }
                   }
+              }
+
+              // 4. Update Row if data was found
+              if (extractedData && (extractedData.jobCode || extractedData.accountNumber || extractedData.customerName || extractedData.amount)) {
+                  const applied = applyExtractedDataToRow(i, extractedData);
+                  setScanProgressMessage(`Đã ghi xong Trang ${i + 1}/${rows.length}: BL: ${applied.jobCode || '---'} | KH: ${applied.customerName || '---'} | Tiền: ${applied.amount ? formatCurrency(applied.amount) : '0 đ'} | STK: ${applied.accountNumber || '---'}`);
                   successCount++;
               }
 
@@ -612,25 +955,30 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       }
 
       setIsScanning(false);
+      setScanningCurrentIndex(null);
+      setScanProgressMessage('');
+
+      if (cancelScanRef.current) {
+          alert(`Đã tạm dừng quá trình đọc file. Đã ghi nhận dữ liệu cho ${successCount} trang.`, "Đã dừng");
+          return;
+      }
 
       if (quotaExhausted) {
           if (successCount > 0) {
-              alert(`Hệ thống đã nhận diện tự động được ${successCount} dòng (bằng bộ đọc dữ liệu nội bộ). Tuy nhiên, hạn mức Gemini AI mặc định đã hết. Bạn có thể nhấn biểu tượng Chìa khóa (API Key) để nhập Gemini API Key cá nhân nhằm tiếp tục quét bằng AI đối với các trang dạng ảnh.`, "Đã quét một phần");
+              alert(`Hệ thống đã đọc và ghi nhận được ${successCount} trang. Tuy nhiên hạn mức AI mặc định đã hết. Bạn có thể bấm biểu tượng Chìa khóa (API Key) để cấu hình Gemini API Key cá nhân nhằm quét tiếp các trang phức tạp hoặc dạng ảnh.`, "Đã quét một phần");
           } else {
-              alert("Hạn mức Gemini API (Credits/Quota) mặc định đã hết. Vui lòng bấm vào nút 'Cấu hình API Key' để nhập Gemini API Key cá nhân (miễn phí tại Google AI Studio) hoặc chọn file PDF có lớp chữ để quét tự động.", "Hạn mức AI");
+              alert("Hạn mức Gemini API (Credits/Quota) mặc định đã hết. Vui lòng bấm vào nút 'Cấu hình API Key' để nhập Gemini API Key cá nhân hoặc kiểm tra lại file đính kèm.", "Hạn mức AI");
               setTempApiKey(customApiKey);
               setIsApiKeyModalOpen(true);
           }
       } else {
           if (successCount > 0) {
-              alert(`Đã hoàn tất quét tự điền! Cập nhật dữ liệu cho ${successCount} dòng.`, "Thành công");
+              alert(`Đã hoàn tất quá trình đọc file! AI đã đọc từng trang và ghi lại dữ liệu chính xác cho ${successCount} dòng.`, "Thành công");
           } else {
-              if (quotaExhausted) {
-                  alert("Tính năng quét tự động (AI) đã hết hạn mức sử dụng (Quota) hoặc API Key không hợp lệ. Vui lòng kiểm tra cấu hình API Key trong mục Cài đặt.", "Lỗi API / Quota");
-              } else if (lastApiError) {
+              if (lastApiError) {
                   alert(`Lỗi hệ thống khi quét AI: ${lastApiError}. Vui lòng kiểm tra lại kết nối mạng hoặc API Key.`, "Lỗi API");
               } else {
-                  alert("Không trích xuất được thông tin Bill/STK từ các trang này. Bạn có thể tự nhập tay hoặc kiểm tra lại file đính kèm.", "Thông báo");
+                  alert("Không trích xuất được thông tin từ các trang này. Bạn có thể tự nhập tay hoặc kiểm tra lại chất lượng file đính kèm.", "Thông báo");
               }
           }
       }
@@ -863,7 +1211,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           )}
 
           {/* Page Count Input & AI SCAN */}
-          <div className="mb-6 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
+          <div className="mb-4 flex flex-wrap justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100 gap-3">
               <div className="flex items-center space-x-3">
                   <AlertCircle className="w-5 h-5 text-blue-500" />
                   <label className="font-bold text-slate-700">Số lượng trang/Job:</label>
@@ -909,21 +1257,60 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   <button 
                       onClick={handleAutoScan}
                       disabled={isScanning || !file || isLocked}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
+                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                      title="AI đóng vai trò 1 chuyên viên: đọc từng trang của file đính kèm và ghi chép số BL, khách hàng, tiền hoàn cược và STK vào từng dòng tương ứng"
                   >
                       {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      AI Tự Điền (Quét Bill & STK)
+                      <span>AI Đọc Từng Trang & Ghi Dòng</span>
                   </button>
               </div>
           </div>
+
+          {/* LIVE AI READING BANNER */}
+          {isScanning && (
+              <div className="mb-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-xl p-4 shadow-sm animate-fadeIn">
+                  <div className="flex items-center justify-between gap-4 mb-2.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                              <Sparkles className="w-5 h-5 animate-pulse" />
+                          </div>
+                          <div className="min-w-0">
+                              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2 flex-wrap">
+                                  <span>AI đang đóng vai trò người đọc từng trang và ghi lại...</span>
+                                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                                      Trang {(scanningCurrentIndex !== null ? scanningCurrentIndex + 1 : 1)} / {rows.length}
+                                  </span>
+                              </h4>
+                              <p className="text-xs text-slate-600 mt-0.5 truncate">
+                                  {scanProgressMessage || "Đang đọc văn bản, số BL, tên khách hàng, số tiền hoàn cược và số tài khoản..."}
+                              </p>
+                          </div>
+                      </div>
+                      <button
+                          type="button"
+                          onClick={() => { cancelScanRef.current = true; }}
+                          className="px-3 py-1.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
+                      >
+                          <StopCircle className="w-3.5 h-3.5" />
+                          Dừng lại
+                      </button>
+                  </div>
+                  <div className="w-full bg-purple-200/60 rounded-full h-2 overflow-hidden">
+                      <div 
+                          className="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.max(5, Math.round(((scanningCurrentIndex !== null ? scanningCurrentIndex + 1 : 0) / (rows.length || 1)) * 100))}%` }}
+                      />
+                  </div>
+              </div>
+          )}
 
           {/* Data Entry Table */}
           <div className="flex-1 overflow-y-auto custom-scrollbar border rounded-xl border-slate-200 mb-6">
               <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs sticky top-0 z-10 shadow-sm">
                       <tr>
-                          <th className="px-4 py-3 w-16 text-center">Trang</th>
-                          <th className="px-4 py-3 w-[360px]">
+                          <th className="px-3 py-3 w-16 text-center">Trang</th>
+                          <th className="px-3 py-3 w-[310px]">
                               <div className="flex items-center justify-between">
                                   <span>Số BL (Job Code)</span>
                                   {rows.some(r => r.jobCode) && (
@@ -943,9 +1330,9 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                   )}
                               </div>
                           </th>
-                          <th className="px-4 py-3">Khách hàng (Cược)</th>
-                          <th className="px-4 py-3 w-52 text-right">Số tiền cược</th>
-                          <th className="px-4 py-3 w-52">
+                          <th className="px-4 py-3 min-w-[320px]">Khách hàng (Cược)</th>
+                          <th className="px-3 py-3 w-40 text-right">Số tiền cược</th>
+                          <th className="px-3 py-3 w-48">
                               <div className="flex items-center justify-between">
                                   <span>Số tài khoản</span>
                                   {rows.some(r => r.accountNumber) && (
@@ -965,18 +1352,36 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                   )}
                               </div>
                           </th>
-                          <th className="px-4 py-3 w-16 text-center">Xem</th>
-                          <th className="px-4 py-3 w-28 text-center">Chi hoàn</th>
+                          <th className="px-2 py-3 w-14 text-center">Xem</th>
+                          <th className="px-2 py-3 w-24 text-center">Chi hoàn</th>
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                       {rows.map((row, idx) => (
                           <React.Fragment key={row.id}>
-                          <tr className="hover:bg-slate-50/50">
-                              <td className="px-4 py-3 text-center font-bold text-slate-500">
-                                  {`Trang ${idx + 1}`}
+                          <tr className={`transition-colors ${scanningCurrentIndex === idx ? 'bg-purple-50/90 ring-2 ring-purple-400 font-medium' : 'hover:bg-slate-50/50'}`}>
+                              <td className="px-3 py-3 text-center">
+                                  <div className="flex flex-col items-center justify-center gap-1">
+                                      <span className="font-bold text-slate-700 text-xs">{`Trang ${idx + 1}`}</span>
+                                      {row.previewUrl && (
+                                          <button
+                                              type="button"
+                                              onClick={() => scanSingleRow(idx)}
+                                              disabled={isScanning || isLocked || scanningCurrentIndex === idx}
+                                              className="px-2 py-0.5 text-[11px] font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded transition-all flex items-center gap-1 disabled:opacity-40 cursor-pointer shadow-2xs"
+                                              title={`AI đọc riêng Trang ${idx + 1} và ghi lại dữ liệu vào dòng này`}
+                                          >
+                                              {scanningCurrentIndex === idx ? (
+                                                  <Loader2 className="w-3 h-3 animate-spin text-purple-600" />
+                                              ) : (
+                                                  <Sparkles className="w-3 h-3 text-purple-600" />
+                                              )}
+                                              <span>Đọc</span>
+                                          </button>
+                                      )}
+                                  </div>
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                   <div className="relative flex items-center gap-1.5">
                                       <div className="relative flex-1">
                                           <input 
@@ -1027,11 +1432,12 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       value={row.customerName}
                                       disabled={isLocked}
                                       onChange={(e) => handleRowChange(row.id, 'customerName', e.target.value)}
-                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-transparent disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-transparent disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed font-medium text-slate-800"
                                       placeholder="Tên khách hàng"
+                                      title={row.customerName}
                                   />
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-3">
                                   <div className="relative flex items-center">
                                       <input 
                                           type="text" 
@@ -1056,29 +1462,101 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       )}
                                   </div>
                               </td>
-                              <td className="px-4 py-3">
-                                  <div className="relative flex items-center">
-                                      <input 
-                                          type="text" 
-                                          value={row.accountNumber || ''}
-                                          disabled={isLocked}
-                                          onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
-                                          className="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                                          placeholder="STK Ngân hàng"
-                                      />
-                                      {row.accountNumber && (
-                                          <button
-                                              type="button"
-                                              onClick={() => handleCopyText(row.accountNumber || '', `${row.id}-account`)}
-                                              className="absolute right-2 p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
-                                              title="Copy số tài khoản"
-                                          >
-                                              {copiedState[`${row.id}-account`] ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                          </button>
-                                      )}
+                              <td className="px-3 py-3">
+                                  <div className="flex flex-col">
+                                      <div className="relative flex items-center">
+                                          <input 
+                                              type="text" 
+                                              value={row.accountNumber || ''}
+                                              disabled={isLocked}
+                                              onChange={(e) => handleRowChange(row.id, 'accountNumber', e.target.value)}
+                                              className="w-full pl-2.5 pr-7 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-mono text-xs font-semibold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                                              placeholder="STK"
+                                              title={row.accountNumber ? `STK: ${row.accountNumber}` : ''}
+                                          />
+                                          {row.accountNumber && (
+                                              <button
+                                                  type="button"
+                                                  onClick={() => handleCopyText(row.accountNumber || '', `${row.id}-account`)}
+                                                  className="absolute right-1.5 p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
+                                                  title="Copy số tài khoản"
+                                              >
+                                                  {copiedState[`${row.id}-account`] ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                              </button>
+                                          )}
+                                      </div>
+
+                                      {/* Hiển thị tên ngân hàng - người nhận là cá nhân bên dưới số tài khoản */}
+                                      {editingSubtitleRowId === row.id ? (
+                                          <div className="mt-1 flex items-center gap-1">
+                                              <input
+                                                  type="text"
+                                                  value={subtitleInput}
+                                                  onChange={(e) => setSubtitleInput(e.target.value)}
+                                                  onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') handleSaveSubtitle(row.id, subtitleInput);
+                                                      if (e.key === 'Escape') setEditingSubtitleRowId(null);
+                                                  }}
+                                                  placeholder="Ngân hàng - Tên cá nhân"
+                                                  className="w-full text-[11px] px-1.5 py-0.5 border border-indigo-300 rounded bg-white text-indigo-900 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                  autoFocus
+                                              />
+                                              <button
+                                                  type="button"
+                                                  onClick={() => handleSaveSubtitle(row.id, subtitleInput)}
+                                                  className="p-0.5 text-green-600 hover:bg-green-50 rounded"
+                                                  title="Lưu"
+                                              >
+                                                  <Check className="w-3 h-3" />
+                                              </button>
+                                              <button
+                                                  type="button"
+                                                  onClick={() => setEditingSubtitleRowId(null)}
+                                                  className="p-0.5 text-slate-400 hover:bg-slate-100 rounded"
+                                                  title="Hủy"
+                                              >
+                                                  <X className="w-3 h-3" />
+                                              </button>
+                                          </div>
+                                      ) : (() => {
+                                          const subtitle = formatAccountSubtitle(row.bankName, row.accountHolder, row.customerName);
+                                          if (subtitle) {
+                                              return (
+                                                  <div 
+                                                      className="text-[11px] text-indigo-700 font-medium truncate mt-1 flex items-center gap-1 group cursor-pointer"
+                                                      onClick={() => {
+                                                          if (isLocked) return;
+                                                          setSubtitleInput(subtitle);
+                                                          setEditingSubtitleRowId(row.id);
+                                                      }}
+                                                      title={`Ngân hàng & Người nhận cá nhân: ${subtitle} (Bấm để sửa)`}
+                                                  >
+                                                      <span className="text-indigo-500 shrink-0 text-[10px]">🏦</span>
+                                                      <span className="truncate group-hover:underline">{subtitle}</span>
+                                                      <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-indigo-400 shrink-0 transition-opacity" />
+                                                  </div>
+                                              );
+                                          }
+                                          if (row.accountNumber && !isLocked) {
+                                              return (
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                          setSubtitleInput('');
+                                                          setEditingSubtitleRowId(row.id);
+                                                      }}
+                                                      className="text-[10px] text-slate-400 hover:text-indigo-600 mt-0.5 text-left flex items-center gap-0.5 cursor-pointer opacity-70 hover:opacity-100 transition-opacity"
+                                                      title="Thêm tên ngân hàng / người nhận cá nhân"
+                                                  >
+                                                      <span>+ Ngân hàng</span>
+                                                  </button>
+                                              );
+                                          }
+                                          return null;
+                                      })()}
                                   </div>
                               </td>
-                              <td className="px-4 py-3 text-center">
+                              <td className="px-2 py-3 text-center">
                                   {row.previewUrl ? (
                                       <button 
                                         type="button"
@@ -1092,7 +1570,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                       <span className="text-slate-300">-</span>
                                   )}
                               </td>
-                              <td className="px-4 py-3 text-center">
+                              <td className="px-2 py-3 text-center">
                                   {row.jobId ? (() => {
                                       const ids = row.jobId.split(',').map(id => id.trim()).filter(Boolean);
                                       const hasUnrefunded = ids.some(id => {
