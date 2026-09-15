@@ -856,14 +856,28 @@ async function startServer() {
 
     app.post("/api/ai/generate", async (req, res) => {
         try {
-            const apiKey = req.body.apiKey || process.env.GEMINI_API_KEY;
+            const apiKey = req.body.apiKey || (req.headers['x-gemini-api-key'] as string) || process.env.GEMINI_API_KEY || process.env.API_KEY;
             if (!apiKey) return res.status(500).json({ error: "Missing API Key" });
             const { prompt, contents, model } = req.body;
-            const modelName = model || "gemini-1.5-flash-latest";
+            let modelName = model || "gemini-3.8-flash";
+            // Map deprecated or unsupported models to supported Gemini models
+            if (
+                !modelName ||
+                modelName.includes("1.5") ||
+                modelName.includes("2.0") ||
+                modelName.includes("2.5") ||
+                modelName === "gemini-pro"
+            ) {
+                modelName = "gemini-3.8-flash";
+            }
             const payload = contents ? { contents } : { contents: [{ parts: [{ text: prompt }] }] };
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
             const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
             const data: any = await response.json();
+            if (data.error) {
+                console.error("Gemini API Error in /api/ai/generate:", data.error);
+                return res.status(response.status || 500).json({ error: data.error.message || JSON.stringify(data.error) });
+            }
             res.json(contents ? data : { text: data.candidates?.[0]?.content?.parts?.[0]?.text || "" });
         } catch (err: any) { res.status(500).json({ error: err.message }); }
     });
@@ -880,7 +894,13 @@ async function startServer() {
             }
 
             const ai = getGeminiClient(customApiKey);
-            const modelsToTry = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-1.5-pro", "gemini-1.5-flash"];
+            const modelsToTry = [
+                "gemini-3.8-flash",
+                "gemini-flash-latest",
+                "gemini-3.6-flash",
+                "gemini-3.1-flash-lite",
+                "gemini-3.1-pro-preview"
+            ];
             let lastError: any = null;
             let resultData = null;
 

@@ -484,7 +484,7 @@ export const LongHoangPage: React.FC<LongHoangPageProps> = ({ orders, onAddOrder
           });
           
           const aiResponse = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3.8-flash',
             contents: {
               parts: [
                 {

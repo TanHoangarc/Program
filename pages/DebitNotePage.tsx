@@ -401,7 +401,7 @@ export const DebitNotePage: React.FC<DebitNotePageProps> = ({ notes, onAddNote, 
 
         try {
           const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3.8-flash',
             contents: {
               parts: [
                 { inlineData: { mimeType: file.type, data: base64String } },
@@ -502,7 +502,7 @@ export const DebitNotePage: React.FC<DebitNotePageProps> = ({ notes, onAddNote, 
             reader.readAsDataURL(blob);
           });
           const aiResponse = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3.8-flash',
             contents: {
               parts: [
                 { inlineData: { data: base64String, mimeType: blob.type || 'application/pdf' } },

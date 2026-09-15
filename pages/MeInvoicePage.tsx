@@ -75,7 +75,7 @@ export const MeInvoicePage: React.FC = () => {
 
     try {
       const ai = new GoogleGenAI({ apiKey });
-      const model = "gemini-3.5-flash";
+      const model = "gemini-3.8-flash";
 
       // Convert File to Base64
       const reader = new FileReader();

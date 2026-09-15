@@ -120,7 +120,7 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
 
         const ai = new GoogleGenAI({ apiKey });
         const aiResult = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.8-flash",
           contents: {
             parts: [
               { text: "Trích xuất thông tin LOCAL CHARGE từ hóa đơn này: Số hóa đơn (Invoice Number), Ngày hóa đơn (Date - định dạng YYYY-MM-DD), Tiền trước thuế (Net Amount), Tiền thuế VAT (VAT Amount). Trả về kết quả dưới dạng JSON với các phím: invoice, date, net, vat. Chỉ trả về JSON, không kèm văn bản khác." },

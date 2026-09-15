@@ -557,7 +557,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
             throw new Error("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.");
           }
           const ai = new GoogleGenAI({ apiKey });
-          const model = 'gemini-3-flash-preview'; 
+          const model = 'gemini-3.8-flash'; 
           
           const prompt = `Analyze this Vietnamese invoice. Extract the following details:
           1. Invoice Number (Số hóa đơn, Ký hiệu, Invoice No)
@@ -631,7 +631,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
             throw new Error("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.");
           }
           const ai = new GoogleGenAI({ apiKey });
-          const model = 'gemini-3-flash-preview'; 
+          const model = 'gemini-3.8-flash'; 
           
           const prompt = `Analyze this Vietnamese invoice (Gia Hạn / Extension). Extract:
           1. Invoice Number (Số hóa đơn)
