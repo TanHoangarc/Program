@@ -120,6 +120,18 @@ export const setActiveApiKey = (keyString: string, id?: string): void => {
 
   if (cleanKey) {
     localStorage.setItem(STORAGE_KEY_ACTIVE, cleanKey);
+    // Auto-save to list if it is a new valid key
+    if (!found && cleanKey.length >= 15) {
+      list.push({
+        id: `key-${Date.now()}`,
+        name: `Gemini Key ${list.length + 1}`,
+        key: cleanKey,
+        provider: 'gemini',
+        notes: 'Khóa API đang áp dụng',
+        isActive: true,
+        createdAt: new Date().toISOString()
+      });
+    }
   } else {
     localStorage.removeItem(STORAGE_KEY_ACTIVE);
   }
@@ -130,7 +142,24 @@ export const setActiveApiKey = (keyString: string, id?: string): void => {
 
 // Get the currently active key string
 export const getActiveApiKey = (): string => {
-  return localStorage.getItem(STORAGE_KEY_ACTIVE) || '';
+  const active = localStorage.getItem(STORAGE_KEY_ACTIVE);
+  if (active && active.trim()) {
+    return active.trim();
+  }
+  // Fallback: Check if an active key or any valid key exists in saved list
+  try {
+    const list = getStoredApiKeys();
+    const activeItem = list.find(k => k.isActive && k.key && k.key.trim());
+    if (activeItem && activeItem.key.trim()) {
+      localStorage.setItem(STORAGE_KEY_ACTIVE, activeItem.key.trim());
+      return activeItem.key.trim();
+    }
+    if (list.length > 0 && list[0].key && list[0].key.trim()) {
+      localStorage.setItem(STORAGE_KEY_ACTIVE, list[0].key.trim());
+      return list[0].key.trim();
+    }
+  } catch {}
+  return '';
 };
 
 // Mask API key for secure display: AIzaSy...9xYz

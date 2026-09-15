@@ -748,7 +748,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       };
   };
 
-  // Helper: Read a single page / row with AI
+  // Helper: Read a single page / row with AI using currently active API key
   const scanSingleRow = async (index: number) => {
       if (isLocked) {
           alert("Bảng dữ liệu đang bị khóa. Vui lòng mở khóa để đọc tài liệu.", "Thông báo");
@@ -760,8 +760,17 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           return;
       }
 
+      // Check active API key currently applied
+      const activeKey = (getActiveApiKey() || customApiKey || localStorage.getItem("gemini_api_key") || '').trim();
+      if (!activeKey) {
+          alert("Vui lòng cấu hình hoặc chọn Gemini API Key đang áp dụng trước khi sử dụng tính năng AI đọc từng trang.", "Cần API Key");
+          setTempApiKey(customApiKey || '');
+          setIsApiKeyModalOpen(true);
+          return;
+      }
+
       setScanningCurrentIndex(index);
-      setScanProgressMessage(`Đang đọc Trang ${index + 1}: Quan sát và trích xuất dữ liệu...`);
+      setScanProgressMessage(`Đang đọc Trang ${index + 1}: Quan sát và trích xuất dữ liệu bằng API Key đang áp dụng...`);
 
       try {
           const response = await fetch(row.previewUrl);
@@ -770,7 +779,7 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           
           let extractedData: any = null;
 
-          // 1. Try Gemini API
+          // 1. Convert to Base64 for Gemini multimodal input
           const reader = new FileReader();
           const base64Promise = new Promise<string>((resolve, reject) => {
               reader.onloadend = () => {
@@ -783,27 +792,45 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
           reader.readAsDataURL(blob);
           const base64Data = await base64Promise;
 
-          const storedApiKey = customApiKey || localStorage.getItem("gemini_api_key") || undefined;
-          
           try {
               const scanRes = await axios.post(`/api/cvhc/scan-page`, {
                   base64Data,
                   mimeType,
-                  apiKey: storedApiKey
+                  apiKey: activeKey
               }, {
-                  headers: storedApiKey ? { 'x-gemini-api-key': storedApiKey } : undefined
+                  headers: { 'x-gemini-api-key': activeKey }
               });
 
               if (scanRes.data && scanRes.data.success && scanRes.data.data) {
                   extractedData = scanRes.data.data;
               }
           } catch (apiErr: any) {
-              console.warn("AI scan failed for single row, trying local fallback:", apiErr);
+              const errMsg = apiErr.response?.data?.error || apiErr.message || "Lỗi không xác định khi gọi AI";
+              const status = apiErr.response?.status;
+              const isKeyOrQuota = status === 400 || status === 401 || status === 403 || status === 429 ||
+                                   errMsg.includes("API key") || errMsg.includes("Quota") || errMsg.includes("RESOURCE_EXHAUSTED");
+
+              console.warn(`AI scan failed for single row ${index + 1}:`, errMsg);
+
+              // Try local text layer extraction as fallback if PDF has text
               if (mimeType.includes("pdf")) {
-                  const localText = await extractTextFromBlob(blob);
-                  if (localText && localText.trim().length > 10) {
-                      extractedData = parseDocumentText(localText, jobs);
+                  try {
+                      const localText = await extractTextFromBlob(blob);
+                      if (localText && localText.trim().length > 10) {
+                          extractedData = parseDocumentText(localText, jobs);
+                      }
+                  } catch {}
+              }
+
+              if (!extractedData || (!extractedData.jobCode && !extractedData.customerName && !extractedData.amount && !extractedData.accountNumber)) {
+                  if (isKeyOrQuota) {
+                      alert(`Lỗi API Key khi đọc Trang ${index + 1}:\n${errMsg}\n\nVui lòng kiểm tra lại Key hoặc đổi sang API Key khác.`, "Lỗi API Key");
+                      setTempApiKey(activeKey);
+                      setIsApiKeyModalOpen(true);
+                  } else {
+                      alert(`Không đọc được dữ liệu từ Trang ${index + 1}.\nNguyên nhân: ${errMsg}`, "Lỗi Đọc Dữ Liệu");
                   }
+                  return;
               }
           }
 
@@ -836,6 +863,15 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
       const availableRows = rows.filter(r => r.previewUrl);
       if (availableRows.length === 0) {
           alert("Không có trang nào có file đính kèm để đọc. Vui lòng chọn lại file.", "Thông báo");
+          return;
+      }
+
+      // Check active API key currently applied
+      const activeKey = (getActiveApiKey() || customApiKey || localStorage.getItem("gemini_api_key") || '').trim();
+      if (!activeKey) {
+          alert("Vui lòng cấu hình hoặc chọn Gemini API Key đang áp dụng trước khi AI đọc từng trang.", "Cần API Key");
+          setTempApiKey(customApiKey || '');
+          setIsApiKeyModalOpen(true);
           return;
       }
 
@@ -888,16 +924,14 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   });
                   reader.readAsDataURL(blob);
                   const base64Data = await base64Promise;
-
-                  const storedApiKey = customApiKey || localStorage.getItem("gemini_api_key") || undefined;
                   
                   try {
                       const scanRes = await axios.post(`/api/cvhc/scan-page`, {
                           base64Data,
                           mimeType,
-                          apiKey: storedApiKey
+                          apiKey: activeKey
                       }, {
-                          headers: storedApiKey ? { 'x-gemini-api-key': storedApiKey } : undefined
+                          headers: { 'x-gemini-api-key': activeKey }
                       });
 
                       if (scanRes.data && scanRes.data.success && scanRes.data.data) {
@@ -911,13 +945,16 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                            errMsg.includes("Credits") || 
                                            errMsg.includes("Quota") || 
                                            errMsg.includes("Hạn mức") ||
+                                           apiErr.response?.status === 401 ||
                                            apiErr.response?.status === 403 ||
                                            errMsg.includes("API key not valid") ||
-                                           errMsg.includes("Missing GEMINI_API_KEY");
+                                           errMsg.includes("không hợp lệ") ||
+                                           errMsg.includes("Chưa cấu hình");
 
                       if (isQuotaError) {
                           quotaExhausted = true;
-                          console.warn("Gemini API Quota exhausted on page", i + 1);
+                          lastApiError = errMsg;
+                          console.warn("Gemini API Quota/Key issue on page", i + 1, errMsg);
                       } else {
                           lastApiError = typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg);
                           console.error(`AI Scan API error at page ${i+1}:`, errMsg);
@@ -1244,13 +1281,18 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                   <button 
                       type="button"
                       onClick={() => {
-                          setTempApiKey(customApiKey);
+                          setTempApiKey(customApiKey || getActiveApiKey());
                           setIsApiKeyModalOpen(true);
                       }}
-                      className={`p-2 border rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-1 ${customApiKey ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}
-                      title={customApiKey ? "API Key Gemini tùy chỉnh đã được cấu hình" : "Cấu hình Gemini API Key"}
+                      className={`px-3 py-2 border rounded-lg font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 ${
+                          customApiKey 
+                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' 
+                              : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 animate-pulse'
+                      }`}
+                      title={customApiKey ? `Gemini API Key đang áp dụng: ${maskApiKey(customApiKey)} (Bấm để xem hoặc đổi Key)` : "Chưa cấu hình Gemini API Key! Bấm vào đây để cài đặt trước khi dùng AI."}
                   >
-                      <Key className="w-4 h-4 text-indigo-600" />
+                      <Key className={`w-4 h-4 ${customApiKey ? 'text-indigo-600' : 'text-amber-600'}`} />
+                      <span>{customApiKey ? maskApiKey(customApiKey) : "Cài Key API"}</span>
                   </button>
 
                   {/* AI SCAN BUTTON */}
