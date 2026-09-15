@@ -885,7 +885,7 @@ async function startServer() {
     const handleCVHCScan = async (req: express.Request, res: express.Response) => {
         try {
             const { base64Data, mimeType } = req.body;
-            let customApiKey = ((req.headers['x-gemini-api-key'] as string) || req.body.apiKey || '').trim();
+            let customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body.apiKey;
             if (customApiKey === "null" || customApiKey === "undefined" || customApiKey === "") {
                 customApiKey = undefined;
             }
@@ -893,20 +893,12 @@ async function startServer() {
                 return res.status(400).json({ success: false, error: "Missing base64Data" });
             }
 
-            const effectiveKey = customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
-            if (!effectiveKey) {
-                return res.status(400).json({ 
-                    success: false, 
-                    error: "Chưa cấu hình Gemini API Key. Vui lòng bấm vào nút 'Cài Key API' trên thanh công cụ để nhập và kích hoạt API Key cá nhân của bạn." 
-                });
-            }
-
-            const ai = getGeminiClient(effectiveKey);
+            const ai = getGeminiClient(customApiKey);
             const modelsToTry = [
-                "gemini-3.1-flash-lite",
-                "gemini-flash-lite-latest",
-                "gemini-flash-latest",
                 "gemini-3.8-flash",
+                "gemini-flash-latest",
+                "gemini-3.6-flash",
+                "gemini-3.1-flash-lite",
                 "gemini-3.1-pro-preview"
             ];
             let lastError: any = null;
@@ -1034,10 +1026,6 @@ Yêu cầu chất lượng:
                     break; // Success!
                 } catch (err: any) {
                     lastError = err;
-                    // If error is invalid API key or permission denied, break immediately
-                    if (err.message?.includes("API_KEY_INVALID") || err.message?.includes("API key not valid") || err.message?.includes("PERMISSION_DENIED")) {
-                        break;
-                    }
                     // If error is quota/billing related, all models under this API key are affected; break immediately
                     if (err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("429") || err.message?.includes("prepayment") || err.message?.includes("quota")) {
                         break;
@@ -1050,16 +1038,13 @@ Yêu cầu chất lượng:
             if (resultData) {
                 return res.json({ success: true, data: resultData });
             } else {
-                const isKeyInvalid = lastError?.message?.includes("API_KEY_INVALID") || lastError?.message?.includes("API key not valid") || lastError?.message?.includes("PERMISSION_DENIED");
                 const isQuotaError = lastError?.message?.includes("RESOURCE_EXHAUSTED") || lastError?.message?.includes("prepayment") || lastError?.message?.includes("429");
-                const statusCode = isKeyInvalid ? 401 : (isQuotaError ? 429 : 500);
+                const statusCode = isQuotaError ? 429 : 500;
                 return res.status(statusCode).json({
                     success: false,
-                    error: isKeyInvalid
-                        ? "Gemini API Key đang áp dụng không hợp lệ hoặc không có quyền truy cập. Vui lòng kiểm tra lại Key tại Google AI Studio."
-                        : (isQuotaError 
-                            ? "Hạn mức Gemini API (Credits/Quota) của Key này đã hết hoặc bị giới hạn. Vui lòng kiểm tra lại cấu hình hoặc chọn Key khác."
-                            : (lastError?.message || "Không thể phân tích tài liệu bằng AI."))
+                    error: isQuotaError 
+                        ? "Hạn mức Gemini API (Credits/Quota) đã hết hoặc bị giới hạn. Vui lòng kiểm tra lại cấu hình tài khoản AI hoặc cung cấp API Key riêng."
+                        : (lastError?.message || "Không thể phân tích tài liệu bằng AI.")
                 });
             }
         } catch (err: any) {
