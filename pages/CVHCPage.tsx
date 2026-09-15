@@ -1368,7 +1368,20 @@ export const CVHCPage: React.FC<CVHCPageProps> = ({
                                               placeholder={isLocked ? "Đã khóa" : "Nhập số Job..."}
                                               className={`w-full px-3 py-2 border rounded-lg font-bold outline-none focus:ring-2 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed ${row.jobId ? 'border-green-300 focus:ring-green-500 bg-green-50 text-green-800' : 'border-slate-300 focus:ring-indigo-500'}`}
                                           />
-                                          {row.jobId && <CheckCircle className="w-4 h-4 text-green-600 absolute right-3 top-2.5" />}
+                                          {(() => {
+                                              const jobList = (row.jobCode || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
+                                              if (jobList.length > 1) {
+                                                  return (
+                                                      <span 
+                                                          className="absolute -top-2 right-2 min-w-[19px] h-[19px] px-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-xs border-2 border-white z-10 select-none cursor-help transition-transform hover:scale-110"
+                                                          title={`Ô này có ${jobList.length} số Job/BL:\n${jobList.map((j, i) => `${i + 1}. ${j}`).join('\n')}`}
+                                                      >
+                                                          {jobList.length}
+                                                      </span>
+                                                  );
+                                              }
+                                              return null;
+                                          })()}
                                       </div>
                                       {row.jobCode && (
                                           <>
