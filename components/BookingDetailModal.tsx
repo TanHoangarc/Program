@@ -5,7 +5,7 @@ import { BookingSummary, BookingCostDetails, BookingExtensionCost, BookingDeposi
 import { Ship, X, Save, Plus, Trash2, LayoutGrid, FileText, Anchor, Copy, Check, Calendar, FileUp, Eye, ExternalLink, Calculator, RefreshCw, Paperclip, Loader2, Sparkles, CreditCard, Banknote, Edit2, Layers, Lock, Unlock, Target } from 'lucide-react';
 import { formatDateVN, parseDateVN } from '../utils';
 import axios from 'axios';
-import { GoogleGenAI } from "@google/genai";
+import { extractInvoiceDataDirect, getGeminiApiKey } from '../utils/geminiDirectApi';
 
 interface BookingDetailModalProps {
   booking: BookingSummary;
@@ -544,49 +544,24 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
       setIsAnalyzing(true);
       try {
-          const response = await fetch(targetUrl);
-          const blob = await response.blob();
-          const reader = new FileReader();
-          reader.readAsDataURL(blob);
-          await new Promise(resolve => reader.onload = resolve);
-          const base64Data = (reader.result as string).split(',')[1];
-          const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
-
-          const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+          const apiKey = getGeminiApiKey();
           if (!apiKey) {
-            throw new Error("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.");
+              alert("Chưa có API Key cho Gemini. Vui lòng bấm vào biểu tượng Chìa khóa (🔑) để cấu hình.");
+              setIsAnalyzing(false);
+              return;
           }
-          const ai = new GoogleGenAI({ apiKey });
-          const model = 'gemini-3.8-flash'; 
-          
-          const prompt = `Analyze this Vietnamese invoice. Extract the following details:
-          1. Invoice Number (Số hóa đơn, Ký hiệu, Invoice No)
-          2. Invoice Date (Ngày hóa đơn, Ngày tháng năm) formatted as DD/MM/YYYY.
-          3. Total Net Amount (Cộng tiền hàng, Trị giá tính thuế, Net Amount).
-          4. Total VAT Amount (Tiền thuế GTGT, VAT Amount).
-          
-          Return ONLY valid JSON: { "invoice": string, "date": string, "net": number, "vat": number }.
-          If any field is missing, return empty string or 0.`;
 
-          const result = await ai.models.generateContent({
-              model: model,
-              contents: {
-                  parts: [
-                      { inlineData: { mimeType, data: base64Data } },
-                      { text: prompt }
-                  ]
-              }
+          const data = await extractInvoiceDataDirect({
+              fileUrl: targetUrl,
+              customApiKey: apiKey,
+              invoiceType: 'Local Charge'
           });
-
-          const jsonText = result.text || "";
-          const jsonStr = jsonText.replace(/```json|```/g, '').trim();
-          const data = JSON.parse(jsonStr);
 
           if (data) {
               setLocalCharge(prev => {
                   const newNet = data.net !== undefined ? Number(data.net) : prev.net;
                   const newVat = data.vat !== undefined ? Number(data.vat) : prev.vat;
-                  const newDate = data.date ? (parseDateVN(data.date) || prev.date) : prev.date;
+                  const newDate = data.date || prev.date;
                   
                   return {
                       ...prev,
@@ -600,9 +575,9 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
               alert(`Đã cập nhật từ hóa đơn!\nSố HĐ: ${data.invoice}\nNgày: ${data.date}\nNet: ${new Intl.NumberFormat('en-US').format(data.net)}\nVAT: ${new Intl.NumberFormat('en-US').format(data.vat)}`);
           }
 
-      } catch (error) {
+      } catch (error: any) {
           console.error("AI Error", error);
-          alert("Không thể trích xuất thông tin. Vui lòng kiểm tra file hoặc thử lại.");
+          alert(error.message || "Không thể trích xuất thông tin. Vui lòng kiểm tra file hoặc thử lại.");
       } finally {
           setIsAnalyzing(false);
       }
@@ -618,55 +593,35 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
 
       setAnalyzingId(id);
       try {
-          const response = await fetch(extItem.fileUrl);
-          const blob = await response.blob();
-          const reader = new FileReader();
-          reader.readAsDataURL(blob);
-          await new Promise(resolve => reader.onload = resolve);
-          const base64Data = (reader.result as string).split(',')[1];
-          const mimeType = blob.type.startsWith('image/') ? blob.type : 'application/pdf';
-
-          const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+          const apiKey = getGeminiApiKey();
           if (!apiKey) {
-            throw new Error("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.");
+              alert("Chưa có API Key cho Gemini. Vui lòng bấm vào biểu tượng Chìa khóa (🔑) để cấu hình.");
+              setAnalyzingId(null);
+              return;
           }
-          const ai = new GoogleGenAI({ apiKey });
-          const model = 'gemini-3.8-flash'; 
-          
-          const prompt = `Analyze this Vietnamese invoice (Gia Hạn / Extension). Extract:
-          1. Invoice Number (Số hóa đơn)
-          2. Invoice Date (Ngày hóa đơn) formatted as DD/MM/YYYY.
-          3. Total Net Amount (Tiền hàng / Net).
-          4. Total VAT Amount (Tiền thuế / VAT).
-          
-          Return ONLY valid JSON: { "invoice": string, "date": string, "net": number, "vat": number }.`;
 
-          const result = await ai.models.generateContent({
-              model: model,
-              contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }
+          const data = await extractInvoiceDataDirect({
+              fileUrl: extItem.fileUrl,
+              customApiKey: apiKey,
+              invoiceType: 'Gia Hạn / Extension'
           });
-
-          const jsonText = result.text || "";
-          const jsonStr = jsonText.replace(/```json|```/g, '').trim();
-          const data = JSON.parse(jsonStr);
 
           if (data) {
               const newNet = data.net !== undefined ? Number(data.net) : extItem.net;
               const newVat = data.vat !== undefined ? Number(data.vat) : extItem.vat;
               const newTotal = newNet + newVat;
-              const newDate = data.date ? (parseDateVN(data.date) || extItem.date) : extItem.date;
+              const newDate = data.date || extItem.date;
 
               handleUpdateExtensionCost(id, 'invoice', data.invoice || extItem.invoice);
               handleUpdateExtensionCost(id, 'date', newDate);
               handleUpdateExtensionCost(id, 'net', newNet);
               handleUpdateExtensionCost(id, 'vat', newVat);
-              // Note: Total updates automatically inside handleUpdateExtensionCost based on net/vat change
               
               alert(`Đã cập nhật dòng gia hạn!\nHĐ: ${data.invoice}\nTiền: ${new Intl.NumberFormat('en-US').format(newTotal)}`);
           }
-      } catch (error) {
+      } catch (error: any) {
           console.error("AI Ext Error", error);
-          alert("Không thể phân tích hóa đơn gia hạn này.");
+          alert(error.message || "Không thể phân tích hóa đơn gia hạn này.");
       } finally {
           setAnalyzingId(null);
       }

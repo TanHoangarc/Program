@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sparkles, Zap, FileInput, Send, CheckCircle, AlertTriangle, Loader2, RefreshCw, Trash2, Save, FileText, Search, CreditCard, Anchor, Repeat, Wallet, Layers, RotateCcw, Plus } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { callGeminiDirect, getGeminiApiKey } from '../utils/geminiDirectApi';
 import { JobData, Customer } from '../types';
 import { generateNextDocNo, formatDateVN, parseDateVN } from '../utils';
 import { CustomerModal } from '../components/CustomerModal';
@@ -85,7 +85,13 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
         setDateInput('');
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const apiKey = getGeminiApiKey();
+            if (!apiKey) {
+                alert("Chưa có API Key cho Gemini. Vui lòng bấm vào biểu tượng Chìa khóa (🔑) để cấu hình.");
+                setIsParsing(false);
+                return;
+            }
+
             const customerContext = customers.map(c => `${c.code}: ${c.name}`).join('\n');
 
             const prompt = `Parse this bank transfer text and extract specific logistics job data.
@@ -107,12 +113,12 @@ export const AutoTool: React.FC<AutoToolProps> = ({ mode, jobs, customers, onUpd
             Input text:
             "${rawInput}"`;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-3.8-flash',
-                contents: prompt,
+            const text = await callGeminiDirect({
+                prompt,
+                customApiKey: apiKey,
+                jsonMode: true
             });
 
-            const text = response.text || '';
             const cleanedJson = text.replace(/```json|```/g, '').trim();
             const result = JSON.parse(cleanedJson);
             

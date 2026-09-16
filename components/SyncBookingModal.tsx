@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Loader2, FileText, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Check, Loader2, FileText, AlertCircle, RefreshCw, Key } from 'lucide-react';
 import { JobData, PaymentRequest } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import { extractInvoiceDataDirect, getGeminiApiKey } from '../utils/geminiDirectApi';
+import { maskApiKey, setActiveApiKey, saveStoredApiKey, subscribeApiKeyChanges } from '../utils/apiKeyManager';
 
 interface SyncBookingModalProps {
   isOpen: boolean;
@@ -34,6 +35,16 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
 }) => {
   const [items, setItems] = useState<SyncItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activeApiKey, setActiveApiKeyState] = useState<string>(() => getGeminiApiKey());
+  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
+  const [keyInput, setKeyInput] = useState<string>('');
+
+  useEffect(() => {
+    const unsub = subscribeApiKeyChanges(() => {
+      setActiveApiKeyState(getGeminiApiKey());
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -86,109 +97,36 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
   }, [isOpen, jobs, paymentRequests]);
 
   const handleSync = async () => {
+    const currentKey = activeApiKey || getGeminiApiKey();
+    if (!currentKey) {
+      setKeyInput('');
+      setShowKeyModal(true);
+      return;
+    }
+
     const selectedItems = items.filter(i => i.selected && i.status !== 'success');
     if (selectedItems.length === 0) return;
 
     setIsProcessing(true);
 
     for (const item of selectedItems) {
-      setItems(prev => prev.map(i => i.jobId === item.jobId ? { ...i, status: 'syncing' } : i));
+      setItems(prev => prev.map(i => i.jobId === item.jobId ? { ...i, status: 'syncing', error: undefined } : i));
 
       try {
         if (!item.fileUrl) throw new Error("Không có file hóa đơn");
 
-        // Fetch the file and convert to base64
-        const fileResponse = await fetch(item.fileUrl);
-        if (!fileResponse.ok) throw new Error("Không thể tải file hóa đơn");
-        
-        const blob = await fileResponse.blob();
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
+        const extracted = await extractInvoiceDataDirect({
+          fileUrl: item.fileUrl,
+          customApiKey: currentKey,
+          invoiceType: 'Local Charge'
         });
-
-        const mimeType = blob.type;
-        const base64Data = base64.split(',')[1];
-
-        // Call Gemini API directly from frontend
-        const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-        if (!apiKey) {
-          throw new Error("Thiếu API Key cho Gemini. Vui lòng cấu hình GEMINI_API_KEY.");
-        }
-
-        const ai = new GoogleGenAI({ apiKey });
-        const aiResult = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
-          contents: {
-            parts: [
-              { text: "Trích xuất thông tin LOCAL CHARGE từ hóa đơn này: Số hóa đơn (Invoice Number), Ngày hóa đơn (Date - định dạng YYYY-MM-DD), Tiền trước thuế (Net Amount), Tiền thuế VAT (VAT Amount). Trả về kết quả dưới dạng JSON với các phím: invoice, date, net, vat. Chỉ trả về JSON, không kèm văn bản khác." },
-              { inlineData: { mimeType, data: base64Data } }
-            ]
-          }
-        });
-
-        const resultText = aiResult.text || '';
-        if (!resultText) {
-          throw new Error("AI không trả về kết quả. Vui lòng thử lại.");
-        }
-
-        let extracted;
-        try {
-          const text = resultText.replace(/```json|```/g, '').trim();
-          extracted = JSON.parse(text);
-        } catch (e) {
-          console.error("Parse error:", resultText);
-          throw new Error("Không thể phân tích kết quả từ AI: " + resultText.substring(0, 50) + "...");
-        }
-
-        // Helper to parse numbers from AI (handling strings like "1.000.000" or "1,000,000")
-        const parseAINumber = (val: any) => {
-          if (typeof val === 'number') return val;
-          if (typeof val === 'string') {
-            let clean = val.replace(/[^0-9.,]/g, '');
-            if (!clean) return 0;
-
-            const hasComma = clean.includes(',');
-            const hasDot = clean.includes('.');
-
-            if (hasComma && hasDot) {
-              const lastComma = clean.lastIndexOf(',');
-              const lastDot = clean.lastIndexOf('.');
-              if (lastComma > lastDot) {
-                // VN format: 1.234,56
-                return parseFloat(clean.replace(/\./g, '').replace(',', '.'));
-              } else {
-                // US format: 1,234.56
-                return parseFloat(clean.replace(/,/g, ''));
-              }
-            } else if (hasComma) {
-              const parts = clean.split(',');
-              if (parts.length > 2 || parts[parts.length - 1].length === 3) {
-                return parseFloat(clean.replace(/,/g, ''));
-              } else {
-                return parseFloat(clean.replace(',', '.'));
-              }
-            } else if (hasDot) {
-              const parts = clean.split('.');
-              if (parts.length > 2 || parts[parts.length - 1].length === 3) {
-                return parseFloat(clean.replace(/\./g, ''));
-              } else {
-                return parseFloat(clean);
-              }
-            }
-            return parseFloat(clean);
-          }
-          return 0;
-        };
 
         setItems(prev => prev.map(i => i.jobId === item.jobId ? { 
           ...i, 
           invoice: extracted.invoice || i.invoice,
           date: extracted.date || i.date,
-          net: parseAINumber(extracted.net) || i.net,
-          vat: parseAINumber(extracted.vat) || i.vat,
+          net: extracted.net || i.net,
+          vat: extracted.vat || i.vat,
           status: 'success' 
         } : i));
 
@@ -197,7 +135,7 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
         setItems(prev => prev.map(i => i.jobId === item.jobId ? { 
           ...i, 
           status: 'error', 
-          error: error.message 
+          error: error.message || 'Lỗi xử lý file'
         } : i));
       }
     }
@@ -263,8 +201,30 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
               <RefreshCw className={`w-5 h-5 text-indigo-600 ${isProcessing ? 'animate-spin' : ''}`} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-800">Dữ liệu đồng bộ Booking</h2>
-              <p className="text-sm text-slate-500">Tự động trích xuất thông tin hóa đơn từ các yêu cầu thanh toán</p>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-xl font-bold text-slate-800">Dữ liệu đồng bộ Booking</h2>
+                {activeApiKey ? (
+                  <button 
+                    onClick={() => { setKeyInput(activeApiKey); setShowKeyModal(true); }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold transition-colors cursor-pointer"
+                    title="Bấm để đổi Gemini API Key"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <Key className="w-3 h-3 text-emerald-600" />
+                    <span>Gemini: {maskApiKey(activeApiKey)}</span>
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => { setKeyInput(''); setShowKeyModal(true); }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 rounded-full text-xs font-semibold animate-pulse transition-colors cursor-pointer"
+                    title="Chưa có API Key. Bấm để nhập!"
+                  >
+                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                    <span>Chưa có API Key (Bấm để nhập)</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-sm text-slate-500">Tự động trích xuất thông tin hóa đơn từ các yêu cầu thanh toán qua Gemini AI trực tiếp từ trình duyệt</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
@@ -412,6 +372,73 @@ const SyncBookingModal: React.FC<SyncBookingModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal nhập API Key nếu chưa có hoặc muốn đổi */}
+      {showKeyModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[120] flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800">Cấu hình Gemini API Key</h3>
+                  <p className="text-xs text-slate-500">Dùng để trích xuất hóa đơn tự động bằng AI</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowKeyModal(false)} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700">
+                Google Gemini API Key (Bắt đầu bằng AIzaSy...):
+              </label>
+              <input 
+                type="password" 
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                placeholder="Dán mã API Key tại đây (AIzaSy...)"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                autoFocus
+              />
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Mã API Key được lưu an toàn trực tiếp trên trình duyệt (localStorage) và gửi trực tiếp tới máy chủ Google Gemini, không cần thông qua máy chủ trung gian.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button 
+                onClick={() => setShowKeyModal(false)}
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Đóng
+              </button>
+              <button 
+                onClick={() => {
+                  const trimmed = keyInput.trim();
+                  if (!trimmed) {
+                    alert('Vui lòng nhập API Key!');
+                    return;
+                  }
+                  setActiveApiKey(trimmed);
+                  saveStoredApiKey({ name: 'Gemini Key', key: trimmed, provider: 'gemini', isActive: true });
+                  setActiveApiKeyState(trimmed);
+                  setShowKeyModal(false);
+                }}
+                className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md hover:shadow-indigo-500/20 transition-all cursor-pointer"
+              >
+                Lưu & Áp Dụng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
