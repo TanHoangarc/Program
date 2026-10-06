@@ -153,14 +153,14 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
   const findCustomer = (idOrCode?: string, name?: string): Customer | null => {
     if (idOrCode) {
       const clean = String(idOrCode).trim().toLowerCase();
-      const byId = customers.find(c => c.id.toLowerCase() === clean);
+      const byId = customers.find(c => c.id && String(c.id).toLowerCase() === clean);
       if (byId) return byId;
-      const byCode = customers.find(c => c.code.toLowerCase() === clean);
+      const byCode = customers.find(c => c.code && String(c.code).toLowerCase() === clean);
       if (byCode) return byCode;
     }
     if (name) {
       const cleanName = String(name).trim().toLowerCase();
-      const byName = customers.find(c => c.name.toLowerCase() === cleanName || c.code.toLowerCase() === cleanName);
+      const byName = customers.find(c => (c.name && String(c.name).toLowerCase() === cleanName) || (c.code && String(c.code).toLowerCase() === cleanName));
       if (byName) return byName;
     }
     return null;
@@ -291,20 +291,20 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
 
       // Attach detailed job entry to main customer bucket
       mainBucket.jobs.push({
-        id: job.id,
-        jobCode: job.jobCode || 'N/A',
-        booking: job.booking || 'N/A',
-        month: job.month || '',
+        id: String(job.id),
+        jobCode: String(job.jobCode || 'N/A'),
+        booking: String(job.booking || 'N/A'),
+        month: String(job.month || ''),
         year: job.year || new Date().getFullYear(),
-        invoiceNo: job.localChargeInvoice || '',
-        invoiceDate: job.localChargeDate || '',
+        invoiceNo: job.localChargeInvoice ? String(job.localChargeInvoice) : '',
+        invoiceDate: job.localChargeDate ? String(job.localChargeDate) : '',
         amount: invoiceAmt,
         isPaid: isJobPaid,
-        bank: job.bank || '',
+        bank: String(job.bank || ''),
         depositAmount: totalJobDeposit,
         depositRefunded: isDepositRefunded,
-        depositDateOut: job.ngayThuCuoc || '',
-        depositDateIn: job.ngayThuHoan || '',
+        depositDateOut: job.ngayThuCuoc ? String(job.ngayThuCuoc) : '',
+        depositDateIn: job.ngayThuHoan ? String(job.ngayThuHoan) : '',
         extensionAmount: totalJobExt,
         extensionPaid: extPaid > 0 && extUnpaid === 0
       });
@@ -423,14 +423,14 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       if (searchTerm.trim()) {
         const query = searchTerm.trim().toLowerCase();
         const matchCustomer = 
-          item.customerName.toLowerCase().includes(query) ||
-          item.customerCode.toLowerCase().includes(query) ||
-          (item.mst && item.mst.toLowerCase().includes(query));
+          String(item.customerName || '').toLowerCase().includes(query) ||
+          String(item.customerCode || '').toLowerCase().includes(query) ||
+          (item.mst ? String(item.mst).toLowerCase().includes(query) : false);
         
         const matchJob = item.jobs.some(j => 
-          j.jobCode.toLowerCase().includes(query) || 
-          j.booking.toLowerCase().includes(query) ||
-          j.invoiceNo.toLowerCase().includes(query)
+          String(j.jobCode || '').toLowerCase().includes(query) || 
+          String(j.booking || '').toLowerCase().includes(query) ||
+          String(j.invoiceNo || '').toLowerCase().includes(query)
         );
 
         if (!matchCustomer && !matchJob) {
