@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp, Key } from 'lucide-react';
+import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp, Key, WalletCards } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'debt' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'api-keys';
@@ -281,7 +281,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {canViewOverview && (
             <>
               <MenuItem active={currentPage === 'reports'} onClick={(e) => handleNavigate(e, 'reports')} icon={LayoutDashboard} label="Dashboard" />
-              <MenuItem active={currentPage === 'debt'} onClick={(e) => handleNavigate(e, 'debt')} icon={CreditCard} label="Công Nợ" />
+              <MenuItem active={currentPage === 'debt'} onClick={(e) => handleNavigate(e, 'debt')} icon={WalletCards} label="Công Nợ" />
             </>
           )}
 

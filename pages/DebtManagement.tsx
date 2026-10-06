@@ -46,7 +46,7 @@ interface CustomerDebtItem {
   totalAmount: number;
   amountPaid: number;
   amountUnpaid: number;
-  status: 'PAID' | 'UNPAID' | 'PARTIAL' | 'NO_INVOICE';
+  status: 'PAID' | 'UNPAID' | 'NO_INVOICE';
   isManuallyOverridden?: boolean;
   
   // Deposit stats
@@ -177,6 +177,8 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       if (byId) return byId;
       const byCode = customers.find(c => c.code && String(c.code).toLowerCase() === clean);
       if (byCode) return byCode;
+      const byName = customers.find(c => c.name && String(c.name).toLowerCase() === clean);
+      if (byName) return byName;
     }
     if (name) {
       const cleanName = String(name).trim().toLowerCase();
@@ -184,6 +186,15 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       if (byName) return byName;
     }
     return null;
+  };
+
+  // Helper to check if bank or document indicates payment collected
+  const checkIsPaid = (bank?: string, docNo?: string) => {
+    if (docNo && String(docNo).trim().length > 0) return true;
+    if (!bank) return false;
+    const b = String(bank).trim().toLowerCase();
+    if (b === '' || b === '--' || b === 'chưa thu' || b === 'none' || b === 'chua thu') return false;
+    return true;
   };
 
   // --- CORE DATA AGGREGATION ---
@@ -252,9 +263,10 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
     // Process every filtered job
     filteredJobs.forEach(job => {
       // 1. Thu Invoice (Amount / Local charge)
-      const invoiceAmt = Number(job.localChargeTotal) || 0;
-      const hasInvoiceData = invoiceAmt > 0 || (job.localChargeInvoice && String(job.localChargeInvoice).trim().length > 0);
-      const isJobPaid = Boolean(job.bank && String(job.bank).trim().length > 0) || Boolean(job.amisLcDocNo);
+      const invoiceAmt = Number(job.localChargeTotal) || 
+        (Number(job.localChargeNet || 0) + Number(job.localChargeVat || 0)) || 
+        0;
+      const isJobPaid = checkIsPaid(job.bank, job.amisLcDocNo);
       const invBucket = getBucket(job.customerId, job.customerName);
 
       // 2. Thu Cược (Deposit): may belong to maKhCuocId or job's customer or jobDeposits
@@ -290,39 +302,49 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
 
       // 3. Gia Hạn (Extensions / Demurage)
       const extByBucket = new Map<ReturnType<typeof getBucket>, { totalExt: number, extPaid: number, extUnpaid: number }>();
+      let jobTotalExt = 0;
+      let jobExtPaid = 0;
+      let jobExtUnpaid = 0;
       const extensions = job.extensions || [];
       extensions.forEach(e => {
         const b = e.customerId ? getBucket(e.customerId, undefined) : invBucket;
         const amt = Number(e.total) || 0;
-        const isPaid = Boolean(e.amisDocNo || e.amisAmount || e.locked || (job.bank && String(job.bank).trim().length > 0));
+        const isPaid = Boolean(e.amisDocNo || e.amisAmount || e.locked || checkIsPaid(job.bank));
         if (!extByBucket.has(b)) extByBucket.set(b, { totalExt: 0, extPaid: 0, extUnpaid: 0 });
         const cur = extByBucket.get(b)!;
         cur.totalExt += amt;
-        if (isPaid) cur.extPaid += amt;
-        else cur.extUnpaid += amt;
+        jobTotalExt += amt;
+        if (isPaid) {
+          cur.extPaid += amt;
+          jobExtPaid += amt;
+        } else {
+          cur.extUnpaid += amt;
+          jobExtUnpaid += amt;
+        }
       });
 
       // Collect all distinct customer buckets participating in this job
       const participatingBuckets = new Set<ReturnType<typeof getBucket>>();
-      if (hasInvoiceData || invoiceAmt > 0) {
-        participatingBuckets.add(invBucket);
-      }
+      
+      // Main job customer bucket ALWAYS participates in the job
+      participatingBuckets.add(invBucket);
+
+      // Deposit customer buckets also participate in the job
       depositsByBucket.forEach((_, b) => {
         participatingBuckets.add(b);
       });
+
+      // Extension customer buckets also participate in the job
       extByBucket.forEach((_, b) => {
         participatingBuckets.add(b);
       });
-      if (participatingBuckets.size === 0) {
-        participatingBuckets.add(invBucket);
-      }
 
       // Add financial stats and job entry to EACH participating customer bucket
       participatingBuckets.forEach(b => {
         const custInvAmt = (b === invBucket) ? invoiceAmt : 0;
         const depInfo = depositsByBucket.get(b);
         const custDepAmt = depInfo ? depInfo.amount : 0;
-        const custDepRef = depInfo ? depInfo.isRefunded : false;
+        const custDepRef = depInfo ? depInfo.isRefunded : Boolean(job.ngayThuHoan);
         const extInfo = extByBucket.get(b) || { totalExt: 0, extPaid: 0, extUnpaid: 0 };
 
         // Add Invoice to bucket
@@ -361,14 +383,14 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
           year: job.year || new Date().getFullYear(),
           invoiceNo: job.localChargeInvoice ? String(job.localChargeInvoice) : '',
           invoiceDate: job.localChargeDate ? String(job.localChargeDate) : '',
-          amount: custInvAmt,
-          isPaid: custInvAmt > 0 ? isJobPaid : true,
+          amount: custInvAmt > 0 ? custInvAmt : invoiceAmt,
+          isPaid: isJobPaid,
           bank: String(job.bank || ''),
-          depositAmount: custDepAmt,
+          depositAmount: custDepAmt > 0 ? custDepAmt : mainDepositAmt,
           depositRefunded: custDepRef,
           depositDateOut: job.ngayThuCuoc ? String(job.ngayThuCuoc) : '',
           depositDateIn: job.ngayThuHoan ? String(job.ngayThuHoan) : '',
-          extensionAmount: extInfo.totalExt,
+          extensionAmount: extInfo.totalExt > 0 ? extInfo.totalExt : jobTotalExt,
           extensionPaid: extInfo.extPaid > 0 && extInfo.extUnpaid === 0
         });
       });
@@ -393,12 +415,10 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
         status = manualOverride;
         isManuallyOverridden = true;
       } else if (bucket.totalAmount > 0) {
-        if (bucket.amountUnpaid === 0 && bucket.amountPaid > 0) {
+        if (bucket.amountUnpaid === 0) {
           status = 'PAID';
-        } else if (bucket.amountPaid === 0) {
-          status = 'UNPAID';
         } else {
-          status = 'PARTIAL';
+          status = 'UNPAID';
         }
       } else {
         status = 'NO_INVOICE';
@@ -421,9 +441,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       if (status === 'PAID') {
         unpaidAmountForDebt = 0;
       } else if (status === 'UNPAID') {
-        unpaidAmountForDebt = bucket.totalAmount;
-      } else if (status === 'PARTIAL') {
-        unpaidAmountForDebt = bucket.amountUnpaid;
+        unpaidAmountForDebt = bucket.amountUnpaid > 0 ? bucket.amountUnpaid : bucket.totalAmount;
       } else {
         unpaidAmountForDebt = 0;
       }
@@ -590,7 +608,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
           if (newStatus === 'PAID') {
             return {
               ...j,
-              bank: j.bank && j.bank.trim().length > 0 ? j.bank : 'TCB'
+              bank: j.bank && j.bank.trim().length > 0 ? j.bank : 'TCB Bank'
             };
           } else {
             return {
@@ -613,7 +631,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
 
     const updatedJob: JobData = {
       ...job,
-      bank: currentPaid ? '' : (job.bank || 'TCB')
+      bank: currentPaid ? '' : (job.bank && job.bank.trim().length > 0 ? job.bank : 'TCB Bank')
     };
 
     onEditJob(updatedJob);
@@ -747,8 +765,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
     const rows = displayedData.map((item, index) => {
       const statusText = 
         item.status === 'PAID' ? 'Đã thu' :
-        item.status === 'UNPAID' ? 'Còn nợ' :
-        item.status === 'PARTIAL' ? 'Thu một phần' : '-';
+        item.status === 'UNPAID' ? 'Còn nợ' : '-';
 
       return [
         index + 1,
@@ -998,7 +1015,6 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                   const hasDebt = item.totalDebt > 0;
                   const isPaid = item.status === 'PAID';
                   const isUnpaid = item.status === 'UNPAID';
-                  const isPartial = item.status === 'PARTIAL';
 
                   return (
                     <React.Fragment key={item.key}>
@@ -1065,25 +1081,17 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                           {item.totalAmount > 0 ? (
                             <div className="inline-flex items-center gap-1.5">
                               <select
-                                value={item.status === 'PARTIAL' ? 'UNPAID' : item.status}
+                                value={item.status === 'PAID' ? 'PAID' : 'UNPAID'}
                                 onChange={(e) => handleUpdateCustomerStatus(item, e.target.value as 'PAID' | 'UNPAID')}
                                 className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer outline-none ${
                                   isPaid
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                    : isUnpaid
-                                    ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
-                                    : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                                    : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
                                 }`}
                               >
                                 <option value="PAID">✓ Đã thu</option>
                                 <option value="UNPAID">⏳ Còn nợ</option>
                               </select>
-
-                              {isPartial && (
-                                <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium" title="Có một số job đã thu, một số job còn nợ">
-                                  1 phần
-                                </span>
-                              )}
                             </div>
                           ) : (
                             <span className="text-slate-400 text-xs italic">-</span>
@@ -1237,7 +1245,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                                           {formatCurrency(job.amount)}
                                         </td>
                                         <td className="py-2.5 px-3 text-center">
-                                          {job.amount > 0 ? (
+                                          {job.amount > 0 || Boolean(job.bank) ? (
                                             <button
                                               onClick={() => handleToggleSingleJobStatus(job.id, job.isPaid)}
                                               className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
