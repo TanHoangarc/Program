@@ -281,7 +281,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {canViewOverview && (
             <>
               <MenuItem active={currentPage === 'reports'} onClick={(e) => handleNavigate(e, 'reports')} icon={LayoutDashboard} label="Dashboard" />
-              <MenuItem active={currentPage === 'debt'} onClick={(e) => handleNavigate(e, 'debt')} icon={BadgeDollarSign} label="Công Nợ" statusColor="bg-amber-400" />
+              <MenuItem active={currentPage === 'debt'} onClick={(e) => handleNavigate(e, 'debt')} icon={CreditCard} label="Công Nợ" />
             </>
           )}
 

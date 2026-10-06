@@ -52,6 +52,7 @@ interface CustomerDebtItem {
   // Deposit stats
   totalDeposit: number;
   depositType: 'Pending' | 'Refunded' | '-';
+  isDepositTypeManuallyOverridden?: boolean;
   depositPendingCount: number;
   depositRefundedCount: number;
   
@@ -128,6 +129,25 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       console.warn('Failed to save manual status map', e);
     }
   }, [manualStatusMap]);
+
+  // --- MANUAL DEPOSIT TYPE OVERRIDES (Pending / Refunded) ---
+  const [manualDepositTypeMap, setManualDepositTypeMap] = useState<Record<string, 'Pending' | 'Refunded'>>(() => {
+    try {
+      const saved = localStorage.getItem('kb_debt_customer_deposit_type');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Persist manual deposit type map
+  useEffect(() => {
+    try {
+      localStorage.setItem('kb_debt_customer_deposit_type', JSON.stringify(manualDepositTypeMap));
+    } catch (e) {
+      console.warn('Failed to save manual deposit type map', e);
+    }
+  }, [manualDepositTypeMap]);
 
   // Currency Formatter
   const formatCurrency = (val: number) => 
@@ -231,82 +251,126 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
 
     // Process every filtered job
     filteredJobs.forEach(job => {
-      // 1. Thu Invoice (Amount)
+      // 1. Thu Invoice (Amount / Local charge)
       const invoiceAmt = Number(job.localChargeTotal) || 0;
-      const hasInvoiceData = invoiceAmt > 0 || (job.localChargeInvoice && job.localChargeInvoice.trim().length > 0);
-      
-      // Determine if job invoice is paid (bank assigned or amis doc)
-      const isJobPaid = Boolean(job.bank && job.bank.trim().length > 0) || Boolean(job.amisLcDocNo);
+      const hasInvoiceData = invoiceAmt > 0 || (job.localChargeInvoice && String(job.localChargeInvoice).trim().length > 0);
+      const isJobPaid = Boolean(job.bank && String(job.bank).trim().length > 0) || Boolean(job.amisLcDocNo);
+      const invBucket = getBucket(job.customerId, job.customerName);
 
-      // 2. Thu Cược (Deposit)
+      // 2. Thu Cược (Deposit): may belong to maKhCuocId or job's customer or jobDeposits
+      const depositsByBucket = new Map<ReturnType<typeof getBucket>, { amount: number, isRefunded: boolean }>();
       const mainDepositAmt = Number(job.thuCuoc) || 0;
-      const subDepositsAmt = (job.jobDeposits || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
-      const totalJobDeposit = mainDepositAmt + subDepositsAmt;
-      const isDepositRefunded = Boolean(job.ngayThuHoan && job.ngayThuHoan.trim().length > 0) || 
-                                Boolean(job.amisDepositRefundDate) || 
-                                Boolean(job.amisDepositRefundDocNo);
-
-      // 3. Gia Hạn (Extensions)
-      const extensions = job.extensions || [];
-      const totalJobExt = extensions.reduce((s, e) => s + (Number(e.total) || 0), 0);
-      const extPaid = extensions.reduce((s, e) => {
-        const isExtPaid = Boolean(e.amisDocNo || e.amisAmount || e.locked || (job.bank && job.bank.trim().length > 0));
-        return s + (isExtPaid ? (Number(e.total) || 0) : 0);
-      }, 0);
-      const extUnpaid = totalJobExt - extPaid;
-
-      // Identify Customer for Invoice & Extensions
-      const mainBucket = getBucket(job.customerId, job.customerName);
-      
-      // Add invoice values if present
-      if (hasInvoiceData || invoiceAmt > 0) {
-        mainBucket.totalAmount += invoiceAmt;
-        if (isJobPaid) {
-          mainBucket.amountPaid += invoiceAmt;
-        } else {
-          mainBucket.amountUnpaid += invoiceAmt;
-        }
-      }
-
-      // Add extension values
-      if (totalJobExt > 0) {
-        mainBucket.totalExtension += totalJobExt;
-        mainBucket.extensionPaid += extPaid;
-        mainBucket.extensionUnpaid += extUnpaid;
-      }
-
-      // Handle Deposit: may belong to maKhCuocId or job's customer
-      if (totalJobDeposit > 0) {
+      if (mainDepositAmt > 0) {
         const depBucket = (job.maKhCuocId && job.maKhCuocId !== job.customerId)
           ? getBucket(job.maKhCuocId, undefined)
-          : mainBucket;
-
-        depBucket.totalDeposit += totalJobDeposit;
-        if (isDepositRefunded) {
-          depBucket.depositRefundedCount += 1;
-        } else {
-          depBucket.depositPendingCount += 1;
-        }
+          : invBucket;
+        const isRef = Boolean(job.ngayThuHoan && String(job.ngayThuHoan).trim().length > 0) || 
+                      Boolean(job.amisDepositRefundDate) || 
+                      Boolean(job.amisDepositRefundDocNo);
+        depositsByBucket.set(depBucket, { amount: mainDepositAmt, isRefunded: isRef });
       }
 
-      // Attach detailed job entry to main customer bucket
-      mainBucket.jobs.push({
-        id: String(job.id),
-        jobCode: String(job.jobCode || 'N/A'),
-        booking: String(job.booking || 'N/A'),
-        month: String(job.month || ''),
-        year: job.year || new Date().getFullYear(),
-        invoiceNo: job.localChargeInvoice ? String(job.localChargeInvoice) : '',
-        invoiceDate: job.localChargeDate ? String(job.localChargeDate) : '',
-        amount: invoiceAmt,
-        isPaid: isJobPaid,
-        bank: String(job.bank || ''),
-        depositAmount: totalJobDeposit,
-        depositRefunded: isDepositRefunded,
-        depositDateOut: job.ngayThuCuoc ? String(job.ngayThuCuoc) : '',
-        depositDateIn: job.ngayThuHoan ? String(job.ngayThuHoan) : '',
-        extensionAmount: totalJobExt,
-        extensionPaid: extPaid > 0 && extUnpaid === 0
+      (job.jobDeposits || []).forEach(d => {
+        const dAmt = Number(d.amount) || 0;
+        if (dAmt > 0) {
+          const b = d.customerId ? getBucket(d.customerId, undefined) : (
+            job.maKhCuocId ? getBucket(job.maKhCuocId, undefined) : invBucket
+          );
+          const isRef = Boolean(d.dateIn && String(d.dateIn).trim().length > 0) ||
+                        Boolean(job.ngayThuHoan && String(job.ngayThuHoan).trim().length > 0);
+          const existing = depositsByBucket.get(b);
+          if (existing) {
+            existing.amount += dAmt;
+            existing.isRefunded = existing.isRefunded && isRef;
+          } else {
+            depositsByBucket.set(b, { amount: dAmt, isRefunded: isRef });
+          }
+        }
+      });
+
+      // 3. Gia Hạn (Extensions / Demurage)
+      const extByBucket = new Map<ReturnType<typeof getBucket>, { totalExt: number, extPaid: number, extUnpaid: number }>();
+      const extensions = job.extensions || [];
+      extensions.forEach(e => {
+        const b = e.customerId ? getBucket(e.customerId, undefined) : invBucket;
+        const amt = Number(e.total) || 0;
+        const isPaid = Boolean(e.amisDocNo || e.amisAmount || e.locked || (job.bank && String(job.bank).trim().length > 0));
+        if (!extByBucket.has(b)) extByBucket.set(b, { totalExt: 0, extPaid: 0, extUnpaid: 0 });
+        const cur = extByBucket.get(b)!;
+        cur.totalExt += amt;
+        if (isPaid) cur.extPaid += amt;
+        else cur.extUnpaid += amt;
+      });
+
+      // Collect all distinct customer buckets participating in this job
+      const participatingBuckets = new Set<ReturnType<typeof getBucket>>();
+      if (hasInvoiceData || invoiceAmt > 0) {
+        participatingBuckets.add(invBucket);
+      }
+      depositsByBucket.forEach((_, b) => {
+        participatingBuckets.add(b);
+      });
+      extByBucket.forEach((_, b) => {
+        participatingBuckets.add(b);
+      });
+      if (participatingBuckets.size === 0) {
+        participatingBuckets.add(invBucket);
+      }
+
+      // Add financial stats and job entry to EACH participating customer bucket
+      participatingBuckets.forEach(b => {
+        const custInvAmt = (b === invBucket) ? invoiceAmt : 0;
+        const depInfo = depositsByBucket.get(b);
+        const custDepAmt = depInfo ? depInfo.amount : 0;
+        const custDepRef = depInfo ? depInfo.isRefunded : false;
+        const extInfo = extByBucket.get(b) || { totalExt: 0, extPaid: 0, extUnpaid: 0 };
+
+        // Add Invoice to bucket
+        if (custInvAmt > 0) {
+          b.totalAmount += custInvAmt;
+          if (isJobPaid) {
+            b.amountPaid += custInvAmt;
+          } else {
+            b.amountUnpaid += custInvAmt;
+          }
+        }
+
+        // Add Deposit to bucket
+        if (custDepAmt > 0) {
+          b.totalDeposit += custDepAmt;
+          if (custDepRef) {
+            b.depositRefundedCount += 1;
+          } else {
+            b.depositPendingCount += 1;
+          }
+        }
+
+        // Add Demurage to bucket
+        if (extInfo.totalExt > 0) {
+          b.totalExtension += extInfo.totalExt;
+          b.extensionPaid += extInfo.extPaid;
+          b.extensionUnpaid += extInfo.extUnpaid;
+        }
+
+        // Attach Job to this customer bucket
+        b.jobs.push({
+          id: String(job.id),
+          jobCode: String(job.jobCode || 'N/A'),
+          booking: String(job.booking || 'N/A'),
+          month: String(job.month || ''),
+          year: job.year || new Date().getFullYear(),
+          invoiceNo: job.localChargeInvoice ? String(job.localChargeInvoice) : '',
+          invoiceDate: job.localChargeDate ? String(job.localChargeDate) : '',
+          amount: custInvAmt,
+          isPaid: custInvAmt > 0 ? isJobPaid : true,
+          bank: String(job.bank || ''),
+          depositAmount: custDepAmt,
+          depositRefunded: custDepRef,
+          depositDateOut: job.ngayThuCuoc ? String(job.ngayThuCuoc) : '',
+          depositDateIn: job.ngayThuHoan ? String(job.ngayThuHoan) : '',
+          extensionAmount: extInfo.totalExt,
+          extensionPaid: extInfo.extPaid > 0 && extInfo.extUnpaid === 0
+        });
       });
     });
 
@@ -342,8 +406,14 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
 
       // Deposit Type: Pending / Refunded / '-'
       let depositType: 'Pending' | 'Refunded' | '-' = '-';
+      let isDepositTypeManuallyOverridden = false;
       if (bucket.totalDeposit > 0) {
-        depositType = bucket.depositPendingCount === 0 ? 'Refunded' : 'Pending';
+        if (manualDepositTypeMap[key]) {
+          depositType = manualDepositTypeMap[key];
+          isDepositTypeManuallyOverridden = true;
+        } else {
+          depositType = bucket.depositPendingCount === 0 ? 'Refunded' : 'Pending';
+        }
       }
 
       // RULE: "Cột công nợ bao gồm tổng các số tiền amount và gia hạn chưa thu"
@@ -373,6 +443,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
         isManuallyOverridden,
         totalDeposit: bucket.totalDeposit,
         depositType,
+        isDepositTypeManuallyOverridden,
         depositPendingCount: bucket.depositPendingCount,
         depositRefundedCount: bucket.depositRefundedCount,
         totalExtension: bucket.totalExtension,
@@ -390,7 +461,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       }
       return b.totalAmount - a.totalAmount;
     });
-  }, [jobs, customers, selectedYear, selectedMonth, manualStatusMap]);
+  }, [jobs, customers, selectedYear, selectedMonth, manualStatusMap, manualDepositTypeMap]);
 
   // --- FILTERED DATA (By Currency Type, Customer Select, Search, Status) ---
   const displayedData = useMemo(() => {
@@ -546,6 +617,87 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
     };
 
     onEditJob(updatedJob);
+  };
+
+  // Toggle or Update Manual Deposit Type for a Customer (Pending / Refunded)
+  const handleUpdateCustomerDepositType = (item: CustomerDebtItem, newType: 'Pending' | 'Refunded') => {
+    // 1. Update manual deposit type map
+    setManualDepositTypeMap(prev => ({
+      ...prev,
+      [item.key]: newType
+    }));
+
+    // 2. Propagate to jobs if onEditJob is available
+    if (onEditJob && item.jobs.length > 0) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const jobIdsToUpdate = new Set(item.jobs.filter(j => j.depositAmount > 0).map(j => j.id));
+
+      const updatedJobs = jobs
+        .filter(j => jobIdsToUpdate.has(j.id))
+        .map(j => {
+          if (newType === 'Refunded') {
+            const updated = {
+              ...j,
+              ngayThuHoan: j.ngayThuHoan || todayStr
+            };
+            if (updated.jobDeposits && updated.jobDeposits.length > 0) {
+              updated.jobDeposits = updated.jobDeposits.map(d => {
+                const isForCust = d.customerId === item.customerId || d.customerId === item.customerCode || j.maKhCuocId === item.customerId;
+                return isForCust ? { ...d, dateIn: d.dateIn || todayStr } : d;
+              });
+            }
+            return updated;
+          } else {
+            const updated = {
+              ...j,
+              ngayThuHoan: ''
+            };
+            if (updated.jobDeposits && updated.jobDeposits.length > 0) {
+              updated.jobDeposits = updated.jobDeposits.map(d => {
+                const isForCust = d.customerId === item.customerId || d.customerId === item.customerCode || j.maKhCuocId === item.customerId;
+                return isForCust ? { ...d, dateIn: '' } : d;
+              });
+            }
+            return updated;
+          }
+        });
+
+      if (updatedJobs.length > 0) {
+        onEditJob(updatedJobs);
+      }
+    }
+  };
+
+  // Toggle individual job deposit refund status in expanded row
+  const handleToggleSingleJobDepositRefund = (jobId: string, currentRefunded: boolean) => {
+    const job = jobs.find(j => j.id === jobId);
+    if (!job || !onEditJob) return;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const newRefunded = !currentRefunded;
+
+    const updatedJob: JobData = {
+      ...job,
+      ngayThuHoan: newRefunded ? (job.ngayThuHoan || todayStr) : ''
+    };
+
+    if (updatedJob.jobDeposits && updatedJob.jobDeposits.length > 0) {
+      updatedJob.jobDeposits = updatedJob.jobDeposits.map(d => ({
+        ...d,
+        dateIn: newRefunded ? (d.dateIn || todayStr) : ''
+      }));
+    }
+
+    onEditJob(updatedJob);
+  };
+
+  // Reset manual deposit type override
+  const handleResetCustomerDepositType = (itemKey: string) => {
+    setManualDepositTypeMap(prev => {
+      const next = { ...prev };
+      delete next[itemKey];
+      return next;
+    });
   };
 
   // Reset manual status override
@@ -947,20 +1099,34 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                           )}
                         </td>
 
-                        {/* CỘT TYPE (PENDING / REFUNDED) */}
+                        {/* CỘT TYPE (PENDING / REFUNDED - CÓ THỂ SỬA THỦ CÔNG) */}
                         <td className="py-3.5 px-4 text-center">
-                          {item.depositType === 'Refunded' ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                              <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
-                              Refunded
-                            </span>
-                          ) : item.depositType === 'Pending' ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
-                              <Clock className="w-3 h-3 mr-1 text-amber-600" />
-                              Pending
-                            </span>
+                          {item.totalDeposit > 0 ? (
+                            <div className="inline-flex items-center gap-1">
+                              <select
+                                value={item.depositType}
+                                onChange={(e) => handleUpdateCustomerDepositType(item, e.target.value as 'Pending' | 'Refunded')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer outline-none ${
+                                  item.depositType === 'Refunded'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                    : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                                }`}
+                              >
+                                <option value="Pending">⏳ Pending</option>
+                                <option value="Refunded">✓ Refunded</option>
+                              </select>
+                              {item.isDepositTypeManuallyOverridden && (
+                                <span 
+                                  className="text-[10px] text-purple-700 bg-purple-100 px-1 py-0.5 rounded font-semibold cursor-pointer"
+                                  title="Đã sửa cược thủ công. Bấm để đặt lại tự động"
+                                  onClick={() => handleResetCustomerDepositType(item.key)}
+                                >
+                                  ✕
+                                </span>
+                              )}
+                            </div>
                           ) : (
-                            <span className="text-slate-400">-</span>
+                            <span className="text-slate-400 text-xs italic">-</span>
                           )}
                         </td>
 
@@ -1092,15 +1258,17 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                                         </td>
                                         <td className="py-2.5 px-3 text-center">
                                           {job.depositAmount > 0 ? (
-                                            job.depositRefunded ? (
-                                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
-                                                Refunded
-                                              </span>
-                                            ) : (
-                                              <span className="text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded">
-                                                Pending
-                                              </span>
-                                            )
+                                            <button
+                                              onClick={() => handleToggleSingleJobDepositRefund(job.id, job.depositRefunded)}
+                                              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                                job.depositRefunded
+                                                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                                  : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                              }`}
+                                              title="Bấm để chuyển trạng thái Refunded / Pending cho job này"
+                                            >
+                                              {job.depositRefunded ? '✓ Refunded' : '⏳ Pending'}
+                                            </button>
                                           ) : (
                                             <span className="text-slate-400">-</span>
                                           )}
