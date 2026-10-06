@@ -19,6 +19,7 @@ import { ToolAI } from './pages/ToolAI';
 import { NFCPage } from './pages/NFCPage'; 
 import { BankPage } from './pages/BankPage';
 import { YearlyProfitPage } from './pages/YearlyProfitPage';
+import { DebtManagement } from './pages/DebtManagement';
 import { ApiKeysPage } from './pages/ApiKeysPage';
 import { LoginPage } from './components/LoginPage';
 import { ExportModal } from './components/ExportModal';
@@ -92,7 +93,7 @@ const App: React.FC = () => {
   const [sessionError, setSessionError] = useState('');
 
   // --- APP STATE ---
-  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'api-keys'>(() => {
+  const [currentPage, setCurrentPage] = useState<'entry' | 'reports' | 'debt' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'api-keys'>(() => {
       try {
           const savedUserStr = localStorage.getItem('kb_user') || sessionStorage.getItem('kb_user');
           if (savedUserStr) {
@@ -1779,6 +1780,18 @@ const App: React.FC = () => {
                 lines={lines}
                 onAddCustomer={(c) => setCustomers([...customers, c])}
                 onAddLine={(code) => setLines([...lines, { id: Date.now().toString(), code, name: code, mst: '' }])}
+              />
+            )}
+
+            {currentPage === 'debt' && (
+              <DebtManagement 
+                jobs={jobs} 
+                customers={customers} 
+                onEditJob={handleEditJob}
+                onViewJob={(jobId) => {
+                  setTargetJobId(jobId);
+                  setCurrentPage('entry');
+                }}
               />
             )}
             

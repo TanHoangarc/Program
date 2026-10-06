@@ -1,443 +1,1277 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { JobData, Customer } from '../types';
-import { WalletCards, FileSpreadsheet, AlertTriangle, CheckCircle, Search } from 'lucide-react';
+import { 
+  WalletCards, 
+  FileSpreadsheet, 
+  Search, 
+  Filter, 
+  ChevronDown, 
+  ChevronRight, 
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
+  CheckCircle2, 
+  Clock, 
+  AlertCircle, 
+  RotateCcw, 
+  Building2, 
+  DollarSign, 
+  Coins, 
+  Calendar,
+  Layers,
+  ArrowUpDown,
+  ExternalLink,
+  Info
+} from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface DebtManagementProps {
   jobs: JobData[];
   customers: Customer[];
+  onEditJob?: (jobOrJobs: JobData | JobData[]) => void;
   onViewJob?: (jobId: string) => void;
 }
 
-type ReportType = 
-  | 'CUSTOMER_DEBT' 
-  | 'LINE_DEBT' 
-  | 'UNPAID_JOBS' 
-  | 'LONGHOANG_NO_HBL' 
-  | 'NO_INVOICE_JOBS' 
-  | 'TCB_PAYMENT' 
-  | 'DEPOSIT_MISSING_INFO'
-  | 'BOOKING_NO_INVOICE';
+type CurrencyTypeFilter = 'all' | 'invoice' | 'deposit' | 'extension';
+type StatusFilter = 'all' | 'unpaid' | 'paid';
 
-export const DebtManagement: React.FC<DebtManagementProps> = ({ jobs, customers, onViewJob }) => {
-  const [reportType, setReportType] = useState<ReportType>('CUSTOMER_DEBT');
-  const [searchTerm, setSearchTerm] = useState('');
+interface CustomerDebtItem {
+  key: string;
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+  mst?: string;
+  
+  // Invoice stats
+  totalAmount: number;
+  amountPaid: number;
+  amountUnpaid: number;
+  status: 'PAID' | 'UNPAID' | 'PARTIAL' | 'NO_INVOICE';
+  isManuallyOverridden?: boolean;
+  
+  // Deposit stats
+  totalDeposit: number;
+  depositType: 'Pending' | 'Refunded' | '-';
+  depositPendingCount: number;
+  depositRefundedCount: number;
+  
+  // Extension stats
+  totalExtension: number;
+  extensionPaid: number;
+  extensionUnpaid: number;
+  
+  // Final Debt
+  totalDebt: number; // Tổng các số tiền amount và gia hạn chưa thu
+  
+  // Detail job items
+  jobs: {
+    id: string;
+    jobCode: string;
+    booking: string;
+    month: string;
+    year: number;
+    invoiceNo: string;
+    invoiceDate: string;
+    amount: number;
+    isPaid: boolean;
+    bank: string;
+    depositAmount: number;
+    depositRefunded: boolean;
+    depositDateOut?: string;
+    depositDateIn?: string;
+    extensionAmount: number;
+    extensionPaid: boolean;
+  }[];
+}
 
+export const DebtManagement: React.FC<DebtManagementProps> = ({ 
+  jobs, 
+  customers, 
+  onEditJob, 
+  onViewJob 
+}) => {
+  // --- FILTERS STATE ---
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [currencyType, setCurrencyType] = useState<CurrencyTypeFilter>('all');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  
+  // --- PAGINATION STATE (Default: 10 rows per page) ---
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Auto reset to page 1 when filters or page size change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedYear, selectedMonth, currencyType, selectedCustomerId, statusFilter, searchTerm, pageSize]);
+
+  // --- EXPANDED ROWS STATE ---
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  
+  // --- MANUAL STATUS OVERRIDES (Persisted in LocalStorage) ---
+  const [manualStatusMap, setManualStatusMap] = useState<Record<string, 'PAID' | 'UNPAID'>>(() => {
+    try {
+      const saved = localStorage.getItem('kb_debt_customer_status');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Persist manual status map
+  useEffect(() => {
+    try {
+      localStorage.setItem('kb_debt_customer_status', JSON.stringify(manualStatusMap));
+    } catch (e) {
+      console.warn('Failed to save manual status map', e);
+    }
+  }, [manualStatusMap]);
+
+  // Currency Formatter
   const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val || 0);
 
-  // --- REPORT LOGIC ---
-  const reportData = useMemo(() => {
-    let data: any[] = [];
-    
-    switch (reportType) {
-      case 'CUSTOMER_DEBT': {
-        // Aggregation logic that is resilient to missing IDs
-        const grouped: Record<string, { 
-          id: string, 
-          name: string, 
-          localChargePaid: number,   // NEW: Đã thu (Có Bank)
-          localChargeUnpaid: number, // NEW: Còn nợ (Chưa Bank)
-          extensionDebt: number,
-          depositDebt: number 
-        }> = {};
-        
-        // Helper to resolve customer identity
-        const getCustomerIdentity = (id: string | undefined, name: string | undefined) => {
-            // 1. Try by ID
-            if (id) {
-                const found = customers.find(c => c.id === id);
-                if (found) return { key: found.id, name: found.name };
-            }
-            // 2. Try by Name matching
-            if (name) {
-                const foundByName = customers.find(c => 
-                    c.name.toLowerCase().trim() === name.toLowerCase().trim() || 
-                    c.code.toLowerCase().trim() === name.toLowerCase().trim()
-                );
-                if (foundByName) return { key: foundByName.id, name: foundByName.name };
-                
-                // 3. Fallback: Use name as key
-                return { key: `NAME_${name.trim()}`, name: name.trim() };
-            }
-            return null;
-        };
+  // Available Years
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    jobs.forEach(j => {
+      if (j.year) years.add(j.year);
+    });
+    const currentYear = new Date().getFullYear();
+    years.add(currentYear);
+    return Array.from(years).sort((a, b) => b - a);
+  }, [jobs]);
 
-        jobs.forEach(job => {
-          // --- 1. LOCAL CHARGE & EXTENSION DEBT ---
-          // Determine main customer identity
-          const mainIdentity = getCustomerIdentity(job.customerId, job.customerName);
-          
-          const extTotal = (job.extensions || []).reduce((s, e) => s + e.total, 0);
-          
-          // UPDATED: Only take localChargeTotal (Amount), exclude Sell
-          const localChargeAmt = (job.localChargeTotal || 0);
-          
-          if (mainIdentity) {
-             if (!grouped[mainIdentity.key]) {
-                 grouped[mainIdentity.key] = {
-                     id: mainIdentity.key,
-                     name: mainIdentity.name,
-                     localChargePaid: 0,
-                     localChargeUnpaid: 0,
-                     extensionDebt: 0,
-                     depositDebt: 0
-                 };
-             }
+  // Available Months (1 to 12)
+  const availableMonths = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => String(i + 1));
+  }, []);
 
-             // Logic phân loại Đã thu / Còn nợ dựa trên trường Bank
-             if (job.bank) {
-                 // Đã chọn ngân hàng -> Đã thu
-                 grouped[mainIdentity.key].localChargePaid += localChargeAmt;
-             } else {
-                 // Chưa chọn ngân hàng -> Còn nợ
-                 grouped[mainIdentity.key].localChargeUnpaid += localChargeAmt;
-                 
-                 // Extension cũng tính là nợ nếu chưa có Bank (theo logic cũ)
-                 grouped[mainIdentity.key].extensionDebt += extTotal;
-             }
-          }
-
-          // --- 2. DEPOSIT DEBT ---
-          // Determine deposit customer identity
-          if (job.thuCuoc > 0 && !job.ngayThuHoan) {
-              const depositId = job.maKhCuocId || job.customerId; 
-              let depositIdentity = getCustomerIdentity(depositId, (depositId === job.customerId ? job.customerName : undefined));
-              
-              if (!depositIdentity && job.customerName) {
-                  depositIdentity = getCustomerIdentity(undefined, job.customerName);
-              }
-
-              if (depositIdentity) {
-                  if (!grouped[depositIdentity.key]) {
-                      grouped[depositIdentity.key] = {
-                          id: depositIdentity.key,
-                          name: depositIdentity.name,
-                          localChargePaid: 0,
-                          localChargeUnpaid: 0,
-                          extensionDebt: 0,
-                          depositDebt: 0
-                      };
-                  }
-                  grouped[depositIdentity.key].depositDebt += job.thuCuoc;
-              }
-          }
-        });
-
-        data = Object.values(grouped)
-          .map(item => ({
-            ...item,
-            // Tổng phải thu = Local Charge Nợ + Gia Hạn Nợ (Không tính Cược)
-            totalReceivable: item.localChargeUnpaid + item.extensionDebt
-          }))
-          .sort((a, b) => b.totalReceivable - a.totalReceivable);
-          
-        break;
-      }
-
-      case 'LINE_DEBT': {
-        const grouped: Record<string, { line: string, totalCost: number, jobCount: number }> = {};
-        jobs.forEach(job => {
-          if (job.chiPayment > 0) {
-            const line = job.line || 'Unknown';
-            if (!grouped[line]) {
-              grouped[line] = { line, totalCost: 0, jobCount: 0 };
-            }
-            grouped[line].totalCost += job.chiPayment;
-            grouped[line].jobCount++;
-          }
-        });
-        data = Object.values(grouped).sort((a, b) => b.totalCost - a.totalCost);
-        break;
-      }
-
-      case 'UNPAID_JOBS': {
-        data = jobs.filter(j => !j.bank && (j.sell > 0 || j.localChargeTotal > 0));
-        break;
-      }
-
-      case 'LONGHOANG_NO_HBL': {
-        data = jobs.filter(j => 
-          String(j.customerName).toLowerCase().includes('long hoàng') && !j.hbl
-        );
-        break;
-      }
-
-      case 'NO_INVOICE_JOBS': {
-        data = jobs.filter(j => 
-          (j.sell > 0 || j.localChargeTotal > 0) && !j.localChargeInvoice
-        );
-        break;
-      }
-
-      case 'TCB_PAYMENT': {
-        data = jobs.filter(j => j.bank === 'TCB Bank');
-        break;
-      }
-
-      case 'DEPOSIT_MISSING_INFO': {
-        data = jobs.filter(j => j.thuCuoc > 0 && !j.maKhCuocId);
-        break;
-      }
-
-      case 'BOOKING_NO_INVOICE': {
-        const processed = new Set();
-        data = jobs.filter(j => {
-          if (!j.booking || processed.has(j.booking)) return false;
-          const details = j.bookingCostDetails?.localCharge;
-          const isMissing = !details?.invoice || !details?.date;
-          if (isMissing) {
-            processed.add(j.booking);
-            return true;
-          }
-          return false;
-        });
-        break;
-      }
+  // Helper to find customer by ID, code, or name
+  const findCustomer = (idOrCode?: string, name?: string): Customer | null => {
+    if (idOrCode) {
+      const clean = String(idOrCode).trim().toLowerCase();
+      const byId = customers.find(c => c.id.toLowerCase() === clean);
+      if (byId) return byId;
+      const byCode = customers.find(c => c.code.toLowerCase() === clean);
+      if (byCode) return byCode;
     }
+    if (name) {
+      const cleanName = String(name).trim().toLowerCase();
+      const byName = customers.find(c => c.name.toLowerCase() === cleanName || c.code.toLowerCase() === cleanName);
+      if (byName) return byName;
+    }
+    return null;
+  };
 
-    if (searchTerm) {
-      const lower = String(searchTerm).toLowerCase();
-      data = data.filter(item => {
-        if (item.jobCode) return String(item.jobCode).toLowerCase().includes(lower);
-        if (item.name) return String(item.name).toLowerCase().includes(lower);
-        if (item.line) return String(item.line).toLowerCase().includes(lower);
-        if (item.booking) return String(item.booking).toLowerCase().includes(lower);
+  // --- CORE DATA AGGREGATION ---
+  const aggregatedData = useMemo(() => {
+    // 1. Filter jobs by Year & Month
+    const filteredJobs = jobs.filter(job => {
+      if (selectedYear !== 'all') {
+        const jobYear = job.year ? String(job.year) : '';
+        if (jobYear !== selectedYear) return false;
+      }
+      if (selectedMonth !== 'all') {
+        const jobMonth = job.month ? String(Number(job.month)) : '';
+        const targetMonth = String(Number(selectedMonth));
+        if (jobMonth !== targetMonth) return false;
+      }
+      return true;
+    });
+
+    // 2. Map of customer key -> CustomerDebtItem accumulator
+    const customerMap = new Map<string, {
+      customerId: string;
+      customerCode: string;
+      customerName: string;
+      mst?: string;
+      jobs: CustomerDebtItem['jobs'];
+      totalAmount: number;
+      amountPaid: number;
+      amountUnpaid: number;
+      totalDeposit: number;
+      depositPendingCount: number;
+      depositRefundedCount: number;
+      totalExtension: number;
+      extensionPaid: number;
+      extensionUnpaid: number;
+    }>();
+
+    // Helper to get or init customer bucket
+    const getBucket = (cId?: string, cName?: string) => {
+      const found = findCustomer(cId, cName);
+      const key = found ? found.id : (cId || cName || 'UNKNOWN');
+      const code = found ? found.code : (cId || 'KH-VANG');
+      const name = found ? found.name : (cName || cId || 'Khách hàng vãng lai');
+      const mst = found?.mst;
+
+      if (!customerMap.has(key)) {
+        customerMap.set(key, {
+          customerId: key,
+          customerCode: code,
+          customerName: name,
+          mst,
+          jobs: [],
+          totalAmount: 0,
+          amountPaid: 0,
+          amountUnpaid: 0,
+          totalDeposit: 0,
+          depositPendingCount: 0,
+          depositRefundedCount: 0,
+          totalExtension: 0,
+          extensionPaid: 0,
+          extensionUnpaid: 0
+        });
+      }
+      return customerMap.get(key)!;
+    };
+
+    // Process every filtered job
+    filteredJobs.forEach(job => {
+      // 1. Thu Invoice (Amount)
+      const invoiceAmt = Number(job.localChargeTotal) || 0;
+      const hasInvoiceData = invoiceAmt > 0 || (job.localChargeInvoice && job.localChargeInvoice.trim().length > 0);
+      
+      // Determine if job invoice is paid (bank assigned or amis doc)
+      const isJobPaid = Boolean(job.bank && job.bank.trim().length > 0) || Boolean(job.amisLcDocNo);
+
+      // 2. Thu Cược (Deposit)
+      const mainDepositAmt = Number(job.thuCuoc) || 0;
+      const subDepositsAmt = (job.jobDeposits || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
+      const totalJobDeposit = mainDepositAmt + subDepositsAmt;
+      const isDepositRefunded = Boolean(job.ngayThuHoan && job.ngayThuHoan.trim().length > 0) || 
+                                Boolean(job.amisDepositRefundDate) || 
+                                Boolean(job.amisDepositRefundDocNo);
+
+      // 3. Gia Hạn (Extensions)
+      const extensions = job.extensions || [];
+      const totalJobExt = extensions.reduce((s, e) => s + (Number(e.total) || 0), 0);
+      const extPaid = extensions.reduce((s, e) => {
+        const isExtPaid = Boolean(e.amisDocNo || e.amisAmount || e.locked || (job.bank && job.bank.trim().length > 0));
+        return s + (isExtPaid ? (Number(e.total) || 0) : 0);
+      }, 0);
+      const extUnpaid = totalJobExt - extPaid;
+
+      // Identify Customer for Invoice & Extensions
+      const mainBucket = getBucket(job.customerId, job.customerName);
+      
+      // Add invoice values if present
+      if (hasInvoiceData || invoiceAmt > 0) {
+        mainBucket.totalAmount += invoiceAmt;
+        if (isJobPaid) {
+          mainBucket.amountPaid += invoiceAmt;
+        } else {
+          mainBucket.amountUnpaid += invoiceAmt;
+        }
+      }
+
+      // Add extension values
+      if (totalJobExt > 0) {
+        mainBucket.totalExtension += totalJobExt;
+        mainBucket.extensionPaid += extPaid;
+        mainBucket.extensionUnpaid += extUnpaid;
+      }
+
+      // Handle Deposit: may belong to maKhCuocId or job's customer
+      if (totalJobDeposit > 0) {
+        const depBucket = (job.maKhCuocId && job.maKhCuocId !== job.customerId)
+          ? getBucket(job.maKhCuocId, undefined)
+          : mainBucket;
+
+        depBucket.totalDeposit += totalJobDeposit;
+        if (isDepositRefunded) {
+          depBucket.depositRefundedCount += 1;
+        } else {
+          depBucket.depositPendingCount += 1;
+        }
+      }
+
+      // Attach detailed job entry to main customer bucket
+      mainBucket.jobs.push({
+        id: job.id,
+        jobCode: job.jobCode || 'N/A',
+        booking: job.booking || 'N/A',
+        month: job.month || '',
+        year: job.year || new Date().getFullYear(),
+        invoiceNo: job.localChargeInvoice || '',
+        invoiceDate: job.localChargeDate || '',
+        amount: invoiceAmt,
+        isPaid: isJobPaid,
+        bank: job.bank || '',
+        depositAmount: totalJobDeposit,
+        depositRefunded: isDepositRefunded,
+        depositDateOut: job.ngayThuCuoc || '',
+        depositDateIn: job.ngayThuHoan || '',
+        extensionAmount: totalJobExt,
+        extensionPaid: extPaid > 0 && extUnpaid === 0
+      });
+    });
+
+    // 3. Assemble and calculate final customer items
+    const list: CustomerDebtItem[] = [];
+
+    customerMap.forEach((bucket, key) => {
+      // RULE: "những khách hàng có tồn tại nhưng không phát sinh thu invoice, deposit, gia hạn thì không cần hiện"
+      const hasAnyTransaction = (bucket.totalAmount > 0) || (bucket.totalDeposit > 0) || (bucket.totalExtension > 0);
+      if (!hasAnyTransaction) {
+        return;
+      }
+
+      // Manual Override Check
+      const manualOverride = manualStatusMap[key];
+      let status: CustomerDebtItem['status'];
+      let isManuallyOverridden = false;
+
+      if (manualOverride) {
+        status = manualOverride;
+        isManuallyOverridden = true;
+      } else if (bucket.totalAmount > 0) {
+        if (bucket.amountUnpaid === 0 && bucket.amountPaid > 0) {
+          status = 'PAID';
+        } else if (bucket.amountPaid === 0) {
+          status = 'UNPAID';
+        } else {
+          status = 'PARTIAL';
+        }
+      } else {
+        status = 'NO_INVOICE';
+      }
+
+      // Deposit Type: Pending / Refunded / '-'
+      let depositType: 'Pending' | 'Refunded' | '-' = '-';
+      if (bucket.totalDeposit > 0) {
+        depositType = bucket.depositPendingCount === 0 ? 'Refunded' : 'Pending';
+      }
+
+      // RULE: "Cột công nợ bao gồm tổng các số tiền amount và gia hạn chưa thu"
+      let unpaidAmountForDebt = 0;
+      if (status === 'PAID') {
+        unpaidAmountForDebt = 0;
+      } else if (status === 'UNPAID') {
+        unpaidAmountForDebt = bucket.totalAmount;
+      } else if (status === 'PARTIAL') {
+        unpaidAmountForDebt = bucket.amountUnpaid;
+      } else {
+        unpaidAmountForDebt = 0;
+      }
+
+      const totalDebt = unpaidAmountForDebt + bucket.extensionUnpaid;
+
+      list.push({
+        key,
+        customerId: bucket.customerId,
+        customerCode: bucket.customerCode,
+        customerName: bucket.customerName,
+        mst: bucket.mst,
+        totalAmount: bucket.totalAmount,
+        amountPaid: bucket.amountPaid,
+        amountUnpaid: bucket.amountUnpaid,
+        status,
+        isManuallyOverridden,
+        totalDeposit: bucket.totalDeposit,
+        depositType,
+        depositPendingCount: bucket.depositPendingCount,
+        depositRefundedCount: bucket.depositRefundedCount,
+        totalExtension: bucket.totalExtension,
+        extensionPaid: bucket.extensionPaid,
+        extensionUnpaid: bucket.extensionUnpaid,
+        totalDebt,
+        jobs: bucket.jobs
+      });
+    });
+
+    // Default sorting: Most debt first, then by total amount
+    return list.sort((a, b) => {
+      if (b.totalDebt !== a.totalDebt) {
+        return b.totalDebt - a.totalDebt;
+      }
+      return b.totalAmount - a.totalAmount;
+    });
+  }, [jobs, customers, selectedYear, selectedMonth, manualStatusMap]);
+
+  // --- FILTERED DATA (By Currency Type, Customer Select, Search, Status) ---
+  const displayedData = useMemo(() => {
+    return aggregatedData.filter(item => {
+      // 1. Filter by Currency Type (Loại tiền invoice / deposit / gia hạn)
+      if (currencyType === 'invoice' && item.totalAmount <= 0) {
         return false;
-      });
-    }
+      }
+      if (currencyType === 'deposit' && item.totalDeposit <= 0) {
+        return false;
+      }
+      if (currencyType === 'extension' && item.totalExtension <= 0) {
+        return false;
+      }
 
-    return data;
-  }, [jobs, reportType, searchTerm, customers]);
+      // 2. Filter by Specific Customer Dropdown
+      if (selectedCustomerId !== 'all' && item.customerId !== selectedCustomerId && item.customerCode !== selectedCustomerId) {
+        return false;
+      }
 
-  // --- EXPORT ---
-  const handleExportExcel = () => {
-    let headers: string[] = [];
-    let rows: any[] = [];
+      // 3. Filter by Status (Chưa thu tiền / Đã thu tiền)
+      if (statusFilter === 'unpaid') {
+        if (item.totalDebt <= 0 && item.status === 'PAID') return false;
+      }
+      if (statusFilter === 'paid') {
+        if (item.totalDebt > 0 || item.status === 'UNPAID') return false;
+      }
 
-    if (reportType === 'CUSTOMER_DEBT') {
-      headers = ['Khách Hàng', 'Nợ Cược', 'LC Đã Thu', 'LC Còn Nợ', 'Tổng Gia Hạn Nợ', 'Tổng Phải Thu (Không tính cược)'];
-      rows = reportData.map((d: any) => [
-        d.name, 
-        d.depositDebt, 
-        d.localChargePaid,
-        d.localChargeUnpaid,
-        d.extensionDebt, 
-        d.totalReceivable
-      ]);
-    } else if (reportType === 'LINE_DEBT') {
-      headers = ['Hãng Tàu', 'Số Job', 'Tổng Chi Phí'];
-      rows = reportData.map((d: any) => [d.line, d.jobCount, d.totalCost]);
-    } else {
-      headers = ['Tháng', 'Job Code', 'Booking', 'Khách Hàng', 'Số Tiền', 'Lỗi/Ghi chú'];
-      rows = reportData.map((j: JobData) => {
-        let note = '';
-        if (reportType === 'UNPAID_JOBS') note = 'Chưa thanh toán (Bank rỗng)';
-        if (reportType === 'LONGHOANG_NO_HBL') note = 'Thiếu HBL';
-        if (reportType === 'NO_INVOICE_JOBS') note = 'Thiếu số Hóa đơn';
-        if (reportType === 'DEPOSIT_MISSING_INFO') note = 'Cược không có Mã KH';
-        if (reportType === 'BOOKING_NO_INVOICE') note = 'Booking thiếu Invoice đầu vào';
+      // 4. Filter by Search Query
+      if (searchTerm.trim()) {
+        const query = searchTerm.trim().toLowerCase();
+        const matchCustomer = 
+          item.customerName.toLowerCase().includes(query) ||
+          item.customerCode.toLowerCase().includes(query) ||
+          (item.mst && item.mst.toLowerCase().includes(query));
         
-        const amt = j.localChargeTotal || j.sell || j.thuCuoc;
-        return [j.month, j.jobCode, j.booking, j.customerName, amt, note];
-      });
+        const matchJob = item.jobs.some(j => 
+          j.jobCode.toLowerCase().includes(query) || 
+          j.booking.toLowerCase().includes(query) ||
+          j.invoiceNo.toLowerCase().includes(query)
+        );
+
+        if (!matchCustomer && !matchJob) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [aggregatedData, currencyType, selectedCustomerId, statusFilter, searchTerm]);
+
+  // --- PAGINATION DATA ---
+  const totalItems = displayedData.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return displayedData.slice(start, start + pageSize);
+  }, [displayedData, currentPage, pageSize]);
+
+  // --- KPI TOTALS ---
+  const kpiTotals = useMemo(() => {
+    let sumTotalDebt = 0;
+    let sumTotalAmount = 0;
+    let sumAmountPaid = 0;
+    let sumAmountUnpaid = 0;
+    let sumTotalDeposit = 0;
+    let sumDepositPending = 0;
+    let sumDepositRefunded = 0;
+    let sumTotalExtension = 0;
+    let sumExtensionUnpaid = 0;
+    let countInDebt = 0;
+
+    displayedData.forEach(item => {
+      sumTotalDebt += item.totalDebt;
+      sumTotalAmount += item.totalAmount;
+      sumAmountPaid += item.amountPaid;
+      sumAmountUnpaid += item.amountUnpaid;
+      sumTotalDeposit += item.totalDeposit;
+      if (item.depositType === 'Pending') sumDepositPending += item.totalDeposit;
+      if (item.depositType === 'Refunded') sumDepositRefunded += item.totalDeposit;
+      sumTotalExtension += item.totalExtension;
+      sumExtensionUnpaid += item.extensionUnpaid;
+      if (item.totalDebt > 0) countInDebt += 1;
+    });
+
+    return {
+      sumTotalDebt,
+      sumTotalAmount,
+      sumAmountPaid,
+      sumAmountUnpaid,
+      sumTotalDeposit,
+      sumDepositPending,
+      sumDepositRefunded,
+      sumTotalExtension,
+      sumExtensionUnpaid,
+      countInDebt,
+      totalCustomers: displayedData.length
+    };
+  }, [displayedData]);
+
+  // --- HANDLERS ---
+  const toggleRowExpand = (key: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Toggle or Update Manual Status for a Customer
+  const handleUpdateCustomerStatus = (item: CustomerDebtItem, newStatus: 'PAID' | 'UNPAID') => {
+    // 1. Update manual status map
+    setManualStatusMap(prev => ({
+      ...prev,
+      [item.key]: newStatus
+    }));
+
+    // 2. Propagate to jobs if onEditJob is available
+    if (onEditJob && item.jobs.length > 0) {
+      const jobIdsToUpdate = new Set(item.jobs.map(j => j.id));
+      const updatedJobs = jobs
+        .filter(j => jobIdsToUpdate.has(j.id))
+        .map(j => {
+          if (newStatus === 'PAID') {
+            return {
+              ...j,
+              bank: j.bank && j.bank.trim().length > 0 ? j.bank : 'TCB'
+            };
+          } else {
+            return {
+              ...j,
+              bank: ''
+            };
+          }
+        });
+
+      if (updatedJobs.length > 0) {
+        onEditJob(updatedJobs);
+      }
     }
+  };
+
+  // Toggle individual job status in expanded row
+  const handleToggleSingleJobStatus = (jobId: string, currentPaid: boolean) => {
+    const job = jobs.find(j => j.id === jobId);
+    if (!job || !onEditJob) return;
+
+    const updatedJob: JobData = {
+      ...job,
+      bank: currentPaid ? '' : (job.bank || 'TCB')
+    };
+
+    onEditJob(updatedJob);
+  };
+
+  // Reset manual status override
+  const handleResetCustomerStatus = (itemKey: string) => {
+    setManualStatusMap(prev => {
+      const next = { ...prev };
+      delete next[itemKey];
+      return next;
+    });
+  };
+
+  // Reset all filters
+  const handleResetFilters = () => {
+    setSelectedYear('all');
+    setSelectedMonth('all');
+    setCurrencyType('all');
+    setSelectedCustomerId('all');
+    setStatusFilter('all');
+    setSearchTerm('');
+  };
+
+  const hasActiveFilters = 
+    selectedYear !== 'all' || 
+    selectedMonth !== 'all' || 
+    currencyType !== 'all' || 
+    selectedCustomerId !== 'all' || 
+    statusFilter !== 'all' || 
+    searchTerm.trim().length > 0;
+
+  // --- EXPORT TO EXCEL ---
+  const handleExportExcel = () => {
+    const headers = [
+      'STT',
+      'Mã Khách Hàng',
+      'Tên Khách Hàng',
+      'MST',
+      'Số Lượng Job',
+      'Local charge',
+      'Trạng Thái',
+      'Deposit',
+      'Loại Cược (Type)',
+      'Demurage',
+      'Demurage Chưa Thu',
+      'CÔNG NỢ (Local charge + Demurage chưa thu)'
+    ];
+
+    const rows = displayedData.map((item, index) => {
+      const statusText = 
+        item.status === 'PAID' ? 'Đã thu' :
+        item.status === 'UNPAID' ? 'Còn nợ' :
+        item.status === 'PARTIAL' ? 'Thu một phần' : '-';
+
+      return [
+        index + 1,
+        item.customerCode,
+        item.customerName,
+        item.mst || '',
+        item.jobs.length,
+        item.totalAmount,
+        statusText,
+        item.totalDeposit,
+        item.depositType,
+        item.totalExtension,
+        item.extensionUnpaid,
+        item.totalDebt
+      ];
+    });
+
+    // Summary row
+    rows.push([
+      'TỔNG CỘNG',
+      '',
+      '',
+      '',
+      displayedData.reduce((s, i) => s + i.jobs.length, 0),
+      kpiTotals.sumTotalAmount,
+      '',
+      kpiTotals.sumTotalDeposit,
+      '',
+      kpiTotals.sumTotalExtension,
+      kpiTotals.sumExtensionUnpaid,
+      kpiTotals.sumTotalDebt
+    ]);
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    
+    // Style column widths
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 16 },
+      { wch: 35 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 26 }
+    ];
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Cong_no_Report");
-    XLSX.writeFile(wb, `Report_${reportType}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Bao_Cao_Cong_No');
+    
+    const timeStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Bao_Cao_Cong_No_Khach_Hang_${timeStr}.xlsx`);
   };
 
   return (
-    <div className="p-8 max-w-full">
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-4 md:p-8 max-w-full space-y-6 animate-in fade-in duration-200">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
-           <div className="flex items-center space-x-3 text-slate-800 mb-2">
-             <div className="p-2 bg-pink-100 text-pink-700 rounded-lg">
-               <WalletCards className="w-6 h-6" />
-             </div>
-             <h1 className="text-3xl font-bold">Quản Lý Công Nợ & Kiểm Soát</h1>
-           </div>
-           <p className="text-slate-500 ml-11">Báo cáo công nợ và lọc các job thiếu thông tin</p>
-        </div>
-        
-        <button onClick={handleExportExcel} className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center shadow-md hover:bg-green-700 transition-colors">
-          <FileSpreadsheet className="w-4 h-4 mr-2" /> Xuất Excel
-        </button>
-      </div>
-
-      {/* Control Panel */}
-      <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4">
-         <div className="flex-1">
-           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Loại Báo Cáo</label>
-           <select 
-             value={reportType} 
-             onChange={(e) => setReportType(e.target.value as ReportType)}
-             className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-           >
-             <optgroup label="Tổng Hợp Công Nợ">
-               <option value="CUSTOMER_DEBT">Công nợ Khách Hàng</option>
-               <option value="LINE_DEBT">Công nợ Hãng Tàu</option>
-             </optgroup>
-             <optgroup label="Kiểm Soát & Cảnh Báo">
-               <option value="UNPAID_JOBS">Danh sách Job chưa thanh toán</option>
-               <option value="LONGHOANG_NO_HBL">Job Long Hoàng thiếu HBL</option>
-               <option value="NO_INVOICE_JOBS">Job thiếu Hóa đơn</option>
-               <option value="TCB_PAYMENT">Job thanh toán qua TCB</option>
-               <option value="DEPOSIT_MISSING_INFO">Cược thiếu thông tin KH</option>
-               <option value="BOOKING_NO_INVOICE">Booking thiếu Hóa đơn đầu vào</option>
-             </optgroup>
-           </select>
-         </div>
-         <div className="flex-1">
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tìm kiếm</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-              <input 
-                type="text" 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Tìm theo tên, job code, booking..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+          <div className="flex items-center space-x-3 text-slate-800 mb-1">
+            <div className="p-2.5 bg-gradient-to-tr from-rose-500 to-amber-500 text-white rounded-xl shadow-md">
+              <WalletCards className="w-6 h-6" />
             </div>
-         </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Quản Lý Công Nợ Khách Hàng</h1>
+              <p className="text-xs md:text-sm text-slate-500">
+                Theo dõi phát sinh Local charge, Deposit, Demurage và Công nợ phải thu
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleExportExcel}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Xuất Excel</span>
+          </button>
+        </div>
       </div>
 
-      {/* Results Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {reportType === 'CUSTOMER_DEBT' ? (
-          // CUSTOMER DEBT TABLE
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
+      {/* FILTER CONTROL BAR */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+          {/* SEARCH BOX */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Tìm theo Mã KH, Tên KH, MST, Job Code, Số HĐ..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+            />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')} 
+                className="absolute right-3 top-3 text-xs text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* RESET FILTER BUTTON */}
+          {hasActiveFilters && (
+            <button 
+              onClick={handleResetFilters}
+              className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors shrink-0 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Xóa bộ lọc</span>
+            </button>
+          )}
+        </div>
+
+        {/* DETAILED FILTERS ROW */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-2 border-t border-slate-100">
+          {/* 1. Lọc theo Năm */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-slate-400" /> Năm
+            </label>
+            <select 
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+            >
+              <option value="all">Tất cả các năm</option>
+              {availableYears.map(y => (
+                <option key={y} value={String(y)}>Năm {y}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 2. Lọc theo Tháng */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-slate-400" /> Tháng
+            </label>
+            <select 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+            >
+              <option value="all">Tất cả các tháng</option>
+              {availableMonths.map(m => (
+                <option key={m} value={m}>Tháng {m.padStart(2, '0')}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 3. Lọc theo Chi Phí (Local charge / Deposit / Demurage) */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Coins className="w-3 h-3 text-slate-400" /> Chi phí
+            </label>
+            <select 
+              value={currencyType}
+              onChange={(e) => setCurrencyType(e.target.value as CurrencyTypeFilter)}
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+            >
+              <option value="all">Tất cả</option>
+              <option value="invoice">Local charge</option>
+              <option value="deposit">Deposit</option>
+              <option value="extension">Demurage</option>
+            </select>
+          </div>
+
+          {/* 4. Lọc theo Khách Hàng */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Building2 className="w-3 h-3 text-slate-400" /> Khách Hàng
+            </label>
+            <select 
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+            >
+              <option value="all">Tất cả khách hàng ({aggregatedData.length})</option>
+              {aggregatedData.map(c => (
+                <option key={c.customerId} value={c.customerId}>
+                  {c.customerCode} - {c.customerName.length > 25 ? c.customerName.slice(0, 25) + '...' : c.customerName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 5. Lọc theo Trạng Thái (Còn nợ / Đã thu) */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 text-slate-400" /> Trạng thái
+            </label>
+            <select 
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+            >
+              <option value="all">Tất cả</option>
+              <option value="unpaid">Còn nợ</option>
+              <option value="paid">Đã thu</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* MAIN DATA TABLE */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs md:text-sm">
+            <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200">
               <tr>
-                <th className="px-6 py-4">Khách Hàng</th>
-                <th className="px-6 py-4 text-right">Nợ Cược</th>
-                <th className="px-6 py-4 text-right bg-green-50 text-green-800 border-l border-green-100">LC Đã Thu</th>
-                <th className="px-6 py-4 text-right bg-red-50 text-red-800 border-r border-red-100">LC Còn Nợ</th>
-                <th className="px-6 py-4 text-right">Tổng Gia Hạn Nợ</th>
-                <th className="px-6 py-4 text-right">Tổng Phải Thu (Không tính Cược)</th>
+                <th className="py-4 px-3 w-10 text-center">#</th>
+                <th className="py-4 px-4 min-w-[200px]">Khách Hàng</th>
+                <th className="py-4 px-4 text-right min-w-[140px] bg-blue-50/40 text-blue-900 border-x border-blue-100/50">
+                  Local charge
+                </th>
+                <th className="py-4 px-4 text-center min-w-[140px]">
+                  Trạng thái
+                </th>
+                <th className="py-4 px-4 text-right min-w-[140px] bg-amber-50/40 text-amber-900 border-x border-amber-100/50">
+                  Deposit
+                </th>
+                <th className="py-4 px-4 text-center min-w-[110px]">
+                  Type
+                </th>
+                <th className="py-4 px-4 text-right min-w-[130px]">
+                  Demurage
+                </th>
+                <th className="py-4 px-4 text-right min-w-[160px] bg-rose-50/60 text-rose-950 font-extrabold border-l border-rose-200">
+                  CÔNG NỢ
+                </th>
+                <th className="py-4 px-3 text-center w-12">Chi tiết</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {reportData.length > 0 ? (
-                reportData.map((item: any, idx) => {
-                  const hasReceivable = item.totalReceivable > 0;
-                  const hasDepositDebt = item.depositDebt > 0;
-                  const isClean = !hasReceivable && !hasDepositDebt;
-                  
+            <tbody className="divide-y divide-slate-100">
+              {paginatedData.length > 0 ? (
+                paginatedData.map((item, idx) => {
+                  const globalIdx = (currentPage - 1) * pageSize + idx + 1;
+                  const isExpanded = expandedRows.has(item.key);
+                  const hasDebt = item.totalDebt > 0;
+                  const isPaid = item.status === 'PAID';
+                  const isUnpaid = item.status === 'UNPAID';
+                  const isPartial = item.status === 'PARTIAL';
+
                   return (
-                    <tr key={idx} className={`hover:bg-gray-50 ${isClean ? 'opacity-70 bg-gray-50/30' : ''}`}>
-                      <td className="px-6 py-4 font-medium text-slate-900">
-                        {item.name}
-                        {isClean && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">Sạch</span>}
-                      </td>
-                      
-                      {/* Nợ Cược */}
-                      <td className={`px-6 py-4 text-right font-medium ${item.depositDebt > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                        {formatCurrency(item.depositDebt)}
-                      </td>
-                      
-                      {/* Local Charge Đã Thu */}
-                      <td className={`px-6 py-4 text-right font-medium bg-green-50/30 ${item.localChargePaid > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                        {formatCurrency(item.localChargePaid)}
-                      </td>
+                    <React.Fragment key={item.key}>
+                      <tr 
+                        className={`hover:bg-slate-50/80 transition-colors ${
+                          hasDebt ? 'bg-white' : 'bg-slate-50/30 opacity-90'
+                        } ${isExpanded ? 'bg-teal-50/20' : ''}`}
+                      >
+                        {/* STT */}
+                        <td className="py-3.5 px-3 text-center text-slate-400 font-medium">
+                          {globalIdx}
+                        </td>
 
-                       {/* Local Charge Còn Nợ */}
-                      <td className={`px-6 py-4 text-right font-medium bg-red-50/30 ${item.localChargeUnpaid > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                        {formatCurrency(item.localChargeUnpaid)}
-                      </td>
+                        {/* CỘT KHÁCH HÀNG */}
+                        <td className="py-3.5 px-4 font-medium text-slate-900">
+                          <div className="flex items-start gap-2">
+                            <button
+                              onClick={() => toggleRowExpand(item.key)}
+                              className="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors mt-0.5 cursor-pointer"
+                              title="Bấm để xem danh sách Job của khách này"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-teal-600" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900">{item.customerCode}</span>
+                                {item.isManuallyOverridden && (
+                                  <span 
+                                    className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 cursor-pointer"
+                                    title="Trạng thái đã được chỉnh sửa thủ công. Bấm để đặt lại tự động"
+                                    onClick={() => handleResetCustomerStatus(item.key)}
+                                  >
+                                    Đã sửa tay ✕
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-500 font-normal line-clamp-1" title={item.customerName}>
+                                {item.customerName}
+                              </div>
+                              <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                <span>{item.jobs.length} Job</span>
+                                {item.mst && <span>• MST: {item.mst}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
 
-                      {/* Tổng Gia Hạn */}
-                      <td className={`px-6 py-4 text-right font-medium ${item.extensionDebt > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
-                        {formatCurrency(item.extensionDebt)}
-                      </td>
+                        {/* CỘT LOCAL CHARGE */}
+                        <td className="py-3.5 px-4 text-right font-bold text-slate-800 bg-blue-50/20 border-x border-blue-100/30">
+                          {formatCurrency(item.totalAmount)}
+                          {item.totalAmount > 0 && (
+                            <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                              {item.amountPaid > 0 && <span className="text-emerald-600">Đã thu: {formatCurrency(item.amountPaid)}</span>}
+                            </div>
+                          )}
+                        </td>
 
-                      {/* Tổng Phải Thu (Sum of LC Unpaid + Ext) */}
-                      <td className={`px-6 py-4 text-right font-bold text-base ${item.totalReceivable > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {formatCurrency(item.totalReceivable)}
-                      </td>
-                    </tr>
-                  )
+                        {/* CỘT TRẠNG THÁI (SỬA THỦ CÔNG: CÒN NỢ / ĐÃ THU) */}
+                        <td className="py-3.5 px-4 text-center">
+                          {item.totalAmount > 0 ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              <select
+                                value={item.status === 'PARTIAL' ? 'UNPAID' : item.status}
+                                onChange={(e) => handleUpdateCustomerStatus(item, e.target.value as 'PAID' | 'UNPAID')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer outline-none ${
+                                  isPaid
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                    : isUnpaid
+                                    ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
+                                    : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                                }`}
+                              >
+                                <option value="PAID">✓ Đã thu</option>
+                                <option value="UNPAID">⏳ Còn nợ</option>
+                              </select>
+
+                              {isPartial && (
+                                <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium" title="Có một số job đã thu, một số job còn nợ">
+                                  1 phần
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-xs italic">-</span>
+                          )}
+                        </td>
+
+                        {/* CỘT DEPOSIT */}
+                        <td className="py-3.5 px-4 text-right font-semibold text-slate-800 bg-amber-50/20 border-x border-amber-100/30">
+                          {item.totalDeposit > 0 ? (
+                            <span className="text-amber-800 font-bold">{formatCurrency(item.totalDeposit)}</span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+
+                        {/* CỘT TYPE (PENDING / REFUNDED) */}
+                        <td className="py-3.5 px-4 text-center">
+                          {item.depositType === 'Refunded' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                              <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
+                              Refunded
+                            </span>
+                          ) : item.depositType === 'Pending' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                              <Clock className="w-3 h-3 mr-1 text-amber-600" />
+                              Pending
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+
+                        {/* CỘT DEMURAGE */}
+                        <td className="py-3.5 px-4 text-right font-medium text-slate-700">
+                          {item.totalExtension > 0 ? (
+                            <div>
+                              <span>{formatCurrency(item.totalExtension)}</span>
+                              {item.extensionUnpaid > 0 && (
+                                <div className="text-[10px] text-rose-600 font-semibold">
+                                  Nợ: {formatCurrency(item.extensionUnpaid)}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+
+                        {/* CỘT CÔNG NỢ */}
+                        <td className="py-3.5 px-4 text-right bg-rose-50/40 border-l border-rose-200">
+                          <div className={`font-black text-sm md:text-base ${
+                            hasDebt ? 'text-rose-600' : 'text-emerald-600'
+                          }`}>
+                            {formatCurrency(item.totalDebt)}
+                          </div>
+                          {hasDebt ? (
+                            <div className="text-[10px] text-rose-500 font-medium">
+                              Còn nợ
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-emerald-600 font-semibold">
+                              ✓ Đã thu
+                            </div>
+                          )}
+                        </td>
+
+                        {/* NÚT MỞ RỘNG CHI TIẾT */}
+                        <td className="py-3.5 px-3 text-center">
+                          <button
+                            onClick={() => toggleRowExpand(item.key)}
+                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
+                            title="Xem chi tiết các Job của khách hàng"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* EXPANDED ROW: DANH SÁCH CHI TIẾT CÁC JOB */}
+                      {isExpanded && (
+                        <tr className="bg-slate-50/90 border-y border-teal-200/50">
+                          <td colSpan={9} className="p-4 md:p-6">
+                            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-800">
+                                    Chi tiết các Job của {item.customerCode} ({item.customerName})
+                                  </span>
+                                  <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                                    {item.jobs.length} Job phát sinh
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-500 flex items-center gap-3">
+                                  <span>Gợi ý: Bạn có thể đổi trạng thái thu tiền riêng cho từng Job bên dưới</span>
+                                </div>
+                              </div>
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-left">
+                                  <thead className="bg-slate-100/70 text-slate-600 font-semibold uppercase text-[10px]">
+                                    <tr>
+                                      <th className="py-2.5 px-3">Job Code</th>
+                                      <th className="py-2.5 px-3">Booking</th>
+                                      <th className="py-2.5 px-3">Tháng/Năm</th>
+                                      <th className="py-2.5 px-3">Số HĐ / Ngày</th>
+                                      <th className="py-2.5 px-3 text-right">Local charge</th>
+                                      <th className="py-2.5 px-3 text-center">Thu Tiền Job</th>
+                                      <th className="py-2.5 px-3 text-right">Deposit</th>
+                                      <th className="py-2.5 px-3 text-center">Hoàn Cược</th>
+                                      <th className="py-2.5 px-3 text-right">Demurage</th>
+                                      <th className="py-2.5 px-3 text-center">Thao tác</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {item.jobs.map((job) => (
+                                      <tr key={job.id} className="hover:bg-slate-50/60">
+                                        <td className="py-2.5 px-3 font-bold text-teal-700">
+                                          {job.jobCode}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-slate-600">
+                                          {job.booking}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-slate-500">
+                                          T{job.month}/{job.year}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-slate-600">
+                                          {job.invoiceNo ? (
+                                            <div>
+                                              <span className="font-semibold text-slate-800">{job.invoiceNo}</span>
+                                              {job.invoiceDate && <div className="text-[10px] text-slate-400">{job.invoiceDate}</div>}
+                                            </div>
+                                          ) : (
+                                            <span className="text-slate-400 italic">Chưa có HĐ</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-right font-semibold text-slate-800">
+                                          {formatCurrency(job.amount)}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-center">
+                                          {job.amount > 0 ? (
+                                            <button
+                                              onClick={() => handleToggleSingleJobStatus(job.id, job.isPaid)}
+                                              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                                job.isPaid
+                                                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                                  : 'bg-rose-100 text-rose-800 hover:bg-rose-200'
+                                              }`}
+                                              title="Bấm để chuyển trạng thái Đã thu / Còn nợ cho job này"
+                                            >
+                                              {job.isPaid ? '✓ Đã thu' : '⏳ Còn nợ'}
+                                            </button>
+                                          ) : (
+                                            <span className="text-slate-400">-</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-right font-medium text-amber-700">
+                                          {job.depositAmount > 0 ? formatCurrency(job.depositAmount) : '-'}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-center">
+                                          {job.depositAmount > 0 ? (
+                                            job.depositRefunded ? (
+                                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
+                                                Refunded
+                                              </span>
+                                            ) : (
+                                              <span className="text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded">
+                                                Pending
+                                              </span>
+                                            )
+                                          ) : (
+                                            <span className="text-slate-400">-</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-right font-medium text-slate-700">
+                                          {job.extensionAmount > 0 ? formatCurrency(job.extensionAmount) : '-'}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-center">
+                                          {onViewJob && (
+                                            <button
+                                              onClick={() => onViewJob(job.id)}
+                                              className="text-teal-600 hover:text-teal-800 font-semibold cursor-pointer text-[11px]"
+                                            >
+                                              Xem Job
+                                            </button>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
                 })
               ) : (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu công nợ</td></tr>
-              )}
-            </tbody>
-          </table>
-        ) : reportType === 'LINE_DEBT' ? (
-          // LINE DEBT TABLE
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
-              <tr>
-                <th className="px-6 py-4">Hãng Tàu</th>
-                <th className="px-6 py-4 text-center">Số lượng Job</th>
-                <th className="px-6 py-4 text-right">Tổng Chi Phí</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {reportData.length > 0 ? (
-                reportData.map((item: any, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-slate-900">{item.line}</td>
-                    <td className="px-6 py-4 text-center bg-gray-50/50">{item.jobCount}</td>
-                    <td className="px-6 py-4 text-right font-bold text-red-600">
-                       {formatCurrency(item.totalCost)}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr><td colSpan={3} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu công nợ hãng tàu</td></tr>
-              )}
-            </tbody>
-          </table>
-        ) : (
-          // DETAIL JOB TABLE (For Check/Warning reports)
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-gray-200 uppercase text-xs">
-              <tr>
-                <th className="px-6 py-4">Tháng</th>
-                <th className="px-6 py-4">Job Code</th>
-                <th className="px-6 py-4">Booking</th>
-                <th className="px-6 py-4">Khách Hàng</th>
-                <th className="px-6 py-4 text-right">Số Tiền</th>
-                <th className="px-6 py-4 text-center">Trạng Thái</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {reportData.length > 0 ? (
-                 reportData.map((job: JobData) => {
-                   const amt = job.localChargeTotal || job.sell || job.thuCuoc;
-                   return (
-                     <tr 
-                        key={job.id} 
-                        className="hover:bg-blue-50/50 cursor-pointer transition-colors"
-                        onClick={() => onViewJob && onViewJob(job.id)}
-                     >
-                       <td className="px-6 py-4 text-gray-500">T{job.month}</td>
-                       <td className="px-6 py-4 font-medium text-blue-600">{job.jobCode}</td>
-                       <td className="px-6 py-4 text-gray-600">{job.booking}</td>
-                       <td className="px-6 py-4 text-gray-800 font-medium">{job.customerName}</td>
-                       <td className="px-6 py-4 text-right text-slate-700">{formatCurrency(amt)}</td>
-                       <td className="px-6 py-4 text-center">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                             <AlertTriangle className="w-3 h-3 mr-1" /> Kiểm tra
-                          </span>
-                       </td>
-                     </tr>
-                   )
-                 })
-              ) : (
                 <tr>
-                   <td colSpan={6} className="px-6 py-12 text-center flex flex-col items-center justify-center text-gray-400">
-                      <CheckCircle className="w-10 h-10 mb-2 text-green-500 opacity-50" />
-                      <span>Không phát hiện dữ liệu lỗi hoặc công nợ</span>
-                   </td>
+                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <div className="p-3 bg-slate-100 rounded-full text-slate-400">
+                        <AlertCircle className="w-8 h-8" />
+                      </div>
+                      <p className="font-semibold text-slate-600">Không tìm thấy khách hàng nào phù hợp với bộ lọc</p>
+                      <p className="text-xs text-slate-400">
+                        Vui lòng thử điều chỉnh lại điều kiện lọc tháng, năm hoặc từ khóa tìm kiếm
+                      </p>
+                      {hasActiveFilters && (
+                        <button
+                          onClick={handleResetFilters}
+                          className="mt-2 px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                        >
+                          Xóa tất cả bộ lọc
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               )}
             </tbody>
+            {displayedData.length > 0 && (
+              <tfoot className="bg-slate-100/95 font-bold text-xs md:text-sm text-slate-900 border-t-2 border-slate-300">
+                <tr className="divide-x divide-slate-200">
+                  <td colSpan={2} className="py-4 px-4 text-center uppercase tracking-wider font-extrabold text-slate-800">
+                    TỔNG CỘNG ({displayedData.length} KH)
+                  </td>
+                  <td className="py-4 px-4 text-right bg-blue-50/70 text-blue-950 font-black text-sm">
+                    {formatCurrency(kpiTotals.sumTotalAmount)}
+                  </td>
+                  <td className="py-4 px-4 text-center text-slate-600 font-semibold text-xs">
+                    {kpiTotals.countInDebt > 0 ? `${kpiTotals.countInDebt} KH còn nợ` : 'Đã thu'}
+                  </td>
+                  <td className="py-4 px-4 text-right bg-amber-50/70 text-amber-950 font-black text-sm">
+                    {formatCurrency(kpiTotals.sumTotalDeposit)}
+                  </td>
+                  <td className="py-4 px-4 text-center text-slate-400 font-normal">
+                    -
+                  </td>
+                  <td className="py-4 px-4 text-right bg-indigo-50/50 text-indigo-950 font-black text-sm">
+                    {formatCurrency(kpiTotals.sumTotalExtension)}
+                  </td>
+                  <td className="py-4 px-4 text-right bg-rose-100/90 text-rose-950 font-black text-base border-l-2 border-rose-300">
+                    {formatCurrency(kpiTotals.sumTotalDebt)}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
+        </div>
+
+        {/* PAGINATION CONTROLS (10 DÒNG / TRANG) */}
+        {displayedData.length > 0 && (
+          <div className="bg-white border-t border-slate-200 px-4 py-3 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+            {/* LEFT: INFO & PAGE SIZE SELECTOR */}
+            <div className="flex items-center gap-2.5">
+              <span>Hiển thị</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+              >
+                <option value={10}>10 dòng / trang</option>
+                <option value={20}>20 dòng / trang</option>
+                <option value={50}>50 dòng / trang</option>
+                <option value={100}>100 dòng / trang</option>
+              </select>
+              <span>
+                (từ <strong>{totalItems > 0 ? (currentPage - 1) * pageSize + 1 : 0}</strong> - <strong>{Math.min(currentPage * pageSize, totalItems)}</strong> trong tổng số <strong>{totalItems}</strong> khách hàng)
+              </span>
+            </div>
+
+            {/* RIGHT: PAGINATION BUTTONS */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                title="Trang đầu"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                title="Trang trước"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {/* PAGE NUMBERS */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                  .map((p, idx, arr) => {
+                    const prevP = arr[idx - 1];
+                    const hasGap = prevP && p - prevP > 1;
+
+                    return (
+                      <React.Fragment key={p}>
+                        {hasGap && <span className="px-1 text-slate-400">...</span>}
+                        <button
+                          onClick={() => setCurrentPage(p)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            currentPage === p
+                              ? 'bg-teal-600 text-white shadow-sm'
+                              : 'border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage >= totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                title="Trang sau"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage >= totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                title="Trang cuối"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
