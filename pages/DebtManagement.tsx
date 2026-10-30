@@ -33,7 +33,7 @@ interface DebtManagementProps {
 }
 
 type CurrencyTypeFilter = 'all' | 'invoice' | 'deposit' | 'extension';
-type StatusFilter = 'all' | 'unpaid' | 'paid';
+type StatusFilter = 'all' | 'unpaid' | 'paid' | 'pending' | 'refunded';
 
 interface CustomerDebtItem {
   key: string;
@@ -74,7 +74,10 @@ interface CustomerDebtItem {
     invoiceNo: string;
     invoiceDate: string;
     amount: number;
+    amountPaid: number;
+    amountUnpaid: number;
     isPaid: boolean;
+    isPartial: boolean;
     bank: string;
     depositAmount: number;
     depositRefunded: boolean;
@@ -82,6 +85,7 @@ interface CustomerDebtItem {
     depositDateIn?: string;
     extensionAmount: number;
     extensionPaid: boolean;
+    extensionUnpaid: number;
   }[];
 }
 
@@ -197,6 +201,144 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
     return true;
   };
 
+  // Helper to calculate collected and unpaid amount for a Job's Local Charge (Thanh toán thiếu)
+  const getJobLocalChargeBreakdown = (job: JobData, allJobsList?: JobData[]) => {
+    const invoiceAmt = Number(job.localChargeTotal) || 
+      (Number(job.localChargeNet || 0) + Number(job.localChargeVat || 0)) || 
+      0;
+
+    if (invoiceAmt <= 0) {
+      return { expected: 0, paid: 0, unpaid: 0, isPaid: true, isPartial: false };
+    }
+
+    // 1. Check AMIS main receipt amount (amisLcAmount)
+    let lcMain: number | null = null;
+    if (job.amisLcAmount !== undefined && job.amisLcAmount !== null) {
+      const rawAmis = Number(job.amisLcAmount);
+      // Check if amisLcAmount is for a merged group with multiple jobs
+      if (allJobsList && job.amisLcDocNo && rawAmis > invoiceAmt) {
+        const groupTotal = allJobsList.reduce((sum, j) => {
+          if (j.amisLcDocNo !== job.amisLcDocNo) return sum;
+          return sum + (Number(j.localChargeTotal) || 0);
+        }, 0);
+        if (Math.abs(rawAmis - groupTotal) < 5000) {
+          lcMain = invoiceAmt;
+        } else {
+          lcMain = rawAmis;
+        }
+      } else {
+        lcMain = rawAmis;
+      }
+    }
+
+    // 2. Additional receipts (Thu thêm / Thu nhiều lần)
+    const lcAdditional = (job.additionalReceipts || [])
+      .filter(r => r.type === 'local' || r.type === 'other')
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+    // 3. Refunds
+    const lcRefunds = (job.refunds || []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+    // If explicit receipts exist (amisLcAmount, additionalReceipts, refunds):
+    if (lcMain !== null || lcAdditional > 0 || lcRefunds > 0) {
+      const mainAmt = lcMain !== null ? lcMain : (job.amisLcDocNo ? invoiceAmt : 0);
+      const totalCollected = Math.max(0, mainAmt + lcAdditional - lcRefunds);
+      
+      const paid = Math.min(invoiceAmt, totalCollected);
+      const unpaid = Math.max(0, invoiceAmt - paid);
+      const isPartial = paid > 0 && unpaid > 0;
+      const isPaid = unpaid === 0;
+
+      return {
+        expected: invoiceAmt,
+        paid,
+        unpaid,
+        isPaid,
+        isPartial
+      };
+    }
+
+    // If no explicit amisLcAmount or receipts, check bank or amisLcDocNo
+    const hasDoc = Boolean(job.amisLcDocNo && String(job.amisLcDocNo).trim().length > 0);
+    const hasBank = checkIsPaid(job.bank);
+
+    if (hasDoc || hasBank) {
+      return {
+        expected: invoiceAmt,
+        paid: invoiceAmt,
+        unpaid: 0,
+        isPaid: true,
+        isPartial: false
+      };
+    }
+
+    // Completely unpaid
+    return {
+      expected: invoiceAmt,
+      paid: 0,
+      unpaid: invoiceAmt,
+      isPaid: false,
+      isPartial: false
+    };
+  };
+
+  // Helper to calculate collected and unpaid amount for a Job's Extension (Demurrage)
+  const getExtensionBreakdown = (ext: any, job: JobData) => {
+    const amt = Number(ext.total) || 0;
+    if (amt <= 0) {
+      return { total: 0, paid: 0, unpaid: 0, isPaid: true, isPartial: false };
+    }
+
+    // Additional receipts for this extension
+    const extAdd = (job.additionalReceipts || [])
+      .filter(r => r.type === 'extension' && r.extensionId === ext.id)
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+    if (ext.amisAmount !== undefined && ext.amisAmount !== null) {
+      const rawAmis = Number(ext.amisAmount);
+      const totalCollected = Math.max(0, rawAmis + extAdd);
+      const paid = Math.min(amt, totalCollected);
+      const unpaid = Math.max(0, amt - paid);
+      return {
+        total: amt,
+        paid,
+        unpaid,
+        isPaid: unpaid === 0,
+        isPartial: paid > 0 && unpaid > 0
+      };
+    }
+
+    if (ext.amisDocNo || ext.locked || checkIsPaid(job.bank)) {
+      return {
+        total: amt,
+        paid: amt,
+        unpaid: 0,
+        isPaid: true,
+        isPartial: false
+      };
+    }
+
+    if (extAdd > 0) {
+      const paid = Math.min(amt, extAdd);
+      const unpaid = Math.max(0, amt - paid);
+      return {
+        total: amt,
+        paid,
+        unpaid,
+        isPaid: unpaid === 0,
+        isPartial: paid > 0 && unpaid > 0
+      };
+    }
+
+    return {
+      total: amt,
+      paid: 0,
+      unpaid: amt,
+      isPaid: false,
+      isPartial: false
+    };
+  };
+
   // --- CORE DATA AGGREGATION ---
   const aggregatedData = useMemo(() => {
     // 1. Filter jobs by Year & Month
@@ -262,11 +404,9 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
 
     // Process every filtered job
     filteredJobs.forEach(job => {
-      // 1. Thu Invoice (Amount / Local charge)
-      const invoiceAmt = Number(job.localChargeTotal) || 
-        (Number(job.localChargeNet || 0) + Number(job.localChargeVat || 0)) || 
-        0;
-      const isJobPaid = checkIsPaid(job.bank, job.amisLcDocNo);
+      // 1. Thu Invoice (Amount / Local charge) with Partial Payment support
+      const lcBreakdown = getJobLocalChargeBreakdown(job, jobs);
+      const invoiceAmt = lcBreakdown.expected;
       const invBucket = getBucket(job.customerId, job.customerName);
 
       // 2. Thu Cược (Deposit): may belong to maKhCuocId or job's customer or jobDeposits
@@ -300,7 +440,7 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
         }
       });
 
-      // 3. Gia Hạn (Extensions / Demurage)
+      // 3. Gia Hạn (Extensions / Demurage) with Partial Payment support
       const extByBucket = new Map<ReturnType<typeof getBucket>, { totalExt: number, extPaid: number, extUnpaid: number }>();
       let jobTotalExt = 0;
       let jobExtPaid = 0;
@@ -308,19 +448,15 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       const extensions = job.extensions || [];
       extensions.forEach(e => {
         const b = e.customerId ? getBucket(e.customerId, undefined) : invBucket;
-        const amt = Number(e.total) || 0;
-        const isPaid = Boolean(e.amisDocNo || e.amisAmount || e.locked || checkIsPaid(job.bank));
+        const eb = getExtensionBreakdown(e, job);
         if (!extByBucket.has(b)) extByBucket.set(b, { totalExt: 0, extPaid: 0, extUnpaid: 0 });
         const cur = extByBucket.get(b)!;
-        cur.totalExt += amt;
-        jobTotalExt += amt;
-        if (isPaid) {
-          cur.extPaid += amt;
-          jobExtPaid += amt;
-        } else {
-          cur.extUnpaid += amt;
-          jobExtUnpaid += amt;
-        }
+        cur.totalExt += eb.total;
+        cur.extPaid += eb.paid;
+        cur.extUnpaid += eb.unpaid;
+        jobTotalExt += eb.total;
+        jobExtPaid += eb.paid;
+        jobExtUnpaid += eb.unpaid;
       });
 
       // Collect all distinct customer buckets participating in this job
@@ -341,7 +477,11 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
 
       // Add financial stats and job entry to EACH participating customer bucket
       participatingBuckets.forEach(b => {
-        const custInvAmt = (b === invBucket) ? invoiceAmt : 0;
+        const isMainCust = (b === invBucket);
+        const custInvAmt = isMainCust ? invoiceAmt : 0;
+        const custPaidAmt = isMainCust ? lcBreakdown.paid : 0;
+        const custUnpaidAmt = isMainCust ? lcBreakdown.unpaid : 0;
+
         const depInfo = depositsByBucket.get(b);
         const custDepAmt = depInfo ? depInfo.amount : 0;
         const custDepRef = depInfo ? depInfo.isRefunded : Boolean(job.ngayThuHoan);
@@ -350,11 +490,8 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
         // Add Invoice to bucket
         if (custInvAmt > 0) {
           b.totalAmount += custInvAmt;
-          if (isJobPaid) {
-            b.amountPaid += custInvAmt;
-          } else {
-            b.amountUnpaid += custInvAmt;
-          }
+          b.amountPaid += custPaidAmt;
+          b.amountUnpaid += custUnpaidAmt;
         }
 
         // Add Deposit to bucket
@@ -384,14 +521,18 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
           invoiceNo: job.localChargeInvoice ? String(job.localChargeInvoice) : '',
           invoiceDate: job.localChargeDate ? String(job.localChargeDate) : '',
           amount: custInvAmt > 0 ? custInvAmt : invoiceAmt,
-          isPaid: isJobPaid,
+          amountPaid: custPaidAmt,
+          amountUnpaid: custUnpaidAmt,
+          isPaid: lcBreakdown.isPaid,
+          isPartial: lcBreakdown.isPartial,
           bank: String(job.bank || ''),
           depositAmount: custDepAmt > 0 ? custDepAmt : mainDepositAmt,
           depositRefunded: custDepRef,
           depositDateOut: job.ngayThuCuoc ? String(job.ngayThuCuoc) : '',
           depositDateIn: job.ngayThuHoan ? String(job.ngayThuHoan) : '',
           extensionAmount: extInfo.totalExt > 0 ? extInfo.totalExt : jobTotalExt,
-          extensionPaid: extInfo.extPaid > 0 && extInfo.extUnpaid === 0
+          extensionPaid: extInfo.extPaid > 0 && extInfo.extUnpaid === 0,
+          extensionUnpaid: extInfo.extUnpaid
         });
       });
     });
@@ -414,11 +555,12 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       if (manualOverride) {
         status = manualOverride;
         isManuallyOverridden = true;
-      } else if (bucket.totalAmount > 0) {
-        if (bucket.amountUnpaid === 0) {
-          status = 'PAID';
-        } else {
+      } else if (bucket.totalAmount > 0 || bucket.totalExtension > 0) {
+        // If there is ANY unpaid debt (Local charge or Demurrage)
+        if (bucket.amountUnpaid > 0 || bucket.extensionUnpaid > 0) {
           status = 'UNPAID';
+        } else {
+          status = 'PAID';
         }
       } else {
         status = 'NO_INVOICE';
@@ -441,12 +583,12 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
       if (status === 'PAID') {
         unpaidAmountForDebt = 0;
       } else if (status === 'UNPAID') {
-        unpaidAmountForDebt = bucket.amountUnpaid > 0 ? bucket.amountUnpaid : bucket.totalAmount;
+        unpaidAmountForDebt = bucket.amountUnpaid;
       } else {
         unpaidAmountForDebt = 0;
       }
 
-      const totalDebt = unpaidAmountForDebt + bucket.extensionUnpaid;
+      const totalDebt = unpaidAmountForDebt + (status === 'PAID' ? 0 : bucket.extensionUnpaid);
 
       list.push({
         key,
@@ -500,12 +642,38 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
         return false;
       }
 
-      // 3. Filter by Status (Chưa thu tiền / Đã thu tiền)
-      if (statusFilter === 'unpaid') {
-        if (item.totalDebt <= 0 && item.status === 'PAID') return false;
-      }
-      if (statusFilter === 'paid') {
-        if (item.totalDebt > 0 || item.status === 'UNPAID') return false;
+      // 3. Filter by Status (Local charge / Demurrage: Còn nợ / Đã thu; Deposit: Pending / Refunded)
+      if (currencyType === 'deposit') {
+        const isPending = item.depositType === 'Pending' || item.depositPendingCount > 0;
+        const isRefunded = item.depositType === 'Refunded' || (item.depositPendingCount === 0 && item.depositRefundedCount > 0);
+
+        if (statusFilter === 'pending' || statusFilter === 'unpaid') {
+          if (!isPending) return false;
+        } else if (statusFilter === 'refunded' || statusFilter === 'paid') {
+          if (!isRefunded) return false;
+        }
+      } else if (currencyType === 'invoice') {
+        // Local charge: Còn nợ / Đã thu
+        if (statusFilter === 'unpaid' || statusFilter === 'pending') {
+          if (item.amountUnpaid <= 0) return false;
+        } else if (statusFilter === 'paid' || statusFilter === 'refunded') {
+          if (item.amountUnpaid > 0) return false;
+        }
+      } else if (currencyType === 'extension') {
+        // Demurage: Còn nợ / Đã thu
+        if (statusFilter === 'unpaid' || statusFilter === 'pending') {
+          if (item.extensionUnpaid <= 0) return false;
+        } else if (statusFilter === 'paid' || statusFilter === 'refunded') {
+          if (item.extensionUnpaid > 0) return false;
+        }
+      } else {
+        // All types: Còn nợ / Đã thu
+        if (statusFilter === 'unpaid' || statusFilter === 'pending') {
+          // "Trạng thái Còn nợ chỉ hiện thị các khách hàng còn nợ không hiển thị Khách hàng đã thu"
+          if (item.totalDebt <= 0 || item.status === 'PAID') return false;
+        } else if (statusFilter === 'paid' || statusFilter === 'refunded') {
+          if (item.totalDebt > 0 || item.status === 'UNPAID') return false;
+        }
       }
 
       // 4. Filter by Search Query
@@ -606,14 +774,18 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
         .filter(j => jobIdsToUpdate.has(j.id))
         .map(j => {
           if (newStatus === 'PAID') {
+            const fullAmt = j.localChargeTotal || (Number(j.localChargeNet || 0) + Number(j.localChargeVat || 0)) || undefined;
             return {
               ...j,
-              bank: j.bank && j.bank.trim().length > 0 ? j.bank : 'TCB Bank'
+              bank: j.bank && j.bank.trim().length > 0 ? j.bank : 'TCB Bank',
+              amisLcAmount: fullAmt
             };
           } else {
             return {
               ...j,
-              bank: ''
+              bank: '',
+              amisLcDocNo: '',
+              amisLcAmount: 0
             };
           }
         });
@@ -629,10 +801,22 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
     const job = jobs.find(j => j.id === jobId);
     if (!job || !onEditJob) return;
 
-    const updatedJob: JobData = {
-      ...job,
-      bank: currentPaid ? '' : (job.bank && job.bank.trim().length > 0 ? job.bank : 'TCB Bank')
-    };
+    let updatedJob: JobData;
+    if (currentPaid) {
+      updatedJob = {
+        ...job,
+        bank: '',
+        amisLcDocNo: '',
+        amisLcAmount: 0
+      };
+    } else {
+      const fullAmt = job.localChargeTotal || (Number(job.localChargeNet || 0) + Number(job.localChargeVat || 0)) || undefined;
+      updatedJob = {
+        ...job,
+        bank: job.bank && job.bank.trim().length > 0 ? job.bank : 'TCB Bank',
+        amisLcAmount: fullAmt
+      };
+    }
 
     onEditJob(updatedJob);
   };
@@ -931,7 +1115,17 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
             </label>
             <select 
               value={currencyType}
-              onChange={(e) => setCurrencyType(e.target.value as CurrencyTypeFilter)}
+              onChange={(e) => {
+                const nextType = e.target.value as CurrencyTypeFilter;
+                setCurrencyType(nextType);
+                if (nextType === 'deposit') {
+                  if (statusFilter === 'unpaid') setStatusFilter('pending');
+                  else if (statusFilter === 'paid') setStatusFilter('refunded');
+                } else {
+                  if (statusFilter === 'pending') setStatusFilter('unpaid');
+                  else if (statusFilter === 'refunded') setStatusFilter('paid');
+                }
+              }}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
             >
               <option value="all">Tất cả</option>
@@ -960,20 +1154,36 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
             </select>
           </div>
 
-          {/* 5. Lọc theo Trạng Thái (Còn nợ / Đã thu) */}
+          {/* 5. Lọc theo Trạng Thái (Còn nợ / Đã thu đối với Local charge/Demurrage/Tất cả; Pending / Refunded đối với Deposit) */}
           <div>
             <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-slate-400" /> Trạng thái
+              {currencyType === 'deposit' ? (
+                <><Coins className="w-3 h-3 text-amber-500" /> Trạng thái Cược</>
+              ) : (
+                <><CheckCircle2 className="w-3 h-3 text-slate-400" /> Trạng thái Nợ</>
+              )}
             </label>
-            <select 
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
-            >
-              <option value="all">Tất cả</option>
-              <option value="unpaid">Còn nợ</option>
-              <option value="paid">Đã thu</option>
-            </select>
+            {currencyType === 'deposit' ? (
+              <select 
+                value={statusFilter === 'unpaid' ? 'pending' : statusFilter === 'paid' ? 'refunded' : statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="w-full p-2 bg-amber-50/60 border border-amber-200 rounded-lg text-xs font-bold text-amber-900 focus:ring-2 focus:ring-amber-500 outline-none"
+              >
+                <option value="all">Tất cả cược</option>
+                <option value="pending">⏳ Pending (Chưa hoàn)</option>
+                <option value="refunded">✓ Refunded (Đã hoàn)</option>
+              </select>
+            ) : (
+              <select 
+                value={statusFilter === 'pending' ? 'unpaid' : statusFilter === 'refunded' ? 'paid' : statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+              >
+                <option value="all">Tất cả</option>
+                <option value="unpaid">⏳ Còn nợ</option>
+                <option value="paid">✓ Đã thu</option>
+              </select>
+            )}
           </div>
         </div>
       </div>
@@ -1070,15 +1280,24 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                         <td className="py-3.5 px-4 text-right font-bold text-slate-800 bg-blue-50/20 border-x border-blue-100/30">
                           {formatCurrency(item.totalAmount)}
                           {item.totalAmount > 0 && (
-                            <div className="text-[10px] font-normal text-slate-400 mt-0.5">
-                              {item.amountPaid > 0 && <span className="text-emerald-600">Đã thu: {formatCurrency(item.amountPaid)}</span>}
+                            <div className="text-[10px] font-normal mt-0.5 space-y-0.5">
+                              {item.amountPaid > 0 && item.amountUnpaid > 0 ? (
+                                <>
+                                  <div className="text-emerald-600 font-medium">Đã thu: {formatCurrency(item.amountPaid)}</div>
+                                  <div className="text-rose-600 font-bold">Thiếu: {formatCurrency(item.amountUnpaid)}</div>
+                                </>
+                              ) : item.amountPaid > 0 ? (
+                                <span className="text-emerald-600 font-medium">Đã thu: {formatCurrency(item.amountPaid)}</span>
+                              ) : (
+                                <span className="text-rose-600 font-medium">Chưa thu</span>
+                              )}
                             </div>
                           )}
                         </td>
 
                         {/* CỘT TRẠNG THÁI (SỬA THỦ CÔNG: CÒN NỢ / ĐÃ THU) */}
                         <td className="py-3.5 px-4 text-center">
-                          {item.totalAmount > 0 ? (
+                          {item.totalAmount > 0 || item.totalExtension > 0 ? (
                             <div className="inline-flex items-center gap-1.5">
                               <select
                                 value={item.status === 'PAID' ? 'PAID' : 'UNPAID'}
@@ -1163,7 +1382,11 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                           </div>
                           {hasDebt ? (
                             <div className="text-[10px] text-rose-500 font-medium">
-                              Còn nợ
+                              {item.amountPaid > 0 && item.amountUnpaid > 0 ? (
+                                <span>Còn thiếu: {formatCurrency(item.amountUnpaid)}</span>
+                              ) : (
+                                <span>Còn nợ</span>
+                              )}
                             </div>
                           ) : (
                             <div className="text-[10px] text-emerald-600 font-semibold">
@@ -1242,7 +1465,13 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                                           )}
                                         </td>
                                         <td className="py-2.5 px-3 text-right font-semibold text-slate-800">
-                                          {formatCurrency(job.amount)}
+                                          <div>{formatCurrency(job.amount)}</div>
+                                          {job.isPartial && (
+                                            <div className="text-[10px] font-normal space-y-0.5 mt-0.5">
+                                              <div className="text-emerald-600">Đã thu: {formatCurrency(job.amountPaid)}</div>
+                                              <div className="text-rose-600 font-bold">Thiếu: {formatCurrency(job.amountUnpaid)}</div>
+                                            </div>
+                                          )}
                                         </td>
                                         <td className="py-2.5 px-3 text-center">
                                           {job.amount > 0 || Boolean(job.bank) ? (
@@ -1251,11 +1480,13 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                                               className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
                                                 job.isPaid
                                                   ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                                  : job.isPartial
+                                                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300'
                                                   : 'bg-rose-100 text-rose-800 hover:bg-rose-200'
                                               }`}
-                                              title="Bấm để chuyển trạng thái Đã thu / Còn nợ cho job này"
+                                              title={job.isPartial ? `Đã thu ${formatCurrency(job.amountPaid)}, còn thiếu ${formatCurrency(job.amountUnpaid)}. Bấm để đánh dấu đã thu đủ.` : "Bấm để chuyển trạng thái Đã thu / Còn nợ cho job này"}
                                             >
-                                              {job.isPaid ? '✓ Đã thu' : '⏳ Còn nợ'}
+                                              {job.isPaid ? '✓ Đã thu' : job.isPartial ? '⏳ Thu thiếu' : '⏳ Còn nợ'}
                                             </button>
                                           ) : (
                                             <span className="text-slate-400">-</span>
@@ -1338,18 +1569,38 @@ export const DebtManagement: React.FC<DebtManagementProps> = ({
                   </td>
                   <td className="py-4 px-4 text-right bg-blue-50/70 text-blue-950 font-black text-sm">
                     {formatCurrency(kpiTotals.sumTotalAmount)}
+                    {kpiTotals.sumAmountUnpaid > 0 && (
+                      <div className="text-[10px] text-rose-600 font-semibold mt-0.5">
+                        Thiếu: {formatCurrency(kpiTotals.sumAmountUnpaid)}
+                      </div>
+                    )}
                   </td>
                   <td className="py-4 px-4 text-center text-slate-600 font-semibold text-xs">
-                    {kpiTotals.countInDebt > 0 ? `${kpiTotals.countInDebt} KH còn nợ` : 'Đã thu'}
+                    {currencyType === 'deposit' 
+                      ? (kpiTotals.sumDepositPending > 0 
+                          ? `${displayedData.filter(i => i.depositType === 'Pending').length} KH Pending` 
+                          : 'Đã hoàn (Refunded)')
+                      : (kpiTotals.countInDebt > 0 ? `${kpiTotals.countInDebt} KH còn nợ` : 'Đã thu')
+                    }
                   </td>
                   <td className="py-4 px-4 text-right bg-amber-50/70 text-amber-950 font-black text-sm">
                     {formatCurrency(kpiTotals.sumTotalDeposit)}
                   </td>
-                  <td className="py-4 px-4 text-center text-slate-400 font-normal">
-                    -
+                  <td className="py-4 px-4 text-center font-bold text-xs text-amber-800">
+                    {currencyType === 'deposit'
+                      ? (kpiTotals.sumDepositPending > 0
+                          ? `Pending: ${formatCurrency(kpiTotals.sumDepositPending)}`
+                          : (kpiTotals.sumDepositRefunded > 0 ? 'Refunded' : '-'))
+                      : '-'
+                    }
                   </td>
                   <td className="py-4 px-4 text-right bg-indigo-50/50 text-indigo-950 font-black text-sm">
                     {formatCurrency(kpiTotals.sumTotalExtension)}
+                    {kpiTotals.sumExtensionUnpaid > 0 && (
+                      <div className="text-[10px] text-rose-600 font-semibold mt-0.5">
+                        Nợ: {formatCurrency(kpiTotals.sumExtensionUnpaid)}
+                      </div>
+                    )}
                   </td>
                   <td className="py-4 px-4 text-right bg-rose-100/90 text-rose-950 font-black text-base border-l-2 border-rose-300">
                     {formatCurrency(kpiTotals.sumTotalDebt)}

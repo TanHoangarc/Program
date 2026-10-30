@@ -286,6 +286,7 @@ export interface PaymentRequest {
   booking: string;             // Số booking
   amount: number;              // Số tiền
   type?: 'Local Charge' | 'Deposit' | 'Demurrage'; // Loại chi
+  orderIndex?: number;         // Thứ tự lệnh đối với Gia Hạn cùng booking trong ngày (1, 2, 3...)
 
   // ------------------------------------------
   // INVOICE (HÓA ĐƠN)

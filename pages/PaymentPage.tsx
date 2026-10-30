@@ -202,14 +202,68 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const uncInputRef = useRef<HTMLInputElement>(null);
 
   // ============================================================
-  // UPLOAD FUNCTION – UPDATED PATHS
+  // ============================================================
+  // DEMURRAGE ORDER INDEX HELPER (Tự động đánh số -1, -2... cho Gia Hạn cùng booking trong ngày)
+  // ============================================================
+  const getDemurrageOrderIndex = (
+    bookingStr: string,
+    targetDateStr: string,
+    currentRequests: PaymentRequest[],
+    excludeRequestId?: string
+  ): number => {
+    const cleanBk = String(bookingStr || '').trim().toUpperCase();
+    if (!cleanBk) return 1;
+
+    const matched = currentRequests.filter(r => {
+      if (excludeRequestId && r.id === excludeRequestId) return false;
+      const rBk = (r.booking || '').trim().toUpperCase();
+      if (rBk !== cleanBk) return false;
+      const isDem = (r.type || '').toLowerCase().includes('demur');
+      if (!isDem) return false;
+      return true;
+    });
+
+    const usedIndices = new Set<number>();
+    matched.forEach(r => {
+      const rDate = (r.createdAt || '').split('T')[0] || (r.completedAt || '').split('T')[0];
+      const isSameDay = rDate === targetDateStr;
+
+      if (typeof r.orderIndex === 'number' && r.orderIndex > 0) {
+        if (isSameDay) usedIndices.add(r.orderIndex);
+      }
+      // Also check invoiceFileName suffix e.g. -1.pdf, -2.pdf
+      const matchInv = (r.invoiceFileName || '').match(/-(\d+)\.[^.]+$/);
+      if (matchInv) {
+        if (isSameDay) {
+          usedIndices.add(parseInt(matchInv[1], 10));
+        }
+      }
+      // Also check uncFileName suffix e.g. -1.pdf, -2.pdf
+      const matchUnc = (r.uncFileName || '').match(/-(\d+)\.[^.]+$/);
+      if (matchUnc) {
+        if (isSameDay) {
+          usedIndices.add(parseInt(matchUnc[1], 10));
+        }
+      }
+    });
+
+    let idx = 1;
+    while (usedIndices.has(idx)) {
+      idx++;
+    }
+    return idx;
+  };
+
+  // ============================================================
+  // UPLOAD FUNCTION – UPDATED PATHS WITH DEMURRAGE SUFFIXES
   // ============================================================
 
   const uploadToServer = async (
     file: File,
     type: "INVOICE" | "UNC",
     bookingFromReq: string,
-    paymentType?: string
+    paymentType?: string,
+    orderIndex?: number
   ) => {
     const formData = new FormData();
     const ext = file.name.split(".").pop() || "pdf";
@@ -217,17 +271,32 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     const safeBooking =
       String(bookingFromReq || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase() || "UNKNOWN";
 
+    const isDemurrage = (paymentType || "").toLowerCase().includes("demur");
+
     // NEW FILE NAMING:
-    // Normal: INV_COAU6463658760.pdf
-    // Demurrage: INV_COAU6463658760_DEM.pdf
+    // Normal Invoice: INV_COAU6463658760.pdf
+    // Normal UNC: UNC BL COAU6463658760.pdf
+    // Demurrage UNC: UNC BL COAU6463658760-1.pdf, UNC BL COAU6463658760-2.pdf...
+    // Demurrage Invoice: CMACGM.CPL0505528.00385822.30.09.2026-1.pdf, ...-2.pdf...
     let fileName = "";
     if (type === "UNC") {
-      fileName = `UNC BL ${safeBooking}.${ext}`;
+      if (isDemurrage) {
+        fileName = `UNC BL ${safeBooking}-${orderIndex || 1}.${ext}`;
+      } else {
+        fileName = `UNC BL ${safeBooking}.${ext}`;
+      }
     } else {
-      const isDemurrage = (paymentType || "").toLowerCase().includes("demur");
-      fileName = isDemurrage
-        ? `INV_${safeBooking}_DEM.${ext}`
-        : `INV_${safeBooking}.${ext}`;
+      // INVOICE
+      if (isDemurrage) {
+        const lastDot = file.name.lastIndexOf(".");
+        const rawBase = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
+        // Strip any existing trailing -1, -2 to avoid duplicated -1-1.pdf and sanitize
+        const safeBase = rawBase.replace(/-\d+$/, "").replace(/[/\\?%*:|"<>]/g, "_").trim();
+        const finalBase = safeBase || `INV_${safeBooking}_DEM`;
+        fileName = `${finalBase}-${orderIndex || 1}.${ext}`;
+      } else {
+        fileName = `INV_${safeBooking}.${ext}`;
+      }
     }
 
     formData.append("fileName", fileName);
@@ -306,23 +375,33 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     setIsUploading(true);
 
+    const cleanBooking = booking.trim().toUpperCase();
+    const isDemurrage = (type || "").toLowerCase().includes("demur");
+    const todayStr = getTodayDateStr();
+
+    // Determine orderIndex for Demurrage requests for the same booking on the same day
+    const demurrageIndex = isDemurrage
+      ? getDemurrageOrderIndex(cleanBooking, todayStr, requests)
+      : undefined;
+
     let uploaded = null;
     if (invoiceFile) {
-      uploaded = await uploadToServer(invoiceFile, "INVOICE", booking, type);
+      uploaded = await uploadToServer(invoiceFile, "INVOICE", booking, type, demurrageIndex);
       if (!uploaded) {
         setIsUploading(false);
         return;
       }
     }
 
-    const cleanBooking = booking.trim().toUpperCase();
-
     // Check if duplicate pending request with same booking & type exists -> replace it
-    const existingIndex = requests.findIndex(
-      r => r.booking.trim().toUpperCase() === cleanBooking &&
-           r.type === type &&
-           r.status === "pending"
-    );
+    // NOTE: Demurrage requests must NEVER overwrite each other! Each is a distinct order/command.
+    const existingIndex = isDemurrage
+      ? -1
+      : requests.findIndex(
+          r => r.booking.trim().toUpperCase() === cleanBooking &&
+               r.type === type &&
+               r.status === "pending"
+        );
 
     let updatedRequests: PaymentRequest[];
     if (existingIndex !== -1) {
@@ -349,6 +428,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         booking: cleanBooking,
         amount,
         type, // Selected Type
+        orderIndex: demurrageIndex,
         createdAt: new Date().toISOString(),
         status: "pending",
         isOrderCreated: false, // Default is NOT created
@@ -401,9 +481,18 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
     setIsSavingEdit(true);
 
+    const cleanBooking = editBooking.trim().toUpperCase();
+    const isDemurrage = (editType || "").toLowerCase().includes("demur");
+    const reqDate = (editingRequest.createdAt || "").split("T")[0] || getTodayDateStr();
+
+    let editOrderIndex = editingRequest.orderIndex;
+    if (isDemurrage && (!editOrderIndex || editingRequest.booking !== cleanBooking)) {
+      editOrderIndex = getDemurrageOrderIndex(cleanBooking, reqDate, requests, editingRequest.id);
+    }
+
     let uploaded = null;
     if (editInvoiceFile) {
-      uploaded = await uploadToServer(editInvoiceFile, "INVOICE", editBooking, editType);
+      uploaded = await uploadToServer(editInvoiceFile, "INVOICE", editBooking, editType, editOrderIndex);
       if (!uploaded) {
         setIsSavingEdit(false);
         return;
@@ -414,9 +503,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       ...editingRequest,
       lineCode: editLine,
       pod: editLine === "MSC" ? editPod : undefined,
-      booking: editBooking.trim().toUpperCase(),
+      booking: cleanBooking,
       amount: editAmount,
       type: editType,
+      orderIndex: isDemurrage ? (editOrderIndex || 1) : editingRequest.orderIndex,
       ...(uploaded ? {
         invoiceFileName: uploaded.fileName,
         invoicePath: uploaded.serverPath,
@@ -480,10 +570,29 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     setIsUploading(true);
 
     const req = requests.find(r => r.id === completingId);
+    if (!req) {
+      setIsUploading(false);
+      return;
+    }
+
+    const isDemurrage = (req.type || "").toLowerCase().includes("demur");
+    let reqOrderIndex = req.orderIndex;
+    if (!reqOrderIndex && isDemurrage) {
+      const matchInv = (req.invoiceFileName || "").match(/-(\d+)\.[^.]+$/);
+      if (matchInv) {
+        reqOrderIndex = parseInt(matchInv[1], 10);
+      } else {
+        const reqDate = (req.createdAt || "").split("T")[0] || getTodayDateStr();
+        reqOrderIndex = getDemurrageOrderIndex(req.booking, reqDate, requests, req.id);
+      }
+    }
+
     const uploaded = await uploadToServer(
       uncFile,
       "UNC",
-      req?.booking || "" 
+      req.booking || "",
+      req.type,
+      reqOrderIndex
     );
 
     if (!uploaded) {
@@ -496,6 +605,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         ? ({
             ...r,
             status: "completed",
+            orderIndex: reqOrderIndex || r.orderIndex,
             uncFileName: uploaded.fileName,
             uncPath: uploaded.serverPath,
             uncUrl: `${BACKEND_URL}${uploaded.url}`,
@@ -842,7 +952,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
       const link = document.createElement("a");
       link.href = finalBlobUrl;
-      link.download = `UNC BL ${req.booking}.pdf`;
+      const isDemurrage = (req.type || "").toLowerCase().includes("demur");
+      const defaultName = isDemurrage && req.orderIndex ? `UNC BL ${req.booking}-${req.orderIndex}.pdf` : `UNC BL ${req.booking}.pdf`;
+      link.download = req.uncFileName || defaultName;
 
       document.body.appendChild(link);
       link.click();
@@ -942,10 +1054,17 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
     );
   };
 
-  const getTypeBadge = (type?: string) => {
+  const getTypeBadge = (type?: string, orderIndex?: number) => {
       switch(type) {
           case 'Deposit': return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold border border-purple-200">Deposit</span>;
-          case 'Demurrage': return <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-200">Demurrage</span>;
+          case 'Demurrage': return (
+            <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-200 inline-flex items-center gap-1">
+              <span>Demurrage</span>
+              {orderIndex && orderIndex > 0 ? (
+                <span className="bg-orange-200 text-orange-800 px-1 rounded text-[9px] font-extrabold">#{orderIndex}</span>
+              ) : null}
+            </span>
+          );
           default: return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-200">Local Charge</span>;
       }
   };
@@ -1213,7 +1332,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                   </td>
                   
                   <td className="px-6 py-4 text-center">
-                      {getTypeBadge(req.type)}
+                      {getTypeBadge(req.type, req.orderIndex)}
                   </td>
 
                   <td className="px-6 py-4 text-center">
@@ -1403,7 +1522,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                     <td className="px-6 py-4 text-right">{formatCurrency(req.amount)}</td>
                     
                     <td className="px-6 py-4 text-center">
-                        {getTypeBadge(req.type)}
+                        {getTypeBadge(req.type, req.orderIndex)}
                     </td>
 
                     <td className="px-6 py-4 text-center">
