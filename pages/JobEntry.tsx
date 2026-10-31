@@ -41,7 +41,7 @@ import {
   formatDateVN,
   calculatePaymentStatus,
 } from "../utils";
-import { MONTHS, YEARS } from "../constants";
+import { MONTHS, YEARS, BANKS } from "../constants";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import axios from "axios";
@@ -109,11 +109,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   // Filters
   const [filterJobCode, setFilterJobCode] = useState("");
+  const [filterInvoice, setFilterInvoice] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
   const [filterYear, setFilterYear] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("");
   const [filterBooking, setFilterBooking] = useState("");
   const [filterDeposit, setFilterDeposit] = useState("");
+  const [filterBank, setFilterBank] = useState("");
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -137,11 +139,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
     setCurrentPage(1);
   }, [
     filterJobCode,
+    filterInvoice,
     filterMonth,
     filterYear,
     filterCustomer,
     filterBooking,
     filterDeposit,
+    filterBank,
   ]);
 
   // Auto-open Job if ID provided
@@ -653,6 +657,31 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const matchesJobCode = filterJobCode
         ? jCode.toLowerCase().includes(filterJobCode.toLowerCase())
         : true;
+      const searchInv = filterInvoice.trim().toLowerCase();
+      const matchesInvoice = !searchInv
+        ? true
+        : (job.localChargeInvoice &&
+            String(job.localChargeInvoice).toLowerCase().includes(searchInv)) ||
+          (job.extensions &&
+            job.extensions.some(
+              (ext) =>
+                ext.invoice &&
+                String(ext.invoice).toLowerCase().includes(searchInv),
+            )) ||
+          (job.costDetails?.localCharge?.invoice &&
+            String(job.costDetails.localCharge.invoice)
+              .toLowerCase()
+              .includes(searchInv)) ||
+          (job.costDetails?.additionalLocalCharges &&
+            job.costDetails.additionalLocalCharges.some(
+              (c) =>
+                c.invoice && String(c.invoice).toLowerCase().includes(searchInv),
+            )) ||
+          (job.costDetails?.extensionCosts &&
+            job.costDetails.extensionCosts.some(
+              (c) =>
+                c.invoice && String(c.invoice).toLowerCase().includes(searchInv),
+            ));
       const matchesDeposit =
         filterDeposit === "pending"
           ? job.thuCuoc > 0 && !job.ngayThuHoan
@@ -666,13 +695,25 @@ export const JobEntry: React.FC<JobEntryProps> = ({
       const matchesBooking = filterBooking
         ? jBooking.toLowerCase().includes(filterBooking.toLowerCase())
         : true;
+      const matchesBank = !filterBank
+        ? true
+        : filterBank === "__none__"
+          ? !job.bank ||
+            !job.bank.trim() ||
+            job.bank.trim() === "--" ||
+            job.bank.toLowerCase() === "chưa thu"
+          : (job.bank || "").trim().toLowerCase() ===
+            filterBank.trim().toLowerCase();
+
       return (
         matchesJobCode &&
+        matchesInvoice &&
         matchesDeposit &&
         matchesMonth &&
         matchesCustomer &&
         matchesBooking &&
-        matchesYear
+        matchesYear &&
+        matchesBank
       );
     });
 
@@ -688,11 +729,13 @@ export const JobEntry: React.FC<JobEntryProps> = ({
   }, [
     jobs,
     filterJobCode,
+    filterInvoice,
     filterDeposit,
     filterMonth,
     filterYear,
     filterCustomer,
     filterBooking,
+    filterBank,
   ]);
 
   const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
@@ -717,10 +760,12 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
   const clearFilters = () => {
     setFilterJobCode("");
+    setFilterInvoice("");
     setFilterDeposit("");
     setFilterMonth("");
     setFilterCustomer("");
     setFilterBooking("");
+    setFilterBank("");
     setFilterYear(new Date().getFullYear().toString());
   };
 
@@ -795,7 +840,7 @@ export const JobEntry: React.FC<JobEntryProps> = ({
 
       {/* Filter Bar */}
       <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-3">
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">
               Năm
@@ -863,6 +908,33 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">
+              Ngân hàng (Thu)
+            </label>
+            <select
+              value={filterBank}
+              onChange={(e) => setFilterBank(e.target.value)}
+              className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none"
+            >
+              <option value="">Tất cả</option>
+              <option value="__none__">Chưa có NH</option>
+              <option value="TCB Bank">TCB Bank</option>
+              <option value="MB Bank">MB Bank</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">
+              Số Invoice
+            </label>
+            <input
+              type="text"
+              placeholder="Tìm Invoice..."
+              value={filterInvoice}
+              onChange={(e) => setFilterInvoice(e.target.value)}
+              className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">
               Booking
             </label>
             <input
@@ -894,7 +966,9 @@ export const JobEntry: React.FC<JobEntryProps> = ({
           filterCustomer ||
           filterBooking ||
           filterJobCode ||
-          filterDeposit) && (
+          filterInvoice ||
+          filterDeposit ||
+          filterBank) && (
           <div className="mt-3 flex justify-end">
             <button
               onClick={clearFilters}
@@ -1000,6 +1074,11 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                           </div>
                         )}
                       </div>
+                      {job.localChargeInvoice && (
+                        <div className="text-[11px] font-normal text-slate-500 mt-0.5">
+                          Inv: <span className="font-medium text-slate-700">{job.localChargeInvoice}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-3 text-gray-700">
                       <div>{job.customerName}</div>
@@ -1030,7 +1109,12 @@ export const JobEntry: React.FC<JobEntryProps> = ({
                       {formatCurrency(job.cost)}
                     </td>
                     <td className="px-6 py-3 text-right text-gray-600">
-                      {formatCurrency(job.sell)}
+                      <div>{formatCurrency(job.sell)}</div>
+                      {job.bank && job.bank.trim() && job.bank !== "--" && (
+                        <div className="text-[10px] text-blue-600 font-medium">
+                          {job.bank}
+                        </div>
+                      )}
                     </td>
                     <td
                       className={`px-6 py-3 text-right font-bold ${job.profit >= 0 ? "text-green-600" : "text-red-500"}`}
