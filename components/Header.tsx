@@ -186,8 +186,8 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Right side: Actions & User */}
       <div className="flex items-center gap-2 md:gap-4">
         <div className="hidden sm:flex items-center gap-1">
-          {/* Message Icon */}
-          {currentUser?.role?.toLowerCase() !== 'docs' && (
+          {/* Message Icon - Admin Only */}
+          {currentUser?.role?.toLowerCase() === 'admin' && (
             <div className="relative">
               <button 
                 onClick={() => toggleDropdown('messages')}
@@ -340,7 +340,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {currentUser?.role?.toLowerCase() !== 'docs' && (
+          {currentUser?.role?.toLowerCase() === 'admin' && (
             <>
               {/* Settings Icon */}
               <div className="relative">
@@ -437,7 +437,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Online Users Pill - Hiển thị ai đang vào web */}
+        {/* Online Users Pill - Hiển thị ai Online */}
         <div className="relative hidden md:block">
           <button
             onClick={() => toggleDropdown('online_users')}
@@ -446,14 +446,14 @@ export const Header: React.FC<HeaderProps> = ({
                 ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm'
                 : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
             }`}
-            title="Xem danh sách người dùng đang vào web"
+            title="Xem danh sách người dùng Online"
           >
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
             <span className="text-xs font-bold whitespace-nowrap">
-              {onlineUsers.length > 0 ? onlineUsers.length : 1} đang vào web
+              {onlineUsers.length > 0 ? onlineUsers.length : 1} Online
             </span>
             <div className="flex -space-x-1.5 overflow-hidden">
               {(onlineUsers.length > 0 ? onlineUsers : [
@@ -479,7 +479,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <div>
                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                    Người dùng đang vào web
+                    Người dùng Online
                   </h3>
                   <p className="text-[11px] text-slate-500">Các tài khoản đang truy cập hệ thống</p>
                 </div>
@@ -624,14 +624,16 @@ export const Header: React.FC<HeaderProps> = ({
                     }}
                     className="w-full text-left px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                   >
-                    <Users className="w-3.5 h-3.5 text-emerald-500" /> Ai đang vào web ({onlineUsers.length || 1})
+                    <Users className="w-3.5 h-3.5 text-emerald-500" /> Người dùng Online ({onlineUsers.length || 1})
                   </button>
-                  <button 
-                    onClick={() => { onNavigate?.('api-keys'); setActiveDropdown(null); }}
-                    className="w-full text-left px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors"
-                  >
-                    <Key className="w-3.5 h-3.5 text-amber-500" /> Quản lý Key API
-                  </button>
+                  {currentUser?.role?.toLowerCase() === 'admin' && (
+                    <button 
+                      onClick={() => { onNavigate?.('api-keys'); setActiveDropdown(null); }}
+                      className="w-full text-left px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+                    >
+                      <Key className="w-3.5 h-3.5 text-amber-500" /> Quản lý Key API
+                    </button>
+                  )}
                 </div>
 
                 <div className="h-[1px] bg-slate-100 my-1"></div>

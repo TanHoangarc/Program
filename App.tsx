@@ -118,7 +118,7 @@ const App: React.FC = () => {
               const defaultU = DEFAULT_USERS.find(d => d.username === u.username);
               const role = defaultU ? defaultU.role : u.role;
               if (role === 'Docs') return 'payment';
-              if (role === 'Cus') return 'tool-ai';
+              if (role === 'Cus') return 'lookup';
           }
       } catch {}
       return 'entry';
@@ -1316,7 +1316,7 @@ const App: React.FC = () => {
       if (user.role === 'Docs') {
           setCurrentPage('payment');
       } else if (user.role === 'Cus') {
-          setCurrentPage('tool-ai');
+          setCurrentPage('lookup');
       }
     }
   }, []);
@@ -1380,7 +1380,7 @@ const App: React.FC = () => {
       if (user.role === 'Docs') {
           setCurrentPage('payment');
       } else if (user.role === 'Cus') {
-          setCurrentPage('tool-ai');
+          setCurrentPage('lookup');
       } else {
           setCurrentPage('entry');
       }
@@ -1403,8 +1403,8 @@ const App: React.FC = () => {
 
   // --- GENERAL AUTO BACKUP ---
   const autoBackup = async () => {
-    // UPDATED: Check for Admin or Docs
-    if (!currentUser || !["Admin", "Docs"].includes(currentUser.role)) return;
+    // UPDATED: Check for Admin or Docs. Role Cus (CSKH) is strictly prohibited from writing or overwriting backup data!
+    if (!currentUser || !["Admin", "Docs"].includes(currentUser.role) || currentUser.role === 'Cus') return;
     if (!isServerAvailable || !isInitialSyncDone) return; 
 
     try {
@@ -1469,7 +1469,7 @@ const App: React.FC = () => {
 
   // --- NFC AUTO BACKUP ---
   useEffect(() => {
-      if (!isServerAvailable || nfcProfiles.length === 0) return;
+      if (!isServerAvailable || nfcProfiles.length === 0 || currentUser?.role !== 'Admin') return;
       
       // Debounce NFC save
       const timeoutId = setTimeout(() => {
@@ -1484,7 +1484,7 @@ const App: React.FC = () => {
   }, [nfcProfiles, isServerAvailable]);
 
   useEffect(() => { 
-    if (!isServerAvailable) return;
+    if (!isServerAvailable || !currentUser || !["Admin", "Docs"].includes(currentUser.role) || currentUser.role === 'Cus') return;
     
     const delay = currentUser?.role === 'Admin' ? 0 : 500;
     const timeoutId = setTimeout(() => {
@@ -1493,6 +1493,16 @@ const App: React.FC = () => {
 
     return () => clearTimeout(timeoutId);
   }, [jobs, paymentRequests, customers, lines, lockedIds, customReceipts, deletedCustomReceiptIds, localDeletedIds, salaries, yearlyConfigs, systemPopupContent, isServerAvailable, currentUser]);
+
+  // Guard for role Cus (CSKH): strictly confined to Tra cứu, Debit note, Tool AI
+  useEffect(() => {
+    if (currentUser?.role === 'Cus') {
+      const allowedPages = ['lookup', 'debit-note', 'tool-ai'];
+      if (!allowedPages.includes(currentPage)) {
+        setCurrentPage('lookup');
+      }
+    }
+  }, [currentUser, currentPage]);
 
   useEffect(() => { localStorage.setItem("logistics_jobs_v2", JSON.stringify(jobs)); }, [jobs]);
   useEffect(() => { localStorage.setItem("payment_requests_v1", JSON.stringify(paymentRequests)); }, [paymentRequests]);
@@ -1737,6 +1747,23 @@ const App: React.FC = () => {
   if (!isAuthenticated)
     return <LoginPage onLogin={handleLogin} error={sessionError || loginError} />;
 
+  const handleNavigatePage = (page: any) => {
+    if (currentUser?.role === 'Cus') {
+      const allowedPages = ['lookup', 'debit-note', 'tool-ai'];
+      if (!allowedPages.includes(page)) {
+        setCurrentPage('lookup');
+        return;
+      }
+    } else if (currentUser?.role === 'Docs') {
+      const allowedPages = ['payment', 'lookup'];
+      if (!allowedPages.includes(page)) {
+        setCurrentPage('payment');
+        return;
+      }
+    }
+    setCurrentPage(page);
+  };
+
   return (
     <div className="flex w-full h-screen overflow-hidden bg-slate-50">
       <input 
@@ -1748,7 +1775,7 @@ const App: React.FC = () => {
       />
       <Sidebar
         currentPage={currentPage}
-        onNavigate={setCurrentPage}
+        onNavigate={handleNavigatePage}
         currentUser={currentUser}
         onLogout={() => handleLogout(false)}
         onSendPending={() => sendPendingToServer()}
@@ -1761,7 +1788,7 @@ const App: React.FC = () => {
           currentUser={currentUser} 
           onLogout={() => handleLogout(false)}
           onMobileMenuToggle={() => setIsMobileMenuOpen(true)}
-          onNavigate={setCurrentPage}
+          onNavigate={handleNavigatePage}
           messages={headerMessages}
           notifications={headerNotifications}
           updates={headerUpdates}
@@ -1814,8 +1841,8 @@ const App: React.FC = () => {
           <div className="flex-1 rounded-2xl md:rounded-3xl overflow-hidden relative shadow-inner h-full flex flex-col bg-white/40 backdrop-blur-3xl border border-white/40">
             <div className="absolute inset-0 bg-white/40 backdrop-blur-3xl border border-white/40 rounded-3xl z-0"></div>
 
-          {/* Alert for Data Mismatch */}
-          {dataMismatchWarning && (
+          {/* Alert for Data Mismatch - Admin only */}
+          {dataMismatchWarning && currentUser?.role === 'Admin' && (
               <div className="absolute top-2 left-2 right-2 z-50 bg-orange-100 border border-orange-200 text-orange-800 px-4 py-3 rounded-xl shadow-lg flex items-center justify-between animate-in slide-in-from-top-2">
                   <div className="flex items-center gap-3">
                       <AlertTriangle className="w-5 h-5 text-orange-600" />

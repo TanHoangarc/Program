@@ -47,7 +47,7 @@ export const PRESET_AVATARS = [
   },
   {
     id: 'cus_partner',
-    name: 'Khách hàng / Doanh nghiệp',
+    name: 'CSKH (Chăm sóc khách hàng)',
     url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=300&h=300&q=80',
     role: 'Cus'
   },
@@ -71,7 +71,7 @@ export const PRESET_AVATARS = [
   },
   {
     id: 'anime_cus',
-    name: 'Avatar Anime Cus (Mặc định)',
+    name: 'Avatar Anime CSKH (Mặc định)',
     url: 'https://i.pinimg.com/1200x/a8/6b/a2/a86ba221bd2b387f29a02542c9e1434c.jpg',
     role: 'Cus'
   }
@@ -139,7 +139,7 @@ export const getRoleBadge = (role?: string) => {
   }
   if (r === 'cus') {
     return {
-      label: 'Khách hàng',
+      label: 'CSKH',
       badgeClass: 'bg-emerald-100 text-emerald-700 border border-emerald-200'
     };
   }

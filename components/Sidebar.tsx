@@ -75,15 +75,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const role = currentUser?.role || 'Guest';
   const isAdmin = role === 'Admin';
   const isDocs = role === 'Docs';
+  const isCus = role === 'Cus';
 
-  // Permission Logic: Admin has full access, Docs only has Payment and Lookup
+  // Permission Logic:
+  // Admin: full access
+  // Docs: Payment and Lookup
+  // Cus (CSKH): Tra cứu (lookup), Debit note (debit-note), Tool AI (tool-ai)
   const canViewOverview = isAdmin; 
   const canViewOperations = isAdmin; 
-  const canViewDataPayment = isAdmin || isDocs; 
+  const canViewDataPayment = isAdmin || isDocs || isCus; 
   const canViewAccounting = isAdmin; 
   const canViewData = isAdmin; 
   const canViewSystem = isAdmin; 
-  const canViewToolAI = isAdmin; 
+  const canViewToolAI = isAdmin || isCus; 
   const canViewNfc = isAdmin; 
   const canViewApiKeys = isAdmin; 
   
@@ -298,13 +302,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* DATA AND PAYMENT SECTION */}
           {canViewDataPayment && (
             <>
-              <MenuItem active={currentPage === 'lookup'} onClick={(e) => handleNavigate(e, 'lookup')} icon={Search} label="Tra cứu" />
-              <MenuItem active={currentPage === 'payment'} onClick={(e) => handleNavigate(e, 'payment')} icon={Landmark} label="Thanh Toán" />
+              {(isAdmin || isDocs || isCus) && (
+                <MenuItem active={currentPage === 'lookup'} onClick={(e) => handleNavigate(e, 'lookup')} icon={Search} label="Tra cứu" />
+              )}
+              {(isAdmin || isDocs) && (
+                <MenuItem active={currentPage === 'payment'} onClick={(e) => handleNavigate(e, 'payment')} icon={Landmark} label="Thanh Toán" />
+              )}
               {isAdmin && (
-                <>
-                  <MenuItem active={currentPage === 'cvhc'} onClick={(e) => handleNavigate(e, 'cvhc')} icon={FileCheck} label="Nộp CVHC" />
-                  <MenuItem active={currentPage === 'debit-note'} onClick={(e) => handleNavigate(e, 'debit-note')} icon={FileText} label="Debit Note" />
-                </>
+                <MenuItem active={currentPage === 'cvhc'} onClick={(e) => handleNavigate(e, 'cvhc')} icon={FileCheck} label="Nộp CVHC" />
+              )}
+              {(isAdmin || isCus) && (
+                <MenuItem active={currentPage === 'debit-note'} onClick={(e) => handleNavigate(e, 'debit-note')} icon={FileText} label="Debit Note" />
               )}
             </>
           )}
@@ -388,7 +396,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div className="overflow-hidden">
                      <p className="text-xs font-bold text-slate-200 truncate max-w-[100px]">{currentUser.username}</p>
                      <div className="flex items-center gap-1">
-                       <p className="text-[10px] text-teal-400 font-medium">{currentUser.role}</p>
+                       <p className="text-[10px] text-teal-400 font-medium">{currentUser.role === 'Cus' ? 'CSKH' : currentUser.role}</p>
                        <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
                        <span className="text-[9px] text-emerald-400">Online</span>
                      </div>

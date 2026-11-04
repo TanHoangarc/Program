@@ -488,7 +488,7 @@ async function startServer() {
         const isDocs = userRole === 'docs';
 
         if (!isAdmin && !isDocs) {
-            return res.json({ success: false, message: "No permission to save" });
+            return res.status(403).json({ success: false, message: "No permission to save. Tài khoản CSKH (Cus) không được phép ghi đè dữ liệu backup!" });
         }
 
         let requireReload = false;
@@ -807,7 +807,10 @@ async function startServer() {
 
     app.post("/api/long-hoang/backup", async (req, res) => {
         try {
-            const { orders } = req.body;
+            const { orders, role } = req.body;
+            if ((role || '').toLowerCase() === 'cus') {
+                return res.status(403).json({ success: false, message: "Tài khoản CSKH (Cus) không được phép ghi đè backup!" });
+            }
             await withDBLock(async (dbState) => {
                 dbState.longHoangOrders = orders;
             });

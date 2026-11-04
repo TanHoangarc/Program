@@ -621,7 +621,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                              {isOnline ? (
                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded-full shadow-xs">
                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                 Online {isCurrent ? '(Máy này)' : '(Đang vào web)'}
+                                 Online {isCurrent ? '(Máy này)' : '(Online)'}
                                  {onlineSession?.loginTime && !isCurrent && (
                                    <span className="text-[9px] font-normal text-emerald-600">· {onlineSession.loginTime}</span>
                                  )}
@@ -882,7 +882,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                     >
                        <option value="Docs">Docs (Chứng từ)</option>
                        <option value="Admin">Admin (Quản trị)</option>
-                       <option value="Cus">Cus (Khách hàng)</option>
+                       <option value="Cus">Cus (CSKH)</option>
                     </select>
                  </div>
                  <div className="pt-2 flex justify-end space-x-2">
