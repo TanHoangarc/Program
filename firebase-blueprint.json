@@ -35,12 +35,52 @@
         }
       },
       "required": ["principalId", "agentId", "expiryDate", "year"]
+    },
+    "OnlinePresence": {
+      "title": "OnlinePresence",
+      "description": "Trạng thái trực tuyến của người dùng trên toàn hệ thống",
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Tên tài khoản người dùng"
+        },
+        "role": {
+          "type": "string",
+          "description": "Vai trò của người dùng"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Ảnh đại diện người dùng"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Tên hiển thị"
+        },
+        "lastSeen": {
+          "type": "number",
+          "description": "Timestamp thời gian hoạt động gần nhất"
+        },
+        "loginTime": {
+          "type": "string",
+          "description": "Thời gian đăng nhập trong ngày"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp cập nhật"
+        }
+      },
+      "required": ["username", "role", "lastSeen"]
     }
   },
   "firestore": {
     "authorizations/{authorizationId}": {
       "schema": "Authorization",
       "description": "Danh sách các ủy quyền"
+    },
+    "online_presence/{userId}": {
+      "schema": "OnlinePresence",
+      "description": "Trạng thái online theo thời gian thực của người dùng"
     }
   }
 }

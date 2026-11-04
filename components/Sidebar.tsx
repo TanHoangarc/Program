@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, FileInput, Ship, Container, Building2, UserCircle, Briefcase, FileUp, FileText, CreditCard, ShoppingCart, Database, RotateCcw, ChevronRight, Settings, BadgeDollarSign, LogOut, Send, Search, Landmark, FileCheck, ChevronDown, X, Coins, Cpu, IdCard, Sparkles, Zap, TrendingUp, Key, WalletCards } from 'lucide-react';
+import { getUserAvatar } from '../utils/userAvatar';
 
 interface SidebarProps {
   currentPage: 'entry' | 'reports' | 'debt' | 'booking' | 'demurrage' | 'amis-thu' | 'amis-chi' | 'amis-ban' | 'amis-mua' | 'data-lines' | 'data-customers' | 'system' | 'lookup' | 'payment' | 'cvhc' | 'debit-note' | 'salary' | 'tool-ai' | 'nfc' | 'bank-tcb' | 'bank-mb' | 'yearly-profit' | 'api-keys';
@@ -373,12 +374,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {currentUser && (
             <div className="flex items-center justify-between px-1">
                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-500 to-blue-500 flex items-center justify-center shadow-lg border border-white/10">
-                     <span className="text-xs font-bold text-white">{(currentUser.username || '?').charAt(0).toUpperCase()}</span>
+                  <div className="relative w-9 h-9 rounded-full ring-2 ring-teal-500/40 shadow-lg overflow-hidden shrink-0 bg-slate-800">
+                     <img
+                       src={getUserAvatar({ username: currentUser.username, role: currentUser.role as any, pass: '' })}
+                       alt={currentUser.username}
+                       className="w-full h-full object-cover"
+                       onError={(e) => {
+                         (e.target as HTMLElement).style.display = 'none';
+                       }}
+                     />
+                     <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-900 rounded-full"></span>
                   </div>
                   <div className="overflow-hidden">
                      <p className="text-xs font-bold text-slate-200 truncate max-w-[100px]">{currentUser.username}</p>
-                     <p className="text-[10px] text-slate-500 font-medium">{currentUser.role}</p>
+                     <div className="flex items-center gap-1">
+                       <p className="text-[10px] text-teal-400 font-medium">{currentUser.role}</p>
+                       <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
+                       <span className="text-[9px] text-emerald-400">Online</span>
+                     </div>
                   </div>
                </div>
                <button onClick={(e) => { e.preventDefault(); onLogout(); }} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all" title="Đăng xuất">

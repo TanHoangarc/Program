@@ -12,13 +12,13 @@ async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log("Firebase connected successfully");
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('permission-denied')) {
-        // Expected since we didn't add this doc
-        console.log("Firebase connection verified (permission check ok)");
-        return;
+  } catch (error: any) {
+    if (error?.code === 'permission-denied' || error?.message?.includes('permission-denied') || error?.message?.includes('insufficient permissions')) {
+      // Expected when authenticated rules restrict arbitrary reads
+      console.log("Firebase connection verified (security rules active)");
+      return;
     }
-    if (error instanceof Error && error.message.includes('the client is offline')) {
+    if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('failed-precondition'))) {
       console.error("Please check your Firebase configuration.");
     }
   }

@@ -360,6 +360,17 @@ export interface UserAccount {
   pass: string;
   role: "Admin" | "Docs" | "sales" | "admin" | "Cus"; // Extended for NFC
   allowedProfileIds?: string[]; // For NFC Sales role
+  avatar?: string;
+  displayName?: string;
+}
+
+export interface OnlineUser {
+  username: string;
+  role: string;
+  avatar?: string;
+  displayName?: string;
+  lastSeen: number;
+  loginTime?: string;
 }
 
 // ============================================================

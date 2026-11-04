@@ -29,15 +29,31 @@ import { generateNextDocNo } from './utils';
 import { Menu, Ship, AlertTriangle, X, Loader2, Wallet, Plus, RefreshCw } from 'lucide-react';
 import { useNotification } from './contexts/NotificationContext';
 import axios from 'axios';
+import { removeUserHeartbeat, registerUserHeartbeat, setUserAvatar, getUserAvatar } from './utils/userAvatar';
 
 import { JobData, Customer, ShippingLine, UserAccount, PaymentRequest, SalaryRecord, WebNfcProfile, YearlyConfig, INITIAL_JOB, HeaderMessage, HeaderNotification } from './types';
 import { MOCK_DATA, MOCK_CUSTOMERS, MOCK_SHIPPING_LINES, BASE_URL_PREFIX } from './constants';
 
 // --- SECURITY CONFIGURATION ---
 const DEFAULT_USERS: UserAccount[] = [
-  { username: 'KimberryAdmin', pass: 'Jwckim@123#', role: 'Admin' },
-  { username: 'Dockimberry', pass: 'Kimberry@123', role: 'Docs' },
-  { username: 'CushcmLH', pass: 'Jwckim@689', role: 'Cus' }
+  { 
+    username: 'KimberryAdmin', 
+    pass: 'Jwckim@123#', 
+    role: 'Admin',
+    avatar: 'https://i.pinimg.com/1200x/ab/6c/ca/ab6cca0e9729b971bf5fb0e4ee78fdc1.jpg' 
+  },
+  { 
+    username: 'Dockimberry', 
+    pass: 'Kimberry@123', 
+    role: 'Docs',
+    avatar: 'https://i.pinimg.com/736x/88/dd/b4/88ddb4d5b2a7556fda455dcb871614c2.jpg' 
+  },
+  { 
+    username: 'CushcmLH', 
+    pass: 'Jwckim@689', 
+    role: 'Cus',
+    avatar: 'https://i.pinimg.com/1200x/a8/6b/a2/a86ba221bd2b387f29a02542c9e1434c.jpg' 
+  }
 ];
 
 const AUTH_CHANNEL_NAME = 'kimberry_auth_channel';
@@ -704,6 +720,32 @@ const App: React.FC = () => {
     return DEFAULT_USERS;
   });
 
+  // Persist users to localStorage whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem('logistics_users_v1', JSON.stringify(users));
+    } catch (err) {
+      console.warn("Failed to save users to localStorage", err);
+    }
+  }, [users]);
+
+  // Handler to update avatar for a user and sync to auth/session
+  const handleUpdateUserAvatar = (username: string, avatarUrl: string) => {
+    setUserAvatar(username, avatarUrl);
+    setUsers(prev => prev.map(u => u.username === username ? { ...u, avatar: avatarUrl } : u));
+    if (currentUser && currentUser.username === username) {
+      const updated = { ...currentUser, avatar: avatarUrl };
+      setCurrentUser(updated);
+      try {
+        if (localStorage.getItem('kb_user')) {
+          localStorage.setItem('kb_user', JSON.stringify(updated));
+        } else if (sessionStorage.getItem('kb_user')) {
+          sessionStorage.setItem('kb_user', JSON.stringify(updated));
+        }
+      } catch {}
+    }
+  };
+
   // --- INTEGRITY CHECK LOGIC ---
   useEffect(() => {
       const checkIntegrity = async () => {
@@ -1292,6 +1334,26 @@ const App: React.FC = () => {
     return () => channel.close();
   }, [isAuthenticated, currentUser]);
 
+  // Register real-time cross-machine heartbeat & cleanup on tab close
+  useEffect(() => {
+    if (!currentUser || !currentUser.username) return;
+    registerUserHeartbeat(currentUser);
+
+    const interval = setInterval(() => {
+      registerUserHeartbeat(currentUser);
+    }, 15000);
+
+    const handleBeforeUnload = () => {
+      removeUserHeartbeat(currentUser.username);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentUser]);
+
   useEffect(() => {
     if (isAuthenticated && systemPopupContent && !hasShownPopup) {
       setShowSystemPopup(true);
@@ -1328,13 +1390,16 @@ const App: React.FC = () => {
   };
 
   const handleLogout = useCallback((forced = false) => {
+    if (currentUser?.username) {
+      removeUserHeartbeat(currentUser.username);
+    }
     setIsAuthenticated(false);
     setCurrentUser(null);
     sessionStorage.removeItem('kb_user');
     localStorage.removeItem('kb_user');
     
     setSessionError(forced ? "Tài khoản đã được đăng nhập nơi khác." : "");
-  }, []);
+  }, [currentUser]);
 
   // --- GENERAL AUTO BACKUP ---
   const autoBackup = async () => {
@@ -1549,6 +1614,18 @@ const App: React.FC = () => {
           }
         } catch (err) {
           console.warn("Failed to parse payment-updated event", err);
+        }
+      });
+
+      // Realtime event for active user presence across different computers
+      eventSource.addEventListener('presence-updated', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (Array.isArray(data.onlineUsers)) {
+            window.dispatchEvent(new CustomEvent('kb_online_users_updated', { detail: data.onlineUsers }));
+          }
+        } catch (err) {
+          console.warn("Failed to parse presence-updated event", err);
         }
       });
 
@@ -1976,9 +2053,31 @@ const App: React.FC = () => {
                   setCustomers(d.customers);
                   setLines(d.lines);
                 }}
-                onAddUser={(u) => setUsers([...users, u])}
-                onEditUser={(u, oldName) => setUsers(users.map(user => user.username === oldName ? u : user))}
-                onDeleteUser={(name) => setUsers(users.filter(u => u.username !== name))}
+                onAddUser={(u) => {
+                  setUsers(prev => [...prev, u]);
+                  if (u.avatar) {
+                    setUserAvatar(u.username, u.avatar);
+                  }
+                }}
+                onEditUser={(u, oldName) => {
+                  setUsers(prev => prev.map(user => user.username === oldName ? u : user));
+                  if (u.avatar) {
+                    setUserAvatar(u.username, u.avatar);
+                  }
+                  if (currentUser && currentUser.username === oldName) {
+                    const updated = { ...currentUser, ...u };
+                    setCurrentUser(updated);
+                    try {
+                      if (localStorage.getItem('kb_user')) {
+                        localStorage.setItem('kb_user', JSON.stringify(updated));
+                      } else if (sessionStorage.getItem('kb_user')) {
+                        sessionStorage.setItem('kb_user', JSON.stringify(updated));
+                      }
+                    } catch {}
+                  }
+                }}
+                onDeleteUser={(name) => setUsers(prev => prev.filter(u => u.username !== name))}
+                onUpdateAvatar={handleUpdateUserAvatar}
                 pendingRequests={pendingRequests}
                 onApproveRequest={handleApproveRequest}
                 onRejectRequest={handleRejectRequest}

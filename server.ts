@@ -358,6 +358,68 @@ async function startServer() {
 
 
     // ======================================================
+    // REAL-TIME USER PRESENCE (ONLINE USERS)
+    // ======================================================
+    const activeOnlineUsers = new Map<string, {
+        username: string;
+        role: string;
+        avatar?: string;
+        displayName?: string;
+        lastSeen: number;
+        loginTime?: string;
+        userAgent?: string;
+    }>();
+
+    const getCleanOnlineUsers = () => {
+        const now = Date.now();
+        const list: any[] = [];
+        for (const [uname, session] of activeOnlineUsers.entries()) {
+            if (now - session.lastSeen < 45000) {
+                list.push(session);
+            } else {
+                activeOnlineUsers.delete(uname);
+            }
+        }
+        return list;
+    };
+
+    app.get(["/api/presence/online-users", "/presence/online-users"], (req, res) => {
+        const list = getCleanOnlineUsers();
+        res.json({ success: true, onlineUsers: list });
+    });
+
+    app.post(["/api/presence/heartbeat", "/presence/heartbeat"], (req, res) => {
+        const { username, role, avatar, displayName, loginTime } = req.body;
+        if (!username) return res.status(400).json({ error: "Username required" });
+
+        const now = Date.now();
+        const existing = activeOnlineUsers.get(username);
+        activeOnlineUsers.set(username, {
+            username,
+            role: role || existing?.role || 'Docs',
+            avatar: avatar || existing?.avatar || '',
+            displayName: displayName || existing?.displayName || username,
+            lastSeen: now,
+            loginTime: loginTime || existing?.loginTime || new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+            userAgent: (req.headers["user-agent"] || "").slice(0, 50)
+        });
+
+        const cleanList = getCleanOnlineUsers();
+        broadcast("presence-updated", { time: now, onlineUsers: cleanList });
+        res.json({ success: true, onlineUsers: cleanList });
+    });
+
+    app.post(["/api/presence/logout", "/presence/logout"], (req, res) => {
+        const { username } = req.body;
+        if (username) {
+            activeOnlineUsers.delete(username);
+            const cleanList = getCleanOnlineUsers();
+            broadcast("presence-updated", { time: Date.now(), onlineUsers: cleanList });
+        }
+        res.json({ success: true });
+    });
+
+    // ======================================================
     app.get(["/api/health", "/health"], (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
     // Lightweight endpoint for fast real-time payment requests sync

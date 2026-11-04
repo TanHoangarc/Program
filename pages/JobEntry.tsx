@@ -697,13 +697,8 @@ export const JobEntry: React.FC<JobEntryProps> = ({
         : true;
       const matchesBank = !filterBank
         ? true
-        : filterBank === "__none__"
-          ? !job.bank ||
-            !job.bank.trim() ||
-            job.bank.trim() === "--" ||
-            job.bank.toLowerCase() === "chưa thu"
-          : (job.bank || "").trim().toLowerCase() ===
-            filterBank.trim().toLowerCase();
+        : (job.bank || "").trim().toLowerCase() ===
+          filterBank.trim().toLowerCase();
 
       return (
         matchesJobCode &&
@@ -916,7 +911,6 @@ export const JobEntry: React.FC<JobEntryProps> = ({
               className="w-full p-2 bg-gray-50 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-900 outline-none"
             >
               <option value="">Tất cả</option>
-              <option value="__none__">Chưa có NH</option>
               <option value="TCB Bank">TCB Bank</option>
               <option value="MB Bank">MB Bank</option>
             </select>

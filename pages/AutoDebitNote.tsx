@@ -1,6 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Copy, Edit2, Check, X, Trash2 } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Copy, Edit2, Check, X, Trash2, FileText, ChevronDown } from 'lucide-react';
 import { JobData } from '../types';
+import { MONTHS, YEARS } from '../constants';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface AutoDebitNoteProps {
   jobs: JobData[];
@@ -8,6 +10,13 @@ interface AutoDebitNoteProps {
 }
 
 export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
+  const { alert: showAlert } = useNotification();
+  const currentYear = new Date().getFullYear();
+  const currentMonth = (new Date().getMonth() + 1).toString();
+
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonth);
+
   const [job, setJob] = useState("");
   const [cont20, setCont20] = useState<number | "">("");
   const [cont40, setCont40] = useState<number | "">("");
@@ -21,6 +30,61 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [deletedRowIds, setDeletedRowIds] = useState<Set<string>>(new Set());
+
+  // Checkbox states for Fee table
+  const [ppCic, setPpCic] = useState(false);
+  const [dgCic, setDgCic] = useState(false);
+  const [pcsFee, setPcsFee] = useState(false);
+
+  const handleToggleDg = (checked: boolean) => {
+    setDgCic(checked);
+    if (checked) {
+      setPriceOverrides((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((k) => {
+          if (k.startsWith("CIC_")) delete next[k];
+        });
+        return next;
+      });
+    }
+  };
+
+  // Filter jobs in selected month & year that have no Amount in Thu (Invoices)
+  const eligibleJobs = useMemo(() => {
+    if (!jobs || !Array.isArray(jobs)) return [];
+    return jobs.filter((j) => {
+      const matchYear = selectedYear ? Number(j.year) === Number(selectedYear) : true;
+      const matchMonth = selectedMonth ? String(j.month) === String(selectedMonth) : true;
+      const hasNoAmount = !j.localChargeTotal || Number(j.localChargeTotal) === 0;
+      return matchYear && matchMonth && hasNoAmount;
+    }).sort((a, b) => {
+      const codeA = String(a.jobCode || '');
+      const codeB = String(b.jobCode || '');
+      return codeA.localeCompare(codeB);
+    });
+  }, [jobs, selectedYear, selectedMonth]);
+
+  const [showJobList, setShowJobList] = useState(false);
+  const jobDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (jobDropdownRef.current && !jobDropdownRef.current.contains(event.target as Node)) {
+        setShowJobList(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredEligibleJobs = useMemo(() => {
+    if (!job) return eligibleJobs;
+    const q = job.toLowerCase();
+    return eligibleJobs.filter(j => 
+      j.jobCode?.toLowerCase().includes(q) || 
+      j.customerName?.toLowerCase().includes(q)
+    );
+  }, [eligibleJobs, job]);
 
   // Tax lookup state
   const [taxCode, setTaxCode] = useState("");
@@ -59,120 +123,162 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
     return `K${yy}${mm}${job}`;
   }, [job]);
 
-  const rows = useMemo(() => {
-        if (!job || (!cont20 && !cont40) || !transit) return [];
-
-        const c20 = Number(cont20) || 0;
-        const c40 = Number(cont40) || 0;
-        const vatRate = Number(vat);
-        
-        const result: any[] = [];
-        
-        const getPrice = (key: string, defaultPrice: number) => {
-            return priceOverrides[key] !== undefined ? priceOverrides[key] : defaultPrice;
-        };
-
-        // DO is shared
-        const doKey = "DO phí_Bộ";
-        const doPrice = getPrice(doKey, 1150000);
-        result.push({
-            id: doKey,
-            fee: "DO phí",
-            price: doPrice,
-            unit: "Bộ",
-            quantity: 1,
-            vat: vatRate,
-            total: doPrice * 1 * (1 + vatRate / 100),
-            jobCode: jobCode
-        });
-
-        if (c20 > 0) {
-            const thc = 3700000;
-            const cln = 400000;
-            const emc = 770000;
-            const cic = transit === 'HCM' ? 1300000 : 3300000;
-
-            const unit = (c20 > 0 && c40 > 0) ? "Cont 20'" : "Cont";
-
-            const pushFee = (feeName: string, defaultPrice: number) => {
-                const key = `${feeName}_${unit}`;
-                const rp = getPrice(key, defaultPrice);
-                result.push({
-                    id: key,
-                    fee: feeName,
-                    price: rp,
-                    unit: unit,
-                    quantity: c20,
-                    vat: vatRate,
-                    total: rp * c20 * (1 + vatRate / 100),
-                    jobCode
-                });
-            };
-
-            pushFee("THC", thc);
-            pushFee("Cleaning container fee", cln);
-            pushFee("EMC FEE", emc);
-            pushFee("CIC", cic);
-        }
-
-        if (c40 > 0) {
-            const thc = 5500000;
-            const cln = 520000;
-            const emc = 1150000;
-            const cic = transit === 'HCM' ? 2600000 : 6600000;
-
-            const unit = (c20 > 0 && c40 > 0) ? "Cont 40'" : "Cont";
-
-            const pushFee = (feeName: string, defaultPrice: number) => {
-                const key = `${feeName}_${unit}`;
-                const rp = getPrice(key, defaultPrice);
-                result.push({
-                    id: key,
-                    fee: feeName,
-                    price: rp,
-                    unit: unit,
-                    quantity: c40,
-                    vat: vatRate,
-                    total: rp * c40 * (1 + vatRate / 100),
-                    jobCode
-                });
-            };
-
-            pushFee("THC", thc);
-            pushFee("Cleaning container fee", cln);
-            pushFee("EMC FEE", emc);
-            pushFee("CIC", cic);
-        }
-
-        const baseRows =  result;
-        return baseRows.filter(r => !deletedRowIds.has(r.id));
-  }, [jobCode, cont20, cont40, vat, transit, job, priceOverrides, deletedRowIds]);
-
   const matchedJob = useMemo(() => {
-        if (!job || !jobs) return null;
-        return jobs.find(j => j.jobCode === job || j.jobCode === jobCode);
+    if (!job || !jobs) return null;
+    return jobs.find((j) => j.jobCode === job || j.jobCode === jobCode);
   }, [job, jobCode, jobs]);
 
+  const displayJobCode = useMemo(() => {
+    if (!job) return "";
+    if (matchedJob) return matchedJob.jobCode;
+    if (job.startsWith("K") || job.startsWith("JOB") || job.includes("-"))
+      return job;
+    return jobCode;
+  }, [job, matchedJob, jobCode]);
+
+  const rows = useMemo(() => {
+    if (!job || (!cont20 && !cont40) || !transit) return [];
+
+    const c20 = Number(cont20) || 0;
+    const c40 = Number(cont40) || 0;
+    const vatRate = Number(vat);
+
+    const result: any[] = [];
+
+    const getPrice = (key: string, defaultPrice: number) => {
+      return priceOverrides[key] !== undefined
+        ? priceOverrides[key]
+        : defaultPrice;
+    };
+
+    // DO is shared
+    const doKey = "DO phí_Bộ";
+    const doPrice = getPrice(doKey, 1150000);
+    result.push({
+      id: doKey,
+      fee: "DO phí",
+      price: doPrice,
+      unit: "Bộ",
+      quantity: 1,
+      vat: vatRate,
+      total: doPrice * 1 * (1 + vatRate / 100),
+      jobCode: displayJobCode,
+    });
+
+    if (c20 > 0) {
+      const thc = 3700000;
+      const cln = 400000;
+      const emc = 770000;
+      const cic = dgCic ? 0 : (transit === "HCM" ? 1300000 : 3300000);
+
+      const unit = c20 > 0 && c40 > 0 ? "Cont 20'" : "Cont";
+
+      const pushFee = (feeName: string, defaultPrice: number, customUnit?: string) => {
+        const u = customUnit || unit;
+        const key = customUnit && c20 > 0 && c40 > 0 ? `${feeName}_${u}_20` : `${feeName}_${u}`;
+        const rp = getPrice(key, defaultPrice);
+        result.push({
+          id: key,
+          fee: feeName,
+          price: rp,
+          unit: u,
+          quantity: c20,
+          vat: vatRate,
+          total: rp * c20 * (1 + vatRate / 100),
+          jobCode: displayJobCode,
+        });
+      };
+
+      pushFee("THC", thc);
+      pushFee("Cleaning container fee", cln);
+      pushFee("EMC FEE", emc);
+      if (!ppCic) {
+        pushFee("CIC", cic);
+      }
+      if (pcsFee) {
+        pushFee("PCS FEE", 1318050, "Cont");
+      }
+    }
+
+    if (c40 > 0) {
+      const thc = 5500000;
+      const cln = 520000;
+      const emc = 1150000;
+      const cic = dgCic ? 0 : (transit === "HCM" ? 2600000 : 6600000);
+
+      const unit = c20 > 0 && c40 > 0 ? "Cont 40'" : "Cont";
+
+      const pushFee = (feeName: string, defaultPrice: number, customUnit?: string) => {
+        const u = customUnit || unit;
+        const key = customUnit && c20 > 0 && c40 > 0 ? `${feeName}_${u}_40` : `${feeName}_${u}`;
+        const rp = getPrice(key, defaultPrice);
+        result.push({
+          id: key,
+          fee: feeName,
+          price: rp,
+          unit: u,
+          quantity: c40,
+          vat: vatRate,
+          total: rp * c40 * (1 + vatRate / 100),
+          jobCode: displayJobCode,
+        });
+      };
+
+      pushFee("THC", thc);
+      pushFee("Cleaning container fee", cln);
+      pushFee("EMC FEE", emc);
+      if (!ppCic) {
+        pushFee("CIC", cic);
+      }
+      if (pcsFee) {
+        pushFee("PCS FEE", 2632100, "Cont");
+      }
+    }
+
+    const baseRows = result;
+    return baseRows.filter((r) => !deletedRowIds.has(r.id));
+  }, [
+    displayJobCode,
+    cont20,
+    cont40,
+    vat,
+    transit,
+    job,
+    priceOverrides,
+    deletedRowIds,
+    ppCic,
+    dgCic,
+    pcsFee,
+  ]);
+
   const showUpdateButton = useMemo(() => {
-        if (!matchedJob) return false;
-        return !matchedJob.localChargeTotal || matchedJob.localChargeTotal === 0;
+    if (!matchedJob) return false;
+    return !matchedJob.localChargeTotal || matchedJob.localChargeTotal === 0;
   }, [matchedJob]);
 
   const handleUpdateJobAmount = () => {
-        if (!matchedJob || !onEditJob) return;
-        const grandTotal = rows.reduce((sum, r) => sum + r.total, 0);
-        const rate = Number(vat);
-        const net = grandTotal / (1 + rate / 100);
-        const vatAmount = grandTotal - net;
-        
-        const updated: JobData = {
-            ...matchedJob,
-            localChargeTotal: grandTotal,
-            localChargeNet: Math.round(net),
-            localChargeVat: Math.round(vatAmount)
-        };
-        onEditJob(updated);
-        alert(`Đã cập nhật tổng tiền thu ${grandTotal.toLocaleString('vi-VN')} VND vào phần Amount của Job ${matchedJob.jobCode} thành công!`);
+    if (!matchedJob || !onEditJob) return;
+    const grandTotal = rows.reduce((sum, r) => sum + r.total, 0);
+    const rate = Number(vat);
+    const net = grandTotal / (1 + rate / 100);
+    const vatAmount = grandTotal - net;
+
+    const updated: JobData = {
+      ...matchedJob,
+      localChargeTotal: grandTotal,
+      localChargeNet: Math.round(net),
+      localChargeVat: Math.round(vatAmount),
+    };
+    onEditJob(updated);
+    if (showAlert) {
+      showAlert(
+        `Đã cập nhật tổng tiền thu ${grandTotal.toLocaleString("vi-VN")} VND vào phần Amount của Job ${matchedJob.jobCode} thành công!`,
+      );
+    } else {
+      alert(
+        `Đã cập nhật tổng tiền thu ${grandTotal.toLocaleString("vi-VN")} VND vào phần Amount của Job ${matchedJob.jobCode} thành công!`,
+      );
+    }
   };
 
   const handleCopyColumn = (field: string) => {
@@ -189,8 +295,9 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
   };
 
   const handleCopyJobString = () => {
-      if (!job) return;
-      navigator.clipboard.writeText(`BILL ${job}`);
+    const codeToCopy = displayJobCode || job;
+    if (!codeToCopy) return;
+    navigator.clipboard.writeText(`BILL ${codeToCopy}`);
   };
 
   const handleCopyNote = () => {
@@ -284,61 +391,297 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-        <h1 className="text-2xl font-bold">Debit Note Lập Bảng Tự Động</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <FileText className="w-6 h-6 text-teal-600" />
+            Debit Note Lập Bảng Tự Động
+          </h1>
+        </div>
         
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4 flex-wrap">
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 flex justify-between items-center">
-                    Số Job
-                    {job && (
-                        <button onClick={handleCopyJobString} className="text-teal-600 hover:text-teal-800" title="Copy BILL + Số Job">
-                            <Copy className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                </label>
-                <input className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500" value={job} onChange={e => setJob(e.target.value)} placeholder="Nhập số job..." />
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4">
+            {/* Hàng 1: Tháng / Năm, Cont 20, Cont 40, VAT, Transit */}
+            {/* Hàng 1: Tháng / Năm, Cont 20 + Cont 40 + VAT, Transit */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                {/* Tháng / Năm (md:col-span-3 - kích thước bằng ô Số Job) */}
+                <div className="md:col-span-3 space-y-1">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                      Tháng / Năm
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select
+                        className="w-full px-2.5 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 bg-white text-sm font-medium"
+                        value={selectedMonth}
+                        onChange={(e) => {
+                          setSelectedMonth(e.target.value);
+                          setJob("");
+                        }}
+                      >
+                        {MONTHS.map((m) => (
+                          <option key={m.value} value={m.value}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="w-full px-2.5 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 bg-white text-sm font-medium"
+                        value={selectedYear}
+                        onChange={(e) => {
+                          setSelectedYear(Number(e.target.value));
+                          setJob("");
+                        }}
+                      >
+                        {YEARS.map((y) => (
+                          <option key={y} value={y}>
+                            {y}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                </div>
+
+                {/* Nhóm: Cont 20 + Cont 40 + VAT (md:col-span-7 - kích thước bằng Vessel/Voy + POL) */}
+                <div className="md:col-span-7 grid grid-cols-3 gap-4">
+                    {/* Cont 20 */}
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Cont 20</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm" 
+                          type="number" 
+                          min="0" 
+                          value={cont20} 
+                          onChange={e => setCont20(e.target.value ? parseInt(e.target.value) : "")} 
+                          placeholder="SL 20" 
+                        />
+                    </div>
+
+                    {/* Cont 40 */}
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Cont 40</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm" 
+                          type="number" 
+                          min="0" 
+                          value={cont40} 
+                          onChange={e => setCont40(e.target.value ? parseInt(e.target.value) : "")} 
+                          placeholder="SL 40" 
+                        />
+                    </div>
+
+                    {/* VAT */}
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">VAT</label>
+                        <select 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 bg-white text-sm" 
+                          value={vat} 
+                          onChange={e => setVat(e.target.value)}
+                        >
+                            <option value="8">8%</option>
+                            <option value="0">0%</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Transit (md:col-span-2 - kích thước bằng POD) */}
+                <div className="md:col-span-2 space-y-1">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Transit</label>
+                    <select 
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 bg-white text-sm" 
+                      value={transit} 
+                      onChange={e => setTransit(e.target.value)}
+                    >
+                        <option value="">-- Chọn --</option>
+                        <option value="HCM">HCM</option>
+                        <option value="HPH">HPH</option>
+                    </select>
+                </div>
             </div>
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Cont 20</label>
-                <input className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500" type="number" min="0" value={cont20} onChange={e => setCont20(e.target.value ? parseInt(e.target.value) : "")} placeholder="Số lượng cont 20" />
+
+            {/* Hàng 2: Số Job, Vessel/Voy + POL, POD */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end pt-1">
+                {/* Số Job (md:col-span-3 - kích thước bằng Tháng / Năm) */}
+                <div className="md:col-span-3 space-y-1 relative" ref={jobDropdownRef}>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex justify-between items-center">
+                        <span>Số Job</span>
+                        {job && (
+                            <button 
+                              type="button"
+                              onClick={handleCopyJobString} 
+                              className="text-teal-600 hover:text-teal-800 flex items-center gap-1 text-[11px] font-medium" 
+                              title="Copy BILL + Số Job"
+                            >
+                                <Copy className="w-3 h-3" />
+                                BILL {displayJobCode || job}
+                            </button>
+                        )}
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text"
+                        className="w-full px-3 py-2 pr-12 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium bg-white" 
+                        value={job} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setJob(val);
+                          const found = jobs.find(j => j.jobCode === val);
+                          if (found) {
+                            setCont20(found.cont20 || 0);
+                            setCont40(found.cont40 || 0);
+                            if (found.transit) setTransit(found.transit);
+                          }
+                        }} 
+                        onFocus={() => {
+                          if (eligibleJobs.length > 0) setShowJobList(true);
+                        }}
+                        placeholder="Nhập số job..." 
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        {job && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setJob("");
+                              setShowJobList(false);
+                            }}
+                            className="text-slate-400 hover:text-slate-600 p-0.5"
+                            title="Xóa ô Số Job"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {eligibleJobs.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowJobList(!showJobList)}
+                            className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition-colors"
+                            title="Danh sách Job trong tháng"
+                          >
+                            <ChevronDown className={`w-4 h-4 transition-transform duration-150 ${showJobList ? 'rotate-180' : ''}`} />
+                          </button>
+                        )}
+                      </div>
+
+                      {showJobList && eligibleJobs.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-56 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 py-1 divide-y divide-slate-100">
+                          {(filteredEligibleJobs.length > 0 ? filteredEligibleJobs : eligibleJobs).map((j) => (
+                            <button
+                              key={j.id}
+                              type="button"
+                              onClick={() => {
+                                setJob(j.jobCode);
+                                setCont20(j.cont20 || 0);
+                                setCont40(j.cont40 || 0);
+                                if (j.transit) setTransit(j.transit);
+                                setShowJobList(false);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-teal-50 transition-colors flex items-center justify-between text-xs"
+                            >
+                              <div className="flex flex-col min-w-0 pr-2">
+                                <span className="font-bold text-teal-800">{j.jobCode}</span>
+                                <span className="text-slate-500 truncate max-w-[170px]">{j.customerName || 'Chưa có tên KH'}</span>
+                              </div>
+                              <span className="text-[11px] text-slate-400 shrink-0">
+                                {j.cont20 ? `${j.cont20}x20'` : ''}{j.cont20 && j.cont40 ? ', ' : ''}{j.cont40 ? `${j.cont40}x40'` : ''}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                </div>
+
+                {/* Nhóm: Vessel/Voy + POL (md:col-span-7 - kích thước bằng Cont 20 + Cont 40 + VAT) */}
+                <div className="md:col-span-7 grid grid-cols-1 sm:grid-cols-5 gap-4">
+                    {/* Vessel/Voy (sm:col-span-3) */}
+                    <div className="sm:col-span-3 space-y-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Vessel/Voy</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm" 
+                          value={vessel} 
+                          onChange={e => setVessel(e.target.value)} 
+                          placeholder="Vessel/Voy..." 
+                        />
+                    </div>
+
+                    {/* POL (sm:col-span-2) */}
+                    <div className="sm:col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">POL</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm" 
+                          value={pol} 
+                          onChange={e => setPol(e.target.value)} 
+                          placeholder="POL..." 
+                        />
+                    </div>
+                </div>
+
+                {/* POD (md:col-span-2 - kích thước bằng Transit) */}
+                <div className="md:col-span-2 space-y-1">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">POD</label>
+                    <input 
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm" 
+                      value={pod} 
+                      onChange={e => setPod(e.target.value)} 
+                      placeholder="POD..." 
+                    />
+                </div>
             </div>
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Cont 40</label>
-                <input className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500" type="number" min="0" value={cont40} onChange={e => setCont40(e.target.value ? parseInt(e.target.value) : "")} placeholder="Số lượng cont 40" />
-            </div>
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">VAT</label>
-                <select className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500 bg-white" value={vat} onChange={e => setVat(e.target.value)}>
-                    <option value="8">8%</option>
-                    <option value="0">0%</option>
-                </select>
-            </div>
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Transit</label>
-                <select className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500 bg-white" value={transit} onChange={e => setTransit(e.target.value)}>
-                    <option value="">-- Chọn --</option>
-                    <option value="HCM">HCM</option>
-                    <option value="HPH">HPH</option>
-                </select>
-            </div>
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Vessel/Voy</label>
-                <input className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500" value={vessel} onChange={e => setVessel(e.target.value)} placeholder="Vessel/Voy..." />
-            </div>
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">POL</label>
-                <input className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500" value={pol} onChange={e => setPol(e.target.value)} placeholder="POL..." />
-            </div>
-            <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">POD</label>
-                <input className="w-full px-3 py-2 border border-slate-300 rounded-md outline-none focus:border-teal-500" value={pod} onChange={e => setPod(e.target.value)} placeholder="POD..." />
-            </div>
+
+            {/* Thông tin Job đã khớp */}
+            {matchedJob && (
+              <div className="bg-teal-50/70 border border-teal-200 rounded-lg p-2.5 text-xs text-teal-900 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-bold text-teal-800">{matchedJob.jobCode}</span>
+                  {matchedJob.customerName && <span>KH: <strong>{matchedJob.customerName}</strong></span>}
+                  {matchedJob.booking && <span>Booking: <strong>{matchedJob.booking}</strong></span>}
+                  {matchedJob.line && <span>Hãng tàu: <strong>{matchedJob.line}</strong></span>}
+                  {matchedJob.hbl && <span>HBL: <strong>{matchedJob.hbl}</strong></span>}
+                </div>
+                {matchedJob.localChargeTotal ? (
+                  <div className="font-semibold text-slate-700">
+                    Thu (Invoices): <span className="text-blue-700">{matchedJob.localChargeTotal.toLocaleString('vi-VN')} đ</span>
+                  </div>
+                ) : null}
+              </div>
+            )}
         </div>
 
         {rows.length > 0 && (
             <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold">Bảng Tính Fee</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <h2 className="text-lg font-semibold text-slate-800">Bảng Tính Fee</h2>
+                        <div className="flex items-center gap-2.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-teal-700" title="Bỏ đi phí CIC ra khỏi bảng">
+                                <input
+                                    type="checkbox"
+                                    checked={ppCic}
+                                    onChange={(e) => setPpCic(e.target.checked)}
+                                    className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
+                                />
+                                <span>PP CIC</span>
+                            </label>
+                            <span className="w-px h-4 bg-slate-200" />
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-teal-700" title="Phí CIC sẽ có đơn giá là 0 để tự nhập thủ công">
+                                <input
+                                    type="checkbox"
+                                    checked={dgCic}
+                                    onChange={(e) => handleToggleDg(e.target.checked)}
+                                    className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
+                                />
+                                <span>DG</span>
+                            </label>
+                            <span className="w-px h-4 bg-slate-200" />
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-teal-700" title="Thêm dòng PCS FEE (ĐVT: Cont, SL như THC, đơn giá: 2.632.100 đ / 40', 1.318.050 đ / 20')">
+                                <input
+                                    type="checkbox"
+                                    checked={pcsFee}
+                                    onChange={(e) => setPcsFee(e.target.checked)}
+                                    className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
+                                />
+                                <span>PCS</span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 
                 <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto shadow-sm">

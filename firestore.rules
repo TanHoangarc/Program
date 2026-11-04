@@ -8,5 +8,9 @@ service cloud.firestore {
     match /authorizations/{authorizationId} {
       allow read, write: if true;
     }
+
+    match /online_presence/{userId} {
+      allow read, write: if true;
+    }
   }
 }
