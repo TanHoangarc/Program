@@ -423,6 +423,22 @@ export const JobModal: React.FC<JobModalProps> = ({
             ngayThuCuoc: String(parsed.ngayThuCuoc || ''),
             ngayThuHoan: String(parsed.ngayThuHoan || '')
         };
+
+        // BẢO ĐẢM TÁCH BIỆT: Chi hoàn là của Job còn Thu hoàn là của Booking
+        // Nếu dữ liệu cũ bị gán nhầm chứng từ Thu hoàn của Booking (NTTK...) vào Job thì tách ra
+        if (safeParsed.amisDepositRefundDocNo && safeParsed.amisDepositRefundDocNo.startsWith('NTTK')) {
+            if (!safeParsed.amisBookingDepositRefundDocNo) {
+                safeParsed.amisBookingDepositRefundDocNo = safeParsed.amisDepositRefundDocNo;
+                safeParsed.amisBookingDepositRefundDate = safeParsed.amisDepositRefundDate;
+                safeParsed.amisBookingDepositRefundDesc = safeParsed.amisDepositRefundDesc;
+                safeParsed.amisBookingDepositRefundAmount = safeParsed.amisDepositRefundAmount;
+            }
+            safeParsed.amisDepositRefundDocNo = '';
+            safeParsed.amisDepositRefundDate = '';
+            safeParsed.amisDepositRefundDesc = '';
+            safeParsed.amisDepositRefundAmount = 0;
+        }
+
         return { 
           ...INITIAL_JOB, 
           ...safeParsed,
@@ -860,6 +876,19 @@ export const JobModal: React.FC<JobModalProps> = ({
             };
             if (finalJobData.amisLcDesc) finalJobData.amisLcDesc = updateLcText(finalJobData.amisLcDesc);
         }
+    }
+
+    // Đảm bảo chứng từ Chi Hoàn của Job hoàn toàn độc lập, không bị lẫn Thu Hoàn (NTTK...) của Booking
+    if (finalJobData.amisDepositRefundDocNo && finalJobData.amisDepositRefundDocNo.startsWith('NTTK')) {
+        finalJobData.amisDepositRefundDocNo = '';
+        finalJobData.amisDepositRefundDesc = '';
+        finalJobData.amisDepositRefundDate = '';
+        finalJobData.amisDepositRefundAmount = 0;
+    }
+    if (finalJobData.ngayThuHoan) {
+        finalJobData.ngayChiHoan = finalJobData.ngayThuHoan;
+    } else if (finalJobData.ngayChiHoan) {
+        finalJobData.ngayThuHoan = finalJobData.ngayChiHoan;
     }
 
     onSave(finalJobData);
@@ -1314,8 +1343,26 @@ export const JobModal: React.FC<JobModalProps> = ({
                                 </div>
                                 <div className="grid grid-cols-2 gap-1">
                                     <div><Label>Ngày Cược</Label><DateInput name="ngayThuCuoc" value={formData.ngayThuCuoc} onChange={handleChange} readOnly={isViewMode} /></div>
-                                    <div><Label>Ngày Hoàn</Label><DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} /></div>
+                                    <div><Label>Ngày Chi Hoàn</Label><DateInput name="ngayThuHoan" value={formData.ngayThuHoan} onChange={handleChange} readOnly={isViewMode} /></div>
                                 </div>
+                                {formData.amisDepositRefundDocNo && !formData.amisDepositRefundDocNo.startsWith('NTTK') && (
+                                    <div className="col-span-2 mt-1 pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs bg-orange-50/70 p-2 rounded-lg border border-orange-200/60">
+                                        <div className="flex items-center gap-1.5 text-orange-800 font-bold text-[11px]">
+                                            <Receipt className="w-3.5 h-3.5 text-orange-600" />
+                                            <span>Chi Hoàn Cược (Job):</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold text-orange-700 bg-white px-2 py-0.5 rounded border border-orange-200 text-xs">
+                                                {formData.amisDepositRefundDocNo}
+                                            </span>
+                                            {formData.amisDepositRefundDate && (
+                                                <span className="text-[10px] text-slate-500 font-medium">
+                                                    ({formatDateVN(formData.amisDepositRefundDate)})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             
                             {formData.jobDeposits && formData.jobDeposits.length > 0 && (
@@ -1356,7 +1403,7 @@ export const JobModal: React.FC<JobModalProps> = ({
                                                 />
                                             </div>
                                             <div className="col-span-4"><Label>Ngày Cược</Label><DateInput name="dateIn" value={dep.dateIn} onChange={(e) => handleJobDepositChange(dep.id, 'dateIn', e.target.value)} readOnly={isViewMode} /></div>
-                                            <div className="col-span-4"><Label>Ngày Hoàn</Label><DateInput name="dateOut" value={dep.dateOut} onChange={(e) => handleJobDepositChange(dep.id, 'dateOut', e.target.value)} readOnly={isViewMode} /></div>
+                                            <div className="col-span-4"><Label>Ngày Chi Hoàn</Label><DateInput name="dateOut" value={dep.dateOut} onChange={(e) => handleJobDepositChange(dep.id, 'dateOut', e.target.value)} readOnly={isViewMode} /></div>
                                             {!isViewMode && <button type="button" onClick={() => removeJobDeposit(dep.id)} className="absolute -right-2 -top-2 bg-white border border-slate-200 rounded-full p-1 text-slate-400 hover:text-red-500 hover:border-red-200 shadow opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5"/></button>}
                                         </div>
                                     ))}

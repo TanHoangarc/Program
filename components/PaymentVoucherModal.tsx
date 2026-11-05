@@ -437,11 +437,15 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               } else if (booking) {
                   initialData.amount = (booking.costDetails.deposits || []).reduce((s,d) => s + (d.amount || 0), 0);
               } else if (allJobs) {
-                  // Sum from all jobs sharing this DocNo (Merged Receipt)
+                  // Thu hoàn cược từ hãng tàu của Booking: lấy từ cược chi của booking, không lấy thuCuoc của Job
                   const groupJobs = allJobs.filter(j => j.amisBookingDepositRefundDocNo === targetDoc || (j.amisDepositRefundDocNo === targetDoc && targetDoc.startsWith('NTTK')));
-                  initialData.amount = groupJobs.reduce((s, j) => s + (j.thuCuoc || 0) + (j.jobDeposits || []).reduce((sum, d) => sum + (d.amount || 0), 0), 0);
+                  initialData.amount = groupJobs.reduce((s, j) => {
+                      const bDep = (j.bookingCostDetails?.deposits || []).reduce((sum, d) => sum + (d.amount || 0), 0);
+                      return s + (bDep || j.chiCuoc || 0);
+                  }, 0);
               } else {
-                  initialData.amount = (job?.thuCuoc || 0) + (job?.jobDeposits || []).reduce((s, d) => s + (d.amount || 0), 0);
+                  const bDep = (job?.bookingCostDetails?.deposits || []).reduce((s, d) => s + (d.amount || 0), 0);
+                  initialData.amount = bDep || job?.chiCuoc || 0;
               }
           } else {
               initialData.docNo = generateNextDocNo(jobsForCalc, 'NTTK', 5, extraDocNos);

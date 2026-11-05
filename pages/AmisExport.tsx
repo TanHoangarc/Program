@@ -447,7 +447,10 @@ export const AmisExport: React.FC<AmisExportProps> = ({
       refundThuGroupMap.forEach((groupJobs, docNo) => {
           const mainJob = groupJobs[0];
           const savedAmount = groupJobs.find(j => j.amisBookingDepositRefundAmount !== undefined)?.amisBookingDepositRefundAmount ?? groupJobs.find(j => j.amisDepositRefundAmount !== undefined && j.amisDepositRefundDocNo === docNo)?.amisDepositRefundAmount;
-          const totalRefund = savedAmount !== undefined ? savedAmount : groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
+          const totalRefund = savedAmount !== undefined ? savedAmount : groupJobs.reduce((sum, item) => {
+              const bDep = (item.bookingCostDetails?.deposits || []).reduce((s, d) => s + (d.amount || 0), 0);
+              return sum + (bDep || item.chiCuoc || 0);
+          }, 0);
           rows.push({
               jobId: mainJob.id, type: 'refund_thu', rowId: `ref-thu-${mainJob.id}`,
               date: mainJob.amisBookingDepositRefundDate || mainJob.amisDepositRefundDate, docNo: docNo,

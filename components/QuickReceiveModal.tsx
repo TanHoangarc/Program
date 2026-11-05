@@ -822,10 +822,11 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                 amisDepositRefundDate: amisDate, 
                 amisDepositRefundAmount: isMainJob ? amisAmount : undefined,
                 amisDepositRefundAccount: amisAccount,
+                ngayChiHoan: amisDate,
                 ngayThuHoan: amisDate 
             });
         });
-        removedJobs.forEach(remJob => onSave({ ...remJob, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', amisDepositRefundAmount: 0, ngayThuHoan: '' }));
+        removedJobs.forEach(remJob => onSave({ ...remJob, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', amisDepositRefundAmount: 0, ngayChiHoan: '', ngayThuHoan: '' }));
     } else if (mode === 'refund_overpayment') {
         let updatedRefunds = [...(formData.refunds || [])];
         
