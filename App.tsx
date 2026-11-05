@@ -294,6 +294,20 @@ const App: React.FC = () => {
             if (!job.year) {
                 job.year = 2025;
             }
+            // Auto-migrate legacy erroneous booking deposit refund (NTTK) recorded in job's amisDepositRefundDocNo
+            if (job.amisDepositRefundDocNo && job.amisDepositRefundDocNo.startsWith('NTTK')) {
+                if (!job.amisBookingDepositRefundDocNo) {
+                    job.amisBookingDepositRefundDocNo = job.amisDepositRefundDocNo;
+                    job.amisBookingDepositRefundDesc = job.amisDepositRefundDesc;
+                    job.amisBookingDepositRefundDate = job.amisDepositRefundDate;
+                    job.amisBookingDepositRefundAmount = job.amisDepositRefundAmount;
+                    job.amisBookingDepositRefundAccount = job.amisDepositRefundAccount;
+                }
+                job.amisDepositRefundDocNo = '';
+                job.amisDepositRefundDesc = '';
+                job.amisDepositRefundDate = '';
+                job.amisDepositRefundAmount = 0;
+            }
             uniqueMap.set(job.id, job);
         }
     });

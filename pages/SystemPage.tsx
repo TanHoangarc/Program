@@ -235,7 +235,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
               // Check AMIS data
               const amisFields = [
                   "amisPaymentDocNo", "amisDepositOutDocNo", "amisExtensionPaymentDocNo",
-                  "amisLcDocNo", "amisDepositDocNo", "amisDepositRefundDocNo"
+                  "amisLcDocNo", "amisDepositDocNo", "amisDepositRefundDocNo", "amisBookingDepositRefundDocNo"
               ];
               let amisMissing = false;
               amisFields.forEach(field => {
@@ -280,7 +280,8 @@ export const SystemPage: React.FC<SystemPageProps> = ({
                       "amisExtensionPaymentDocNo", "amisExtensionPaymentDesc", "amisExtensionPaymentDate", "amisExtensionPaymentAmount",
                       "amisLcDocNo", "amisLcDesc", "amisLcAmount",
                       "amisDepositDocNo", "amisDepositDesc", "amisDepositAmount",
-                      "amisDepositRefundDocNo", "amisDepositRefundDesc", "amisDepositRefundDate", "amisDepositRefundAmount"
+                      "amisDepositRefundDocNo", "amisDepositRefundDesc", "amisDepositRefundDate", "amisDepositRefundAmount",
+                      "amisBookingDepositRefundDocNo", "amisBookingDepositRefundDesc", "amisBookingDepositRefundDate", "amisBookingDepositRefundAmount"
                   ];
                   amisFields.forEach(field => {
                       if (histJob[field as keyof JobData] && !updatedJob[field as keyof JobData]) {

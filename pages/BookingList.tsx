@@ -256,13 +256,28 @@ export const BookingList: React.FC<BookingListProps> = ({
                   updatedJob.amisDepositOutDesc = data.paymentContent;
                   updatedJob.amisDepositOutDate = data.date;
               } else if (paymentType === 'refund') {
-                  updatedJob.amisDepositRefundDocNo = data.docNo;
-                  updatedJob.amisDepositRefundDesc = data.paymentContent;
-                  updatedJob.amisDepositRefundDate = data.date;
-                  updatedJob.amisDepositRefundAmount = data.amount;
+                  // Booking's Thu Hoàn Cược (Receipt from carrier / vendor)
+                  updatedJob.amisBookingDepositRefundDocNo = data.docNo;
+                  updatedJob.amisBookingDepositRefundDesc = data.paymentContent;
+                  updatedJob.amisBookingDepositRefundDate = data.date;
+                  updatedJob.amisBookingDepositRefundAmount = data.amount;
+                  updatedJob.amisBookingDepositRefundAccount = data.account;
                   
-                  // Also update legacy fields if needed
-                  updatedJob.ngayThuHoan = data.date;
+                  // Clear any mistaken legacy setting of this NTTK receipt in Job's Chi Hoàn fields
+                  if (updatedJob.amisDepositRefundDocNo === data.docNo || (updatedJob.amisDepositRefundDocNo && updatedJob.amisDepositRefundDocNo.startsWith('NTTK'))) {
+                      updatedJob.amisDepositRefundDocNo = '';
+                      updatedJob.amisDepositRefundDesc = '';
+                      updatedJob.amisDepositRefundDate = '';
+                      updatedJob.amisDepositRefundAmount = 0;
+                  }
+
+                  // Update dateIn on bookingCostDetails.deposits
+                  if (updatedJob.bookingCostDetails && updatedJob.bookingCostDetails.deposits) {
+                      updatedJob.bookingCostDetails.deposits = updatedJob.bookingCostDetails.deposits.map(d => ({
+                          ...d,
+                          dateIn: d.dateIn || data.date
+                      }));
+                  }
               } else if (paymentType === 'extension') {
                   // For extensions, we primarily use the detailed structure in bookingCostDetails.
                   // We can update the legacy Job fields as a "last used" reference, but core logic is in details.

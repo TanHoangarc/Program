@@ -373,7 +373,8 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
       } else {
           if (mode === 'local' || mode === 'other' || mode === 'refund_overpayment') orgDoc = deepCopyJob.amisLcDocNo || '';
           else if (mode === 'deposit') orgDoc = deepCopyJob.amisDepositDocNo || '';
-          else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') orgDoc = deepCopyJob.amisDepositRefundDocNo || '';
+          else if (mode === 'deposit_refund') orgDoc = deepCopyJob.amisDepositRefundDocNo || '';
+          else if (mode === 'deposit_refund_thu') orgDoc = deepCopyJob.amisBookingDepositRefundDocNo || (deepCopyJob.amisDepositRefundDocNo && deepCopyJob.amisDepositRefundDocNo.startsWith('NTTK') ? deepCopyJob.amisDepositRefundDocNo : '');
           
           setOriginalGroupDocNo(orgDoc);
 
@@ -383,13 +384,15 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
                   mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisLcDocNo === orgDoc);
               } else if (mode === 'deposit') {
                   mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisDepositDocNo === orgDoc);
-              } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
+              } else if (mode === 'deposit_refund') {
                   mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && j.amisDepositRefundDocNo === orgDoc);
+              } else if (mode === 'deposit_refund_thu') {
+                  mergedJobs = allJobs.filter(j => j.id !== deepCopyJob.id && (j.amisBookingDepositRefundDocNo === orgDoc || (j.amisDepositRefundDocNo === orgDoc && orgDoc.startsWith('NTTK'))));
               }
           }
           setAddedJobs(mergedJobs);
 
-          let initialCustId = (mode === 'deposit' || mode === 'deposit_refund') ? deepCopyJob.maKhCuocId : deepCopyJob.customerId;
+          let initialCustId = mode === 'deposit_refund_thu' ? (deepCopyJob.line || deepCopyJob.customerId) : ((mode === 'deposit' || mode === 'deposit_refund') ? deepCopyJob.maKhCuocId : deepCopyJob.customerId);
           const foundCust = customers.find(c => c.id === initialCustId);
           setCustInputVal(foundCust ? foundCust.code : (initialCustId || ''));
 
@@ -428,28 +431,37 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
               setAmisDate(deepCopyJob.ngayThuCuoc || new Date().toISOString().split('T')[0]);
               setAmisDesc(deepCopyJob.amisDepositDesc || `Thu tiền của KH CƯỢC CONT BL ${deepCopyJob.jobCode}`);
               setAmisAccount(deepCopyJob.amisDepositAccount || 'Công ty');
-          } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
-              setAmisDocNo(deepCopyJob.amisDepositRefundDocNo || generateNextDocNo(jobsForCalc, mode === 'deposit_refund_thu' ? 'NTTK' : 'UNC')); 
-              setAmisDate(deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
+          } else if (mode === 'deposit_refund') {
+              setAmisDocNo(orgDoc || generateNextDocNo(jobsForCalc, 'UNC')); 
+              setAmisDate(deepCopyJob.amisDepositRefundDate || deepCopyJob.ngayChiHoan || new Date().toISOString().split('T')[0]);
               setAmisAccount(deepCopyJob.amisDepositRefundAccount || 'Công ty');
               
               if (mergedJobs.length > 0) {
                   const allJobs = [deepCopyJob, ...mergedJobs];
                   const total = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
                   const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
-                  const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
-                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${codes}`);
-                  
-                  // Use saved amount if available, otherwise use calculated total
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${codes}`);
                   setAmisAmount(deepCopyJob.amisDepositRefundAmount !== undefined ? deepCopyJob.amisDepositRefundAmount : total); 
               } else {
-                  const prefix = mode === 'deposit_refund_thu' ? 'Thu tiền của ncc HOÀN CƯỢC CONT' : 'Chi tiền cho KH HOÀN CƯỢC';
-                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `${prefix} BL ${deepCopyJob.jobCode}`);
-                  
+                  setAmisDesc(deepCopyJob.amisDepositRefundDesc || `Chi tiền cho KH HOÀN CƯỢC BL ${deepCopyJob.jobCode}`);
                   const defaultAmount = deepCopyJob.thuCuoc || 0;
-
-                  // Use saved amount if available, otherwise use default
                   setAmisAmount(deepCopyJob.amisDepositRefundAmount !== undefined ? deepCopyJob.amisDepositRefundAmount : defaultAmount); 
+              }
+          } else if (mode === 'deposit_refund_thu') {
+              setAmisDocNo(orgDoc || generateNextDocNo(jobsForCalc, 'NTTK')); 
+              setAmisDate(deepCopyJob.amisBookingDepositRefundDate || deepCopyJob.ngayThuHoan || new Date().toISOString().split('T')[0]);
+              setAmisAccount(deepCopyJob.amisBookingDepositRefundAccount || 'Công ty');
+              
+              if (mergedJobs.length > 0) {
+                  const allJobs = [deepCopyJob, ...mergedJobs];
+                  const total = allJobs.reduce((sum, j) => sum + (j.thuCuoc || 0), 0);
+                  const codes = Array.from(new Set(allJobs.map(j => j.jobCode))).join('+');
+                  setAmisDesc(deepCopyJob.amisBookingDepositRefundDesc || `Thu tiền của ncc HOÀN CƯỢC CONT BL ${codes}`);
+                  setAmisAmount(deepCopyJob.amisBookingDepositRefundAmount !== undefined ? deepCopyJob.amisBookingDepositRefundAmount : total); 
+              } else {
+                  setAmisDesc(deepCopyJob.amisBookingDepositRefundDesc || `Thu tiền của ncc HOÀN CƯỢC CONT BL ${deepCopyJob.jobCode}`);
+                  const defaultAmount = deepCopyJob.thuCuoc || 0;
+                  setAmisAmount(deepCopyJob.amisBookingDepositRefundAmount !== undefined ? deepCopyJob.amisBookingDepositRefundAmount : defaultAmount); 
               }
           } else if (mode === 'refund_overpayment') {
               // EDIT MODE check via targetRefundId
@@ -774,7 +786,33 @@ export const QuickReceiveModal: React.FC<QuickReceiveModalProps> = ({
             const clearUpdates: any = isDeposit ? { amisDepositDocNo: '', amisDepositDesc: '', amisDepositAmount: 0 } : { amisLcDocNo: '', amisLcDesc: '', amisLcAmount: 0 };
             onSave({ ...remJob, ...clearUpdates });
         });
-    } else if (mode === 'deposit_refund' || mode === 'deposit_refund_thu') {
+    } else if (mode === 'deposit_refund_thu') {
+        mergedList.forEach((j, index) => {
+            const isMainJob = index === 0;
+            const updates: Partial<JobData> = {
+                amisBookingDepositRefundDocNo: amisDocNo,
+                amisBookingDepositRefundDesc: amisDesc,
+                amisBookingDepositRefundDate: amisDate,
+                amisBookingDepositRefundAmount: isMainJob ? amisAmount : undefined,
+                amisBookingDepositRefundAccount: amisAccount,
+            };
+            // Clear any mistaken legacy setting of this NTTK receipt in Job's Chi Hoàn fields
+            if (j.amisDepositRefundDocNo === amisDocNo || (j.amisDepositRefundDocNo && j.amisDepositRefundDocNo.startsWith('NTTK'))) {
+                updates.amisDepositRefundDocNo = '';
+                updates.amisDepositRefundDesc = '';
+                updates.amisDepositRefundDate = '';
+                updates.amisDepositRefundAmount = 0;
+            }
+            onSave({ ...j, ...updates });
+        });
+        removedJobs.forEach(remJob => onSave({
+            ...remJob,
+            amisBookingDepositRefundDocNo: '',
+            amisBookingDepositRefundDesc: '',
+            amisBookingDepositRefundDate: '',
+            amisBookingDepositRefundAmount: 0
+        }));
+    } else if (mode === 'deposit_refund') {
         mergedList.forEach((j, index) => {
             const isMainJob = index === 0;
             onSave({ 

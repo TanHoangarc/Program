@@ -420,23 +420,25 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           initialData.tkCo = '3311';
           initialData.reason = 'Thu hoàn cược';
           
-          const targetDoc = initialDocNo || job?.amisDepositRefundDocNo; // Reusing field or we might need a new one?
+          const targetDoc = initialDocNo || job?.amisBookingDepositRefundDocNo || (job?.amisDepositRefundDocNo && job.amisDepositRefundDocNo.startsWith('NTTK') ? job.amisDepositRefundDocNo : undefined);
           setDetectedDocNo(targetDoc);
           
           if (targetDoc) {
               initialData.docNo = targetDoc;
-              const refJob = job || (allJobs ? allJobs.find(j => j.amisDepositRefundDocNo === targetDoc) : undefined);
-              initialData.paymentContent = refJob?.amisDepositRefundDesc || '';
-              initialData.date = refJob?.amisDepositRefundDate || today;
+              const refJob = job || (allJobs ? allJobs.find(j => j.amisBookingDepositRefundDocNo === targetDoc || (j.amisDepositRefundDocNo === targetDoc && targetDoc.startsWith('NTTK'))) : undefined);
+              initialData.paymentContent = refJob?.amisBookingDepositRefundDesc || (refJob?.amisDepositRefundDocNo === targetDoc ? refJob?.amisDepositRefundDesc : '') || '';
+              initialData.date = refJob?.amisBookingDepositRefundDate || (refJob?.amisDepositRefundDocNo === targetDoc ? refJob?.amisDepositRefundDate : '') || today;
               initialData.receiverName = refJob?.line || booking?.line || '';
               
-              if (refJob?.amisDepositRefundAmount !== undefined) {
+              if (refJob?.amisBookingDepositRefundAmount !== undefined) {
+                  initialData.amount = refJob.amisBookingDepositRefundAmount;
+              } else if (refJob?.amisDepositRefundDocNo === targetDoc && refJob?.amisDepositRefundAmount !== undefined) {
                   initialData.amount = refJob.amisDepositRefundAmount;
               } else if (booking) {
                   initialData.amount = (booking.costDetails.deposits || []).reduce((s,d) => s + (d.amount || 0), 0);
               } else if (allJobs) {
                   // Sum from all jobs sharing this DocNo (Merged Receipt)
-                  const groupJobs = allJobs.filter(j => j.amisDepositRefundDocNo === targetDoc);
+                  const groupJobs = allJobs.filter(j => j.amisBookingDepositRefundDocNo === targetDoc || (j.amisDepositRefundDocNo === targetDoc && targetDoc.startsWith('NTTK')));
                   initialData.amount = groupJobs.reduce((s, j) => s + (j.thuCuoc || 0) + (j.jobDeposits || []).reduce((sum, d) => sum + (d.amount || 0), 0), 0);
               } else {
                   initialData.amount = (job?.thuCuoc || 0) + (job?.jobDeposits || []).reduce((s, d) => s + (d.amount || 0), 0);

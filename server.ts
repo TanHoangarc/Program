@@ -268,7 +268,8 @@ async function startServer() {
         "amisExtensionPaymentDocNo", "amisExtensionPaymentDesc", "amisExtensionPaymentDate", "amisExtensionPaymentAmount",
         "amisLcDocNo", "amisLcDesc", "amisLcAmount",
         "amisDepositDocNo", "amisDepositDesc", "amisDepositAmount",
-        "amisDepositRefundDocNo", "amisDepositRefundDesc", "amisDepositRefundDate", "amisDepositRefundAmount"
+        "amisDepositRefundDocNo", "amisDepositRefundDesc", "amisDepositRefundDate", "amisDepositRefundAmount",
+        "amisBookingDepositRefundDocNo", "amisBookingDepositRefundDesc", "amisBookingDepositRefundDate", "amisBookingDepositRefundAmount"
     ];
     const AMIS_EXT_FIELDS = ["amisDocNo", "amisDesc", "amisAmount", "amisDate"];
 

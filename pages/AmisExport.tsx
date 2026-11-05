@@ -436,22 +436,23 @@ export const AmisExport: React.FC<AmisExportProps> = ({
 
       const refundThuGroupMap = new Map<string, any[]>();
       jobs.forEach(j => {
-          // Only include in 'Thu' if it's a receipt (starts with NTTK or explicitly meant as Thu)
-          if (j.amisDepositRefundDocNo && j.amisDepositRefundDocNo.startsWith('NTTK') && checkDateFilter(j.amisDepositRefundDate)) {
-              const docNo = j.amisDepositRefundDocNo;
+          // Booking Deposit Refund (Thu Hoàn Cược từ NCC/Hãng tàu)
+          const docNo = j.amisBookingDepositRefundDocNo || (j.amisDepositRefundDocNo && j.amisDepositRefundDocNo.startsWith('NTTK') ? j.amisDepositRefundDocNo : undefined);
+          const date = j.amisBookingDepositRefundDate || (j.amisDepositRefundDocNo && j.amisDepositRefundDocNo.startsWith('NTTK') ? j.amisDepositRefundDate : undefined);
+          if (docNo && checkDateFilter(date)) {
               if (!refundThuGroupMap.has(docNo)) refundThuGroupMap.set(docNo, []);
               refundThuGroupMap.get(docNo)?.push(j);
           }
       });
       refundThuGroupMap.forEach((groupJobs, docNo) => {
           const mainJob = groupJobs[0];
-          const savedAmount = groupJobs.find(j => j.amisDepositRefundAmount !== undefined)?.amisDepositRefundAmount;
+          const savedAmount = groupJobs.find(j => j.amisBookingDepositRefundAmount !== undefined)?.amisBookingDepositRefundAmount ?? groupJobs.find(j => j.amisDepositRefundAmount !== undefined && j.amisDepositRefundDocNo === docNo)?.amisDepositRefundAmount;
           const totalRefund = savedAmount !== undefined ? savedAmount : groupJobs.reduce((sum, item) => sum + (item.thuCuoc || 0), 0);
           rows.push({
               jobId: mainJob.id, type: 'refund_thu', rowId: `ref-thu-${mainJob.id}`,
-              date: mainJob.amisDepositRefundDate, docNo: mainJob.amisDepositRefundDocNo,
+              date: mainJob.amisBookingDepositRefundDate || mainJob.amisDepositRefundDate, docNo: docNo,
               objCode: mainJob.line, objName: '', 
-              desc: mainJob.amisDepositRefundDesc || `Thu hoàn cược lô ${mainJob.booking || mainJob.jobCode}`,
+              desc: mainJob.amisBookingDepositRefundDesc || mainJob.amisDepositRefundDesc || `Thu hoàn cược lô ${mainJob.booking || mainJob.jobCode}`,
               amount: totalRefund,
               tkNo: '1121', tkCo: '1388'
           });
@@ -844,7 +845,7 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           if (row.type === 'refund_thu') {
               setQuickReceiveJob(job!);
               setQuickReceiveMode('deposit_refund_thu');
-              const matchingJobs = jobs.filter(j => j.id !== job?.id && j.amisDepositRefundDocNo === row.docNo);
+              const matchingJobs = jobs.filter(j => j.id !== job?.id && (j.amisBookingDepositRefundDocNo === row.docNo || j.amisDepositRefundDocNo === row.docNo));
               setQuickReceiveMergedJobs(matchingJobs);
               setIsQuickReceiveOpen(true);
           } else if (row.type === 'external') {
@@ -1092,9 +1093,27 @@ export const AmisExport: React.FC<AmisExportProps> = ({
           if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }
-      if (row.type === 'payment_refund' || row.type === 'refund_thu') {
+      if (row.type === 'refund_thu') {
+          const matchingJobs = jobs.filter(j => j.amisBookingDepositRefundDocNo === row.docNo || (j.amisDepositRefundDocNo === row.docNo && row.docNo.startsWith('NTTK')) || (row.jobId && j.id === row.jobId));
+          const updatedJobs = matchingJobs.map(j => ({
+              ...j,
+              amisBookingDepositRefundDocNo: '',
+              amisBookingDepositRefundDesc: '',
+              amisBookingDepositRefundDate: '',
+              amisBookingDepositRefundAmount: 0,
+              ...(j.amisDepositRefundDocNo === row.docNo ? {
+                  amisDepositRefundDocNo: '',
+                  amisDepositRefundDesc: '',
+                  amisDepositRefundDate: '',
+                  amisDepositRefundAmount: 0
+              } : {})
+          }));
+          if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
+          return;
+      }
+      if (row.type === 'payment_refund') {
           const matchingJobs = jobs.filter(j => j.amisDepositRefundDocNo === row.docNo || (row.jobId && j.id === row.jobId));
-          const updatedJobs = matchingJobs.map(j => ({ ...j, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', amisDepositRefundAmount: 0, ngayThuHoan: '' }));
+          const updatedJobs = matchingJobs.map(j => ({ ...j, amisDepositRefundDocNo: '', amisDepositRefundDesc: '', amisDepositRefundDate: '', amisDepositRefundAmount: 0 }));
           if (updatedJobs.length > 0) onUpdateJob(updatedJobs);
           return;
       }

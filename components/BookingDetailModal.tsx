@@ -809,9 +809,10 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking,
       }
 
       // 4. Refund (Thu Hoàn) Payment Doc
-      if (jobs[0].amisDepositRefundDocNo && !processedDocNos.has(jobs[0].amisDepositRefundDocNo)) {
-          docs.push({ type: 'refund', docNo: jobs[0].amisDepositRefundDocNo, label: 'Thu Hoàn' });
-          processedDocNos.add(jobs[0].amisDepositRefundDocNo);
+      const bookingRefundDoc = jobs[0].amisBookingDepositRefundDocNo || (jobs[0].amisDepositRefundDocNo && jobs[0].amisDepositRefundDocNo.startsWith('NTTK') ? jobs[0].amisDepositRefundDocNo : undefined);
+      if (bookingRefundDoc && !processedDocNos.has(bookingRefundDoc)) {
+          docs.push({ type: 'refund', docNo: bookingRefundDoc, label: 'Thu Hoàn' });
+          processedDocNos.add(bookingRefundDoc);
       }
 
       // 5. Extension Payment Docs

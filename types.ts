@@ -228,12 +228,19 @@ export interface JobData {
   amisDepositAmount?: number; // Actual collected amount for the main slip
   amisDepositAccount?: string;
 
-  // NEW: AMIS Fields for Deposit Refund (Hoàn Cược - Chi cho khách)
+  // AMIS Fields for Deposit Refund (Chi Hoàn Cược - Chi cho khách của Job)
   amisDepositRefundDocNo?: string;
   amisDepositRefundDesc?: string;
   amisDepositRefundDate?: string;
   amisDepositRefundAmount?: number;
   amisDepositRefundAccount?: string;
+
+  // AMIS Fields for Booking Deposit Refund (Thu Hoàn Cược - Thu từ hãng tàu / NCC của Booking)
+  amisBookingDepositRefundDocNo?: string;
+  amisBookingDepositRefundDesc?: string;
+  amisBookingDepositRefundDate?: string;
+  amisBookingDepositRefundAmount?: number;
+  amisBookingDepositRefundAccount?: string;
 
   // NEW: CVHC File Info
   cvhcUrl?: string;
