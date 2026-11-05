@@ -971,7 +971,6 @@ export const JobModal: React.FC<JobModalProps> = ({
       if (formData.amisLcDocNo) docs.push({ type: 'local', docNo: formData.amisLcDocNo, label: 'LC', isPayment: false });
       if (formData.amisDepositDocNo) docs.push({ type: 'deposit', docNo: formData.amisDepositDocNo, label: 'Cược', isPayment: false });
       if (formData.amisDepositRefundDocNo && !formData.amisDepositRefundDocNo.startsWith('NTTK')) docs.push({ type: 'deposit_refund', docNo: formData.amisDepositRefundDocNo, label: 'Chi Hoàn', isPayment: true });
-      if (formData.amisBookingDepositRefundDocNo) docs.push({ type: 'deposit_refund_thu', docNo: formData.amisBookingDepositRefundDocNo, label: 'Thu Hoàn (Booking)', isPayment: false });
       
       const extDocs = new Set();
       (formData.extensions || []).forEach(ext => {
