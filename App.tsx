@@ -2045,7 +2045,7 @@ const App: React.FC = () => {
             )}
 
             {currentPage === 'debit-note' && (
-                <AutoDebitNote jobs={jobs} onEditJob={handleEditJob} />
+                <AutoDebitNote jobs={jobs} customers={customers} onEditJob={handleEditJob} />
             )}
 
             {currentPage === 'salary' && (

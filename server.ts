@@ -4,6 +4,7 @@ import fs from "fs";
 const fsp = fs.promises;
 import path from "path";
 import cors from "cors";
+import axios from "axios";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { fileURLToPath } from 'url';
@@ -65,9 +66,19 @@ const getGeminiClient = (customKey?: string) => {
     });
 };
 
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 async function startServer() {
     const app = express();
-    const PORT = 3000;
+    const portArgIndex = process.argv.indexOf("--port");
+    const PORT = (portArgIndex !== -1 && process.argv[portArgIndex + 1])
+        ? parseInt(process.argv[portArgIndex + 1], 10)
+        : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
 
     // ======================================================
     // GLOBAL MIDDLEWARE
@@ -422,6 +433,59 @@ async function startServer() {
 
     // ======================================================
     app.get(["/api/health", "/health"], (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
+
+    // Company tax code lookup proxy
+    app.get(["/api/lookup-tax/:mst", "/lookup-tax/:mst"], async (req, res) => {
+        const rawMst = req.params.mst || "";
+        const cleanMst = rawMst.trim();
+        if (!cleanMst || cleanMst.length < 8) {
+            return res.status(400).json({ error: "Invalid tax code" });
+        }
+
+        // 1. Try xinvoice API
+        try {
+            const xinvoiceRes = await axios.get(`https://api.xinvoice.vn/gdt-api/tax-payer/${encodeURIComponent(cleanMst)}`, { timeout: 4000 });
+            if (xinvoiceRes.data && xinvoiceRes.data.address) {
+                let addr = String(xinvoiceRes.data.address).trim();
+                const lower = addr.toLowerCase();
+                if (!lower.includes("việt nam") && !lower.includes("viet nam") && !lower.includes("vietnam")) {
+                    if (addr.endsWith(",")) addr = addr.slice(0, -1);
+                    addr += ", Việt Nam";
+                }
+                return res.json({
+                    taxCode: cleanMst,
+                    name: xinvoiceRes.data.name || "",
+                    address: addr,
+                    source: "xinvoice"
+                });
+            }
+        } catch (e) {
+            // Fallback to next
+        }
+
+        // 2. Try vietqr API
+        try {
+            const vietqrRes = await axios.get(`https://api.vietqr.io/v2/business/${encodeURIComponent(cleanMst)}`, { timeout: 4000 });
+            if (vietqrRes.data && vietqrRes.data.code === "00" && vietqrRes.data.data?.address) {
+                let addr = String(vietqrRes.data.data.address).trim();
+                const lower = addr.toLowerCase();
+                if (!lower.includes("việt nam") && !lower.includes("viet nam") && !lower.includes("vietnam")) {
+                    if (addr.endsWith(",")) addr = addr.slice(0, -1);
+                    addr += ", Việt Nam";
+                }
+                return res.json({
+                    taxCode: cleanMst,
+                    name: vietqrRes.data.data.name || "",
+                    address: addr,
+                    source: "vietqr"
+                });
+            }
+        } catch (e) {
+            // Fallback
+        }
+
+        return res.status(404).json({ error: "Address not found" });
+    });
 
     // Lightweight endpoint for fast real-time payment requests sync
     app.get(["/api/payment-requests", "/payment-requests"], async (req, res) => {
@@ -1133,7 +1197,7 @@ Yêu cầu chất lượng:
     // Vite middleware for development
     if (process.env.NODE_ENV !== "production") {
         const vite = await createViteServer({
-            server: { middlewareMode: true },
+            server: { middlewareMode: true, hmr: false },
             appType: "spa",
         });
         app.use(vite.middlewares);

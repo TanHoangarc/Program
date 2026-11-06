@@ -319,3 +319,122 @@ export const calculatePaymentStatus = (job: JobData, allJobs?: JobData[], custom
     totalCollectedDeposit
   };
 };
+
+/**
+ * Đọc số tiền thành chữ tiếng Việt chuẩn hóa hóa đơn (vd: 16066188 -> Mười sáu triệu không trăm sáu mươi sáu nghìn một trăm tám mươi tám đồng.)
+ */
+export function readVietnameseNumber(num: number): string {
+  if (!num || isNaN(num) || num === 0) return 'Không đồng.';
+  const digits = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+  const units = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ'];
+
+  let n = Math.round(Math.abs(num));
+  let groups: number[] = [];
+  while (n > 0) {
+    groups.push(n % 1000);
+    n = Math.floor(n / 1000);
+  }
+
+  function readGroup(val: number, isFirstGroup: boolean): string {
+    const h = Math.floor(val / 100);
+    const t = Math.floor((val % 100) / 10);
+    const o = val % 10;
+    let res = '';
+
+    if (h > 0 || !isFirstGroup) {
+      res += digits[h] + ' trăm ';
+    }
+
+    if (t > 1) {
+      res += digits[t] + ' mươi ';
+      if (o === 1) res += 'mốt ';
+      else if (o === 5) res += 'lăm ';
+      else if (o > 0) res += digits[o] + ' ';
+    } else if (t === 1) {
+      res += 'mười ';
+      if (o === 5) res += 'lăm ';
+      else if (o > 0) res += digits[o] + ' ';
+    } else { // t === 0
+      if ((h > 0 || !isFirstGroup) && o > 0) {
+        res += 'lẻ ' + digits[o] + ' ';
+      } else if (o > 0) {
+        res += digits[o] + ' ';
+      }
+    }
+    return res.trim();
+  }
+
+  const strParts: string[] = [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const g = groups[i];
+    if (g > 0) {
+      const gStr = readGroup(g, i === groups.length - 1);
+      strParts.push(gStr + (units[i] ? ' ' + units[i] : ''));
+    }
+  }
+
+  let result = strParts.join(' ').replace(/\s+/g, ' ').trim();
+  result = result.charAt(0).toUpperCase() + result.slice(1) + ' đồng.';
+  return result;
+}
+
+/**
+ * Tra cứu tự động thông tin công ty và địa chỉ theo Mã số thuế (MST)
+ */
+export async function lookupCompanyTaxInfo(taxCode: string): Promise<{ name: string; address: string } | null> {
+  const cleanMst = String(taxCode || '').trim();
+  if (!cleanMst || cleanMst.length < 8) return null;
+
+  // 1. Thử gọi trực tiếp API xinvoice (CORS enabled, tốc độ cực nhanh)
+  try {
+    const res = await fetch(`https://api.xinvoice.vn/gdt-api/tax-payer/${encodeURIComponent(cleanMst)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.address) {
+        let addr = String(data.address).trim();
+        const lower = addr.toLowerCase();
+        if (!lower.includes("việt nam") && !lower.includes("viet nam") && !lower.includes("vietnam")) {
+          if (addr.endsWith(",")) addr = addr.slice(0, -1);
+          addr += ", Việt Nam";
+        }
+        return { name: data.name || '', address: addr };
+      }
+    }
+  } catch {
+    // Thử bước tiếp theo
+  }
+
+  // 2. Thử qua backend proxy nội bộ (/api/lookup-tax/:mst)
+  try {
+    const res = await fetch(`/api/lookup-tax/${encodeURIComponent(cleanMst)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.address) {
+        return { name: data.name || '', address: data.address };
+      }
+    }
+  } catch {
+    // Thử bước tiếp theo
+  }
+
+  // 3. Thử qua VietQR
+  try {
+    const res = await fetch(`https://api.vietqr.io/v2/business/${encodeURIComponent(cleanMst)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.code === "00" && data.data?.address) {
+        let addr = String(data.data.address).trim();
+        const lower = addr.toLowerCase();
+        if (!lower.includes("việt nam") && !lower.includes("viet nam") && !lower.includes("vietnam")) {
+          if (addr.endsWith(",")) addr = addr.slice(0, -1);
+          addr += ", Việt Nam";
+        }
+        return { name: data.data.name || '', address: addr };
+      }
+    }
+  } catch {
+    // Kết thúc
+  }
+
+  return null;
+}

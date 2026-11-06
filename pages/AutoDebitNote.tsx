@@ -1,15 +1,18 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Copy, Edit2, Check, X, Trash2, FileText, ChevronDown } from 'lucide-react';
-import { JobData } from '../types';
+import { Copy, Edit2, Check, X, Trash2, FileText, ChevronDown, Eye, ExternalLink } from 'lucide-react';
+import { JobData, Customer } from '../types';
 import { MONTHS, YEARS } from '../constants';
 import { useNotification } from '../contexts/NotificationContext';
+import { DebitNotePreviewModal } from '../components/DebitNotePreviewModal';
+import { lookupCompanyTaxInfo } from '../utils';
 
 interface AutoDebitNoteProps {
   jobs: JobData[];
+  customers?: Customer[];
   onEditJob?: (job: JobData) => void;
 }
 
-export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
+export const AutoDebitNote = ({ jobs, customers, onEditJob }: AutoDebitNoteProps) => {
   const { alert: showAlert } = useNotification();
   const currentYear = new Date().getFullYear();
   const currentMonth = (new Date().getMonth() + 1).toString();
@@ -30,6 +33,9 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [deletedRowIds, setDeletedRowIds] = useState<Set<string>>(new Set());
+
+  // Modal Preview A4 state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Checkbox states for Fee table
   const [ppCic, setPpCic] = useState(false);
@@ -127,6 +133,57 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
     if (!job || !jobs) return null;
     return jobs.find((j) => j.jobCode === job || j.jobCode === jobCode);
   }, [job, jobCode, jobs]);
+
+  const matchedCustomer = useMemo(() => {
+    if (!customers || !matchedJob) return null;
+    return customers.find(c => c.id === matchedJob.customerId || c.code === matchedJob.customerId || c.name === matchedJob.customerName) || null;
+  }, [customers, matchedJob]);
+
+  const fetchAddressForTaxCode = async (code: string) => {
+    const cleanCode = code ? code.trim() : '';
+    if (!cleanCode || cleanCode.length < 8) return;
+    try {
+      setIsLookingUpTax(true);
+      const info = await lookupCompanyTaxInfo(cleanCode);
+      if (info && info.address) {
+        setTaxAddress(info.address);
+        if (info.name && !taxName) {
+          setTaxName(info.name);
+        }
+      }
+    } catch {
+      // Non-blocking: silent catch
+    } finally {
+      setIsLookingUpTax(false);
+    }
+  };
+
+  // Luôn tự động lấy Tên đơn vị và Mã số thuế từ thông tin Khách hàng (KH) của Job
+  useEffect(() => {
+    if (matchedJob) {
+      const cust = matchedCustomer || (customers && customers.find(c => 
+        (matchedJob.customerId && (c.id === matchedJob.customerId || c.code === matchedJob.customerId)) || 
+        (matchedJob.customerName && c.name?.trim().toLowerCase() === matchedJob.customerName.trim().toLowerCase())
+      ));
+
+      const newTaxCode = cust?.mst || '';
+      const newTaxName = cust?.name || matchedJob.customerName || '';
+
+      setTaxCode(newTaxCode);
+      setTaxName(newTaxName);
+
+      // Thử tự động tra cứu địa chỉ nếu có MST
+      if (newTaxCode) {
+        fetchAddressForTaxCode(newTaxCode);
+      } else {
+        setTaxAddress('');
+      }
+    } else if (!job) {
+      setTaxCode('');
+      setTaxName('');
+      setTaxAddress('');
+    }
+  }, [matchedJob, matchedCustomer, customers]);
 
   const displayJobCode = useMemo(() => {
     if (!job) return "";
@@ -251,14 +308,18 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
     pcsFee,
   ]);
 
+  const currentTotal = useMemo(() => rows.reduce((sum, r) => sum + r.total, 0), [rows]);
+
   const showUpdateButton = useMemo(() => {
-    if (!matchedJob) return false;
-    return !matchedJob.localChargeTotal || matchedJob.localChargeTotal === 0;
-  }, [matchedJob]);
+    if (!matchedJob || currentTotal === 0) return false;
+    const existingAmount = Number(matchedJob.localChargeTotal) || 0;
+    // Hiển thị nút Update nếu Job chưa có Amount HOẶC số tiền hiện tại khác với Amount có sẵn
+    return existingAmount === 0 || currentTotal !== existingAmount;
+  }, [matchedJob, currentTotal]);
 
   const handleUpdateJobAmount = () => {
     if (!matchedJob || !onEditJob) return;
-    const grandTotal = rows.reduce((sum, r) => sum + r.total, 0);
+    const grandTotal = currentTotal;
     const rate = Number(vat);
     const net = grandTotal / (1 + rate / 100);
     const vatAmount = grandTotal - net;
@@ -309,29 +370,16 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
       if (!taxCode) return;
       setIsLookingUpTax(true);
       try {
-          const res = await fetch(`https://api.vietqr.io/v2/business/${taxCode}`);
-          const data = await res.json();
-          if (data && data.code === "00" && data.data) {
-              setTaxName(data.data.name || "");
-              
-              let fetchedAddress = data.data.address || "";
-              const lowerAddress = fetchedAddress.toLowerCase();
-              if (fetchedAddress && !lowerAddress.includes("việt nam") && !lowerAddress.includes("viet nam") && !lowerAddress.includes("vietnam")) {
-                  fetchedAddress = fetchedAddress.trim();
-                  if (fetchedAddress.endsWith(",")) {
-                      fetchedAddress = fetchedAddress.slice(0, -1);
-                  }
-                  fetchedAddress += ", Việt Nam";
-              }
-              setTaxAddress(fetchedAddress);
+          const info = await lookupCompanyTaxInfo(taxCode.trim());
+          if (info && info.address) {
+              setTaxAddress(info.address);
+              if (info.name) setTaxName(info.name);
           } else {
-              alert("Không tìm thấy thông tin hoặc MST không hợp lệ.");
-              setTaxName("");
-              setTaxAddress("");
+              window.open(`https://masothue.com/Search/?q=${encodeURIComponent(taxCode.trim())}`, '_blank');
           }
       } catch (err) {
           console.error("Lỗi tra cứu MST", err);
-          alert("Có lỗi xảy ra khi tra cứu MST.");
+          window.open(`https://masothue.com/Search/?q=${encodeURIComponent(taxCode.trim())}`, '_blank');
       } finally {
           setIsLookingUpTax(false);
       }
@@ -780,24 +828,44 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
                     </table>
                 </div>
 
-                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-gray-200">
-                    <div>
+                <div className="flex flex-wrap justify-between items-center gap-3 bg-slate-50 p-4 rounded-xl border border-gray-200">
+                    <div className="flex flex-wrap items-center gap-3">
                         {showUpdateButton ? (
-                            <button
-                                onClick={handleUpdateJobAmount}
-                                className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
-                            >
-                                <Check className="w-4 h-4" />
-                                Cập nhật Tổng cộng vào Amount của Job
-                            </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {matchedJob?.localChargeTotal ? (
+                                    <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg font-medium">
+                                        Sẵn có: Job {matchedJob.jobCode} đã có giá trị Amount ({matchedJob.localChargeTotal?.toLocaleString('vi-VN')} VND)
+                                    </span>
+                                ) : null}
+                                <button
+                                    onClick={handleUpdateJobAmount}
+                                    className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+                                    title="Cập nhật tổng tiền vào Amount của Job"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    {matchedJob?.localChargeTotal ? `Update Amount (${currentTotal.toLocaleString('vi-VN')} VND)` : 'Cập nhật Tổng cộng vào Amount của Job'}
+                                </button>
+                            </div>
                         ) : matchedJob ? (
-                            <span className="text-xs text-slate-500 font-medium italic">
+                            <span className="text-xs text-slate-500 font-medium italic flex items-center gap-1.5">
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
                                 Sẵn có: Job {matchedJob.jobCode} đã có giá trị Amount ({matchedJob.localChargeTotal?.toLocaleString('vi-VN')} VND)
                             </span>
                         ) : null}
+
+                        {/* NÚT XEM HOÁ ĐƠN NHÁP */}
+                        <button
+                            type="button"
+                            onClick={() => setIsPreviewOpen(true)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+                            title="Xem Hoá đơn Nháp khổ A4 (mẫu MISA meInvoice)"
+                        >
+                            <Eye className="w-4 h-4" />
+                            Hoá đơn Nháp
+                        </button>
                     </div>
                     <div className="text-red-600 font-bold text-lg bg-red-50 px-4 py-2 rounded-lg border border-red-100 inline-block">
-                        Tổng cộng: {rows.reduce((sum, r) => sum + r.total, 0).toLocaleString('vi-VN')}
+                        Tổng cộng: {currentTotal.toLocaleString('vi-VN')}
                     </div>
                 </div>
 
@@ -817,21 +885,41 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
 
         {/* Tax Lookup Group */}
         <div className="bg-white p-4 lg:p-6 rounded-lg shadow-sm border border-gray-200 mt-6 space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-sm font-semibold text-slate-700">Tra Cứu Mã Số Thuế Trực Tuyến</h2>
-                <div className="text-xs text-slate-500 flex gap-2">
-                    <button onClick={handleOpenMasothue} className="text-blue-600 hover:text-blue-800 hover:underline">
-                        Mở masothue.com
+            <div className="flex flex-wrap justify-between items-center gap-2">
+                <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-semibold text-slate-800">
+                        Thông Tin Khách Hàng & Tra Cứu Thuế (masothue.com)
+                    </h2>
+                    {matchedCustomer && (
+                        <span className="text-[11px] bg-teal-50 text-teal-700 font-semibold px-2 py-0.5 rounded border border-teal-200">
+                            KH: {matchedCustomer.code} - {matchedCustomer.name}
+                        </span>
+                    )}
+                </div>
+                <div className="text-xs text-slate-500 flex items-center gap-2">
+                    <button 
+                        type="button"
+                        onClick={handleOpenMasothue} 
+                        className="text-blue-600 hover:text-blue-800 font-semibold hover:underline flex items-center gap-1.5 bg-blue-50 px-3 py-1 rounded border border-blue-200 transition-colors cursor-pointer"
+                        title="Mở trang masothue.com để tra cứu thông tin và copy địa chỉ"
+                    >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Mở masothue.com {taxCode ? `(MST: ${taxCode})` : ''}
                     </button>
                 </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-600 h-6 flex items-center">MST</label>
+                    <label className="text-xs font-medium text-slate-600 h-6 flex items-center justify-between">
+                        <span>Mã số thuế (MST)</span>
+                        {taxCode && (
+                            <span className="text-[10px] text-teal-600 font-semibold">Tự điền từ Job</span>
+                        )}
+                    </label>
                     <div className="flex">
                         <input 
-                            className="w-full px-3 py-2 border border-slate-300 rounded-s-md outline-none focus:border-teal-500 text-sm" 
+                            className="w-full px-3 py-2 border border-slate-300 rounded-s-md outline-none focus:border-teal-500 text-sm font-mono" 
                             placeholder="Nhập MST..." 
                             value={taxCode}
                             onChange={(e) => setTaxCode(e.target.value)}
@@ -840,7 +928,8 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
                         <button 
                             onClick={handleLookupTax}
                             disabled={isLookingUpTax || !taxCode}
-                            className="bg-teal-600 hover:bg-teal-700 text-white px-4 rounded-e-md text-sm font-medium transition-colors disabled:opacity-50 min-w-[80px]"
+                            className="bg-teal-600 hover:bg-teal-700 text-white px-3.5 rounded-e-md text-sm font-medium transition-colors disabled:opacity-50 min-w-[80px] shrink-0"
+                            title="Tra cứu tên và địa chỉ công ty"
                         >
                             {isLookingUpTax ? 'Đang tra...' : 'Tra cứu'}
                         </button>
@@ -848,30 +937,43 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
                 </div>
                 
                 <div className="space-y-1 md:col-span-1">
-                    <label className="text-xs font-medium text-slate-600 h-6 flex items-center">Tên công ty</label>
+                    <label className="text-xs font-medium text-slate-600 h-6 flex items-center">
+                        Tên đơn vị (Khách hàng)
+                    </label>
                     <input 
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md outline-none text-sm text-slate-700" 
-                        readOnly 
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md outline-none focus:border-teal-500 text-sm text-slate-800" 
                         value={taxName}
-                        placeholder="Kết quả tên công ty..."
+                        onChange={(e) => setTaxName(e.target.value)}
+                        placeholder="Tên đơn vị KH (lấy từ job hoặc tra cứu)..."
                     />
                 </div>
                 
                 <div className="space-y-1 md:col-span-2">
                     <label className="text-xs font-medium text-slate-600 h-6 flex justify-between items-center">
-                        Địa chỉ
-                        {taxAddress && (
-                            <button onClick={handleCopyTaxAddress} className="text-teal-600 hover:text-teal-800 flex items-center gap-1 bg-teal-50 px-2 py-0.5 rounded" title="Copy Địa chỉ">
-                                <Copy className="w-3 h-3" />
-                                <span className="text-[10px] font-bold uppercase tracking-wider">Copy</span>
+                        <span>Địa chỉ (Tra từ masothue.com rồi đưa vào)</span>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                type="button"
+                                onClick={handleOpenMasothue}
+                                className="text-blue-600 hover:text-blue-800 text-[11px] underline flex items-center gap-0.5"
+                                title="Mở masothue.com để tìm địa chỉ"
+                            >
+                                <ExternalLink className="w-3 h-3" />
+                                Tra masothue.com
                             </button>
-                        )}
+                            {taxAddress && (
+                                <button onClick={handleCopyTaxAddress} className="text-teal-600 hover:text-teal-800 flex items-center gap-1 bg-teal-50 px-2 py-0.5 rounded border border-teal-200" title="Copy Địa chỉ">
+                                    <Copy className="w-3 h-3" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Copy</span>
+                                </button>
+                            )}
+                        </div>
                     </label>
                     <input 
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md outline-none text-sm text-slate-700" 
-                        readOnly 
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md outline-none focus:border-teal-500 text-sm text-slate-800" 
                         value={taxAddress}
-                        placeholder="Kết quả địa chỉ..."
+                        onChange={(e) => setTaxAddress(e.target.value)}
+                        placeholder="Nhập hoặc dán địa chỉ tra từ masothue.com vào đây..."
                     />
                 </div>
             </div>
@@ -907,6 +1009,22 @@ export const AutoDebitNote = ({ jobs, onEditJob }: AutoDebitNoteProps) => {
             </div>
         </div>
         
+        {/* Modal Xem Trước Hóa Đơn A4 */}
+        <DebitNotePreviewModal
+            isOpen={isPreviewOpen}
+            onClose={() => setIsPreviewOpen(false)}
+            jobCode={job}
+            matchedJob={matchedJob}
+            customer={matchedCustomer}
+            rows={rows}
+            vatRate={Number(vat) || 8}
+            initialTaxCode={taxCode || matchedCustomer?.mst || ''}
+            initialTaxName={taxName || matchedCustomer?.name || matchedJob?.customerName || ''}
+            initialTaxAddress={taxAddress || ''}
+            vessel={vessel}
+            pol={pol}
+            pod={pod}
+        />
     </div>
   );
 };
