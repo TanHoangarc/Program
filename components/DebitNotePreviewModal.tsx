@@ -193,10 +193,14 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
     const printContent = printAreaRef.current;
     if (!printContent) return;
 
-    // Collect all CSS rules from existing stylesheets to embed every compiled Tailwind utility directly
+    // Collect CSS rules from existing stylesheets, excluding modal's host-only print hiding rules
     let embeddedRules = '';
     try {
       for (const sheet of Array.from(document.styleSheets)) {
+        const owner = sheet.ownerNode as Element | null;
+        if (owner && owner.hasAttribute('data-modal-print-style')) {
+          continue;
+        }
         try {
           if (sheet.cssRules) {
             for (const rule of Array.from(sheet.cssRules)) {
@@ -211,14 +215,16 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
       // Fallback
     }
 
-    // Also collect all style and link elements from host document
+    // Also collect style and link elements from host document (excluding modal print-only style)
     const styleTags = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .filter(node => !node.hasAttribute('data-modal-print-style'))
       .map(node => node.outerHTML)
       .join('\n');
 
     const html = `<!DOCTYPE html>
 <html lang="vi">
   <head>
+    <base href="${window.location.origin}/" />
     <title>Hoa_don_Nhap_${blNumber || jobCode || 'A4'}</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -250,7 +256,9 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
         color: #000000 !important;
         font-family: 'Times New Roman', 'Tinos', Times, serif !important;
         overflow: hidden !important;
+        visibility: visible !important;
       }
+      #a4-print-sheet-root,
       .a4-print-sheet {
         width: 210mm !important;
         height: 297mm !important;
@@ -263,6 +271,7 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
         overflow: hidden !important;
         box-sizing: border-box !important;
         box-shadow: none !important;
+        visibility: visible !important;
         page-break-after: avoid !important;
         page-break-inside: avoid !important;
       }
@@ -329,14 +338,14 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
       .invisible { visibility: hidden !important; }
 
       /* Table layout & borders */
-      table, table.invoice-table {
+      table.invoice-table {
         width: 100% !important;
         border-collapse: collapse !important;
         table-layout: fixed !important;
         font-family: 'Times New Roman', 'Tinos', Times, serif !important;
         border: 1px solid #334155 !important;
       }
-      table th, table td, table.invoice-table th, table.invoice-table td {
+      table.invoice-table th, table.invoice-table td {
         border-left: 1px solid #334155 !important;
         border-right: 1px solid #334155 !important;
         padding: 3px 5px !important;
@@ -344,28 +353,22 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
         font-size: 12px !important;
         box-sizing: border-box !important;
       }
-      table thead tr, table.invoice-table thead tr {
+      table.invoice-table thead tr {
         border-top: 1px solid #334155 !important;
         border-bottom: 1px solid #334155 !important;
         background-color: transparent !important;
       }
-      table thead th, table.invoice-table thead th {
+      table.invoice-table thead th {
         background-color: transparent !important;
         font-weight: bold !important;
         text-align: center !important;
         font-size: 12px !important;
         padding: 4px 4px !important;
       }
-      .row-dashed td {
+      table.invoice-table .row-dashed td {
         border-bottom: 1px dashed #94a3b8 !important;
       }
-      .row-solid td {
-        border-bottom: 1px solid #334155 !important;
-      }
-      .border-r {
-        border-right: 1px solid #334155 !important;
-      }
-      .border-b {
+      table.invoice-table .row-solid td {
         border-bottom: 1px solid #334155 !important;
       }
       .digital-signature-box {
@@ -385,7 +388,7 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
     </style>
   </head>
   <body>
-    <div class="a4-print-sheet">
+    <div id="a4-print-sheet-root" class="a4-print-sheet bg-white text-slate-900 relative">
       ${printContent.innerHTML}
     </div>
   </body>
@@ -420,19 +423,31 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
     doc.write(html);
     doc.close();
 
-    const doPrint = () => {
+    const cleanupIframe = () => {
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+      }
+    };
+
+    if (iframe.contentWindow) {
+      iframe.contentWindow.addEventListener('afterprint', () => {
+        setTimeout(cleanupIframe, 500);
+      });
+    }
+
+    const doPrint = async () => {
       try {
+        if (doc.fonts?.ready) {
+          await Promise.race([
+            doc.fonts.ready,
+            new Promise(resolve => setTimeout(resolve, 600))
+          ]);
+        }
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch (err) {
         console.error('Print iframe failed, using window.print fallback', err);
         window.print();
-      } finally {
-        setTimeout(() => {
-          if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
-          }
-        }, 12000);
       }
     };
 
@@ -472,7 +487,7 @@ export const DebitNotePreviewModal: React.FC<DebitNotePreviewModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[110] bg-slate-900/80 backdrop-blur-md flex flex-col justify-between overflow-hidden animate-in fade-in duration-150">
-      <style>{`
+      <style data-modal-print-style="true">{`
         @media print {
           @page {
             size: 210mm 297mm;
