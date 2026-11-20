@@ -705,9 +705,23 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   // ============================================================
 
   // Helper check Long Hoang
-  const isLongHoang = (name: string) => {
+  const isLongHoang = (name: string, customerId?: string) => {
       const n = (name || '').toLowerCase();
-      return n.includes('long hoàng') || n.includes('long hoang') || n.includes('lhk') || n.includes('longhoang');
+      if (n.includes('long hoàng') || n.includes('long hoang') || n.includes('lhk') || n.includes('longhoang')) {
+          return true;
+      }
+      if (customerId) {
+          const cust = customers.find(c => c.id === customerId);
+          const code = (cust?.code || '').toLowerCase();
+          if (code.includes('longhoang') || code.includes('long hoang') || code.includes('lhk')) {
+              return true;
+          }
+      }
+      return false;
+  };
+
+  const calcDefaultAmount = (sell: number, customerName: string, customerId?: string) => {
+      return isLongHoang(customerName, customerId) ? sell : Math.round(sell * 1.08);
   };
 
   const handleOpenConvert = (req: PaymentRequest) => {
@@ -796,6 +810,25 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       }));
   };
 
+  const handleJobRowCustomerChange = (id: string, customerId: string, customerName: string) => {
+      setConvertData(prev => ({
+          ...prev,
+          jobRows: prev.jobRows.map(r => {
+              if (r.id !== id) return r;
+
+              const wasLongHoang = isLongHoang(r.customerName, r.customerId);
+              const isNowLongHoang = isLongHoang(customerName, customerId);
+              const updatedRow = { ...r, customerId, customerName };
+
+              if (wasLongHoang !== isNowLongHoang || (updatedRow.amount === 0 && updatedRow.sell > 0)) {
+                  updatedRow.amount = calcDefaultAmount(updatedRow.sell, customerName, customerId);
+              }
+
+              return updatedRow;
+          })
+      }));
+  };
+
   const handleJobRowChange = (id: string, field: string, value: any) => {
       setConvertData(prev => ({
           ...prev,
@@ -804,19 +837,17 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
               
               const updatedRow = { ...r, [field]: value };
 
-              // LOGIC: Long Hoang Auto-fill
+              // LOGIC: Auto-fill Amount (Long Hoang => sell, other customers => sell * 1.08)
               if (field === 'customerName' || field === 'customerId') {
-                  // If customer becomes Long Hoang, set amount = sell
-                  if (isLongHoang(updatedRow.customerName)) {
-                      updatedRow.amount = updatedRow.sell;
+                  const wasLongHoang = isLongHoang(r.customerName, r.customerId);
+                  const isNowLongHoang = isLongHoang(updatedRow.customerName, updatedRow.customerId);
+                  if (wasLongHoang !== isNowLongHoang || (updatedRow.amount === 0 && updatedRow.sell > 0)) {
+                      updatedRow.amount = calcDefaultAmount(updatedRow.sell, updatedRow.customerName, updatedRow.customerId);
                   }
               }
               
               if (field === 'sell') {
-                  // If selling price changes AND it is Long Hoang, update amount
-                  if (isLongHoang(updatedRow.customerName)) {
-                      updatedRow.amount = value;
-                  }
+                  updatedRow.amount = calcDefaultAmount(value, updatedRow.customerName, updatedRow.customerId);
               }
 
               return updatedRow;
@@ -833,8 +864,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
       if (onAddCustomer) onAddCustomer(newCustomer);
       
       if (quickAddRowId) {
-          handleJobRowChange(quickAddRowId, 'customerId', newCustomer.id);
-          handleJobRowChange(quickAddRowId, 'customerName', newCustomer.name);
+          handleJobRowCustomerChange(quickAddRowId, newCustomer.id, newCustomer.name);
       }
       setQuickAddRowId(null);
   };
@@ -887,7 +917,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
           };
           
           // Auto set bank if Long Hoang
-          if (isLongHoang(row.customerName)) {
+          if (isLongHoang(row.customerName, row.customerId)) {
               newJob.bank = 'MB Bank';
           }
 
@@ -1853,12 +1883,10 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                                                     value={row.customerName}
                                                     customers={customers}
                                                     onChange={(text) => {
-                                                        handleJobRowChange(row.id, 'customerId', '');
-                                                        handleJobRowChange(row.id, 'customerName', text);
+                                                        handleJobRowCustomerChange(row.id, '', text);
                                                     }}
                                                     onSelect={(id, name) => {
-                                                        handleJobRowChange(row.id, 'customerId', id);
-                                                        handleJobRowChange(row.id, 'customerName', name);
+                                                        handleJobRowCustomerChange(row.id, id, name);
                                                     }}
                                                     onAdd={() => handleOpenQuickAddCustomer(row.id)}
                                                 />
